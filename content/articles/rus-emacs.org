@@ -1,0 +1,72 @@
+-*- mode: org; fill-column: 95 -*-
+@title Русификация Емакса
+@category emacs
+@sort emacs014
+
+Прежде чем мы начнем устанавливать расширения Емакса неплохо бы было
+осветить еще один важный вопрос, касающийся поддержки русского языка в
+нем. Емакс имеет встроенную и независящую от операционной системы
+переключалку режимов ввода, и если ее правильно сконфигурировать - вы,
+с вашим Емаксом, принесенным на флешке, сможете работать даже там, где
+отсутствует поддержка национальных алфавитов. Очень хороший пример
+конфигурации переключения раскладки приведен здесь
+и я с небольшими изменениями включаю его в свою
+конфигурацию. Раскладку клавиатуры мы будем переключать по нажатию
+C-\, что используется и по умолчанию и очень удобно на ноутбучных
+клавиатурах hp, ну а если вам это не нравится - просто поменяйте
+клавишу на удобную для вас. Привожу кусок конфига:
+
+<source lang="lisp">
+;; http://kulchitsky.org/rus/linux/dotemacs.html
+;; Установка раскладки как в виндовс при переключении по С-\
+(global-set-key (kbd "\C-\\") 'user-toggle-input-method)
+;(global-set-key (kbd "\e(") 'user-to-cyr) ; Alt+Shift+9
+;(global-set-key (kbd "\e)") 'user-to-nil) ; Alt+Shift+0
+
+(defun user-cyrillic-redefinitions ()
+  "Set of global keys binding for cyrillic.
+   This function is to be called from user-toggle-input-method"
+  (global-set-key (kbd "?") (lambda()(interactive)(insert ",")))
+  (global-set-key (kbd "/") (lambda()(interactive)(insert ".")))
+  (global-set-key (kbd ",") (lambda()(interactive)(insert ":")))
+  (global-set-key (kbd ":") (lambda()(interactive)(insert "%")))
+  (global-set-key (kbd "*") (lambda()(interactive)(insert ";")))
+  (global-set-key (kbd ";") (lambda()(interactive)(insert "*")))
+  (global-set-key (kbd ".") (lambda()(interactive)(insert "?"))))
+
+(defun user-nil-redefinitions ()
+ "Restoring global keys binding after user-cyrillic-redefinitions.
+  This function is to be called from user-toggle-input-method"
+  (global-set-key (kbd "?") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "/") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "$") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ",") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ":") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "*") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ";") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ".") (lambda()(interactive)(self-insert-command 1))))
+
+(defun user-toggle-input-method ()
+  "Change the stadart function tuggle-input-method
+   to redefine keys for cyrillic input from UNIX type to win type"
+  (interactive)
+  (toggle-input-method)
+  (if (string= current-input-method "cyrillic-jcuken")
+      (user-cyrillic-redefinitions)
+    (user-nil-redefinitions))
+  (message "keybord changed to %s" current-input-method))
+
+(defun user-to-cyr ()
+  "Change input method to Cyrillic,
+   I bound this function with Alt-Shift-9, that is M-("
+  (interactive)
+  (when (string= current-input-method nil)
+      (user-toggle-input-method)))
+
+(defun user-to-nil ()
+  "Change input method to nil (generally to English),
+   I bound this function with Alt-Sfift-0 that is M-)"
+  (interactive)
+  (when (string= current-input-method "cyrillic-jcuken")
+      (user-toggle-input-method)))
+</source>
