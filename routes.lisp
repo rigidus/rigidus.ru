@@ -92,6 +92,26 @@
 (restas:define-route alien/ ("alien/:strkey/")
   (show-article-from-hash strkey *aliens*))
 
+(restas:define-route onlisp ("onlisp/doku.php")
+  (let* ((content
+          "В настоящее время групп энтузиастов начала работу над переводом замечательной книги Пола Грэма \"On Lisp\"<br /></br>
+Вы можете помочь в улучшении этого материала путем вычитки переведенных глав или присоединившись к переводу текста.<br /></br>
+После завершения перевода он будет опубликован здесь. Переведенные и непереведенные главы размещены на гитхабе: <br /></br>
+<a href=\"https://github.com/rigidus/onlisp\">https://github.com/rigidus/onlisp</a><br /></br>
+Присоединяйтесь к команде переводчиков!")
+         (title "Перевод книги Пола Грэма \"On Lisp\"")
+         (menu-memo (menu)))
+    (restas:render-object
+     *default-render-method*
+     (list title
+           menu-memo
+           (tpl:default
+               (list :title title
+                     :navpoints menu-memo
+                     :sections ""
+                     :links (get-sape-links (hunchentoot:REQUEST-URI*))
+                     :content (get-sape-context (hunchentoot:REQUEST-URI*) content)))))))
+
 
 ;; submodules
 
