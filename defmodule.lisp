@@ -1,10 +1,11 @@
 (require 'restas)
 (require 'closure-template)
 (require 'restas-directory-publisher)
+(require 'anaphora)
 (require 'cl-base64)
 
 (restas:define-module #:rigidus
-    (:use #:cl #:iter #:alexandria))
+    (:use #:cl #:iter #:alexandria #:anaphora))
 
 (in-package #:rigidus)
 
@@ -25,8 +26,8 @@
 (closure-template:compile-template :common-lisp-backend (path "templates.htm"))
 
 (defclass orgdata ()
-  ((content :accessor orgdata-content)
-   (sections :accessor orgdata-sections)
+  ((content    :accessor orgdata-content)
+   (sections   :accessor orgdata-sections)
    (directives :accessor orgdata-directives)))
 
 (defparameter *articles* (make-hash-table :test #'equal))

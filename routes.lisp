@@ -63,12 +63,12 @@
 (defun show-article-from-hash (strkey hash)
   (multiple-value-bind (article isset)
       (gethash strkey hash)
-    (if isset
-        article
-        (restas:abort-route-handler
-         (page-404)
-         :return-code hunchentoot:+http-not-found+
-         :content-type "text/html"))))
+    (unless isset
+      (restas:abort-route-handler
+       (page-404)
+       :return-code hunchentoot:+http-not-found+
+       :content-type "text/html"))
+      article))
 
 
 (restas:define-route articles ("articles")
