@@ -10,6 +10,7 @@
   :components   ((:static-file "templates.htm")
                  (:file "defmodule")
                  (:file "orgmode")
+                 (:file "comment")
                  (:file "sape")
                  (:file "render")
                  (:file "routes")

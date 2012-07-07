@@ -1,11 +1,23 @@
+(require 'closer-mop)
 (require 'restas)
 (require 'closure-template)
 (require 'restas-directory-publisher)
 (require 'anaphora)
 (require 'cl-base64)
+(require 'postmodern)
+
 
 (restas:define-module #:rigidus
-    (:use #:cl #:iter #:alexandria #:anaphora))
+    (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
+  (:shadowing-import-from :closer-mop
+                          :defclass
+                          :defmethod
+                          :standard-class
+                          :ensure-generic-function
+                          :defgeneric
+                          :standard-generic-function
+                          :class-name))
+
 
 (in-package #:rigidus)
 
@@ -35,3 +47,46 @@
 
 (defparameter *aliens* (make-hash-table :test #'equal))
 (defparameter *cached-alien-page* nil)
+
+#| POSTGRESQL
+вставить в /etc/postgresql/<version>/main/pg_hba.conf
+local all all trust
+чтобы он доверял локальным пользователям
+потом переключаемся в пользователя postgres и создаем базу
+createuser -DRS <dbuser>
+createdb -l ru_RU.UTF-8 -T template0 -O <dbuser> <dbname>
+psql
+alter user <dbuser> with password '<dbpassword>';
+|#
+
+(defparameter *db-name* "rigidusdb")
+(defparameter *db-user* "rigidus")
+(defparameter *db-pass* "rigidus1234")
+(defparameter *db-serv* "localhost")
+(defparameter *db-spec* (list *db-name* *db-user* *db-pass* *db-serv*))
+(connect-toplevel *db-name* *db-user* *db-pass* *db-serv*)
+;; (disconnect-toplevel)
+(defparameter *db-connection* (connect *db-name* *db-user* *db-pass* *db-serv*))
+
+
+(defmacro incrementor (name fld)
+  `(let ((,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) 0))
+     (list
+      (defun ,(intern (format nil "INCF-~A-~A" (symbol-name name) (symbol-name fld)())) ()
+        (incf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld)))))
+      (defun ,(intern (format nil "INIT-~A-~A" (symbol-name name) (symbol-name fld) ())) (init-value)
+        (setf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) init-value)))))
+
+
+(progn
+  (incrementor comment id)
+  (defclass comment () ;; definition of COMMENT
+    ((id  :col-type integer :initarg :id  :initform (incf-product-id) :accessor id)
+     (key :col-type string  :initarg :key :initform "" :accessor key)
+     (msg :col-type string  :initarg :msg :initform "" :accessor msg))
+    (:metaclass dao-class)
+    (:keys id))
+  (unless (table-exists-p "comment") ;; create table COMMENT if not exists
+    (with-connection (list *db-name* *db-user* *db-pass* *db-serv*)
+      (query (sql (:drop-table :if-exists 'comment)))
+      (execute (dao-table-definition 'comment)))))

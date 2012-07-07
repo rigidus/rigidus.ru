@@ -16,7 +16,8 @@
             ((string= it "set") "-set")))
     (get-comments
      (get-comments
-      (intern (string-upcase key) :keyword)))))
+      (intern (string-upcase key) :keyword)))
+    ""))
 
 
 (defmethod get-comments ((key symbol))
