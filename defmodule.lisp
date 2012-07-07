@@ -1,10 +1,10 @@
 (require 'closer-mop)
+(require 'postmodern)
 (require 'restas)
 (require 'closure-template)
 (require 'restas-directory-publisher)
 (require 'anaphora)
 (require 'cl-base64)
-(require 'postmodern)
 
 
 (restas:define-module #:rigidus
