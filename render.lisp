@@ -25,10 +25,9 @@
 
 
 (defmethod restas:render-object ((designer rigidus-render) (data orgdata))
-  ":wefwef")
   (let* ((content     (concatenate 'string
                                    (orgdata-content data)
-                                   "(get-comments data)"))
+                                   (get-comments data)))
          (sections    (orgdata-sections data))
          (directives  (orgdata-directives data))
          (title       (getf directives :title))
@@ -47,5 +46,3 @@
                                                     :title (cadr section))))
                      :links (get-sape-links (hunchentoot:REQUEST-URI*))
                      :content (get-sape-context (hunchentoot:REQUEST-URI*) content)))))))
-
-
