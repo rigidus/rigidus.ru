@@ -8,7 +8,6 @@
 (defclass rigidus-render-comment () ())
 
 (defparameter *default-render-method* (make-instance 'rigidus-render))
-(defparameter *comment-render-method* (make-instance 'rigidus-render-comment))
 
 
 (defmethod restas:render-object ((designer rigidus-render) (data list))

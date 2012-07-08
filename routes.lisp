@@ -37,24 +37,26 @@
 
 ;; plan file pages
 
-(restas:define-route about ("about")
+(defmacro def/route (name param &body body)
+  `(progn
+     (restas:define-route ,name ,param
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) "/"))
+         ,(cons (concatenate 'string (car param) "/") (cdr param))
+       ,@body)))
+
+
+(def/route about ("about" :method :post)
   (path "content/about.org"))
-(restas:define-route about/ ("about/")
-  (path "content/about.org"))
 
-(restas:define-route resources ("resources")
-  (path "content/resources.org"))
-(restas:define-route resources/ ("resources/")
+(def/route resources ("resources")
   (path "content/resources.org"))
 
-(restas:define-route faq ("faq")
-  (path "content/faq.org"))
-(restas:define-route faq/ ("faq/")
+(def/route faq ("faq")
   (path "content/faq.org"))
 
-(restas:define-route contacts ("contacts")
-  (path "content/contacts.org"))
-(restas:define-route contacts/ ("contacts/")
+(def/route contacts ("contacts")
   (path "content/contacts.org"))
 
 
@@ -71,26 +73,26 @@
       article))
 
 
-(restas:define-route articles ("articles")
-  *cached-articles-page*)
-(restas:define-route articles/ ("articles/")
+(def/route articles ("articles")
   *cached-articles-page*)
 
-(restas:define-route article ("articles/:strkey")
-  (show-article-from-hash strkey *articles*))
-(restas:define-route article/ ("articles/:strkey/")
-  (show-article-from-hash strkey *articles*))
 
-
-(restas:define-route aliens ("aliens")
-  *cached-alien-page*)
-(restas:define-route aliens/ ("aliens/")
+(def/route aliens ("aliens")
   *cached-alien-page*)
 
-(restas:define-route alien ("alien/:strkey")
+
+(def/route article ("articles/:strkey")
+  (show-article-from-hash strkey *articles*))
+
+(def/route article-post-action ("articles/:strkey" :method :post)
+  (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
+  ;; (show-article-from-hash strkey *articles*))
+
+
+
+(def/route alien ("alien/:strkey")
   (show-article-from-hash strkey *aliens*))
-(restas:define-route alien/ ("alien/:strkey/")
-  (show-article-from-hash strkey *aliens*))
+
 
 (restas:define-route onlisp ("onlisp/doku.php")
   (let* ((content

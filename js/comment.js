@@ -11,6 +11,30 @@ $(function () {
     return false;
   });
 
+  $('.comment-del').click(function(){
+    var mid = $(this).attr("id");
+    $.post("",
+           {
+             act : "del",
+             id  : mid
+           },
+           function(data) {
+             alert("TODO: Rebuild comments: " + data);
+           });
+  });
+
+  $('.comment-expand').click(function(){
+    var mid = $(this).attr("id");
+    $.post("",
+           {
+             act : "expand",
+             id  : mid
+           },
+           function(data) {
+             alert("TODO: Rebuild comments: " + data);
+           });
+  });
+
   $('.comment-reply').click(function(){
     var $editor = $('.editor');
     $editor.hide();
