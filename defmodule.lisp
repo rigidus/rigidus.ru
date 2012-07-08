@@ -81,12 +81,33 @@ alter user <dbuser> with password '<dbpassword>';
 (progn
   (incrementor comment id)
   (defclass comment () ;; definition of COMMENT
-    ((id  :col-type integer :initarg :id  :initform (incf-product-id) :accessor id)
-     (key :col-type string  :initarg :key :initform "" :accessor key)
-     (msg :col-type string  :initarg :msg :initform "" :accessor msg))
+    ((id     :col-type integer    :initarg :id     :initform (incf-comment-id) :accessor id)
+     (key    :col-type string     :initarg :key    :initform "" :accessor key)
+     (parent :col-type integer    :initarg :parent :initform "" :accessor parent)
+     (msg    :col-type string     :initarg :msg    :initform "" :accessor msg))
     (:metaclass dao-class)
     (:keys id))
   (unless (table-exists-p "comment") ;; create table COMMENT if not exists
     (with-connection (list *db-name* *db-user* *db-pass* *db-serv*)
       (query (sql (:drop-table :if-exists 'comment)))
       (execute (dao-table-definition 'comment)))))
+
+
+(make-dao 'comment
+          :key "OOP-POLYETHYLENE"
+          :parent 0
+          :msg "first comment")
+
+(make-dao 'comment
+          :key "OOP-POLYETHYLENE"
+          :parent 0
+          :msg "second comment")
+
+(let ((a (make-dao 'comment
+          :key "OOP-POLYETHYLENE"
+          :parent 0
+          :msg "third comment")))
+  (make-dao 'comment
+            :key "OOP-POLYETHYLENE"
+            :parent (id a)
+            :msg "parent comment"))

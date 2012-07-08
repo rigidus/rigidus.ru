@@ -5,7 +5,7 @@
 
 
 (defmethod get-comments ((data orgdata))
-  "Comment controller"
+  "Controller"
   (let ((key (loop for k being the hash-keys in *articles* using (hash-value v) :do
                   (when (equal data v)
                     (return k)))))
@@ -16,20 +16,22 @@
             ((string= it "set") "-set")))
     (get-comments
      (get-comments
-      (intern (string-upcase key) :keyword)))
-    ""))
+      (intern (string-upcase key) :keyword)))))
 
 
 (defmethod get-comments ((key symbol))
   "Model"
-  (list "a1" "b2" "c3"))
+  ;; (error key)
+  (select-dao 'comment (:and (:= 'parent 0) (:= 'key (symbol-name key)))))
+
 
 (defmethod get-comments ((comments list))
   "View"
-  (format nil "~{~A~}"
-          (loop :for comment :in comments :collect
-             (format nil "~A | <br/>" comment))))
-
+  (tpl:comments
+   (list :comments
+         (loop :for comment :in comments :collect
+            (list :msg (msg comment)
+                  :id (id comment))))))
 
 ;; == Модель (англ. Model).
 ;; Модель предоставляет знания:
@@ -56,4 +58,4 @@
 ;; Получить Model, проверить данные
 ;; Передать данные в View, для шаблонизации и выдачи
 
-;; Модель ничего «не знает» о Представленииб а Контроллер не содержит в себе какой-либо бизнес-логики.
+;; Модель ничего «не знает» о Представлении, а Контроллер не содержит в себе какой-либо бизнес-логики.
