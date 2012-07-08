@@ -9,11 +9,6 @@
   (let ((key (loop for k being the hash-keys in *articles* using (hash-value v) :do
                   (when (equal data v)
                     (return k)))))
-    ;; acts
-    (awhen (hunchentoot:parameter "act")
-      (cond ((string= it "new") "-new")
-            ((string= it "get") "-get")
-            ((string= it "set") "-set")))
     (get-comments
      (get-comments
       (intern (string-upcase key) :keyword)))))

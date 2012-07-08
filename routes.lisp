@@ -85,7 +85,28 @@
   (show-article-from-hash strkey *articles*))
 
 (def/route article-post-action ("articles/:strkey" :method :post)
-  (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
+  ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
+  ;; acts
+  (aif (hunchentoot:parameter "act")
+       (cond ((string= it "comment-del")
+              ;; ***TODO***: reqursive delete
+              (format nil "~A"
+                      (execute
+                       (sql (:delete-from 'comment :where (:= 'id (parse-integer (hunchentoot:post-parameter "id"))))))))
+             ((string= it "comment-add")
+              ;; ***TODO***: escape strings, rebuild comments
+              (progn (query
+                      (sql (:insert-into 'comment :set
+                                         'parent (parse-integer (hunchentoot:post-parameter "parent"))
+                                         'msg (hunchentoot:post-parameter "msg")
+                                         'key (string-upcase strkey)
+                                         'id (incf-comment-id))))
+                     "1"))
+             ((string= it "comment-expand") "-get")
+             ((string= it "comment-set") "-set")
+             (t (error 'act-param-not-valid)))
+       ;; else
+       (error 'act-not-found-post-actions)))
   ;; (show-article-from-hash strkey *articles*))
 
 

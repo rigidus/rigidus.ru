@@ -87,27 +87,14 @@ alter user <dbuser> with password '<dbpassword>';
      (msg    :col-type string     :initarg :msg    :initform "" :accessor msg))
     (:metaclass dao-class)
     (:keys id))
-  (unless (table-exists-p "comment") ;; create table COMMENT if not exists
+  ;; (unless (table-exists-p "comment") ;; create table COMMENT if not exists
     (with-connection (list *db-name* *db-user* *db-pass* *db-serv*)
       (query (sql (:drop-table :if-exists 'comment)))
-      (execute (dao-table-definition 'comment)))))
+      (execute (dao-table-definition 'comment))))
+;; )
 
-
-(make-dao 'comment
-          :key "OOP-POLYETHYLENE"
-          :parent 0
-          :msg "first comment")
-
-(make-dao 'comment
-          :key "OOP-POLYETHYLENE"
-          :parent 0
-          :msg "second comment")
-
-(let ((a (make-dao 'comment
-          :key "OOP-POLYETHYLENE"
-          :parent 0
-          :msg "third comment")))
-  (make-dao 'comment
-            :key "OOP-POLYETHYLENE"
-            :parent (id a)
-            :msg "parent comment"))
+(progn
+  (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "first comment")
+  (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "second comment")
+  (let ((a (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "third comment")))
+    (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment")))
