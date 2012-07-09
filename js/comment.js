@@ -21,14 +21,14 @@ function comment_send() {
     actdiv.attr("level",      (level+1));
 
     $(newmsg).css("margin-left", ((level+1)*10));
-    $(newmsg).find(".comment-expand").css("visibility", "hidden");
     $(newmsg).find(".comment-del").click(function(){
       comment_del(this);
     });
     $(newmsg).find(".comment-reply").click(function(){
       comment_reply(this);
     });
-    $(newmsg).insertAfter(msgdiv).slideDown();
+    // если уже развернут - убрать развернуть ***TODO***
+    alert($("div[comment-id='"+parent+"']").find(".comment-expand").click());
   }, "json");
 }
 
@@ -59,7 +59,7 @@ function comment_del (param) {
 
 function comment_expand (param) {
   var msgid  = $(param).parent().attr("comment-id");
-  var level  = $(param).parent().attr("level");
+  var level  = parseInt($(param).parent().attr("level"));
   var msgdiv = $(param).parent().parent();
   $.post("", {
     act : "comment-expand",
@@ -77,7 +77,7 @@ function comment_expand (param) {
         actdiv.attr("level",      data[i]["level"] + level);
 
         $(newmsg).css("margin-left", (level + data[i]["level"]) * 10);
-        $(newmsg).find(".comment-expand").css("visibility", "hidden");
+        // $(newmsg).find(".comment-expand").css("visibility", "hidden");
         $(newmsg).find(".comment-del").click(function(){
           comment_del(this);
         });
@@ -87,7 +87,7 @@ function comment_expand (param) {
         $(newmsg).insertAfter(msgdiv).slideDown();
       }
     }
-    $(param).css("visibility", "hidden");
+    // $(param).css("visibility", "hidden");
   }, "json");
 }
 
