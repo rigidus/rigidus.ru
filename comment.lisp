@@ -26,6 +26,7 @@
    (list :comments
          (loop :for comment :in comments :collect
             (list :msg (msg comment)
+                  :level 1
                   :id (id comment))))))
 
 

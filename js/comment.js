@@ -1,12 +1,35 @@
 function comment_send() {
+  var parent = $("#comment-parent").val();
+  var msg    = $("#comment-message").val();
+  var level  = parseInt($("div[comment-id='"+parent+"']").attr("level"));
+  var msgdiv = $("div[comment-id='"+parent+"']").parent();
+
   $.post("", {
-    act : "comment-add",
-    parent  : $("#comment-parent").val(),
-    msg     : $("#comment-message").val()
+    act     : "comment-add",
+    parent  : parent,
+    msg     : msg
   }, function(data) {
-    alert("***TODO***: Rebuild comments");
+    // alert("***TODO***: Rebuild comments");
     $('.editor').hide();
-  });
+
+    var newmsg = $("#msg").clone();
+    $(newmsg).attr("id", "msg" + data["id"]);
+    $(newmsg).find(".comment-msg").html(data["id"] + " : " + data["msg"]);
+
+    actdiv = $(newmsg).find("div[comment-id]");
+    actdiv.attr("comment-id", data["id"]);
+    actdiv.attr("level",      (level+1));
+
+    $(newmsg).css("margin-left", ((level+1)*10));
+    $(newmsg).find(".comment-expand").css("visibility", "hidden");
+    $(newmsg).find(".comment-del").click(function(){
+      comment_del(this);
+    });
+    $(newmsg).find(".comment-reply").click(function(){
+      comment_reply(this);
+    });
+    $(newmsg).insertAfter(msgdiv).slideDown();
+  }, "json");
 }
 
 function comment_new () {
@@ -35,7 +58,8 @@ function comment_del (param) {
 }
 
 function comment_expand (param) {
-  var msgid = $(param).parent().attr("comment-id");
+  var msgid  = $(param).parent().attr("comment-id");
+  var level  = $(param).parent().attr("level");
   var msgdiv = $(param).parent().parent();
   $.post("", {
     act : "comment-expand",
@@ -47,32 +71,43 @@ function comment_expand (param) {
         var newmsg = $("#msg").clone();
         $(newmsg).attr("id", "msg" + data[i]["id"]);
         $(newmsg).find(".comment-msg").html(data[i]["id"] + " : " + data[i]["msg"]);
-        $(newmsg).find("div[comment-id]").attr("comment-id", data[i]["id"]);
-        $(newmsg).css("margin-left", data[i]["level"] * 10);
-        $(newmsg).find(".comment-expand").click(function(){
-          comment_expand(this);
-        });
+
+        actdiv = $(newmsg).find("div[comment-id]");
+        actdiv.attr("comment-id", data[i]["id"]);
+        actdiv.attr("level",      data[i]["level"] + level);
+
+        $(newmsg).css("margin-left", (level + data[i]["level"]) * 10);
+        $(newmsg).find(".comment-expand").css("visibility", "hidden");
         $(newmsg).find(".comment-del").click(function(){
           comment_del(this);
+        });
+        $(newmsg).find(".comment-reply").click(function(){
+          comment_reply(this);
         });
         $(newmsg).insertAfter(msgdiv).slideDown();
       }
     }
+    $(param).css("visibility", "hidden");
   }, "json");
+}
+
+function comment_reply(param) {
+  var editor = $('.editor');
+  editor.hide();
+  var msgid = $(param).parent().attr("comment-id");
+  var clone = editor.clone();
+  editor.remove();
+  $(clone).css("margin", "5px 0 5px 20px");
+  $(clone).insertAfter("div#msg"+msgid).slideDown();
+  $("input[name=parent]").val(msgid);
+  // comment_expand(this);
 }
 
 
 $(function (){
 
   $('.comment-reply').click(function(){
-    var editor = $('.editor');
-    editor.hide();
-    var msgid = $(this).parent().attr("comment-id");
-    var clone = editor.clone();
-    editor.remove();
-    $(clone).css("margin", "5px 0 5px 20px");
-    $(clone).insertAfter("div#msg"+msgid).slideDown();
-    $("input[name=parent]").val(msgid);
+    comment_reply(this);
   });
 
   $('.comment-del').click(function(){

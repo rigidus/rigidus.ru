@@ -95,13 +95,14 @@
                        (sql (:delete-from 'comment :where (:= 'id (parse-integer (hunchentoot:post-parameter "id"))))))))
              ((string= it "comment-add")
               ;; ***TODO***: escape strings, rebuild comments
-              (progn (query
-                      (sql (:insert-into 'comment :set
-                                         'parent (parse-integer (hunchentoot:post-parameter "parent"))
-                                         'msg (hunchentoot:post-parameter "msg")
-                                         'key (string-upcase strkey)
-                                         'id (incf-comment-id))))
-                     "1"))
+              (let ((newmsg (make-dao 'comment
+                                      :parent (parse-integer (hunchentoot:post-parameter "parent"))
+                                      :msg (hunchentoot:post-parameter "msg")
+                                      :key (string-upcase strkey)
+                                      :id (incf-comment-id))))
+                (json:encode-json-alist-to-string
+                 `((id    . ,(id newmsg))
+                   (msg   . ,(msg newmsg))))))
              ((string= it "comment-expand")
               ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*))
               ;; (format nil "iii: ~A"
