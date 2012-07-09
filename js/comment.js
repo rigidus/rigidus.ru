@@ -114,6 +114,14 @@ $(function (){
     comment_del(this);
   });
 
+  $('.comment-edit').click(function(){
+    alert("TODO");
+  });
+
+  $('.comment-collapse').click(function(){
+    alert("TODO");
+  });
+
   $('.comment-expand').click(function(){
     comment_expand(this)});
 
