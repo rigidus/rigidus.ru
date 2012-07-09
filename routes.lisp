@@ -102,22 +102,20 @@
                                          'key (string-upcase strkey)
                                          'id (incf-comment-id))))
                      "1"))
-             ((string= it "comment-expand") "-get")
+             ((string= it "comment-expand")
+              ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*))
+              ;; (format nil "iii: ~A"
+              ;;         (parse-integer (hunchentoot:post-parameter "id")))
+              (json:encode-json-to-string
+               (reverse
+                (cdr
+                 (reqursive-comments-view
+                  (get-comments (parse-integer (hunchentoot:post-parameter "id"))))))))
              ((string= it "comment-edit") "-edit")
              (t (error 'act-param-not-valid)))
        ;; else
        (error 'act-not-found-post-actions)))
   ;; (show-article-from-hash strkey *articles*))
-
-
-(defun get-tree-comments (root-id)
-  (let ((rs (car (select-dao 'comment (:= 'id root-id)))))
-    (setf (childs rs)
-          (loop :for chd :in (select-dao 'comment (:= 'parent root-id)) :collect
-             (get-tree-comments (id chd))))
-    rs))
-
-;; (id (car (childs (cadr (childs (get-tree-comments 3))))))
 
 
 (def/route alien ("alien/:strkey")

@@ -28,6 +28,36 @@
             (list :msg (msg comment)
                   :id (id comment))))))
 
+
+
+(defmethod get-comments ((root-id integer))
+  "recursive object tree"
+  (let ((rs (car (select-dao 'comment (:= 'id root-id)))))
+    (setf (childs rs)
+          (loop :for chd :in (select-dao 'comment (:= 'parent root-id) 'id) :collect
+             (get-comments (id chd))))
+    rs))
+
+;; (id (car (childs (cadr (childs (get-comments 3))))))
+;; (mapcar #'(lambda (x)
+;;             (id x))
+;;         (childs (get-comments 3)))
+
+(defun reqursive-comments-view (root &key (level 0))
+  (let ((rs (list `((id    . ,(id root))
+                    (msg   . ,(msg root))
+                    (level . ,level)))))
+    (incf level 1)
+    (loop :for chd :in (childs root) :collect
+       (setf rs (append rs (reqursive-comments-view chd :level level))))
+    rs))
+
+(reqursive-comments-view (get-comments 3))
+
+(restas:define-route test ("test")
+  (json:encode-json-to-string (reqursive-comments-view (get-comments 3))))
+
+
 ;; == Модель (англ. Model).
 ;; Модель предоставляет знания:
 ;; данные и методы работы с этими данными, реагирует на запросы, изменяя своё состояние.
