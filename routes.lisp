@@ -103,12 +103,21 @@
                                          'id (incf-comment-id))))
                      "1"))
              ((string= it "comment-expand") "-get")
-             ((string= it "comment-set") "-set")
+             ((string= it "comment-edit") "-edit")
              (t (error 'act-param-not-valid)))
        ;; else
        (error 'act-not-found-post-actions)))
   ;; (show-article-from-hash strkey *articles*))
 
+
+(defun get-tree-comments (root-id)
+  (let ((rs (car (select-dao 'comment (:= 'id root-id)))))
+    (setf (childs rs)
+          (loop :for chd :in (select-dao 'comment (:= 'parent root-id)) :collect
+             (get-tree-comments (id chd))))
+    rs))
+
+;; (id (car (childs (cadr (childs (get-tree-comments 3))))))
 
 
 (def/route alien ("alien/:strkey")
@@ -116,12 +125,7 @@
 
 
 (restas:define-route onlisp ("onlisp/doku.php")
-  (let* ((content
-          "В настоящее время групп энтузиастов начала работу над переводом замечательной книги Пола Грэма \"On Lisp\"<br /></br>
-Вы можете помочь в улучшении этого материала путем вычитки переведенных глав или присоединившись к переводу текста.<br /></br>
-После завершения перевода он будет опубликован здесь. Переведенные и непереведенные главы размещены на гитхабе: <br /></br>
-<a href=\"https://github.com/rigidus/onlisp\">https://github.com/rigidus/onlisp</a><br /></br>
-Присоединяйтесь к команде переводчиков!")
+  (let* ((content (tpl:onlisp))
          (title "Перевод книги Пола Грэма \"On Lisp\"")
          (menu-memo (menu)))
     (restas:render-object

@@ -82,9 +82,10 @@ alter user <dbuser> with password '<dbpassword>';
   (incrementor comment id)
   (defclass comment () ;; definition of COMMENT
     ((id     :col-type integer    :initarg :id     :initform (incf-comment-id) :accessor id)
-     (key    :col-type string     :initarg :key    :initform "" :accessor key)
-     (parent :col-type integer    :initarg :parent :initform "" :accessor parent)
-     (msg    :col-type string     :initarg :msg    :initform "" :accessor msg))
+     (key    :col-type string     :initarg :key    :initform ""  :accessor key)
+     (parent :col-type integer    :initarg :parent :initform ""  :accessor parent)
+     (msg    :col-type string     :initarg :msg    :initform ""  :accessor msg)
+     (childs                      :initarg :childs :initform nil :accessor childs))
     (:metaclass dao-class)
     (:keys id))
   ;; (unless (table-exists-p "comment") ;; create table COMMENT if not exists
@@ -97,4 +98,6 @@ alter user <dbuser> with password '<dbpassword>';
   (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "first comment")
   (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "second comment")
   (let ((a (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "third comment")))
-    (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment")))
+    (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment 1")
+    (let ((b (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment 2")))
+      (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id b) :msg "sub parent comment 2"))))

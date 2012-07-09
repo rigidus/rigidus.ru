@@ -1,5 +1,4 @@
 function comment_send() {
-  // alert($("#comment-message").val());
   $.post("", {
     act : "comment-add",
     parent  : $("#comment-parent").val(),
@@ -10,34 +9,32 @@ function comment_send() {
   });
 }
 
-$(function () {
-  $('.comment-new').click(function(){
-    var $editor = $('.editor');
-    var clone = $editor.clone();
-    $editor.remove();
-    setTimeout(function(){
-      $(clone).css("margin", "5px 0 5px 20px");
-      $(clone).insertAfter(".comment-new").slideDown();
-      $("input[name=parent]").val(0);
-    }, 200);
-    return false;
-  });
+function comment_new () {
+  var editor = $('.editor');
+  var clone = editor.clone();
+  editor.remove();
+  $(clone).css("margin", "5px 0 5px 20px");
+  $(clone).insertAfter("#comment-new").slideDown();
+  $("input[name=parent]").val(0);
+  return false;
+}
+
+
+$(function (){
 
   $('.comment-reply').click(function(){
-    var $editor = $('.editor');
-    $editor.hide();
-    var msgid = $(this).attr("id");
-    var clone = $editor.clone();
-    $editor.remove();
-    setTimeout(function(){
-      $(clone).css("margin", "5px 0 5px 20px");
-      $(clone).insertAfter("div#msg"+msgid).slideDown();
-      $("input[name=parent]").val(msgid);
-    }, 200);
+    var editor = $('.editor');
+    editor.hide();
+    var msgid = $(this).parent().attr("comment-id");
+    var clone = editor.clone();
+    editor.remove();
+    $(clone).css("margin", "5px 0 5px 20px");
+    $(clone).insertAfter("div#msg"+msgid).slideDown();
+    $("input[name=parent]").val(msgid);
   });
 
   $('.comment-del').click(function(){
-    var msgid    = $(this).parent().attr("comment-id");
+    var msgid  = $(this).parent().attr("comment-id");
     var msgdiv = $(this).parent().parent();
     $.post("", {
       act : "comment-del",
@@ -53,13 +50,23 @@ $(function () {
 
   $('.comment-expand').click(function(){
     var msgid = $(this).attr("id");
-    $.post("",
-           {
-             act : "comment-expand",
-             id  : msgid
-           },
-           function(data) {
-             alert("TODO: Rebuild comments: " + data);
-           });
+    $.post("", {
+      act : "comment-expand",
+      id  : msgid
+    }, function(data) {
+      alert("TODO: Rebuild comments: " + data);
+    });
   });
+
+  $('.comment-edit').click(function(){
+    var msgid = $(this).attr("id");
+    $.post("", {
+      act : "comment-edit",
+      id  : msgid
+    }, function(data) {
+      alert("TODO: show comment in textarea: " + data);
+    });
+  });
+
+
 });
