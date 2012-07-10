@@ -1,4 +1,5 @@
 function comment_send() {
+  // Отправка коммента
   var parent = $("#comment-parent").val();
   var msg    = $("#comment-message").val();
   var level  = parseInt($("div[comment-id='"+parent+"']").attr("level"));
@@ -9,17 +10,17 @@ function comment_send() {
     parent  : parent,
     msg     : msg
   }, function(data) {
-    // alert("***TODO***: Rebuild comments");
+    // Спрячем эдитор
     $('.editor').hide();
-
+    // Скопируем образец комменатария и заполним его
     var newmsg = $("#msg").clone();
     $(newmsg).attr("id", "msg" + data["id"]);
     $(newmsg).find(".comment-msg").html(data["id"] + " : " + data["msg"]);
-
+    // Заполним блок, содержащий действия
     actdiv = $(newmsg).find("div[comment-id]");
     actdiv.attr("comment-id", data["id"]);
     actdiv.attr("level",      (level+1));
-
+    // Установим правильные оступы и эвенты
     $(newmsg).css("margin-left", ((level+1)*10));
     $(newmsg).find(".comment-del").click(function(){
       comment_del(this);
@@ -27,7 +28,7 @@ function comment_send() {
     $(newmsg).find(".comment-reply").click(function(){
       comment_reply(this);
     });
-    // если уже развернут - убрать развернуть ***TODO***
+    // ***TODO*** Правильно переразвернуть все дочерние комментарии
     alert($("div[comment-id='"+parent+"']").find(".comment-expand").click());
   }, "json");
 }
@@ -65,7 +66,7 @@ function comment_expand (param) {
     act : "comment-expand",
     id  : msgid
   }, function(data) {
-    // alert("TODO: Rebuild comments: " + data);
+    // если (data == null) - нет комментов нижнего уровня
     if (data != null) {
       for (var i = 0; i < data.length; i++) {
         var newmsg = $("#msg").clone();
@@ -77,7 +78,6 @@ function comment_expand (param) {
         actdiv.attr("level",      data[i]["level"] + level);
 
         $(newmsg).css("margin-left", (level + data[i]["level"]) * 10);
-        // $(newmsg).find(".comment-expand").css("visibility", "hidden");
         $(newmsg).find(".comment-del").click(function(){
           comment_del(this);
         });
@@ -92,6 +92,8 @@ function comment_expand (param) {
 }
 
 function comment_reply(param) {
+  // Показать эдитор в нужной точке,
+  // его кнопка "отправить" сделает остальное.
   var editor = $('.editor');
   editor.hide();
   var msgid = $(param).parent().attr("comment-id");
@@ -100,7 +102,6 @@ function comment_reply(param) {
   $(clone).css("margin", "5px 0 5px 20px");
   $(clone).insertAfter("div#msg"+msgid).slideDown();
   $("input[name=parent]").val(msgid);
-  // comment_expand(this);
 }
 
 

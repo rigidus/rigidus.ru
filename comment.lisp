@@ -9,14 +9,13 @@
   (let ((key (loop for k being the hash-keys in *articles* using (hash-value v) :do
                   (when (equal data v)
                     (return k)))))
-    (get-comments
-     (get-comments
+    (get-comments ;; View
+     (get-comments ;; Model
       (intern (string-upcase key) :keyword)))))
 
 
 (defmethod get-comments ((key symbol))
   "Model"
-  ;; (error key)
   (select-dao 'comment (:and (:= 'parent 0) (:= 'key (symbol-name key)))))
 
 
