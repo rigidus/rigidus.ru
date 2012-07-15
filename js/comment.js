@@ -58,7 +58,7 @@ function comment_del (param) {
     });
 }
 
-function comment_expand (param) {
+function comment_expand_or_collapse (param) {
   var msgid  = $(param).parent().attr("comment-id");
   var level  = parseInt($(param).parent().attr("level"));
   var msgdiv = $(param).parent().parent();
@@ -69,27 +69,36 @@ function comment_expand (param) {
     // если (data == null) - нет комментов нижнего уровня
     if (data != null) {
       for (var i = 0; i < data.length; i++) {
-        var newmsg = $("#msg").clone();
-        $(newmsg).attr("id", "msg" + data[i]["id"]);
-        $(newmsg).find(".comment-msg").html(data[i]["id"] + " : " + data[i]["msg"]);
+        if ($(param).html() == "свернуть") {
+          $("#msg" + data[i]["id"]).remove();
+        } else {
+          var newmsg = $("#msg").clone();
+          $(newmsg).attr("id", "msg" + data[i]["id"]);
+          $(newmsg).find(".comment-msg").html(data[i]["id"] + " : " + data[i]["msg"]);
 
-        actdiv = $(newmsg).find("div[comment-id]");
-        actdiv.attr("comment-id", data[i]["id"]);
-        actdiv.attr("level",      data[i]["level"] + level);
+          actdiv = $(newmsg).find("div[comment-id]");
+          actdiv.attr("comment-id", data[i]["id"]);
+          actdiv.attr("level",      data[i]["level"] + level);
 
-        $(newmsg).css("margin-left", (level + data[i]["level"]) * 10);
-        $(newmsg).find(".comment-del").click(function(){
-          comment_del(this);
-        });
-        $(newmsg).find(".comment-reply").click(function(){
-          comment_reply(this);
-        });
-        $(newmsg).insertAfter(msgdiv).slideDown();
+          $(newmsg).css("margin-left", (level + data[i]["level"]) * 10);
+          $(newmsg).find(".comment-del").click(function(){
+            comment_del(this);
+          });
+          $(newmsg).find(".comment-reply").click(function(){
+            comment_reply(this);
+          });
+          $(newmsg).insertAfter(msgdiv).slideDown();
+        }
       }
     }
-    // $(param).css("visibility", "hidden");
+    if ($(param).html() == "развернуть") {
+      $(param).html("свернуть");
+    } else {
+      $(param).html("развернуть");
+    }
   }, "json");
 }
+
 
 function comment_reply(param) {
   // Показать эдитор в нужной точке,
@@ -119,12 +128,9 @@ $(function (){
     alert("TODO");
   });
 
-  $('.comment-collapse').click(function(){
-    alert("TODO");
+  $('.comment-expand-or-collapse').click(function(){
+    comment_expand_or_collapse(this);
   });
-
-  $('.comment-expand').click(function(){
-    comment_expand(this)});
 
   $('.comment-edit').click(function(){
     var msgid = $(this).attr("id");

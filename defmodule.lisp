@@ -95,9 +95,9 @@ alter user <dbuser> with password '<dbpassword>';
 ;; )
 
 (progn
-  (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "first comment")
-  (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "second comment")
-  (let ((a (make-dao 'comment :key "OOP-POLYETHYLENE" :parent 0 :msg "third comment")))
-    (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment 1")
-    (let ((b (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id a) :msg "parent comment 2")))
-      (make-dao 'comment :key "OOP-POLYETHYLENE" :parent (id b) :msg "sub parent comment 2"))))
+  (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "first comment")))
+    (make-dao 'comment :key "TEST" :parent (id a) :msg "second comment"))
+  (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "third comment")))
+    (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 1")
+    (let ((b (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 2")))
+      (make-dao 'comment :key "TEST" :parent (id b) :msg "sub parent comment 2"))))
