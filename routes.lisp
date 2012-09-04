@@ -84,38 +84,41 @@
 (def/route article ("articles/:strkey")
   (show-article-from-hash strkey *articles*))
 
-(def/route article-post-action ("articles/:strkey" :method :post)
-  ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
-  ;; acts
-  (aif (hunchentoot:parameter "act")
-       (cond ((string= it "comment-del")
-              ;; ***TODO***: reqursive delete
-              (format nil "~A"
-                      (execute
-                       (sql (:delete-from 'comment :where (:= 'id (parse-integer (hunchentoot:post-parameter "id"))))))))
-             ((string= it "comment-add")
-              ;; ***TODO***: escape strings, rebuild comments
-              (let ((newmsg (make-dao 'comment
-                                      :parent (parse-integer (hunchentoot:post-parameter "parent"))
-                                      :msg (hunchentoot:post-parameter "msg")
-                                      :key (string-upcase strkey)
-                                      :id (incf-comment-id))))
-                (json:encode-json-alist-to-string
-                 `((id    . ,(id newmsg))
-                   (msg   . ,(msg newmsg))))))
-             ((string= it "comment-expand")
-              ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*))
-              ;; (format nil "iii: ~A"
-              ;;         (parse-integer (hunchentoot:post-parameter "id")))
-              (json:encode-json-to-string
-               (reverse
-                (cdr
-                 (reqursive-comments-view
-                  (get-comments (parse-integer (hunchentoot:post-parameter "id"))))))))
-             ((string= it "comment-edit") "-edit")
-             (t (error 'act-param-not-valid)))
-       ;; else
-       (error 'act-not-found-post-actions)))
+;; (def/route article-post-action ("articles/:strkey" :method :post)
+;;   ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
+;;   ;; acts
+;;   (aif (hunchentoot:parameter "act")
+;;        (cond ((string= it "comment-del")
+;;               ;; ***TODO***: reqursive delete
+;;               (format nil "~A"
+;;                       (execute
+;;                        (sql (:delete-from 'comment :where (:= 'id (parse-integer (hunchentoot:post-parameter "id"))))))))
+;;              ((string= it "comment-add")
+;;               ;; ***TODO***: escape strings, rebuild comments
+;;               (let ((newmsg (make-dao 'comment
+;;                                       :parent (parse-integer (hunchentoot:post-parameter "parent"))
+;;                                       :msg (hunchentoot:post-parameter "msg")
+;;                                       :key (string-upcase strkey)
+;;                                       :id (incf-comment-id))))
+;;                 (json:encode-json-alist-to-string
+;;                  `((id    . ,(id newmsg))
+;;                    (msg   . ,(msg newmsg))))))
+;;              ((string= it "comment-expand")
+;;               ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*))
+;;               ;; (format nil "iii: ~A"
+;;               ;;         (parse-integer (hunchentoot:post-parameter "id")))
+;;               (if (equal "0" (hunchentoot:post-parameter "id"))
+;;                   (json:encode-json-to-string nil)
+;;                   ;; else
+;;                   (json:encode-json-to-string
+;;                    (reverse
+;;                     (cdr
+;;                      (reqursive-comments-view
+;;                       (get-comments (parse-integer (hunchentoot:post-parameter "id")))))))))
+;;              ((string= it "comment-edit") "-edit")
+;;              (t (error 'act-param-not-valid)))
+;;        ;; else
+;;        (error 'act-not-found-post-actions)))
   ;; (show-article-from-hash strkey *articles*))
 
 
