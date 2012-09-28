@@ -21,7 +21,10 @@
 
 (in-package #:rigidus)
 
-(let ((path '(:RELATIVE "repo/rigidus.ru")))
+(let ((path (list :RELATIVE
+                  ;; "repo/rigidus.ru"
+                  (sb-posix:getcwd))
+        ))
   (setf asdf:*central-registry*
         (remove-duplicates (append asdf:*central-registry*
                                    (list (merge-pathnames
