@@ -47,7 +47,7 @@
        ,@body)))
 
 
-(def/route about ("about" :method :post)
+(def/route about ("about")
   (path "content/about.org"))
 
 (def/route resources ("resources")
