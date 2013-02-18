@@ -67,9 +67,9 @@ alter user <dbuser> with password '<dbpassword>';
 (defparameter *db-pass* "rigidus1234")
 (defparameter *db-serv* "localhost")
 (defparameter *db-spec* (list *db-name* *db-user* *db-pass* *db-serv*))
-(connect-toplevel *db-name* *db-user* *db-pass* *db-serv*)
+;; (connect-toplevel *db-name* *db-user* *db-pass* *db-serv*)
 ;; (disconnect-toplevel)
-(defparameter *db-connection* (connect *db-name* *db-user* *db-pass* *db-serv*))
+;; (defparameter *db-connection* (connect *db-name* *db-user* *db-pass* *db-serv*))
 
 
 (defmacro incrementor (name fld)
@@ -81,26 +81,26 @@ alter user <dbuser> with password '<dbpassword>';
         (setf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) init-value)))))
 
 
-(progn
-  (incrementor comment id)
-  (defclass comment () ;; definition of COMMENT
-    ((id     :col-type integer    :initarg :id     :initform (incf-comment-id) :accessor id)
-     (key    :col-type string     :initarg :key    :initform ""  :accessor key)
-     (parent :col-type integer    :initarg :parent :initform ""  :accessor parent)
-     (msg    :col-type string     :initarg :msg    :initform ""  :accessor msg)
-     (childs                      :initarg :childs :initform nil :accessor childs))
-    (:metaclass dao-class)
-    (:keys id))
-  ;; (unless (table-exists-p "comment") ;; create table COMMENT if not exists
-    (with-connection (list *db-name* *db-user* *db-pass* *db-serv*)
-      (query (sql (:drop-table :if-exists 'comment)))
-      (execute (dao-table-definition 'comment))))
-;; )
+;; (progn
+;;   (incrementor comment id)
+;;   (defclass comment () ;; definition of COMMENT
+;;     ((id     :col-type integer    :initarg :id     :initform (incf-comment-id) :accessor id)
+;;      (key    :col-type string     :initarg :key    :initform ""  :accessor key)
+;;      (parent :col-type integer    :initarg :parent :initform ""  :accessor parent)
+;;      (msg    :col-type string     :initarg :msg    :initform ""  :accessor msg)
+;;      (childs                      :initarg :childs :initform nil :accessor childs))
+;;     (:metaclass dao-class)
+;;     (:keys id))
+;;   ;; (unless (table-exists-p "comment") ;; create table COMMENT if not exists
+;;     (with-connection (list *db-name* *db-user* *db-pass* *db-serv*)
+;;       (query (sql (:drop-table :if-exists 'comment)))
+;;       (execute (dao-table-definition 'comment))))
+;; ;; )
 
-(progn
-  (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "first comment")))
-    (make-dao 'comment :key "TEST" :parent (id a) :msg "second comment"))
-  (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "third comment")))
-    (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 1")
-    (let ((b (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 2")))
-      (make-dao 'comment :key "TEST" :parent (id b) :msg "sub parent comment 2"))))
+;; (progn
+;;   (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "first comment")))
+;;     (make-dao 'comment :key "TEST" :parent (id a) :msg "second comment"))
+;;   (let ((a (make-dao 'comment :key "TEST" :parent 0 :msg "third comment")))
+;;     (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 1")
+;;     (let ((b (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 2")))
+;;       (make-dao 'comment :key "TEST" :parent (id b) :msg "sub parent comment 2"))))
