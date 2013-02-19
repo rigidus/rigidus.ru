@@ -3,6 +3,7 @@
 (defun menu ()
   (list (list :link "/" :title "Главная")
         (list :link "/about" :title "About")
+        ;; Тут надо резюме
         (list :link "/articles/" :title "Статьи")
         (list :link "/aliens/" :title "Материалы")
         (list :link "/resources/" :title "Ресурсы")

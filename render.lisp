@@ -26,7 +26,8 @@
 (defmethod restas:render-object ((designer rigidus-render) (data orgdata))
   (let* ((content     (concatenate 'string
                                    (orgdata-content data)
-                                   (get-comments data)))
+                                   ;; (get-comments data)
+                                   ))
          (sections    (orgdata-sections data))
          (directives  (orgdata-directives data))
          (title       (getf directives :title))
