@@ -143,18 +143,62 @@
                      :content content))))))
 
 
+
+(require 'bordeaux-threads)
+
+(defparameter *serial-status* nil)
+(defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
+
+(defun serial-getter ()
+  (tagbody
+   re
+     (bordeaux-threads:acquire-lock *serial-lock* t)
+     (with-open-file (stream "/dev/ttyUSB0"
+                             :direction :io
+                             :if-exists :overwrite
+                             :external-format :ascii)
+       (setf *serial-status* (format nil "~C" (read-char stream))))
+     (bordeaux-threads:release-lock *serial-lock*)
+     (go re)))
+
+
+(defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
+
+(with-open-file (stream "/dev/ttyUSB0"
+                        :direction :io
+                        :if-exists :overwrite
+                        :external-format :ascii)
+  (format stream "1"))
+
+
+
+
 (restas:define-route test ("test")
-  (let* ((content (tpl:controltbl))
-         (title "Control Service")
-         (menu-memo (menu)))
-    (restas:render-object
-     (make-instance 'rigidus-render)
-     (list title
-           menu-memo
-           (tpl:default
-               (list :title title
-                     :navpoints menu-memo
-                     :content content))))))
+  (with-open-file (stream "/dev/ttyUSB0"
+                          :direction :io
+                          :if-exists :overwrite
+                          :external-format :ascii)
+    (format stream "9"))
+  (sleep 1)
+  (let ((tmp (parse-integer *serial-status*))
+        (rs  nil))
+    (if (equal 1 (logand tmp 1))
+      (setf rs (append rs (list :red "checked")))
+      (setf rs (append rs (list :darkred "checked"))))
+    (if (equal 2 (logand tmp 2))
+        (setf rs (append rs (list :lightgreen "checked")))
+        (setf rs (append rs (list :green "checked"))))
+    (let* ((content (tpl:controltbl rs))
+           (title "Control Service")
+           (menu-memo (menu)))
+      (restas:render-object
+       (make-instance 'rigidus-render)
+       (list title
+             menu-memo
+             (tpl:default
+                 (list :title title
+                       :navpoints menu-memo
+                       :content content)))))))
 
 (restas:define-route test-post ("test" :method :post)
   (let ((rs 0))
@@ -168,6 +212,11 @@
                             :external-format :ascii)
       (format stream "~A" rs))
     (hunchentoot:redirect "/test")))
+
+
+
+
+
 
 
 ;; submodules
