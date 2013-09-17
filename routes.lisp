@@ -164,15 +164,6 @@
 
 (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
 
-(with-open-file (stream "/dev/ttyUSB0"
-                        :direction :io
-                        :if-exists :overwrite
-                        :external-format :ascii)
-  (format stream "1"))
-
-
-
-
 (restas:define-route test ("test")
   (with-open-file (stream "/dev/ttyUSB0"
                           :direction :io
