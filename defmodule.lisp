@@ -21,6 +21,16 @@
 
 (in-package #:rigidus)
 
+
+
+(defmacro bprint (var)
+  `(subseq (with-output-to-string (*standard-output*)
+             (pprint ,var)) 1))
+
+(defmacro err (var)
+  `(error (format nil "ERR:[~A]" (bprint ,var))))
+
+
 (let ((path (list :RELATIVE
                   ;; "repo/rigidus.ru"
                   (sb-posix:getcwd))

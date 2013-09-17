@@ -32,7 +32,7 @@
     (list "Программирование - как искусство"
           (menu)
           (tpl:main (list :title line
-                          :links (get-sape-links "/"))))))
+                          :links )))))
 
 
 ;; plan file pages
@@ -139,8 +139,35 @@
                (list :title title
                      :navpoints menu-memo
                      :sections ""
-                     :links (get-sape-links (hunchentoot:REQUEST-URI*))
-                     :content (get-sape-context (hunchentoot:REQUEST-URI*) content)))))))
+                     :links ""
+                     :content content))))))
+
+
+(restas:define-route test ("test")
+  (let* ((content (tpl:controltbl))
+         (title "Control Service")
+         (menu-memo (menu)))
+    (restas:render-object
+     (make-instance 'rigidus-render)
+     (list title
+           menu-memo
+           (tpl:default
+               (list :title title
+                     :navpoints menu-memo
+                     :content content))))))
+
+(restas:define-route test-post ("test" :method :post)
+  (let ((rs 0))
+    (when (string= (hunchentoot:post-parameter "red") "on")
+      (setf rs (logior rs 1)))
+    (when (string= (hunchentoot:post-parameter "green") "on")
+      (setf rs (logior rs 2)))
+    (with-open-file (stream "/dev/ttyUSB0"
+                            :direction :io
+                            :if-exists :overwrite
+                            :external-format :ascii)
+      (format stream "~A" rs))
+    (hunchentoot:redirect "/test")))
 
 
 ;; submodules
