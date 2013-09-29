@@ -1,11 +1,52 @@
-(require 'closer-mop)
-(require 'postmodern)
-(require 'restas)
-(require 'closure-template)
-(require 'restas-directory-publisher)
-(require 'anaphora)
-(require 'cl-base64)
+(defpackage #:rigidus
+  (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
+  (:shadowing-import-from :closer-mop
+                          :defclass
+                          :defmethod
+                          :standard-class
+                          :ensure-generic-function
+                          :defgeneric
+                          :standard-generic-function
+                          :class-name))
 
+(in-package #:rigidus)
+
+(defclass orgdata ()
+  ((content    :accessor orgdata-content)
+   (sections   :accessor orgdata-sections)
+   (directives :accessor orgdata-directives)))
+
+(defmethod render ((data list))
+  (destructuring-bind (headtitle navpoints content) data
+    (tpl:root (list :headtitle headtitle
+                    :content (tpl:base (list :navpoints navpoints
+                                             :content content
+                                             :stat (tpl:stat)))))))
+
+(defmethod render ((file pathname))
+  (if (string= (pathname-type file) "org")
+      (render (parse-org file))
+      (call-next-method)))
+
+(defmethod render ((data orgdata))
+  (let* ((content     (concatenate 'string (orgdata-content data)))
+         (sections    (orgdata-sections data))
+         (directives  (orgdata-directives data))
+         (title       (getf directives :title))
+         (menu-memo   (menu)))
+    (render
+     (list title
+           menu-memo
+           (tpl:default
+               (list :title title
+                     :navpoints menu-memo
+                     :sections (iter (for i from 1)
+                                     (for section in sections)
+                                     (collect (list :anchor (format nil "anchor-~a" i)
+                                                    :level (format nil "level-~a" (car section))
+                                                    :title (cadr section))))
+                     :links ""
+                     :content content))))))
 
 (restas:define-module #:rigidus
     (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
@@ -18,11 +59,6 @@
                           :standard-generic-function
                           :class-name))
 
-
-(in-package #:rigidus)
-
-
-
 (defmacro bprint (var)
   `(subseq (with-output-to-string (*standard-output*)
              (pprint ,var)) 1))
@@ -31,29 +67,15 @@
   `(error (format nil "ERR:[~A]" (bprint ,var))))
 
 
-(let ((path (list :RELATIVE
-                  ;; "repo/rigidus.ru"
-                  (sb-posix:getcwd))
-        ))
-  (setf asdf:*central-registry*
-        (remove-duplicates (append asdf:*central-registry*
-                                   (list (merge-pathnames
-                                          (make-pathname :directory path)
-                                          (user-homedir-pathname))))
-                           :test #'equal)))
+(setf asdf:*central-registry*
+      (remove-duplicates (append asdf:*central-registry*
+                                 (list (make-pathname :directory (list :relative (sb-posix:getcwd)))))
+                         :test #'equal))
 
-(defparameter *basedir*
-  (asdf:component-pathname (asdf:find-system '#:rigidus)))
+(defparameter *basedir* (make-pathname :directory (list :relative (sb-posix:getcwd))))
 
 (defun path (relative)
   (merge-pathnames relative *basedir*))
-
-(closure-template:compile-template :common-lisp-backend (path "templates.htm"))
-
-(defclass orgdata ()
-  ((content    :accessor orgdata-content)
-   (sections   :accessor orgdata-sections)
-   (directives :accessor orgdata-directives)))
 
 (defparameter *articles* (make-hash-table :test #'equal))
 (defparameter *cached-articles-page* nil)
@@ -72,23 +94,23 @@ psql
 alter user <dbuser> with password '<dbpassword>';
 |#
 
-(defparameter *db-name* "rigidusdb")
-(defparameter *db-user* "rigidus")
-(defparameter *db-pass* "rigidus1234")
-(defparameter *db-serv* "localhost")
-(defparameter *db-spec* (list *db-name* *db-user* *db-pass* *db-serv*))
+;; (defparameter *db-name* "rigidusdb")
+;; (defparameter *db-user* "rigidus")
+;; (defparameter *db-pass* "rigidus1234")
+;; (defparameter *db-serv* "localhost")
+;; (defparameter *db-spec* (list *db-name* *db-user* *db-pass* *db-serv*))
 ;; (connect-toplevel *db-name* *db-user* *db-pass* *db-serv*)
 ;; (disconnect-toplevel)
 ;; (defparameter *db-connection* (connect *db-name* *db-user* *db-pass* *db-serv*))
 
 
-(defmacro incrementor (name fld)
-  `(let ((,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) 0))
-     (list
-      (defun ,(intern (format nil "INCF-~A-~A" (symbol-name name) (symbol-name fld)())) ()
-        (incf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld)))))
-      (defun ,(intern (format nil "INIT-~A-~A" (symbol-name name) (symbol-name fld) ())) (init-value)
-        (setf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) init-value)))))
+;; (defmacro incrementor (name fld)
+;;   `(let ((,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) 0))
+;;      (list
+;;       (defun ,(intern (format nil "INCF-~A-~A" (symbol-name name) (symbol-name fld)())) ()
+;;         (incf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld)))))
+;;       (defun ,(intern (format nil "INIT-~A-~A" (symbol-name name) (symbol-name fld) ())) (init-value)
+;;         (setf ,(intern (format nil "INC-~A-~A" (symbol-name name) (symbol-name fld))) init-value)))))
 
 
 ;; (progn

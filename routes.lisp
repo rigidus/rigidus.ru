@@ -1,5 +1,6 @@
 (in-package #:rigidus)
 
+(defclass rigidus-render () ())
 
 ;; 404
 
@@ -25,15 +26,19 @@
 ;; main
 
 (restas:define-route main ("/")
-  (let* ((lines (iter (for line in-file (path "afor.txt") using #'read-line)
+  (let* ((lines (iter (for line in-file "afor.txt" using #'read-line)
                      (collect line)))
          (line (nth (random (length lines))
-                    lines)))
-    (list "Программирование - как искусство"
-          (menu)
-          (tpl:main (list :title line
-                          :links )))))
-
+                    lines))
+         (data (list "Программирование - как искусство"
+                   (menu)
+                   (tpl:main (list :title line
+                                   :links )))))
+    (destructuring-bind (headtitle navpoints content) data
+      (tpl:root (list :headtitle headtitle
+                      :content (tpl:base (list :navpoints navpoints
+                                               :content content
+                                               :stat (tpl:stat))))))))
 
 ;; plan file pages
 
@@ -48,16 +53,16 @@
 
 
 (def/route about ("about")
-  (path "content/about.org"))
+  (render #P"content/about.org"))
 
 (def/route resources ("resources")
-  (path "content/resources.org"))
+  (render #P"content/resources.org"))
 
 (def/route faq ("faq")
-  (path "content/faq.org"))
+  (render #P"content/faq.org"))
 
 (def/route contacts ("contacts")
-  (path "content/contacts.org"))
+  (render #P"content/contacts.org"))
 
 
 ;; showing articles
@@ -70,61 +75,20 @@
        (page-404)
        :return-code hunchentoot:+http-not-found+
        :content-type "text/html"))
-      article))
+    article))
 
 
 (def/route articles ("articles")
-  *cached-articles-page*)
-
+  (render *cached-articles-page*))
 
 (def/route aliens ("aliens")
-  *cached-alien-page*)
-
+  (render *cached-alien-page*))
 
 (def/route article ("articles/:strkey")
-  (show-article-from-hash strkey *articles*))
-
-;; (def/route article-post-action ("articles/:strkey" :method :post)
-;;   ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*)))
-;;   ;; acts
-;;   (aif (hunchentoot:parameter "act")
-;;        (cond ((string= it "comment-del")
-;;               ;; ***TODO***: reqursive delete
-;;               (format nil "~A"
-;;                       (execute
-;;                        (sql (:delete-from 'comment :where (:= 'id (parse-integer (hunchentoot:post-parameter "id"))))))))
-;;              ((string= it "comment-add")
-;;               ;; ***TODO***: escape strings, rebuild comments
-;;               (let ((newmsg (make-dao 'comment
-;;                                       :parent (parse-integer (hunchentoot:post-parameter "parent"))
-;;                                       :msg (hunchentoot:post-parameter "msg")
-;;                                       :key (string-upcase strkey)
-;;                                       :id (incf-comment-id))))
-;;                 (json:encode-json-alist-to-string
-;;                  `((id    . ,(id newmsg))
-;;                    (msg   . ,(msg newmsg))))))
-;;              ((string= it "comment-expand")
-;;               ;; (format nil "zzz: ~A" (hunchentoot:post-parameters*))
-;;               ;; (format nil "iii: ~A"
-;;               ;;         (parse-integer (hunchentoot:post-parameter "id")))
-;;               (if (equal "0" (hunchentoot:post-parameter "id"))
-;;                   (json:encode-json-to-string nil)
-;;                   ;; else
-;;                   (json:encode-json-to-string
-;;                    (reverse
-;;                     (cdr
-;;                      (reqursive-comments-view
-;;                       (get-comments (parse-integer (hunchentoot:post-parameter "id")))))))))
-;;              ((string= it "comment-edit") "-edit")
-;;              (t (error 'act-param-not-valid)))
-;;        ;; else
-;;        (error 'act-not-found-post-actions)))
-  ;; (show-article-from-hash strkey *articles*))
-
-
+  (render (show-article-from-hash strkey *articles*)))
 
 (def/route alien ("alien/:strkey")
-  (show-article-from-hash strkey *aliens*))
+  (render (show-article-from-hash strkey *aliens*)))
 
 
 (restas:define-route onlisp ("onlisp/doku.php")
@@ -132,7 +96,6 @@
          (title "Перевод книги Пола Грэма \"On Lisp\"")
          (menu-memo (menu)))
     (restas:render-object
-     *default-render-method*
      (list title
            menu-memo
            (tpl:default
@@ -141,8 +104,6 @@
                      :sections ""
                      :links ""
                      :content content))))))
-
-
 
 ;; (require 'bordeaux-threads)
 
@@ -204,26 +165,21 @@
 ;;       (format stream "~A" rs))
 ;;     (hunchentoot:redirect "/test")))
 
-
-
-
-
-
-
 ;; submodules
 
-(restas:mount-submodule -css- (#:restas.directory-publisher)
-  (restas.directory-publisher:*baseurl* '("css"))
-  (restas.directory-publisher:*directory* (path "css/")))
+(restas:mount-module -css- (#:restas.directory-publisher)
+  (:url "/css/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/css")) (user-homedir-pathname))))
 
-(restas:mount-submodule -js- (#:restas.directory-publisher)
-  (restas.directory-publisher:*baseurl* '("js"))
-  (restas.directory-publisher:*directory* (path "js/")))
+(restas:mount-module -js- (#:restas.directory-publisher)
+  (:url "/js/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/js"))  (user-homedir-pathname))))
 
-(restas:mount-submodule -img- (#:restas.directory-publisher)
-  (restas.directory-publisher:*baseurl* '("img"))
-  (restas.directory-publisher:*directory* (path "img/")))
+(restas:mount-module -img- (#:restas.directory-publisher)
+  (:url "/img/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/img")) (user-homedir-pathname))))
 
-(restas:mount-submodule -resources- (#:restas.directory-publisher)
-  (restas.directory-publisher:*baseurl* '("resources"))
-  (restas.directory-publisher:*directory* (path "resources/")))
+(restas:mount-module -resources- (#:restas.directory-publisher)
+  (:url "/resources/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
+  (restas.directory-publisher:*autoindex* t))

@@ -57,20 +57,20 @@
                                   ;; @/code
                                   (find-command "@/code" (setf (getf mode :code) nil) (setf line "</pre>"))
                                   (find-command "</source" (setf (getf mode :code) nil) (setf line "</pre>"))
-                                  ;; @store
-                                  (find-command "@store"
-                                                (with-open-file (fstream (path tail) :direction :output :if-exists :supersede)
-                                                  (format fstream "~{~a~%~}"
-                                                          (loop :for i :in (reverse save)
-                                                             :unless (search "ℕ" i)
-                                                             :collect i))))
-                                  ;; @append
-                                  (find-command "@append"
-                                                (with-open-file (fstream (path tail) :direction :output :if-exists :append)
-                                                  (format fstream "~{~a~%~}"
-                                                          (loop :for i :in (reverse save)
-                                                             :unless (search "ℕ" i)
-                                                             :collect i))))
+                                  ;; ;; @store
+                                  ;; (find-command "@store"
+                                  ;;               (with-open-file (fstream (path tail) :direction :output :if-exists :supersede)
+                                  ;;                 (format fstream "~{~a~%~}"
+                                  ;;                         (loop :for i :in (reverse save)
+                                  ;;                            :unless (search "ℕ" i)
+                                  ;;                            :collect i))))
+                                  ;; ;; @append
+                                  ;; (find-command "@append"
+                                  ;;               (with-open-file (fstream (path tail) :direction :output :if-exists :append)
+                                  ;;                 (format fstream "~{~a~%~}"
+                                  ;;                         (loop :for i :in (reverse save)
+                                  ;;                            :unless (search "ℕ" i)
+                                  ;;                            :collect i))))
                                   ;; mode:code
                                   (when (getf mode :code)
                                     (push line save)

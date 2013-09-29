@@ -14,13 +14,13 @@
 
 ;; cache-section
 (defun cache-section (global-var-hash relative-filepath)
-  (loop :for file :in  (directory (path (format nil "~A*.*" relative-filepath))) :do
+  (loop :for file :in  (directory (format nil "~A*.*" relative-filepath)) :do
      (setf (gethash (pathname-name file) global-var-hash)
            (parse-org file))))
 
 ;; cache-page
 (defun cache-page (relative-filepath global-var-hash subst)
-  (let ((data (parse-org (path relative-filepath))))
+  (let ((data (parse-org relative-filepath)))
     (setf (orgdata-content data)
           (ppcre:regex-replace-all
            "@make-list-by-category(.*)@"
@@ -44,8 +44,8 @@
   (cache-section *articles* "content/articles/")
   (cache-section *aliens*   "content/aliens/")
   ;; cached pages
-  (setf *cached-articles-page* (cache-page "content/articles.org" *articles* "/articles/"))
-  (setf *cached-alien-page*    (cache-page "content/alien.org"    *aliens*   "/alien/")))
+  (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
+  (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/")))
 
 
 (load-org)

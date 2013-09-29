@@ -3,7 +3,8 @@
   :author       "rigidus <i.am.rigidus@gmail.com>"
   :licence      "GPLv3"
   :description  "site http://rigidus.ru"
-  :depends-on   (#:closer-mop
+  :depends-on   (#:anaphora
+                 #:closer-mop
                  #:cl-ppcre
                  #:restas-directory-publisher
                  #:closure-template
@@ -11,11 +12,10 @@
                  #:postmodern)
   :serial       t
   :components   ((:static-file "templates.htm")
+                 (:file "prepare")
                  (:file "defmodule")
                  (:file "orgmode")
-                 (:file "comment")
                  (:file "sape")
-                 (:file "render")
                  (:file "routes")
                  (:file "init")
                  (:static-file "daemon.conf")
