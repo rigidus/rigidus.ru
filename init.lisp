@@ -54,7 +54,7 @@
 (orgdata-directives (gethash "asdf-architecture" *aliens*))
 
 ;; start
-(restas:start '#:rigidus #|:hostname "rigidus.ru"|# :port 9993)
+(restas:start '#:rigidus :port 9993)
 (restas:debug-mode-on)
 ;; (restas:debug-mode-off)
 (setf hunchentoot:*catch-errors-p* t)

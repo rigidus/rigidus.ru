@@ -1,4 +1,4 @@
-(defpackage #:rigidus
+(restas:define-module #:rigidus
   (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
   (:shadowing-import-from :closer-mop
                           :defclass
@@ -10,6 +10,13 @@
                           :class-name))
 
 (in-package #:rigidus)
+
+(defmacro bprint (var)
+  `(subseq (with-output-to-string (*standard-output*)
+             (pprint ,var)) 1))
+
+(defmacro err (var)
+  `(error (format nil "ERR:[~A]" (bprint ,var))))
 
 (defclass orgdata ()
   ((content    :accessor orgdata-content)
@@ -48,23 +55,6 @@
                      :links ""
                      :content content))))))
 
-(restas:define-module #:rigidus
-    (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
-  (:shadowing-import-from :closer-mop
-                          :defclass
-                          :defmethod
-                          :standard-class
-                          :ensure-generic-function
-                          :defgeneric
-                          :standard-generic-function
-                          :class-name))
-
-(defmacro bprint (var)
-  `(subseq (with-output-to-string (*standard-output*)
-             (pprint ,var)) 1))
-
-(defmacro err (var)
-  `(error (format nil "ERR:[~A]" (bprint ,var))))
 
 
 (setf asdf:*central-registry*

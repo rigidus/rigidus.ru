@@ -7,8 +7,7 @@
 (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
   (let* ((title "404 Not Found")
          (menu-memo (menu)))
-    (restas:render-object
-     (make-instance 'rigidus-render)
+    (render
      (list title
            menu-memo
            (tpl:default
