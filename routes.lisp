@@ -94,7 +94,7 @@
   (let* ((content (tpl:onlisp))
          (title "Перевод книги Пола Грэма \"On Lisp\"")
          (menu-memo (menu)))
-    (restas:render-object
+    (render
      (list title
            menu-memo
            (tpl:default
@@ -104,65 +104,63 @@
                      :links ""
                      :content content))))))
 
-;; (require 'bordeaux-threads)
+(require 'bordeaux-threads)
 
-;; (defparameter *serial-status* nil)
-;; (defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
+(defparameter *serial-status* nil)
+(defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
 
-;; (defun serial-getter ()
-;;   (tagbody
-;;    re
-;;      (bordeaux-threads:acquire-lock *serial-lock* t)
-;;      (with-open-file (stream "/dev/ttyUSB0"
-;;                              :direction :io
-;;                              :if-exists :overwrite
-;;                              :external-format :ascii)
-;;        (setf *serial-status* (format nil "~C" (read-char stream))))
-;;      (bordeaux-threads:release-lock *serial-lock*)
-;;      (go re)))
+(defun serial-getter ()
+  (tagbody
+   re
+     (bordeaux-threads:acquire-lock *serial-lock* t)
+     (with-open-file (stream "/dev/ttyACM0"
+                             :direction :io
+                             :if-exists :overwrite
+                             :external-format :ascii)
+       (setf *serial-status* (format nil "~C" (read-char stream))))
+     (bordeaux-threads:release-lock *serial-lock*)
+     (go re)))
 
 
-;; (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
+(defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
 
-;; (restas:define-route test ("test")
-;;   (with-open-file (stream "/dev/ttyUSB0"
-;;                           :direction :io
-;;                           :if-exists :overwrite
-;;                           :external-format :ascii)
-;;     (format stream "9"))
-;;   (sleep 1)
-;;   (let ((tmp (parse-integer *serial-status*))
-;;         (rs  nil))
-;;     (if (equal 1 (logand tmp 1))
-;;       (setf rs (append rs (list :red "checked")))
-;;       (setf rs (append rs (list :darkred "checked"))))
-;;     (if (equal 2 (logand tmp 2))
-;;         (setf rs (append rs (list :lightgreen "checked")))
-;;         (setf rs (append rs (list :green "checked"))))
-;;     (let* ((content (tpl:controltbl rs))
-;;            (title "Control Service")
-;;            (menu-memo (menu)))
-;;       (restas:render-object
-;;        (make-instance 'rigidus-render)
-;;        (list title
-;;              menu-memo
-;;              (tpl:default
-;;                  (list :title title
-;;                        :navpoints menu-memo
-;;                        :content content)))))))
+(restas:define-route test ("test")
+  (with-open-file (stream "/dev/ttyACM0"
+                          :direction :io
+                          :if-exists :overwrite
+                          :external-format :ascii)
+    (format stream "9"))
+  (sleep 1)
+  (let ((tmp (parse-integer *serial-status*))
+        (rs  nil))
+    (if (equal 1 (logand tmp 1))
+      (setf rs (append rs (list :red "checked")))
+      (setf rs (append rs (list :darkred "checked"))))
+    (if (equal 2 (logand tmp 2))
+        (setf rs (append rs (list :lightgreen "checked")))
+        (setf rs (append rs (list :green "checked"))))
+    (let* ((content (tpl:controltbl rs))
+           (title "Control Service")
+           (menu-memo (menu)))
+      (render (list title
+                    menu-memo
+                    (tpl:default
+                        (list :title title
+                              :navpoints menu-memo
+                              :content content)))))))
 
-;; (restas:define-route test-post ("test" :method :post)
-;;   (let ((rs 0))
-;;     (when (string= (hunchentoot:post-parameter "red") "on")
-;;       (setf rs (logior rs 1)))
-;;     (when (string= (hunchentoot:post-parameter "green") "on")
-;;       (setf rs (logior rs 2)))
-;;     (with-open-file (stream "/dev/ttyUSB0"
-;;                             :direction :io
-;;                             :if-exists :overwrite
-;;                             :external-format :ascii)
-;;       (format stream "~A" rs))
-;;     (hunchentoot:redirect "/test")))
+(restas:define-route test-post ("test" :method :post)
+  (let ((rs 0))
+    (when (string= (hunchentoot:post-parameter "red") "on")
+      (setf rs (logior rs 1)))
+    (when (string= (hunchentoot:post-parameter "green") "on")
+      (setf rs (logior rs 2)))
+    (with-open-file (stream "/dev/ttyACM0"
+                            :direction :io
+                            :if-exists :overwrite
+                            :external-format :ascii)
+      (format stream "~A" rs))
+    (hunchentoot:redirect "/test")))
 
 ;; submodules
 
