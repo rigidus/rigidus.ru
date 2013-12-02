@@ -63,6 +63,9 @@
 (def/route contacts ("contacts")
   (render #P"content/contacts.org"))
 
+(def/route radio ("radio")
+  (render #P"content/radio.org"))
+
 
 ;; showing articles
 
@@ -124,6 +127,8 @@
 
 (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
 
+;; stty -F /dev/ttyACM0 cs8 9600 ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts raw
+
 (restas:define-route test ("test")
   (with-open-file (stream "/dev/ttyACM0"
                           :direction :io
@@ -133,10 +138,10 @@
   (sleep 1)
   (let ((tmp (parse-integer *serial-status*))
         (rs  nil))
-    (if (equal 1 (logand tmp 1))
+    (if (equal 2 (logand tmp 2))
       (setf rs (append rs (list :red "checked")))
       (setf rs (append rs (list :darkred "checked"))))
-    (if (equal 2 (logand tmp 2))
+    (if (equal 1 (logand tmp 1))
         (setf rs (append rs (list :lightgreen "checked")))
         (setf rs (append rs (list :green "checked"))))
     (let* ((content (tpl:controltbl rs))
@@ -152,9 +157,9 @@
 (restas:define-route test-post ("test" :method :post)
   (let ((rs 0))
     (when (string= (hunchentoot:post-parameter "red") "on")
-      (setf rs (logior rs 1)))
-    (when (string= (hunchentoot:post-parameter "green") "on")
       (setf rs (logior rs 2)))
+    (when (string= (hunchentoot:post-parameter "green") "on")
+      (setf rs (logior rs 1)))
     (with-open-file (stream "/dev/ttyACM0"
                             :direction :io
                             :if-exists :overwrite
