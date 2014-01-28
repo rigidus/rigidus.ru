@@ -40,14 +40,13 @@
    (§ ("Что здесь происходит?")
       "✦ С Новым 2014 Годом!"
       "★ В Египте, проходя реабилитацию, не удержался и запрограммировал автоматизацию работы гидов принимающей компании. А то жалко их - все делают в экселе.."
-      "★ Попал в дтп и полгода работал удаленно, в режиме \"не вставая с постели\". Еще никогда я не был настолько производителен..."
+      "★ Попал в дтп и полгода работал удаленно, практически в режиме \"не вставая с постели\". Еще никогда я не был настолько производителен..."
       "★ Маленькое хобби \"про ардуино\" совершенно неожиданно для меня превратилось в практически вполне серьезное программирование микроконтроллеров и создание \"умных домов\". Оказывается довольно увлекательное и полезное дело."
       "✦ С Новым 2013 Годом!"
       "★ Не лиспом единым.. На новом проекте возникла интересная возможность познакомиться с еще одним функциональным языком программирования - Erlang."
       "Сравнивая с Common Lisp, можно сказать, что он не настолько изменяет мышление программиста, пришедшего из традиционных языков. Благодаря этому освоение проходит быстрее и проще, но и удивительного существенно меньше."
       "Однако в целом, Erlang весьма неплохо сбалансирован и как язык, и с точки зрения инфраструктуры."
       "★ В данный момент я исследую возможности контекстно-ориентированного программирования с использованием Common Lisp. Метод проходит опробацию на текущем проекте, над которым я работаю. Пока результаты весьма оптимистичные!"
-
       "✦ С Новым 2012 Годом!"
       "★ На новом проекте мне удалось отказаться от проприетарного сервиса Dropbox в пользу версионирования, основанного на <a href=\"http://ru.wikipedia.org/wiki/Git\" rel=\"nofollow\">GIT</a>."
       "Доказано: <a href=\"http://ru.wikipedia.org/wiki/Git\" rel=\"nofollow\">GIT</a> способны легко понять не только программисты, но и аналитики, верстальщики и контент-менеджеры."
@@ -79,7 +78,7 @@
 
 (restas:define-route main ("/")
   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line)
-                     (collect line)))
+                      (collect line)))
          (line (nth (random (length lines))
                     lines))
          (data (list
@@ -95,6 +94,21 @@
                       :content (tpl:base (list :navpoints navpoints
                                                :content content
                                                :stat (tpl:stat))))))))
+
+
+(def/route blog ("blog")
+  (let* ((content (tpl:onlisp))
+         (title "")
+         (menu-memo (menu)))
+    (render
+     (list title
+           menu-memo
+           (tpl:default
+               (list :title title
+                     :navpoints menu-memo
+                     :sections (list (list :level 1 :anchor "2332" :title "wefewfew"))
+                     :links ""
+                     :content (tpl:blog (list :title "wefewf"))))))))
 
 ;; plan file pages
 
@@ -196,8 +210,8 @@
   (let ((tmp (parse-integer *serial-status*))
         (rs  nil))
     (if (equal 2 (logand tmp 2))
-      (setf rs (append rs (list :red "checked")))
-      (setf rs (append rs (list :darkred "checked"))))
+        (setf rs (append rs (list :red "checked")))
+        (setf rs (append rs (list :darkred "checked"))))
     (if (equal 1 (logand tmp 1))
         (setf rs (append rs (list :lightgreen "checked")))
         (setf rs (append rs (list :green "checked"))))
@@ -229,6 +243,10 @@
 (restas:mount-module -css- (#:restas.directory-publisher)
   (:url "/css/")
   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/css")) (user-homedir-pathname))))
+
+(restas:mount-module -font- (#:restas.directory-publisher)
+  (:url "/font/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/font")) (user-homedir-pathname))))
 
 (restas:mount-module -js- (#:restas.directory-publisher)
   (:url "/js/")
