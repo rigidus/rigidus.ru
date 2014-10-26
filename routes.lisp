@@ -163,7 +163,6 @@
 (def/route alien ("alien/:strkey")
   (render (show-article-from-hash strkey *aliens*)))
 
-
 (restas:define-route onlisp ("onlisp/doku.php")
   (let* ((content (tpl:onlisp))
          (title "Перевод книги Пола Грэма \"On Lisp\"")
