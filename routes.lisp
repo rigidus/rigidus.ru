@@ -38,6 +38,8 @@
   (concatenate
    'string
    (§ ("Что здесь происходит?")
+      "Слайды с лекции \"Литературное программирование\", которую я читал 22 января 2015 доступны здесь: <a href=\"http://slides.com/rigidusrigidus/deck#/\">http://slides.com/rigidusrigidus/deck/</a>"
+      "✦ С Новым 2015 Годом!"
       "✦ С Новым 2014 Годом!"
       "★ В Египте, проходя реабилитацию, не удержался и запрограммировал автоматизацию работы гидов принимающей компании. А то жалко их - все делают в экселе.."
       "★ Попал в дтп и полгода работал удаленно, практически в режиме \"не вставая с постели\". Еще никогда я не был настолько производителен..."
@@ -58,7 +60,6 @@
       "✦ С Новым 2011 Годом!"
       "★ Выложил <a href=\"https://github.com/rigidus/cl-eshop\" rel=\"nofollow\">исходный код рабочего проекта</a> на github. OpenSource грядет!"
       "★ <a href=\"http://dropbox.com\" rel=\"nofollow\">Dropbox</a> in production! Теперь контент-менеджеры удобно работают с данными одновременно, а версионирование страхует их от ошибок.")))
-
 
 (defparameter *rightcol*
   (concatenate
@@ -91,7 +92,8 @@
                        :links "")))))
     (destructuring-bind (headtitle navpoints content) data
       (tpl:root (list :headtitle headtitle
-                      :content (tpl:base (list :navpoints navpoints
+                      :content (tpl:base-main (list :navpoints navpoints
+                                               :title line
                                                :content content
                                                :stat (tpl:stat))))))))
 
@@ -179,63 +181,63 @@
 
 (require 'bordeaux-threads)
 
-(defparameter *serial-status* nil)
-(defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
+;; (defparameter *serial-status* nil)
+;; (defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
 
-(defun serial-getter ()
-  (tagbody
-   re
-     (bordeaux-threads:acquire-lock *serial-lock* t)
-     (with-open-file (stream "/dev/ttyACM0"
-                             :direction :io
-                             :if-exists :overwrite
-                             :external-format :ascii)
-       (setf *serial-status* (format nil "~C" (read-char stream))))
-     (bordeaux-threads:release-lock *serial-lock*)
-     (go re)))
+;; (defun serial-getter ()
+;;   (tagbody
+;;    re
+;;      (bordeaux-threads:acquire-lock *serial-lock* t)
+;;      (with-open-file (stream "/dev/ttyACM0"
+;;                              :direction :io
+;;                              :if-exists :overwrite
+;;                              :external-format :ascii)
+;;        (setf *serial-status* (format nil "~C" (read-char stream))))
+;;      (bordeaux-threads:release-lock *serial-lock*)
+;;      (go re)))
 
 
-(defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
+;; (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
 
-;; stty -F /dev/ttyACM0 cs8 9600 ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts raw
+;; ;; stty -F /dev/ttyACM0 cs8 9600 ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts raw
 
-(restas:define-route test ("test")
-  (with-open-file (stream "/dev/ttyACM0"
-                          :direction :io
-                          :if-exists :overwrite
-                          :external-format :ascii)
-    (format stream "9"))
-  (sleep 1)
-  (let ((tmp (parse-integer *serial-status*))
-        (rs  nil))
-    (if (equal 2 (logand tmp 2))
-        (setf rs (append rs (list :red "checked")))
-        (setf rs (append rs (list :darkred "checked"))))
-    (if (equal 1 (logand tmp 1))
-        (setf rs (append rs (list :lightgreen "checked")))
-        (setf rs (append rs (list :green "checked"))))
-    (let* ((content (tpl:controltbl rs))
-           (title "Control Service")
-           (menu-memo (menu)))
-      (render (list title
-                    menu-memo
-                    (tpl:default
-                        (list :title title
-                              :navpoints menu-memo
-                              :content content)))))))
+;; (restas:define-route test ("test")
+;;   (with-open-file (stream "/dev/ttyACM0"
+;;                           :direction :io
+;;                           :if-exists :overwrite
+;;                           :external-format :ascii)
+;;     (format stream "9"))
+;;   (sleep 1)
+;;   (let ((tmp (parse-integer *serial-status*))
+;;         (rs  nil))
+;;     (if (equal 2 (logand tmp 2))
+;;         (setf rs (append rs (list :red "checked")))
+;;         (setf rs (append rs (list :darkred "checked"))))
+;;     (if (equal 1 (logand tmp 1))
+;;         (setf rs (append rs (list :lightgreen "checked")))
+;;         (setf rs (append rs (list :green "checked"))))
+;;     (let* ((content (tpl:controltbl rs))
+;;            (title "Control Service")
+;;            (menu-memo (menu)))
+;;       (render (list title
+;;                     menu-memo
+;;                     (tpl:default
+;;                         (list :title title
+;;                               :navpoints menu-memo
+;;                               :content content)))))))
 
-(restas:define-route test-post ("test" :method :post)
-  (let ((rs 0))
-    (when (string= (hunchentoot:post-parameter "red") "on")
-      (setf rs (logior rs 2)))
-    (when (string= (hunchentoot:post-parameter "green") "on")
-      (setf rs (logior rs 1)))
-    (with-open-file (stream "/dev/ttyACM0"
-                            :direction :io
-                            :if-exists :overwrite
-                            :external-format :ascii)
-      (format stream "~A" rs))
-    (hunchentoot:redirect "/test")))
+;; (restas:define-route test-post ("test" :method :post)
+;;   (let ((rs 0))
+;;     (when (string= (hunchentoot:post-parameter "red") "on")
+;;       (setf rs (logior rs 2)))
+;;     (when (string= (hunchentoot:post-parameter "green") "on")
+;;       (setf rs (logior rs 1)))
+;;     (with-open-file (stream "/dev/ttyACM0"
+;;                             :direction :io
+;;                             :if-exists :overwrite
+;;                             :external-format :ascii)
+;;       (format stream "~A" rs))
+;;     (hunchentoot:redirect "/test")))
 
 ;; submodules
 
