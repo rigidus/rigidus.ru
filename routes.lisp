@@ -87,10 +87,9 @@
                 (menu)
                 (tpl:main
                  (list :title line
-                       :leftcol *leftcol*
-                       :rightcol *rightcol*
                        :links "")))))
-    (destructuring-bind (headtitle navpoints content) data
+    (destructuring-bind (headtitle navpoints content)
+        data
       (tpl:root (list :headtitle headtitle
                       :content (tpl:base-main (list :navpoints navpoints
                                                :title line
@@ -161,6 +160,10 @@
 
 (def/route article ("articles/:strkey")
   (render (show-article-from-hash strkey *articles*)))
+
+
+;; (render (show-article-from-hash "ecb" *articles*))
+
 
 (def/route alien ("alien/:strkey")
   (render (show-article-from-hash strkey *aliens*)))

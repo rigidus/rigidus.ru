@@ -24,11 +24,13 @@
    (directives :accessor orgdata-directives)))
 
 (defmethod render ((data list))
-  (destructuring-bind (headtitle navpoints content) data
+  (destructuring-bind (headtitle navpoints content)
+      data
     (tpl:root (list :headtitle headtitle
                     :content (tpl:base (list :navpoints navpoints
-                                             :content content
-                                             :stat (tpl:stat)))))))
+                                        :content content
+                                        :stat (tpl:stat)))
+                    ))))
 
 (defmethod render ((file pathname))
   (if (string= (pathname-type file) "org")
