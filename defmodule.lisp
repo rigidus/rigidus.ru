@@ -26,11 +26,11 @@
 (defmethod render ((data list))
   (destructuring-bind (headtitle navpoints content)
       data
-    (tpl:root (list :headtitle headtitle
+    (tpl:root (list ;; :headtitle headtitle
                     :content (tpl:base (list :navpoints navpoints
-                                        :content content
-                                        :stat (tpl:stat)))
-                    ))))
+                                             :title headtitle
+                                             :content content
+                                             :stat (tpl:stat)))))))
 
 (defmethod render ((file pathname))
   (if (string= (pathname-type file) "org")
@@ -47,7 +47,7 @@
      (list title
            menu-memo
            (tpl:default
-               (list :title title
+               (list ;; :title title
                      :navpoints menu-memo
                      :sections (iter (for i from 1)
                                      (for section in sections)
