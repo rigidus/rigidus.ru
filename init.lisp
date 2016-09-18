@@ -13,9 +13,15 @@
         (list :link "/contacts" :title "Контакты")))
 
 
-;; cache-section
+(defun get-directory-contents (path)
+  "Функция возвращает содержимое каталога"
+  (when (not (equal "/" (coerce (last (coerce path 'list)) 'string)))
+    (setf path (format nil "~A/" path)))
+  (directory (format nil "~A*.*" path)))
+
 (defun cache-section (global-var-hash relative-filepath)
-  (loop :for file :in  (directory (format nil "~A*.*" relative-filepath)) :do
+  "Функция кеширует в хеш-таблице содержимое каталога"
+  (loop :for file :in  (get-directory-contents relative-filepath) :do
      (setf (gethash (pathname-name file) global-var-hash)
            (parse-org file))))
 
@@ -44,9 +50,11 @@
   ;; *articles* *aliens* *asdf*
   (cache-section *articles* "content/articles/")
   (cache-section *aliens*   "content/aliens/")
+  (cache-section *blogs*   "content/blogs/")
   ;; cached pages
   (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
-  (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/")))
+  (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
+  (setf *cached-blogs-page*    (cache-page #P"content/blogs.org"    *blogs*   "/blogs/")))
 
 
 (load-org)
@@ -59,3 +67,9 @@
 (restas:debug-mode-on)
 ;; (restas:debug-mode-off)
 (setf hunchentoot:*catch-errors-p* t)
+
+
+;; (maphash #'(lambda (k v)
+;;             ;; (print (orgdata-content v)))
+;;              (print (orgdata-directives v)))
+;;         *blogs*)

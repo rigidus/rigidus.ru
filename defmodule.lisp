@@ -75,6 +75,10 @@
 (defparameter *aliens* (make-hash-table :test #'equal))
 (defparameter *cached-alien-page* nil)
 
+(defparameter *blogs* (make-hash-table :test #'equal))
+(defparameter *cached-blogs-page* nil)
+
+
 #| POSTGRESQL
 вставить в /etc/postgresql/<version>/main/pg_hba.conf
 local all all trust
