@@ -141,6 +141,10 @@
 
 ;; showing articles
 
+
+
+
+
 (defun show-article-from-hash (strkey hash)
   (multiple-value-bind (article isset)
       (gethash strkey hash)
@@ -158,9 +162,35 @@
 (def/route aliens ("aliens")
   (render *cached-alien-page*))
 
-(def/route article ("articles/:strkey")
-  (render (show-article-from-hash strkey *articles*)))
+(let ((h-articles (make-hash-table :test #'equal)))
 
+  (def/route article ("articles/:strkey")
+    (multiple-value-bind (article isset)
+        (gethash strkey h-articles)
+      (if isset
+          (render aricle)
+          (let* ((filename (format nil "content/articles/~A.org" strkey))
+                 (truename (probe-file filename)))
+            (if (null truename)
+                (page-404)
+                (let ((data (parse-org truename)))
+                  ;; (setf (orgdata-content data)
+                  ;;       (ppcre:regex-replace-all
+                  ;;        "@make-list-by-category(.*)@"
+                  ;;        (orgdata-content data)
+                  ;;        (list #'(lambda (match reg)
+                  ;;                  (declare (ignore match))
+                  ;;                  (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
+                  ;;                    (multiple-value-bind (star color category)
+                  ;;                        (values-list (split-sequence:split-sequence #\Space instr))
+                  ;;                      (format nil
+                  ;;                              "<ul>~{~a~}</ul>"
+                  ;;                              (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
+                  ;;                                                    #'string<
+                  ;;                                                    :key #'(lambda (x) (getf x :sort))))
+                  ;;                                    (collect (tpl:li (append x (list :star star :color color))))))))))
+                  ;;        :simple-calls t))
+                  data)))))))
 
 ;; (render (show-article-from-hash "ecb" *articles*))
 

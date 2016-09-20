@@ -13,7 +13,7 @@
 
 
 (defgeneric parse-org (src)
-  (:documentation "Transform org markup into HTML"))
+  (:documentation "Transform org markup into orgdata object"))
 
 (defmethod parse-org ((file pathname))
   (parse-org (alexandria:read-file-into-string file)))
