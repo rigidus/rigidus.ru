@@ -168,7 +168,7 @@
     (multiple-value-bind (article isset)
         (gethash strkey h-articles)
       (if isset
-          (render aricle)
+          (render article)
           (let* ((filename (format nil "content/articles/~A.org" strkey))
                  (truename (probe-file filename)))
             (if (null truename)
