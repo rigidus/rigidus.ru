@@ -78,24 +78,31 @@
       "<img src=\"/img/john-mccarthy.jpg\" />")))
 
 (restas:define-route main ("/")
-  (let* ((lines (iter (for line in-file "afor.txt" using #'read-line)
-                      (collect line)))
-         (line (nth (random (length lines))
-                    lines))
-         (data (list
-                "Программирование - как искусство"
-                (menu)
-                (tpl:main
-                 (list :title line
-                       :links "")))))
+  (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+         (line (nth (random (length lines)) lines))
+         (data (list "Программирование - как искусство"
+                     (menu)
+                     (tpl:main (list :title line :links "")))))
     (destructuring-bind (headtitle navpoints content)
         data
       (tpl:root (list :headtitle headtitle
                       :content (tpl:base-main (list :navpoints navpoints
-                                               :title line
-                                               :content content
-                                               :stat (tpl:stat))))))))
+                                                    :title line
+                                                    :content content
+                                                    :stat (tpl:stat))))))))
 
+(let ((title "Клеточные автоматы"))
+  (restas:define-route main ("/post/:post-id")
+    (let* ((data (list title
+                       (menu)
+                       (tpl:main (list :title title :links "")))))
+      (destructuring-bind (headtitle navpoints content)
+          data
+        (tpl:root (list :headtitle headtitle
+                        :content (tpl:base-post (list :navpoints navpoints
+                                                      :title title
+                                                      :content content
+                                                      :stat (tpl:stat)))))))))
 
 (def/route blog ("blog")
   (let* ((content (tpl:onlisp))
