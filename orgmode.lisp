@@ -60,6 +60,7 @@
                                   (find-directive "@title")
                                   (find-directive "@category")
                                   (find-directive "@sort")
+                                  (find-directive "@date")
                                   ;; *
                                   (when (ppcre:scan "\\A\\*+\\s+" line)
                                     (setf line

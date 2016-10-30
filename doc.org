@@ -146,121 +146,71 @@
                           :stat (tpl:stat)
                           :navpoints navpoints
                           :title line
-                          :columns (tpl:main))))))
+                          :columns
+                          (tpl:main
+                           (list
+                            :articles
+                            (tpl:mainposts
+                             (list
+                              :posts (sort (iter (for filename in (hash-table-keys *blogs*))
+                                                 (let* ((orgdata     (gethash filename *blogs*))
+                                                        (directives  (orgdata-directives orgdata))
+                                                        (date        (getf directives :date)))
+                                                   (when (null date)
+                                                     (setf date "31.12.9999"))
+                                                   (setf (getf directives :timestamp)
+                                                         (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
+                                                             ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
+                                                           (encode-universal-time  0 0 0 date month year 0)))
+                                                   (setf (getf directives :content)
+                                                         (orgdata-content orgdata))
+                                                   (collect directives)))
+                                           #'(lambda (a b)
+                                               (> (getf a :timestamp)
+                                                  (getf b :timestamp)))))))))))))
+
   #+END_SRC
 
 ** Блог
 
-   #+NAME: tpl_blog
+   Блог на главной странице представляет собой несколько последний
+   постов, содержимое которых лежит в org-файлах в папке
+   /content/blogs/*.org
+
+   Мы должны выбрать оттуда все файлы, распарсить их и закешировать в
+   хэш-таблице =*blogs*=
+
+   #+NAME: declare_blogs
+   #+BEGIN_SRC lisp
+     (defparameter *blogs* (make-hash-table :test #'equal))
+   #+END_SRC
+
+   Для кеширования мы используем функцию =cache-section=:
+
+   #+NAME: cache_blogs
+   #+BEGIN_SRC lisp
+     (in-package #:rigidus)
+
+     (cache-section *blogs* "content/blogs/")
+   #+END_SRC
+
+   #+NAME: tpl_post_main
    #+BEGIN_SRC html
      <article>
-         <h2><a href="#">Клеточные автоматы</a></h2>
-
-         <p class="paragraph">
-             Пожалуй надо сделать небольшую веселую статью для
-             популяризации этих вычислимых объектов, правила для которых
-             являются "множествами непрерывных эндоморфизмов в сдвиговом пространстве".
-         </p>
-         <p class="paragraph">
-             Это могло бы быть интересным на следующем ITGM и достаточно
-             функциональным для FProg-комьюнити. Особенно если описать все на хаскеле -
-             заодно хороший повод в нем наконец разобраться.
-         </p>
-         <p class="paragraph">
-             Можно было бы рассмотреть:
-             <ul>
-                 <li>
-                     "Жизнь" Конвея
-                 </li>
-                 <li>
-                     "WireWorld" Брайаном Сильверманом (особенно интересен в
-                     в отношении применимости к проекту симуляции электронных
-                     схем.
-                 </li>
-                 <li>
-                     Алгоритм волновой трассировки Ли для поиска путей
-                     (например, в двумерных играх, или для трассировки печатных плат,
-                     что даже лучше)
-                 </li>
-                 <li>
-                     "Муравей Ленгтона" и его эквивалентность машине Тьюринга
-                     с 2 символами и 4 состояниями
-                 </li>
-                 <li>
-                     Работа Пауля Чепмена и немного про Регистровые Машины Минского
-                 </li>
-                 <li>
-                     Мозаичные плоскости Пенроуза как более интересный вид пространства
-                     для клеточных автоматов
-                 </li>
-             </ul>
-             Большинство этих вещей довольно просты для понимания и неизвестны широкому
-             кругу программистов - значит будет интересно.
-         </p>
          <ul class="postinfo">
-             <li>17th October 2016</li>
+             <li>{$date |noAutoescape}</li>
              <li>Posted in <a href="#">Articles</a></li>
              <li><a href="#">Continue Reading &raquo;</a></li>
          </ul>
+         <h2><a href="#">{$title |noAutoescape}</a></h2>
+         {$content |noAutoescape}
      </article>
+   #+END_SRC
 
-     <article>
-         <h2><a href="#">Небольшой анонс</a></h2>
+   #+NAME: tpl_blog
+   #+BEGIN_SRC html
 
-         <p class="paragraph">
-             Планирую выложить целый раздел с практическими примерами
-             реализации основных часто используемых идей, чтобы не объяснять
-             базовые концепции, к примеру, динамического программирования
-             на каждом новом месте работы. Что в планах:
-             <ul>
-                 <li>
-                     Практика создания языков предметной области
-                 </li>
-                 <li>
-                     Как устроены распределенные виртуальные машины
-                 </li>
-                 <li>
-                     Анализ изображений с использованием сверточных нейронных сетей
-                 </li>
-                 <li>
-                     Краткое введение в практику использования клеточных автоматов
-                 </li>
-                 <li>
-                     Регистры сдвига с линейной обратной связью (LFSR) и их применение
-                 </li>
-                 <li>
-                     Автоматическое построение оптимальных путей в графе
-                 </li>
-                 <li>
-                     Автоматизация доказательства корректности протоколов распределенного обмена сообщениями в P2P сетях
-                 </li>
-             </ul>
-         </p>
-         <ul class="postinfo">
-             <li>17th October 2016</li>
-             <li>Posted in <a href="#">Articles</a></li>
-             <li><a href="#">Continue Reading &raquo;</a></li>
-         </ul>
-     </article>
-
-
-     <article>
-         <h2><a href="#">MiniKanren</a></h2>
-
-         <p class="paragraph">
-             <a href="https://mitpress.mit.edu/books/reasoned-schemer">The Reasoned Schemer</a>
-             - книга, вдохновившия довольно много умных
-             людей на разработки в реляционно-логическом программировании.
-             Думаю пора мне к ним присоединиться. Итак, не позже чем до нового
-             года я освою эту новую (для меня область).
-         </p>
-
-         <ul class="postinfo">
-             <li>17th October 2016</li>
-             <li>Posted in <a href="#">Articles</a></li>
-             <li><a href="#">Continue Reading &raquo;</a></li>
-         </ul>
-     </article>
+     {$articles |noAutoescape}
 
      <div id="pagination">
          <ul>
@@ -609,6 +559,7 @@
                                       (find-directive "@title")
                                       (find-directive "@category")
                                       (find-directive "@sort")
+                                      (find-directive "@date")
                                       ;; *
                                       (when (ppcre:scan "\\A\\*+\\s+" line)
                                         (setf line
@@ -793,6 +744,7 @@
         <section id="categories">
             <h3>Categories</h3>
             <ul>
+                <li><a href="#">Сети доверия</a></li>
                 <li><a href="#">Articles</a></li>
                 <li><a href="#">Design</a></li>
                 <li><a href="#">Graphics</a></li>
@@ -982,7 +934,7 @@
     (defparameter *aliens* (make-hash-table :test #'equal))
     (defparameter *cached-alien-page* nil)
 
-    (defparameter *blogs* (make-hash-table :test #'equal))
+    <<declare_blogs>>
     (defparameter *cached-blogs-page* nil)
 
 
@@ -1113,7 +1065,6 @@
          (format nil "~a" (recode (base64:base64-string-to-string rs) :ISO8859-1 :utf-8))))
    #+END_SRC
 * Маршруты
-
 ** Страница 404
 
    #+NAME: route_404
@@ -1144,8 +1095,6 @@
      (restas:define-route robots ("/robots.txt")
        (format nil "User-agent: *~%Disallow: "))
    #+END_SRC
-
-
 
    #+NAME: routes
    #+BEGIN_SRC lisp :tangle routes.lisp :noweb tangle :exports code :padline no :comments link
@@ -1204,19 +1153,19 @@
        (render (show-article-from-hash strkey *aliens*)))
 
      ;; TODO
-     (restas:define-route onlisp ("onlisp/doku.php")
-       (let* ((content (tpl:onlisp))
-              (title "Перевод книги Пола Грэма \"On Lisp\"")
-              (menu-memo (menu)))
-         (render
-          (list title
-                menu-memo
-                (tpl:default
-                    (list :title title
-                          :navpoints menu-memo
-                          :sections ""
-                          :links ""
-                          :content content))))))
+     ;; (restas:define-route onlisp ("onlisp/doku.php")
+     ;;   (let* ((content (tpl:onlisp))
+     ;;          (title "Перевод книги Пола Грэма \"On Lisp\"")
+     ;;          (menu-memo (menu)))
+     ;;     (render
+     ;;      (list title
+     ;;            menu-memo
+     ;;            (tpl:default
+     ;;                (list :title title
+     ;;                      :navpoints menu-memo
+     ;;                      :sections ""
+     ;;                      :links ""
+     ;;                      :content content))))))
 
      (require 'bordeaux-threads)
 
@@ -1330,7 +1279,7 @@
        ;; *articles* *aliens* *asdf*
        (cache-section *articles* "content/articles/")
        (cache-section *aliens*   "content/aliens/")
-       (cache-section *blogs*   "content/blogs/")
+       <<cache_blogs>>
        ;; cached pages
        (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
        (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
@@ -1527,6 +1476,16 @@
          <<tpl_org>>
      {/template}
 
+     {template postmain}
+         <<tpl_post_main>>
+     {/template}
+
+     {template mainposts}
+         {foreach $post in $posts}
+             {call postmain data="$post" /}
+         {/foreach}
+     {/template}
+
      {template stat}
          <<tpl_stat>>
      {/template}
@@ -1546,6 +1505,9 @@
              <p>{$elt |noAutoescape}</p>{\n}
          {/foreach}
      {/template}
+
+
+
 
      {template default}
          <div class="pagecontent">
@@ -1615,108 +1577,108 @@
    #+BEGIN_SRC lisp :tangle prepare.lisp :noweb tangle :exports code :exports none :padline no :comments link
      ;;;; <<copyright>>
 
-     (in-package #:rigidus)
-
      (closure-template:compile-template :common-lisp-backend #P"templates.htm")
 
-     (defparameter *repo-folder* "repo")
-     (defparameter *prj-folder* "rigidus")
+     ;; (in-package #:rigidus)
 
-     ;; Базовый путь, от которого будем все считать
-     (defparameter *base-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/src/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; (defparameter *repo-folder* "repo")
+     ;; (defparameter *prj-folder* "rigidus")
 
-     ;; Путь к данным
-     (defparameter *data-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/data/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; ;; Базовый путь, от которого будем все считать
+     ;; (defparameter *base-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/src/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
 
-     ;; Путь к стилям
-     (defparameter *css-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/css/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; ;; Путь к данным
+     ;; (defparameter *data-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/data/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
 
-     ;; Путь к картинкам
-     (defparameter *img-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/img/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
-     (defparameter *pic-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/pic/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
-     (defparameter *ava-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/ava/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; ;; Путь к стилям
+     ;; (defparameter *css-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/css/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
 
-     ;; Путь к шрифтам
-     (defparameter *font-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/fonts/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; ;; Путь к картинкам
+     ;; (defparameter *img-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/img/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
+     ;; (defparameter *pic-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/pic/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
+     ;; (defparameter *ava-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/ava/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
 
-     ;; Путь к скриптам
-     (defparameter *js-path*
-       (format nil "~A~A"
-               (namestring (user-homedir-pathname))
-               (format nil "~A/~A/js/"
-                       ,*repo-folder*
-                       ,*prj-folder*)))
+     ;; ;; Путь к шрифтам
+     ;; (defparameter *font-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/fonts/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
+
+     ;; ;; Путь к скриптам
+     ;; (defparameter *js-path*
+     ;;   (format nil "~A~A"
+     ;;           (namestring (user-homedir-pathname))
+     ;;           (format nil "~A/~A/js/"
+     ;;                   *repo-folder*
+     ;;                   *prj-folder*)))
 
 
-     ;; Компилируем шаблоны
-     (closure-template:compile-template
-      :common-lisp-backend (pathname (concatenate 'string *base-path* "templates.htm")))
+     ;; ;; Компилируем шаблоны
+     ;; (closure-template:compile-template
+     ;;  :common-lisp-backend (pathname (concatenate 'string *base-path* "templates.htm")))
 
-     ;; submodules
+     ;; ;; submodules
 
-     ;; (restas:mount-module -css- (#:restas.directory-publisher)
-     ;;   (:url "/css/")
-     ;;   (restas.directory-publisher:*directory* *css-path*))
+     ;; ;; (restas:mount-module -css- (#:restas.directory-publisher)
+     ;; ;;   (:url "/css/")
+     ;; ;;   (restas.directory-publisher:*directory* *css-path*))
 
-     ;; (restas:mount-module -img- (#:restas.directory-publisher)
-     ;;   (:url "/img/")
-     ;;   (restas.directory-publisher:*directory* *img-path*))
+     ;; ;; (restas:mount-module -img- (#:restas.directory-publisher)
+     ;; ;;   (:url "/img/")
+     ;; ;;   (restas.directory-publisher:*directory* *img-path*))
 
-     ;; (restas:mount-module -pic- (#:restas.directory-publisher)
-     ;;   (:url "/pic/")
-     ;;   (restas.directory-publisher:*directory* *pic-path*))
+     ;; ;; (restas:mount-module -pic- (#:restas.directory-publisher)
+     ;; ;;   (:url "/pic/")
+     ;; ;;   (restas.directory-publisher:*directory* *pic-path*))
 
-     ;; (restas:mount-module -ava- (#:restas.directory-publisher)
-     ;;   (:url "/ava/")
-     ;;   (restas.directory-publisher:*directory* *ava-path*))
+     ;; ;; (restas:mount-module -ava- (#:restas.directory-publisher)
+     ;; ;;   (:url "/ava/")
+     ;; ;;   (restas.directory-publisher:*directory* *ava-path*))
 
-     ;; (restas:mount-module -font- (#:restas.directory-publisher)
-     ;;   (:url "/font/")
-     ;;   (restas.directory-publisher:*directory* *font-path*))
+     ;; ;; (restas:mount-module -font- (#:restas.directory-publisher)
+     ;; ;;   (:url "/font/")
+     ;; ;;   (restas.directory-publisher:*directory* *font-path*))
 
-     ;; (restas:mount-module -js- (#:restas.directory-publisher)
-     ;;   (:url "/js/")
-     ;;   (restas.directory-publisher:*directory* *js-path*))
+     ;; ;; (restas:mount-module -js- (#:restas.directory-publisher)
+     ;; ;;   (:url "/js/")
+     ;; ;;   (restas.directory-publisher:*directory* *js-path*))
 
-     ;; (restas:mount-module -resources- (#:restas.directory-publisher)
-     ;;   (:url "/resources/")
-     ;;   (restas.directory-publisher:*directory* "/resources/")
-     ;;   (restas.directory-publisher:*autoindex* t))
+     ;; ;; (restas:mount-module -resources- (#:restas.directory-publisher)
+     ;; ;;   (:url "/resources/")
+     ;; ;;   (restas.directory-publisher:*directory* "/resources/")
+     ;; ;;   (restas.directory-publisher:*autoindex* t))
    #+END_SRC
 
 ** Copyright

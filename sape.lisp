@@ -125,7 +125,9 @@
   ;; *articles* *aliens* *asdf*
   (cache-section *articles* "content/articles/")
   (cache-section *aliens*   "content/aliens/")
-  (cache-section *blogs*   "content/blogs/")
+  (in-package #:rigidus)
+  
+  (cache-section *blogs* "content/blogs/")
   ;; cached pages
   (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
   (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))

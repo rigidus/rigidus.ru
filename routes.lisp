@@ -38,7 +38,29 @@
                       :stat (tpl:stat)
                       :navpoints navpoints
                       :title line
-                      :columns (tpl:main))))))
+                      :columns
+                      (tpl:main
+                       (list
+                        :articles
+                        (tpl:mainposts
+                         (list
+                          :posts (sort (iter (for filename in (hash-table-keys *blogs*))
+                                             (let* ((orgdata     (gethash filename *blogs*))
+                                                    (directives  (orgdata-directives orgdata))
+                                                    (date        (getf directives :date)))
+                                               (when (null date)
+                                                 (setf date "31.12.9999"))
+                                               (setf (getf directives :timestamp)
+                                                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
+                                                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
+                                                       (encode-universal-time  0 0 0 date month year 0)))
+                                               (setf (getf directives :content)
+                                                     (orgdata-content orgdata))
+                                               (collect directives)))
+                                       #'(lambda (a b)
+                                           (> (getf a :timestamp)
+                                              (getf b :timestamp)))))))))))))
+
 
 (in-package #:rigidus)
 
@@ -106,19 +128,19 @@
   (render (show-article-from-hash strkey *aliens*)))
 
 ;; TODO
-(restas:define-route onlisp ("onlisp/doku.php")
-  (let* ((content (tpl:onlisp))
-         (title "Перевод книги Пола Грэма \"On Lisp\"")
-         (menu-memo (menu)))
-    (render
-     (list title
-           menu-memo
-           (tpl:default
-               (list :title title
-                     :navpoints menu-memo
-                     :sections ""
-                     :links ""
-                     :content content))))))
+;; (restas:define-route onlisp ("onlisp/doku.php")
+;;   (let* ((content (tpl:onlisp))
+;;          (title "Перевод книги Пола Грэма \"On Lisp\"")
+;;          (menu-memo (menu)))
+;;     (render
+;;      (list title
+;;            menu-memo
+;;            (tpl:default
+;;                (list :title title
+;;                      :navpoints menu-memo
+;;                      :sections ""
+;;                      :links ""
+;;                      :content content))))))
 
 (require 'bordeaux-threads)
 
