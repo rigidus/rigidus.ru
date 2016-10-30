@@ -1,3 +1,6 @@
+;; [[file:doc.org::*Каркас проекта][defsystem]]
+;;;; Copyright © 2014-2016 Glukhov Mikhail. All rights reserved.
+;;;; Licensed under the GNU AGPLv3
 (asdf:defsystem #:rigidus
   :version      "0.0.2"
   :author       "rigidus <i.am.rigidus@gmail.com>"
@@ -7,9 +10,13 @@
                  #:closer-mop
                  #:cl-ppcre
                  #:restas-directory-publisher
+                 #:cl-base64
+                 #:postmodern
+                 #:restas
                  #:closure-template
-                 #:cl-json
-                 #:postmodern)
+                 #:drakma
+                 #:split-sequence
+                 #:cl-json)
   :serial       t
   :components   ((:static-file "templates.htm")
                  (:file "prepare")
@@ -21,3 +28,4 @@
                  (:static-file "daemon.conf")
                  (:static-file "daemon.lisp")
                  (:static-file "daemon.sh")))
+;; defsystem ends here

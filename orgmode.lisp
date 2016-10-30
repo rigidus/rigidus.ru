@@ -1,3 +1,4 @@
+;; [[file:doc.org::*Работа с org-файлами][orgmode]]
 (in-package #:rigidus)
 
 (defmacro find-command (str body &optional (replace '(setf line "ℕ")))
@@ -17,6 +18,8 @@
 
 (defmethod parse-org ((file pathname))
   (parse-org (alexandria:read-file-into-string file)))
+
+;; (orgdata-content (parse-org #P"content/articles.org"))
 
 (defmethod parse-org ((org-content string))
   ;; Разбиваем входный текст по строкам
@@ -130,3 +133,4 @@
                                  :sort  (getf directives :sort))))))
         #'string<
         :key #'(lambda (x) (getf x :title))))
+;; orgmode ends here

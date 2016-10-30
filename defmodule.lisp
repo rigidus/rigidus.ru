@@ -1,3 +1,4 @@
+;; [[file:doc.org::*Определения модуля][defmodule]]
 (restas:define-module #:rigidus
   (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
   (:shadowing-import-from :closer-mop
@@ -10,6 +11,8 @@
                           :class-name))
 
 (in-package #:rigidus)
+
+(in-package :rigidus)
 
 (defmacro bprint (var)
   `(subseq (with-output-to-string (*standard-output*)
@@ -26,11 +29,11 @@
 (defmethod render ((data list))
   (destructuring-bind (headtitle navpoints content)
       data
-    (tpl:root (list ;; :headtitle headtitle
-                    :content (tpl:base (list :navpoints navpoints
-                                             :title headtitle
-                                             :content content
-                                             :stat (tpl:stat)))))))
+    (tpl:root (list :headtitle headtitle
+                    :content (tpl:base-post (list :navpoints navpoints
+                                                  :title headtitle
+                                                  :content content
+                                                  :stat (tpl:stat)))))))
 
 (defmethod render ((file pathname))
   (if (string= (pathname-type file) "org")
@@ -46,16 +49,18 @@
     (render
      (list title
            menu-memo
-           (tpl:default
-               (list ;; :title title
-                     :navpoints menu-memo
-                     :sections (iter (for i from 1)
-                                     (for section in sections)
-                                     (collect (list :anchor (format nil "anchor-~a" i)
-                                                    :level (format nil "level-~a" (car section))
-                                                    :title (cadr section))))
-                     :links ""
-                     :content content))))))
+           content
+           ;; (tpl:default
+           ;;     (list :title title
+           ;;           :navpoints menu-memo
+           ;;           :sections (iter (for i from 1)
+           ;;                           (for section in sections)
+           ;;                           (collect (list :anchor (format nil "anchor-~a" i)
+           ;;                                          :level (format nil "level-~a" (car section))
+           ;;                                          :title (cadr section))))
+           ;;           :links ""
+           ;;           :content content))
+           ))))
 
 
 
@@ -132,3 +137,4 @@ alter user <dbuser> with password '<dbpassword>';
 ;;     (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 1")
 ;;     (let ((b (make-dao 'comment :key "TEST" :parent (id a) :msg "parent comment 2")))
 ;;       (make-dao 'comment :key "TEST" :parent (id b) :msg "sub parent comment 2"))))
+;; defmodule ends here

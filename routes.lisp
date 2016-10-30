@@ -1,3 +1,4 @@
+;; [[file:doc.org::*Маршруты][routes]]
 (in-package #:rigidus)
 
 (defclass rigidus-render () ())
@@ -86,10 +87,13 @@
     (destructuring-bind (headtitle navpoints content)
         data
       (tpl:root (list :headtitle headtitle
-                      :content (tpl:base-main (list :navpoints navpoints
-                                                    :title line
-                                                    :content content
-                                                    :stat (tpl:stat))))))))
+                      :stat (tpl:stat)
+                      :navpoints navpoints
+                      :title line
+                      :columns "wefewf"
+                      ;; (tpl:main (list :contents content))
+                      ;; (tpl:main)
+                      )))))
 
 (let ((title "Клеточные автоматы"))
   (restas:define-route blog ("/post/:post-id")
@@ -148,10 +152,6 @@
 
 ;; showing articles
 
-
-
-
-
 (defun show-article-from-hash (strkey hash)
   (multiple-value-bind (article isset)
       (gethash strkey hash)
@@ -170,7 +170,6 @@
   (render *cached-alien-page*))
 
 (let ((h-articles (make-hash-table :test #'equal)))
-
   (def/route article ("articles/:strkey")
     (multiple-value-bind (article isset)
         (gethash strkey h-articles)
@@ -181,23 +180,33 @@
             (if (null truename)
                 (page-404)
                 (let ((data (parse-org truename)))
-                  ;; (setf (orgdata-content data)
-                  ;;       (ppcre:regex-replace-all
-                  ;;        "@make-list-by-category(.*)@"
-                  ;;        (orgdata-content data)
-                  ;;        (list #'(lambda (match reg)
-                  ;;                  (declare (ignore match))
-                  ;;                  (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
-                  ;;                    (multiple-value-bind (star color category)
-                  ;;                        (values-list (split-sequence:split-sequence #\Space instr))
-                  ;;                      (format nil
-                  ;;                              "<ul>~{~a~}</ul>"
-                  ;;                              (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
-                  ;;                                                    #'string<
-                  ;;                                                    :key #'(lambda (x) (getf x :sort))))
-                  ;;                                    (collect (tpl:li (append x (list :star star :color color))))))))))
-                  ;;        :simple-calls t))
-                  data)))))))
+                  (setf (orgdata-content data)
+                        (ppcre:regex-replace-all
+                         "@make-list-by-category(.*)@"
+                         (orgdata-content data)
+                         (list #'(lambda (match reg)
+                                   (declare (ignore match))
+                                   (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
+                                     (multiple-value-bind (star color category)
+                                         (values-list (split-sequence:split-sequence #\Space instr))
+                                       (format nil
+                                               "<ul>~{~a~}</ul>"
+                                               (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
+                                                                     #'string<
+                                                                     :key #'(lambda (x) (getf x :sort))))
+                                                     (collect (tpl:li (append x (list :star star :color color))))))))))
+                         :simple-calls t))
+                  (let* ((old-data (list "title"
+                                         (menu)
+                                         (tpl:main (list :title "title" :links "")))))
+                    (destructuring-bind (headtitle navpoints content)
+                        old-data
+                      (tpl:root (list :headtitle headtitle
+                                      :content (tpl:base-post (list :navpoints navpoints
+                                                                    :title "title"
+                                                                    :content (orgdata-content data)
+                                                                    :stat (tpl:stat)))))))
+                  )))))))
 
 ;; (render (show-article-from-hash "ecb" *articles*))
 
@@ -301,3 +310,4 @@
   (:url "/resources/")
   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
   (restas.directory-publisher:*autoindex* t))
+;; routes ends here
