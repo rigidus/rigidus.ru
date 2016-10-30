@@ -80,6 +80,7 @@
         ;; (list :link "/job/" :title "О, работа!")
         (list :link "/contacts" :title "Контакты")))
 
+(in-package #:rigidus)
 
 (defun get-directory-contents (path)
   "Функция возвращает содержимое каталога"
@@ -87,13 +88,16 @@
     (setf path (format nil "~A/" path)))
   (directory (format nil "~A*.*" path)))
 
+(in-package #:rigidus)
+
 (defun cache-section (global-var-hash relative-filepath)
   "Функция кеширует в хеш-таблице содержимое каталога"
   (loop :for file :in  (get-directory-contents relative-filepath) :do
      (setf (gethash (pathname-name file) global-var-hash)
            (parse-org file))))
 
-;; cache-page
+(in-package #:rigidus)
+
 (defun cache-page (relative-filepath global-var-hash subst)
   (let ((data (parse-org relative-filepath)))
     (setf (orgdata-content data)
@@ -123,7 +127,6 @@
   (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
   (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
   (setf *cached-blogs-page*    (cache-page #P"content/blogs.org"    *blogs*   "/blogs/")))
-
 
 (load-org)
 

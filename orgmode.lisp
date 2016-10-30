@@ -1,6 +1,8 @@
 ;; [[file:doc.org::*Работа с org-файлами][orgmode]]
 (in-package #:rigidus)
 
+(in-package #:rigidus)
+
 (defmacro find-command (str body &optional (replace '(setf line "ℕ")))
   `(when (equal 0 (search ,str line))
      (let ((tail (handler-case (subseq line (+ 1 (length ,str)))
@@ -12,6 +14,20 @@
   `(find-command ,directive (setf (getf directives (intern (string-upcase (subseq ,directive 1)) :keyword))
                                   (string-trim '(#\  #\tab #\Newline) tail))))
 
+(in-package #:rigidus)
+
+(defun find-articles-by-category (category global-var-hash subst)
+  "Возвращает все статьи, у которых @category соотвествует параметру"
+  (sort (iter (for filename in (hash-table-keys global-var-hash))
+              (let ((directives (orgdata-directives (gethash filename global-var-hash))))
+                (when (string= category (getf directives :category))
+                  (collect (list :title (getf directives :title)
+                                 :link  (concatenate 'string subst filename)
+                                 :sort  (getf directives :sort))))))
+        #'string<
+        :key #'(lambda (x) (getf x :title))))
+
+(in-package #:rigidus)
 
 (defgeneric parse-org (src)
   (:documentation "Transform org markup into orgdata object"))
@@ -19,13 +35,11 @@
 (defmethod parse-org ((file pathname))
   (parse-org (alexandria:read-file-into-string file)))
 
-;; (orgdata-content (parse-org #P"content/articles.org"))
-
 (defmethod parse-org ((org-content string))
   ;; Разбиваем входный текст по строкам
   (let ((strings (split-sequence:split-sequence #\NewLine org-content))
         (sections)    ;; Информация о заголовках секций
-        (mode nil)    ;; Режимы в котором мы находимся
+        (mode nil)    ;; Режим в котором мы находимся
         (directives)  ;; Директивы, например @category
         (br 0)        ;; Счетчик переводов строки для вывода обычного текста
         (save)        ;; Внутренняя переменная для сохранения и последующего вывода в файл
@@ -35,6 +49,7 @@
           (format nil "~{~A~%~}"
                   (remove-if #'(lambda (line)
                                  (search "ℕ" line))
+                             ;; Для каждой строки из списка строк
                              (loop :for line :in strings
                                 :collect
                                 (progn
@@ -121,16 +136,4 @@
     (setf (orgdata-directives result)
           directives)
     result))
-
-
-(defun find-articles-by-category (category global-var-hash subst)
-  "Возвращает все статьи, у которых @category соотвествует параметру"
-  (sort (iter (for filename in (hash-table-keys global-var-hash))
-              (let ((directives (orgdata-directives (gethash filename global-var-hash))))
-                (when (string= category (getf directives :category))
-                  (collect (list :title (getf directives :title)
-                                 :link  (concatenate 'string subst filename)
-                                 :sort  (getf directives :sort))))))
-        #'string<
-        :key #'(lambda (x) (getf x :title))))
 ;; orgmode ends here

@@ -21,25 +21,32 @@
 (defmacro err (var)
   `(error (format nil "ERR:[~A]" (bprint ,var))))
 
+(in-package #:rigidus)
+
 (defclass orgdata ()
   ((content    :accessor orgdata-content)
    (sections   :accessor orgdata-sections)
    (directives :accessor orgdata-directives)))
 
+(in-package #:rigidus)
+
+;; Рендер для списков
 (defmethod render ((data list))
   (destructuring-bind (headtitle navpoints content)
       data
     (tpl:root (list :headtitle headtitle
-                    :content (tpl:base-post (list :navpoints navpoints
-                                                  :title headtitle
-                                                  :content content
-                                                  :stat (tpl:stat)))))))
+                    :stat (tpl:stat)
+                    :navpoints navpoints
+                    :title headtitle
+                    :columns (tpl:org (list :content content))))))
 
+;; Рендер для pathname
 (defmethod render ((file pathname))
   (if (string= (pathname-type file) "org")
       (render (parse-org file))
       (call-next-method)))
 
+;; Рендер для orgdata
 (defmethod render ((data orgdata))
   (let* ((content     (concatenate 'string (orgdata-content data)))
          (sections    (orgdata-sections data))
@@ -61,8 +68,6 @@
            ;;           :links ""
            ;;           :content content))
            ))))
-
-
 
 (setf asdf:*central-registry*
       (remove-duplicates (append asdf:*central-registry*
