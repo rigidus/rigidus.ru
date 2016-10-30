@@ -34,6 +34,8 @@
                               (t item)))))
       `(tpl:section (list :title ,title :elts  (list ,@sequences)))))
 
+(in-package #:rigidus)
+
 (restas:define-route main ("/")
   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
          (line (nth (random (length lines)) lines))
@@ -123,26 +125,28 @@
 (def/route aliens ("aliens")
   (render *cached-alien-page*))
 
+(in-package #:rigidus)
+
 (let ((h-articles (make-hash-table :test #'equal)))
-  (def/route article ("articles/:strkey")
-    (multiple-value-bind (article isset)
-        (gethash strkey h-articles)
-      (if isset
-          (render article)
-          (let* ((filename (format nil "content/articles/~A.org" strkey))
-                 (truename (probe-file filename)))
-            (if (null truename)
-                (page-404)
-                (let ((data (parse-org truename)))
-                  (setf (orgdata-content data)
-                        (process-directive-make-list-by-category data h-articles "subst"))
-                  (destructuring-bind (headtitle navpoints)
-                      (list "title" (menu))
-                    (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-                                    :stat (tpl:stat)
-                                    :navpoints navpoints
-                                    :title (getf (orgdata-directives data) :title)
-                                    :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+   (def/route article ("articles/:strkey")
+     (multiple-value-bind (article isset)
+         (gethash strkey h-articles)
+       (if isset
+           (render article)
+           (let* ((filename (format nil "content/articles/~A.org" strkey))
+                  (truename (probe-file filename)))
+             (if (null truename)
+                 (page-404)
+                 (let ((data (parse-org truename)))
+                   (setf (orgdata-content data)
+                         (process-directive-make-list-by-category data h-articles "subst"))
+                   (destructuring-bind (headtitle navpoints)
+                       (list "title" (menu))
+                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                     :stat (tpl:stat)
+                                     :navpoints navpoints
+                                     :title (getf (orgdata-directives data) :title)
+                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
 ;; (render (show-article-from-hash "ecb" *articles*))
 

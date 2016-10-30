@@ -128,6 +128,27 @@
     </div>
   #+END_SRC
 
+  А вот маршрут, который все это использует
+
+  #+NAME: route_main
+  #+BEGIN_SRC lisp
+    (in-package #:rigidus)
+
+    (restas:define-route main ("/")
+      (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+             (line (nth (random (length lines)) lines))
+             (data (list "Программирование - как искусство"
+                         (menu)
+                         (tpl:main (list :title line :links "")))))
+        (destructuring-bind (headtitle navpoints content)
+            data
+          (tpl:root (list :headtitle headtitle
+                          :stat (tpl:stat)
+                          :navpoints navpoints
+                          :title line
+                          :columns (tpl:main))))))
+  #+END_SRC
+
 ** Блог
 
    #+NAME: tpl_blog
@@ -747,29 +768,11 @@
             <h3>Содержание</h3>
             <div id="guideNav">
                  <ul>
-                     {foreach $elt in $navpoints}
-                         {call navelt data="$elt" /}
+                     {foreach $elt in $sections}
+                         {call sectelt data="$elt" /}
                      {/foreach}
                  </ul>
-
-                <ul>
-                    <li class="level-2">
-                        <a href="#anchor-1">
-                            Архитектура и проектирование 2
-                        </a>
-                    </li>
-                    <li class="level-2">
-                        <a href="#anchor-1">
-                            Common Lisp
-                        </a>
-                    </li>
-                    <li class="level-2">
-                        <a href="#anchor-1">
-                            Emacs
-                        </a>
-                    </li>
-                </ul>
-            </div>
+             </div>
         </section>
     </div>
 
@@ -868,7 +871,33 @@
 
 * Страница org-файла
 
+  Вот маршрут для статей:
 
+  #+NAME: route_article
+  #+BEGIN_SRC lisp
+    (in-package #:rigidus)
+
+    (let ((h-articles (make-hash-table :test #'equal)))
+       (def/route article ("articles/:strkey")
+         (multiple-value-bind (article isset)
+             (gethash strkey h-articles)
+           (if isset
+               (render article)
+               (let* ((filename (format nil "content/articles/~A.org" strkey))
+                      (truename (probe-file filename)))
+                 (if (null truename)
+                     (page-404)
+                     (let ((data (parse-org truename)))
+                       (setf (orgdata-content data)
+                             (process-directive-make-list-by-category data h-articles "subst"))
+                       (destructuring-bind (headtitle navpoints)
+                           (list "title" (menu))
+                         (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                         :stat (tpl:stat)
+                                         :navpoints navpoints
+                                         :title (getf (orgdata-directives data) :title)
+                                         :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+  #+END_SRC
 
 * Рендеринг
 
@@ -902,21 +931,17 @@
              (directives  (orgdata-directives data))
              (title       (getf directives :title))
              (menu-memo   (menu)))
-        (render
-         (list title
-               menu-memo
-               content
-               ;; (tpl:default
-               ;;     (list :title title
-               ;;           :navpoints menu-memo
-               ;;           :sections (iter (for i from 1)
-               ;;                           (for section in sections)
-               ;;                           (collect (list :anchor (format nil "anchor-~a" i)
-               ;;                                          :level (format nil "level-~a" (car section))
-               ;;                                          :title (cadr section))))
-               ;;           :links ""
-               ;;           :content content))
-               ))))
+        (tpl:root (list :headtitle title
+                        :stat (tpl:stat)
+                        :navpoints (menu)
+                        :title title
+                        :columns
+                        (tpl:org (list :content content
+                                       :sections (iter (for i from 1)
+                                                       (for section in sections)
+                                                       (collect (list :anchor (format nil "anchor-~a" i)
+                                                                      :level (format nil "level-~a" (car section))
+                                                                      :title (cadr section))))))))))
   #+END_SRC
 
 * Определения модуля
@@ -1127,19 +1152,7 @@
                                    (t item)))))
            `(tpl:section (list :title ,title :elts  (list ,@sequences)))))
 
-     (restas:define-route main ("/")
-       (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-              (line (nth (random (length lines)) lines))
-              (data (list "Программирование - как искусство"
-                          (menu)
-                          (tpl:main (list :title line :links "")))))
-         (destructuring-bind (headtitle navpoints content)
-             data
-           (tpl:root (list :headtitle headtitle
-                           :stat (tpl:stat)
-                           :navpoints navpoints
-                           :title line
-                           :columns (tpl:main))))))
+     <<route_main>>
 
      (let ((title "Клеточные автоматы"))
        (restas:define-route blog ("/post/:post-id")
@@ -1216,26 +1229,7 @@
      (def/route aliens ("aliens")
        (render *cached-alien-page*))
 
-     (let ((h-articles (make-hash-table :test #'equal)))
-       (def/route article ("articles/:strkey")
-         (multiple-value-bind (article isset)
-             (gethash strkey h-articles)
-           (if isset
-               (render article)
-               (let* ((filename (format nil "content/articles/~A.org" strkey))
-                      (truename (probe-file filename)))
-                 (if (null truename)
-                     (page-404)
-                     (let ((data (parse-org truename)))
-                       (setf (orgdata-content data)
-                             (process-directive-make-list-by-category data h-articles "subst"))
-                       (destructuring-bind (headtitle navpoints)
-                           (list "title" (menu))
-                         (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-                                         :stat (tpl:stat)
-                                         :navpoints navpoints
-                                         :title (getf (orgdata-directives data) :title)
-                                         :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+     <<route_article>>
 
      ;; (render (show-article-from-hash "ecb" *articles*))
 

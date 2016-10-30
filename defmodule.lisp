@@ -53,21 +53,17 @@
          (directives  (orgdata-directives data))
          (title       (getf directives :title))
          (menu-memo   (menu)))
-    (render
-     (list title
-           menu-memo
-           content
-           ;; (tpl:default
-           ;;     (list :title title
-           ;;           :navpoints menu-memo
-           ;;           :sections (iter (for i from 1)
-           ;;                           (for section in sections)
-           ;;                           (collect (list :anchor (format nil "anchor-~a" i)
-           ;;                                          :level (format nil "level-~a" (car section))
-           ;;                                          :title (cadr section))))
-           ;;           :links ""
-           ;;           :content content))
-           ))))
+    (tpl:root (list :headtitle title
+                    :stat (tpl:stat)
+                    :navpoints (menu)
+                    :title title
+                    :columns
+                    (tpl:org (list :content content
+                                   :sections (iter (for i from 1)
+                                                   (for section in sections)
+                                                   (collect (list :anchor (format nil "anchor-~a" i)
+                                                                  :level (format nil "level-~a" (car section))
+                                                                  :title (cadr section))))))))))
 
 (setf asdf:*central-registry*
       (remove-duplicates (append asdf:*central-registry*
