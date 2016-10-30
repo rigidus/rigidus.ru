@@ -135,35 +135,16 @@
                 (page-404)
                 (let ((data (parse-org truename)))
                   (setf (orgdata-content data)
-                        (ppcre:regex-replace-all
-                         "@make-list-by-category(.*)@"
-                         (orgdata-content data)
-                         (list #'(lambda (match reg)
-                                   (declare (ignore match))
-                                   (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
-                                     (multiple-value-bind (star color category)
-                                         (values-list (split-sequence:split-sequence #\Space instr))
-                                       (format nil
-                                               "<ul>~{~a~}</ul>"
-                                               (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
-                                                                     #'string<
-                                                                     :key #'(lambda (x) (getf x :sort))))
-                                                     (collect (tpl:li (append x (list :star star :color color))))))))))
-                         :simple-calls t))
-                  (let* ((old-data (list "title"
-                                         (menu)
-                                         (tpl:main (list :title "title" :links "")))))
-                    (destructuring-bind (headtitle navpoints content)
-                        old-data
-                      (tpl:root (list :headtitle headtitle
-                                      :content (tpl:org (list :navpoints navpoints
-                                                                    :title "title"
-                                                                    :content (orgdata-content data)
-                                                                    :stat (tpl:stat)))))))
-                  )))))))
+                        (process-directive-make-list-by-category data h-articles "subst"))
+                  (destructuring-bind (headtitle navpoints)
+                      (list "title" (menu))
+                    (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                    :stat (tpl:stat)
+                                    :navpoints navpoints
+                                    :title (getf (orgdata-directives data) :title)
+                                    :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
 ;; (render (show-article-from-hash "ecb" *articles*))
-
 
 (def/route alien ("alien/:strkey")
   (render (show-article-from-hash strkey *aliens*)))

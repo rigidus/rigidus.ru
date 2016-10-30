@@ -813,24 +813,27 @@
   #+BEGIN_SRC lisp
     (in-package #:rigidus)
 
+    (defun process-directive-make-list-by-category (data global-var-hash subst)
+      (ppcre:regex-replace-all
+       "@make-list-by-category(.*)@"
+       (orgdata-content data)
+       (list #'(lambda (match reg)
+                 (declare (ignore match))
+                 (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
+                   (multiple-value-bind (star color category)
+                       (values-list (split-sequence:split-sequence #\Space instr))
+                     (format nil
+                             "<ul>~{~a~}</ul>"
+                             (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
+                                                   #'string<
+                                                   :key #'(lambda (x) (getf x :sort))))
+                                   (collect (tpl:li (append x (list :star star :color color))))))))))
+       :simple-calls t))
+
     (defun cache-page (relative-filepath global-var-hash subst)
       (let ((data (parse-org relative-filepath)))
         (setf (orgdata-content data)
-              (ppcre:regex-replace-all
-               "@make-list-by-category(.*)@"
-               (orgdata-content data)
-               (list #'(lambda (match reg)
-                         (declare (ignore match))
-                         (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
-                           (multiple-value-bind (star color category)
-                               (values-list (split-sequence:split-sequence #\Space instr))
-                             (format nil
-                                     "<ul>~{~a~}</ul>"
-                                     (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
-                                                           #'string<
-                                                           :key #'(lambda (x) (getf x :sort))))
-                                           (collect (tpl:li (append x (list :star star :color color))))))))))
-               :simple-calls t))
+              (process-directive-make-list-by-category data global-var-hash subst))
         data))
   #+END_SRC
 
@@ -862,6 +865,10 @@
         (setf path (format nil "~A/" path)))
       (directory (format nil "~A*.*" path)))
   #+END_SRC
+
+* Страница org-файла
+
+
 
 * Рендеринг
 
@@ -1221,35 +1228,16 @@
                      (page-404)
                      (let ((data (parse-org truename)))
                        (setf (orgdata-content data)
-                             (ppcre:regex-replace-all
-                              "@make-list-by-category(.*)@"
-                              (orgdata-content data)
-                              (list #'(lambda (match reg)
-                                        (declare (ignore match))
-                                        (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
-                                          (multiple-value-bind (star color category)
-                                              (values-list (split-sequence:split-sequence #\Space instr))
-                                            (format nil
-                                                    "<ul>~{~a~}</ul>"
-                                                    (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
-                                                                          #'string<
-                                                                          :key #'(lambda (x) (getf x :sort))))
-                                                          (collect (tpl:li (append x (list :star star :color color))))))))))
-                              :simple-calls t))
-                       (let* ((old-data (list "title"
-                                              (menu)
-                                              (tpl:main (list :title "title" :links "")))))
-                         (destructuring-bind (headtitle navpoints content)
-                             old-data
-                           (tpl:root (list :headtitle headtitle
-                                           :content (tpl:org (list :navpoints navpoints
-                                                                         :title "title"
-                                                                         :content (orgdata-content data)
-                                                                         :stat (tpl:stat)))))))
-                       )))))))
+                             (process-directive-make-list-by-category data h-articles "subst"))
+                       (destructuring-bind (headtitle navpoints)
+                           (list "title" (menu))
+                         (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                         :stat (tpl:stat)
+                                         :navpoints navpoints
+                                         :title (getf (orgdata-directives data) :title)
+                                         :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
      ;; (render (show-article-from-hash "ecb" *articles*))
-
 
      (def/route alien ("alien/:strkey")
        (render (show-article-from-hash strkey *aliens*)))
@@ -1450,6 +1438,81 @@
      $(pwd)/../daemonization/scripts/daemon.sh $(pwd)/daemon.conf $1
    #+END_SRC
 
+* Шаблон статистики
+
+  Это статистика от яндекса
+
+  #+NAME: tpl_stat
+  #+BEGIN_SRC html
+    {literal}
+      <div style="margin-top: -29px; margin-left: 150px;">
+          <!--Google Analitics -->
+          <script type="text/javascript">
+              var _gaq = _gaq || [];
+              _gaq.push(['_setAccount', 'UA-20801780-1']);
+              _gaq.push(['_trackPageview']);
+              (function() {
+              var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+              ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+              var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+              })();
+          </script>
+          <!--Google Analitics -->
+
+          <!--LiveInternet counter-->
+          <script type="text/javascript">
+              <!--
+                   document.write("<a href='http://www.liveinternet.ru/click' "+
+                   "target=_blank><img src='//counter.yadro.ru/hit?t24.5;r"+
+                   escape(document.referrer)+((typeof(screen)=="undefined")?"":
+                   ";s"+screen.width+"*"+screen.height+"*"+(screen.colorDepth?
+                   screen.colorDepth:screen.pixelDepth))+";u"+escape(document.URL)+
+                   ";h"+escape(document.title.substring(0,80))+";"+Math.random()+
+                   "' alt='' title='LiveInternet: показано число посетителей за"+
+                   " сегодня' "+
+                   "border='0' width='88' height='15'><\/a>")
+         //-->
+          </script>
+          <!--/LiveInternet-->
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+          <!-- Yandex.Metrika informer -->
+          <a href="https://metrika.yandex.ru/stat/?id=3701317&amp;from=informer"
+          target="_blank" rel="nofollow"><img src="//bs.yandex.ru/informer/3701317/1_0_9F9F9FFF_7F7F7FFF_0_pageviews"
+          style="width:80px; height:15px; border:0;" alt="Яндекс.Метрика" title="Яндекс.Метрика: данные за сегодня (просмотры)"
+                                              onclick="try{Ya.Metrika.informer({i:this,id:3701317,lang:'ru'});return false}catch(e){}"/></a>
+          <!-- /Yandex.Metrika informer -->
+
+          <!-- Yandex.Metrika counter -->
+          <script type="text/javascript">
+          (function (d, w, c) {
+              (w[c] = w[c] || []).push(function() {
+                  try {
+                      w.yaCounter3701317 = new Ya.Metrika({id:3701317,
+                              webvisor:true,
+                              clickmap:true,
+                              trackLinks:true,
+                              accurateTrackBounce:true});
+                  } catch(e) { }
+              });
+
+              var n = d.getElementsByTagName("script")[0],
+                  s = d.createElement("script"),
+                  f = function () { n.parentNode.insertBefore(s, n); };
+              s.type = "text/javascript";
+              s.async = true;
+              s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js";
+
+              if (w.opera == "[object Opera]") {
+                  d.addEventListener("DOMContentLoaded", f, false);
+              } else { f(); }
+          })(document, window, "yandex_metrika_callbacks");
+          </script>
+          <noscript><div><img src="//mc.yandex.ru/watch/3701317" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+          <!-- /Yandex.Metrika counter -->
+    {/literal}
+  #+END_SRC
+
 * Сборка
 ** Утилиты
 
@@ -1494,302 +1557,8 @@
      {/template}
 
      {template stat}
-       {literal}
-         <div style="margin-top: -29px; margin-left: 150px;">
-             <!--Google Analitics -->
-             <script type="text/javascript">
-                 var _gaq = _gaq || [];
-                 _gaq.push(['_setAccount', 'UA-20801780-1']);
-                 _gaq.push(['_trackPageview']);
-                 (function() {
-                 var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
-                 ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
-                 var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
-                 })();
-             </script>
-             <!--Google Analitics -->
-
-             <!--LiveInternet counter-->
-             <script type="text/javascript">
-                 <!--
-                      document.write("<a href='http://www.liveinternet.ru/click' "+
-                      "target=_blank><img src='//counter.yadro.ru/hit?t24.5;r"+
-                      escape(document.referrer)+((typeof(screen)=="undefined")?"":
-                      ";s"+screen.width+"*"+screen.height+"*"+(screen.colorDepth?
-                      screen.colorDepth:screen.pixelDepth))+";u"+escape(document.URL)+
-                      ";h"+escape(document.title.substring(0,80))+";"+Math.random()+
-                      "' alt='' title='LiveInternet: показано число посетителей за"+
-                      " сегодня' "+
-                      "border='0' width='88' height='15'><\/a>")
-            //-->
-             </script>
-             <!--/LiveInternet-->
-             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-
-             <!-- Yandex.Metrika informer -->
-             <a href="https://metrika.yandex.ru/stat/?id=3701317&amp;from=informer"
-             target="_blank" rel="nofollow"><img src="//bs.yandex.ru/informer/3701317/1_0_9F9F9FFF_7F7F7FFF_0_pageviews"
-             style="width:80px; height:15px; border:0;" alt="Яндекс.Метрика" title="Яндекс.Метрика: данные за сегодня (просмотры)"
-                                                 onclick="try{Ya.Metrika.informer({i:this,id:3701317,lang:'ru'});return false}catch(e){}"/></a>
-             <!-- /Yandex.Metrika informer -->
-
-             <!-- Yandex.Metrika counter -->
-             <script type="text/javascript">
-             (function (d, w, c) {
-                 (w[c] = w[c] || []).push(function() {
-                     try {
-                         w.yaCounter3701317 = new Ya.Metrika({id:3701317,
-                                 webvisor:true,
-                                 clickmap:true,
-                                 trackLinks:true,
-                                 accurateTrackBounce:true});
-                     } catch(e) { }
-                 });
-
-                 var n = d.getElementsByTagName("script")[0],
-                     s = d.createElement("script"),
-                     f = function () { n.parentNode.insertBefore(s, n); };
-                 s.type = "text/javascript";
-                 s.async = true;
-                 s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js";
-
-                 if (w.opera == "[object Opera]") {
-                     d.addEventListener("DOMContentLoaded", f, false);
-                 } else { f(); }
-             })(document, window, "yandex_metrika_callbacks");
-             </script>
-             <noscript><div><img src="//mc.yandex.ru/watch/3701317" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-             <!-- /Yandex.Metrika counter -->
-
-         {/literal}
+         <<tpl_stat>>
      {/template}
-
-
-     {template base}
-         <div id="container">
-             <div id="header">
-                 <div id="avatar">
-                     <a id="logo" href="/">
-                         <img src="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45"
-                              style="border: 1px solid #7F7F7F"/>
-                     </a>
-                 </div>
-                 <div id="afor">
-                     <h1>{$title}</h1>
-                 </div>
-                 <div id="clear"></div>
-             </div>
-
-             <div id="navigation">
-                 <ul>
-                     {foreach $elt in $navpoints}
-                         {call navelt data="$elt" /}
-                     {/foreach}
-                 </ul>
-             </div>
-
-             <div id="clear"></div>
-
-             <div id="content" style="min-width: 97%; overflow:hidden">
-                 {$content |noAutoescape}
-             </div>
-
-             <div id="footer-container">
-                 <div id="footer">
-                     <p>
-                         {$stat |noAutoescape}
-                     </p>
-                     <p id="back-top">
-                         <a href="#">Back to top</a>
-                     </p>
-                 </div>
-             </div>
-         </div>
-     {/template}
-
-     {template section}
-         <p class="alert" style="color: red; font-size: 18px;">{\n}
-             <strong>{$title |noAutoescape}</strong>{\n}
-         </p>{\n}
-         {foreach $elt in $elts}
-             <p>{$elt |noAutoescape}</p>{\n}
-         {/foreach}
-     {/template}
-
-     {template onlisp}
-     В настоящее время групп энтузиастов начала работу над переводом замечательной книги Пола Грэма \"On Lisp\"<br /></br>
-     Вы можете помочь в улучшении этого материала путем вычитки переведенных глав или присоединившись к переводу текста.<br /></br>
-     После завершения перевода он будет опубликован здесь. Переведенные и непереведенные главы размещены на гитхабе: <br /></br>
-     <a href="https://github.com/rigidus/onlisp">https://github.com/rigidus/onlisp</a><br /></br>
-     Присоединяйтесь к команде переводчиков!
-     {/template}
-
-     {template default}
-         <div class="pagecontent">
-             <div id="guideNav">
-                 <ul>
-                     {foreach $elt in $sections}
-                         {call sectelt data="$elt" /}
-                     {/foreach}
-                 </ul>
-             </div>
-
-             <div id="pagecontent">
-                 {$content |noAutoescape}
-             </div>
-
-             <div class="divider"></div>
-             {$links |noAutoescape}
-             <ul id="share">
-                 {foreach $elt in $navpoints}
-                     {call navelt data="$elt" /}
-                 {/foreach}
-             </ul>
-         </div>
-     {/template}
-
-
-     {template li}
-         <li>
-             <span style="color: {$color}">{$star}</span>
-             <a href="{$link}">{$title}</a>
-         </li>
-     {/template}
-
-
-     {template blog}
-         <p class="alert" style="color: red; font-size: 18px;">{\n}
-             <strong>{$title |noAutoescape}</strong>{\n}
-         </p>{\n}
-         <p>
-             Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras consequat mi non purus rhoncus porta. Morbi ut feugiat est, vitae mattis
-             lacus. Fusce eu aliquam nulla, ut tempor nulla. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus
-             mus. Sed non pulvinar nunc, sed dignissim tortor. Vivamus at leo in velit venenatis volutpat. Sed tempus neque sed sollicitudin
-             ullamcorper. Nulla vehicula erat sem. Donec gravida nibh massa, ultricies adipiscing mi ullamcorper lobortis. Ut velit quam, hendrerit
-             eget adipiscing id, adipiscing id quam. Morbi rhoncus nec ligula et lacinia. Nam vitae fermentum urna. Nam sed placerat velit, nec
-             convallis nisl. Donec sit amet condimentum metus. Praesent vitae justo rutrum dolor tristique condimentum. Phasellus id condimentum
-             metus.
-             </p><p>
-             Aliquam et lorem feugiat, congue turpis quis, imperdiet leo. Nunc eget lacinia ipsum, vel iaculis mauris. Etiam mattis lobortis massa non
-             tincidunt. Fusce porta est in augue auctor, ut cursus dui hendrerit. Mauris et est tellus. Nulla imperdiet lectus sit amet tincidunt
-             gravida. Curabitur eros tellus, posuere non auctor vel, suscipit elementum augue. Morbi sagittis nisl id nibh viverra
-             sagittis. Suspendisse egestas bibendum turpis, id accumsan sapien posuere ac.
-             </p><p>
-             Integer id eros felis. Nulla a mattis mi. Pellentesque et ante vitae ipsum venenatis vestibulum. Integer eleifend turpis vitae augue sodales
-             suscipit. Vestibulum rutrum enim felis, quis blandit metus convallis a. Donec venenatis pulvinar purus, et auctor nisl rhoncus id. Donec
-             at metus condimentum, porttitor ligula eu, condimentum purus. Maecenas eget diam condimentum, vehicula metus accumsan, volutpat
-             augue. Sed vitae felis vitae libero vulputate consequat. Suspendisse semper a justo in fringilla. Nam eget massa dui. Morbi rhoncus
-             dolor orci. Vivamus convallis, magna quis mattis bibendum, nisl dolor condimentum ante, vitae condimentum eros massa eu
-             diam. Pellentesque laoreet consectetur egestas. Duis turpis neque, egestas et dictum eget, viverra facilisis lacus. Donec ac dolor
-             scelerisque urna vulputate tristique.
-             </p><p>
-             Vivamus ut tellus vitae massa egestas eleifend. Donec placerat, ipsum ut gravida sodales, libero felis pretium lorem, eu porttitor purus
-             ipsum et lectus. Donec varius risus id metus sagittis condimentum. Donec quis est at nibh suscipit luctus sed eget augue. Donec
-             lobortis, nibh a feugiat gravida, turpis elit porttitor lorem, eget euismod dolor sapien a justo. Donec in erat magna. Curabitur sed
-             vulputate ligula, vel gravida sem. Proin vel sodales orci. In vulputate imperdiet arcu, quis elementum mauris sodales id. Vestibulum ac
-             rutrum nulla, quis tincidunt urna. Donec iaculis dignissim purus a malesuada. Cras at aliquet elit. Integer lacinia in nisi id
-             fringilla.
-             </p><p>
-             Praesent odio leo, auctor nec fermentum eget, dictum viverra quam. Sed mollis, nunc vel adipiscing commodo, quam nibh pharetra elit, varius
-             varius ante ante ac eros. Sed in mauris egestas libero accumsan congue non a felis. Mauris commodo sapien orci, quis pellentesque lorem
-             luctus in. Maecenas fringilla nunc dictum quam imperdiet, quis elementum tellus rhoncus. Nam ultricies faucibus porta. Proin id augue
-             aliquam, aliquam ipsum sed, egestas felis. Vestibulum fringilla bibendum est, non pretium enim aliquet a. Integer dictum est quis
-             vestibulum aliquam. Etiam dapibus rhoncus massa eu tempor. Aliquam tincidunt scelerisque vehicula. Donec at ullamcorper sapien. In hac
-             habitasse platea dictumst. </p>
-     {/template}
-
-     {template comments}
-       <div class="comment-action" id="comment-new" onclick="comment_new();">написать комментарий</div>
-       <div class="editor" style="display:none">
-         <form id="comment-form" autocomplete="off" method="post">
-           <input type="hidden" name="parent" value="0" id="comment-parent" />
-           <textarea cols="65" rows="5" name="message"  id="comment-message"></textarea>
-           <div class="comment-action" onclick="comment_send();">отправить</div>
-         </form>
-       </div>
-       <div style="display: none">
-         {call comment /}
-       </div>
-       <div>
-         {foreach $comment in $comments}
-           {call comment data="$comment" /}
-         {/foreach}
-       </div>
-     {/template}
-
-     {template comment}
-       <div id="msg{$id}" style="margin: 10px 10px 10px {$level}0px; background-color: #444444; padding: 5px;">
-         <div class="comment-msg">
-           {$id} {$msg}
-         </div>
-         <div comment-id="{$id}" level="{$level}">
-           <span class="comment-action comment-reply">ответить</span> |
-           <span class="comment-action comment-del">удалить</span> |
-           <!-- span class="comment-action comment-edit">редактировать</span> | -->
-           <span class="comment-action comment-expand-or-collapse">развернуть</span> |
-         </div>
-       </div>
-     {/template}
-
-
-     {template controlbtn}
-       <form method="POST">
-         <input type="submit" name="{$name}" value="{$value}" style="background: {$background}" />
-       </form>
-     {/template}
-
-     {template controltbl}
-       <form method="POST">
-         <table>
-           <tr>
-             <td>Red &nbsp;&nbsp;&nbsp;&nbsp;</td>
-             <td>
-
-               <table cellspacing="2" cellpadding="1">
-                 <tr>
-                   <td style="background: red">On</td>
-                   <td style="background: red">
-                     <input type="radio" name="red" value="on" {$red} />
-                   </td>
-                 </tr>
-                 <tr>
-                   <td style="background: darkred">Off</td>
-                   <td style="background: darkred">
-                     <input type="radio" name="red" value="off" {$darkred} />
-                   </td>
-                 </tr>
-               </table>
-
-             </td>
-           </tr>
-
-           <tr>
-             <td>Green &nbsp;&nbsp;&nbsp;&nbsp;</td>
-             <td>
-
-               <table cellspacing="2" cellpadding="1">
-                 <tr>
-                   <td style="background: lightgreen">On</td>
-                   <td style="background: lightgreen">
-                     <input type="radio" name="green" value="on" {$lightgreen} />
-                   </td>
-                 </tr>
-                 <tr>
-                   <td style="background: green">Off</td>
-                   <td style="background: green">
-                     <input type="radio" name="green" value="off" {$green} />
-                   </td>
-                 </tr>
-               </table>
-
-             </td>
-           </tr>
-
-         </table>
-         <input type="submit" value="Send" />
-       </form>
-     {/template}
-
    #+END_SRC
 
 ** Каркас проекта
