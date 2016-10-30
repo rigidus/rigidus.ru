@@ -92,7 +92,7 @@
                                                     :stat (tpl:stat))))))))
 
 (let ((title "Клеточные автоматы"))
-  (restas:define-route main ("/post/:post-id")
+  (restas:define-route blog ("/post/:post-id")
     (let* ((data (list title
                        (menu)
                        (tpl:main (list :title title :links "")))))
