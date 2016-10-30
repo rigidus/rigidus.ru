@@ -1,38 +1,28 @@
-;; [[file:doc.org::*Маршруты][routes]]
+;; [[file:doc.org::*Страница robots.txt][routes]]
 (in-package #:rigidus)
 
 (defclass rigidus-render () ())
 
-;; 404
+(in-package #:rigidus)
+
+(restas:define-route robots ("/robots.txt")
+  (format nil "User-agent: *~%Disallow: "))
+
+(in-package #:rigidus)
 
 (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
-  (let* ((title "404 Not Found")
-         (menu-memo (menu)))
-    (render
-     (list title
-           menu-memo
-           (tpl:default
-               (list :title title
-                     :navpoints menu-memo
-                     :content "Страница не найдена"))))))
+  (let* ((title "404 Not Found"))
+    (tpl:root (list :headtitle title
+                    :stat (tpl:stat)
+                    :navpoints (menu)
+                    :title title
+                    :columns "<br/><br /><br/><br /><h2>404 Not Found</h2><br/><br /><br/><br />"))))
 
 (restas:define-route not-found-route ("*any")
   (restas:abort-route-handler
    (page-404)
    :return-code hunchentoot:+http-not-found+
    :content-type "text/html"))
-
-
-;; main
-
-(defmacro § ((title) &rest sequences)
-    (let ((sequences (loop :for item :in sequences :collect
-                        (cond ((and (stringp item) (equal 0 (position #\★  item)))
-                               (concatenate 'string "<span style=\"color: green\">★ </span>" (subseq item 1)))
-                              ((and (stringp item) (equal 0 (position #\✦  item)))
-                               (concatenate 'string "<span style=\"color: red\">✦ </span><span style=\"color: #feffb8\"><strong>" (subseq item 1) "</strong></span>"))
-                              (t item)))))
-      `(tpl:section (list :title ,title :elts  (list ,@sequences)))))
 
 (in-package #:rigidus)
 
@@ -50,45 +40,32 @@
                       :title line
                       :columns (tpl:main))))))
 
-(let ((title "Клеточные автоматы"))
-  (restas:define-route blog ("/post/:post-id")
-    (let* ((data (list title
-                       (menu)
-                       (tpl:main (list :title title :links "")))))
-      (destructuring-bind (headtitle navpoints content)
-          data
-        (tpl:root (list :headtitle headtitle
-                        :stat (tpl:stat)
-                        :navpoints navpoints
-                        :title title
-                        :columns (tpl:org (list :content "content"))
-                        ))))))
+(in-package #:rigidus)
 
-(def/route blog ("blog")
-  (let* ((content (tpl:onlisp))
-         (title "")
-         (menu-memo (menu)))
-    (render
-     (list title
-           menu-memo
-           (tpl:default
-               (list :title title
-                     :navpoints menu-memo
-                     :sections (list (list :level 1 :anchor "2332" :title "wefewfew"))
-                     :links ""
-                     :content (tpl:blog (list :title "wefewf"))))))))
+(let ((h-articles (make-hash-table :test #'equal)))
+   (def/route article ("articles/:strkey")
+     (multiple-value-bind (article isset)
+         (gethash strkey h-articles)
+       (if isset
+           (render article)
+           (let* ((filename (format nil "content/articles/~A.org" strkey))
+                  (truename (probe-file filename)))
+             (if (null truename)
+                 (page-404)
+                 (let ((data (parse-org truename)))
+                   (setf (orgdata-content data)
+                         (process-directive-make-list-by-category data h-articles "subst"))
+                   (destructuring-bind (headtitle navpoints)
+                       (list "title" (menu))
+                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                     :stat (tpl:stat)
+                                     :navpoints navpoints
+                                     :title (getf (orgdata-directives data) :title)
+                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+
+;; TODO: blog
 
 ;; plan file pages
-
-(defmacro def/route (name param &body body)
-  `(progn
-     (restas:define-route ,name ,param
-       ,@body)
-     (restas:define-route
-         ,(intern (concatenate 'string (symbol-name name) "/"))
-         ,(cons (concatenate 'string (car param) "/") (cdr param))
-       ,@body)))
-
 
 (def/route about ("about")
   (render #P"content/about.org"))
@@ -125,34 +102,10 @@
 (def/route aliens ("aliens")
   (render *cached-alien-page*))
 
-(in-package #:rigidus)
-
-(let ((h-articles (make-hash-table :test #'equal)))
-   (def/route article ("articles/:strkey")
-     (multiple-value-bind (article isset)
-         (gethash strkey h-articles)
-       (if isset
-           (render article)
-           (let* ((filename (format nil "content/articles/~A.org" strkey))
-                  (truename (probe-file filename)))
-             (if (null truename)
-                 (page-404)
-                 (let ((data (parse-org truename)))
-                   (setf (orgdata-content data)
-                         (process-directive-make-list-by-category data h-articles "subst"))
-                   (destructuring-bind (headtitle navpoints)
-                       (list "title" (menu))
-                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-                                     :stat (tpl:stat)
-                                     :navpoints navpoints
-                                     :title (getf (orgdata-directives data) :title)
-                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
-
-;; (render (show-article-from-hash "ecb" *articles*))
-
 (def/route alien ("alien/:strkey")
   (render (show-article-from-hash strkey *aliens*)))
 
+;; TODO
 (restas:define-route onlisp ("onlisp/doku.php")
   (let* ((content (tpl:onlisp))
          (title "Перевод книги Пола Грэма \"On Lisp\"")

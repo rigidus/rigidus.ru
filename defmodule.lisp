@@ -21,6 +21,15 @@
 (defmacro err (var)
   `(error (format nil "ERR:[~A]" (bprint ,var))))
 
+(defmacro def/route (name param &body body)
+  `(progn
+     (restas:define-route ,name ,param
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) "/"))
+         ,(cons (concatenate 'string (car param) "/") (cdr param))
+       ,@body)))
+
 (in-package #:rigidus)
 
 (defclass orgdata ()
@@ -51,8 +60,7 @@
   (let* ((content     (concatenate 'string (orgdata-content data)))
          (sections    (orgdata-sections data))
          (directives  (orgdata-directives data))
-         (title       (getf directives :title))
-         (menu-memo   (menu)))
+         (title       (getf directives :title)))
     (tpl:root (list :headtitle title
                     :stat (tpl:stat)
                     :navpoints (menu)
