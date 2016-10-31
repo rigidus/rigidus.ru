@@ -156,16 +156,16 @@
                                                  (let* ((orgdata     (gethash filename *blogs*))
                                                         (directives  (orgdata-directives orgdata))
                                                         (date        (getf directives :date)))
-                                                   (when (null date)
+                                                   (when (null date) ;; Если даты нет - ставим самую большую
                                                      (setf date "31.12.9999"))
-                                                   (setf (getf directives :timestamp)
+                                                   (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
                                                          (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
                                                              ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
                                                            (encode-universal-time  0 0 0 date month year 0)))
                                                    (setf (getf directives :content)
                                                          (orgdata-content orgdata))
                                                    (collect directives)))
-                                           #'(lambda (a b)
+                                           #'(lambda (a b) ;; сортировка - последние - вверху
                                                (> (getf a :timestamp)
                                                   (getf b :timestamp)))))))))))))
 
@@ -173,7 +173,7 @@
 
 ** Блог
 
-   Блог на главной странице представляет собой несколько последний
+   Блог на главной странице представляет собой несколько последни
    постов, содержимое которых лежит в org-файлах в папке
    /content/blogs/*.org
 
@@ -497,6 +497,100 @@
 
    #+END_SRC
 
+* Конечный автомат разбора орг-файлов
+
+  #+NAME: orgdata_fsm
+  #+BEGIN_SRC emacs-lisp :results output
+    (setf *fsm*
+          '((start (setf space-cnt 0)
+             ((spc         space         (incf space-cnt))
+              (tire        minus         )
+              (star        headstar      (setf head-cnt 0))
+              (at          dirkey        (set-empty dirkey-content))
+              (word        paragraph     (start-paragraph) (setf paragraph cur))
+              ;; (ret         start         (start-paragraph) (end-paragraph))
+              ))
+            (space
+             ((spc        space          (incf space-cnt))
+              (ret        start          (out empty-paragraph))
+              (tire       minus          )
+              ))
+            (minus
+             ((star       mode           )
+              (spc        ul          (open-list))
+             ))
+            (ul
+             ((not-ret    li          )
+              (ret        start          (close-list))
+             ))
+            (li (setf li-content cur)
+             ((not-ret    li          (cur+ li-content))
+              (ret        ul          (out li-content))
+             ))
+            (mode
+             ((not-ret    mode           )
+             (ret         start          )
+            ))
+            (headstar
+             ((star       headstar       (incf head-cnt))
+              (space      heading        )
+              ))
+            (heading
+             ((not-ret    heading        (cur+ head-content))
+              (ret        start          (out head-content head-cnt))
+             ))
+            (dirkey
+             ((word       dirkey         (cur+ dirkey-content))
+              (space      dirval         (set-empty dirval-content))
+             ))
+            (dirval
+             ((word       dirval         (cur+ dirval-content))
+              (ret        start          (out dirkey dirval))
+             ))
+            (paragraph
+             ((word-or-space  paragraph  (cur+ paragraph))
+              (ret       par_ret         )
+             ))
+            (par_ret
+             ((space     par_ret         (cur+ paragraph))
+              (ret       start           (out paragraph))
+              (word      paragraph       (cur+ paragrah))
+             ))
+          ))
+
+    (let ((pre-actions))
+      (mapcar #'(lambda (record)
+                  (let ((src (car record)))
+                    ;; Если у состояния есть входное действие - записываем pre-action
+                    (if (equal 3 (length record))
+                        (progn
+                          (push src pre-actions)
+                          (princ (format "%s [label=\"%s | %s\" shape=\"record\"];\n" src (cadr record) src)))
+                      (princ (format "%s [label=\"%s\" shape=\"box\"];\n" src src)))
+                    (mapcar #'(lambda (edge)
+                                (let ((op (cddr edge))
+                                      (dst (nth 1 edge)))
+                                  (case (length op)
+                                    ((0) (setf op ""))
+                                    ((1) (setf op (car op)))
+                                    (otherwise (setf op (append '(progn ) op))))
+                                  ;; Рисуем переход
+                                  (princ (format "%s -> %s [label =\"%s\" taillabel=\"%s\" labelfontcolor=\"red\" labelfontsize=\"12\"];\n"
+                                                 src dst op (nth 0 edge)))))
+                            (car (last record)))))
+              ,*fsm*))
+  #+END_SRC
+
+  #+BEGIN_SRC dot :file zzz.png :var input=orgdata_fsm :exports results
+    digraph G {
+      rankdir = LR;
+      $input
+    }
+  #+END_SRC
+
+  #+results:
+  [[file:zzz.png]]
+
 * Работа с org-файлами
 
   OrgMode - это режим редактирования и организации заметок,
@@ -645,6 +739,7 @@
   #+BEGIN_SRC lisp
     (in-package #:rigidus)
 
+    ;; Макрос использует внешние символы line и tail
     (defmacro find-command (str body &optional (replace '(setf line "ℕ")))
       `(when (equal 0 (search ,str line))
          (let ((tail (handler-case (subseq line (+ 1 (length ,str)))
@@ -652,9 +747,11 @@
            ,body
            ,replace)))
 
+    ;; Макрос использует внешние символы directives и tail
     (defmacro find-directive (directive)
-      `(find-command ,directive (setf (getf directives (intern (string-upcase (subseq ,directive 1)) :keyword))
-                                      (string-trim '(#\  #\tab #\Newline) tail))))
+      `(find-command ,directive
+                     (setf (getf directives (intern (string-upcase (subseq ,directive 1)) :keyword))
+                           (string-trim '(#\  #\tab #\Newline) tail))))
   #+END_SRC
 
   Также определим функцию =find-articles-by-category= которая
@@ -1505,9 +1602,6 @@
              <p>{$elt |noAutoescape}</p>{\n}
          {/foreach}
      {/template}
-
-
-
 
      {template default}
          <div class="pagecontent">
