@@ -48,16 +48,16 @@
                                              (let* ((orgdata     (gethash filename *blogs*))
                                                     (directives  (orgdata-directives orgdata))
                                                     (date        (getf directives :date)))
-                                               (when (null date)
+                                               (when (null date) ;; Если даты нет - ставим самую большую
                                                  (setf date "31.12.9999"))
-                                               (setf (getf directives :timestamp)
+                                               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
                                                      (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
                                                          ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
                                                        (encode-universal-time  0 0 0 date month year 0)))
                                                (setf (getf directives :content)
                                                      (orgdata-content orgdata))
                                                (collect directives)))
-                                       #'(lambda (a b)
+                                       #'(lambda (a b) ;; сортировка - последние - вверху
                                            (> (getf a :timestamp)
                                               (getf b :timestamp)))))))))))))
 

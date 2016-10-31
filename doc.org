@@ -500,16 +500,16 @@
 * Конечный автомат разбора орг-файлов
 
   #+NAME: orgdata_fsm
-  #+BEGIN_SRC emacs-lisp :results output
+  #+BEGIN_SRC emacs-lisp
     (setf *fsm*
           '((start (setf space-cnt 0)
-             ((spc         space         (incf space-cnt))
-              (tire        minus         )
-              (star        headstar      (setf head-cnt 0))
-              (at          dirkey        (set-empty dirkey-content))
-              (word        paragraph     (start-paragraph) (setf paragraph cur))
-              ;; (ret         start         (start-paragraph) (end-paragraph))
-              ))
+                   ((spc         space         (incf space-cnt))
+                    (tire        minus         )
+                    (star        headstar      (setf head-cnt 0))
+                    (at          dirkey        (set-empty dirkey-content))
+                    (word        paragraph     (start-paragraph) (setf paragraph cur))
+                    ;; (ret         start         (start-paragraph) (end-paragraph))
+                    ))
             (space
              ((spc        space          (incf space-cnt))
               (ret        start          (out empty-paragraph))
@@ -517,20 +517,20 @@
               ))
             (minus
              ((star       mode           )
-              (spc        ul          (open-list))
-             ))
+              (spc        ul             (open-list))
+              ))
             (ul
-             ((not-ret    li          )
+             ((not-ret    li             )
               (ret        start          (close-list))
-             ))
+              ))
             (li (setf li-content cur)
-             ((not-ret    li          (cur+ li-content))
-              (ret        ul          (out li-content))
-             ))
+                ((not-ret    li             (cur+ li-content))
+                 (ret        ul             (out li-content))
+                 ))
             (mode
              ((not-ret    mode           )
-             (ret         start          )
-            ))
+              (ret         start          )
+              ))
             (headstar
              ((star       headstar       (incf head-cnt))
               (space      heading        )
@@ -538,26 +538,29 @@
             (heading
              ((not-ret    heading        (cur+ head-content))
               (ret        start          (out head-content head-cnt))
-             ))
+              ))
             (dirkey
              ((word       dirkey         (cur+ dirkey-content))
               (space      dirval         (set-empty dirval-content))
-             ))
+              ))
             (dirval
              ((word       dirval         (cur+ dirval-content))
               (ret        start          (out dirkey dirval))
-             ))
+              ))
             (paragraph
              ((word-or-space  paragraph  (cur+ paragraph))
               (ret       par_ret         )
-             ))
+              ))
             (par_ret
              ((space     par_ret         (cur+ paragraph))
               (ret       start           (out paragraph))
               (word      paragraph       (cur+ paragrah))
-             ))
-          ))
+              ))
+            ))
+  #+END_SRC
 
+  #+NAME: orgdata_fsm
+  #+BEGIN_SRC emacs-lisp :results output
     (let ((pre-actions))
       (mapcar #'(lambda (record)
                   (let ((src (car record)))
@@ -590,6 +593,20 @@
 
   #+results:
   [[file:zzz.png]]
+
+
+  #+NAME: gen_parser
+  #+BEGIN_SRC emacs-lisp :exports none :results code pp
+    ;; Тут можно генерировать код по языку
+    *fsm*
+  #+END_SRC
+
+  #+NAME: event_entity
+  #+BEGIN_SRC lisp :tangle entityes.lisp :noweb tangle :exports none :padline no :comments link
+    ;; А тут мы вызываем генератор кода и записываем результат в файл
+    <<gen_parser()>>
+  #+END_SRC
+
 
 * Работа с org-файлами
 

@@ -3,6 +3,7 @@
 
 (in-package #:rigidus)
 
+;; Макрос использует внешние символы line и tail
 (defmacro find-command (str body &optional (replace '(setf line "ℕ")))
   `(when (equal 0 (search ,str line))
      (let ((tail (handler-case (subseq line (+ 1 (length ,str)))
@@ -10,9 +11,11 @@
        ,body
        ,replace)))
 
+;; Макрос использует внешние символы directives и tail
 (defmacro find-directive (directive)
-  `(find-command ,directive (setf (getf directives (intern (string-upcase (subseq ,directive 1)) :keyword))
-                                  (string-trim '(#\  #\tab #\Newline) tail))))
+  `(find-command ,directive
+                 (setf (getf directives (intern (string-upcase (subseq ,directive 1)) :keyword))
+                       (string-trim '(#\  #\tab #\Newline) tail))))
 
 (in-package #:rigidus)
 
