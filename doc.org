@@ -500,67 +500,62 @@
 * Конечный автомат разбора орг-файлов
 
   #+NAME: orgdata_fsm
-  #+BEGIN_SRC emacs-lisp
+  #+BEGIN_SRC emacs-lisp :results output
     (setf *fsm*
           '((start (setf space-cnt 0)
-                   ((spc         space         (incf space-cnt))
-                    (tire        minus         )
-                    (star        headstar      (setf head-cnt 0))
-                    (at          dirkey        (set-empty dirkey-content))
-                    (word        paragraph     (start-paragraph) (setf paragraph cur))
-                    ;; (ret         start         (start-paragraph) (end-paragraph))
-                    ))
+            ((ret                start         (out-empty-string))
+             (spc                space         (incf space-cnt))
+             (tire               minus         )
+             ;;   ;; (star        headstar      (setf head-cnt 0))
+             ;;   ;; (at          directive     (set-empty directive-content))
+             ;;   ;; (word        paragraph     (start-paragraph) (setf paragraph cur))
+             ))
             (space
-             ((spc        space          (incf space-cnt))
-              (ret        start          (out empty-paragraph))
-              (tire       minus          )
+             ((spc               space          (incf space-cnt))
+              (ret               start          (out-empty-string))
+              (tire              minus          )
+              ;; ...
               ))
             (minus
-             ((star       mode           )
-              (spc        ul             (open-list))
+             ((star              mode           )
+              ;; (spc               ul             (open-ul))
+              ;; ...
               ))
-            (ul
-             ((not-ret    li             )
-              (ret        start          (close-list))
-              ))
-            (li (setf li-content cur)
-                ((not-ret    li             (cur+ li-content))
-                 (ret        ul             (out li-content))
-                 ))
             (mode
-             ((not-ret    mode           )
-              (ret         start          )
+             ((not-ret           mode           )
+              (ret               start          )
               ))
-            (headstar
-             ((star       headstar       (incf head-cnt))
-              (space      heading        )
-              ))
-            (heading
-             ((not-ret    heading        (cur+ head-content))
-              (ret        start          (out head-content head-cnt))
-              ))
-            (dirkey
-             ((word       dirkey         (cur+ dirkey-content))
-              (space      dirval         (set-empty dirval-content))
-              ))
-            (dirval
-             ((word       dirval         (cur+ dirval-content))
-              (ret        start          (out dirkey dirval))
-              ))
-            (paragraph
-             ((word-or-space  paragraph  (cur+ paragraph))
-              (ret       par_ret         )
-              ))
-            (par_ret
-             ((space     par_ret         (cur+ paragraph))
-              (ret       start           (out paragraph))
-              (word      paragraph       (cur+ paragrah))
-              ))
+            ;; (ul            (set-empty acc-li)
+            ;;  ((not-ret           li             )
+            ;;   (ret               start          (close-ul))
+            ;;   ))
+            ;; (li            (cur+ li-content)
+            ;;  ((not-ret           li             )
+            ;;   (ret               ul             (out li-content))
+            ;;   ))
+            ;; (headstar
+            ;;  ((star       headstar       (incf head-cnt))
+            ;;   (space      heading        )
+            ;;   ))
+            ;; (heading
+            ;;  ((not-ret    heading        (cur+ head-content))
+            ;;   (ret        start          (out head-content head-cnt))
+            ;;   ))
+            ;; (directive
+            ;;  ((word-or-space     directive     (cur+ directive-content))
+            ;;   (ret               start         (out directive))
+            ;;   ))
+            ;; (paragraph
+            ;;  ((word-or-space  paragraph  (cur+ paragraph))
+            ;;   (ret       par_ret         )
+            ;;   ))
+            ;; (par_ret
+            ;;  ((space     par_ret         (cur+ paragraph))
+            ;;   (ret       start           (out paragraph))
+            ;;   (word      paragraph       (cur+ paragrah))
+            ;;   ))
             ))
-  #+END_SRC
 
-  #+NAME: orgdata_fsm
-  #+BEGIN_SRC emacs-lisp :results output
     (let ((pre-actions))
       (mapcar #'(lambda (record)
                   (let ((src (car record)))
@@ -604,7 +599,138 @@
   #+NAME: event_entity
   #+BEGIN_SRC lisp :tangle entityes.lisp :noweb tangle :exports none :padline no :comments link
     ;; А тут мы вызываем генератор кода и записываем результат в файл
+    (in-package #:moto)
+
     <<gen_parser()>>
+
+    (defparameter *fsm-test* "
+
+    -*- mode: org; fill-column: 95 -*-
+
+    ")
+    ;; @title Клеточные автоматы
+    ;; @category emacs
+
+    ;; Это могло бы быть интересным на следующем ITGM и достаточно
+    ;; функциональным для FProg-комьюнити.
+    ;; Особенно если описать все на хаскеле -
+    ;; заодно хороший повод в нем наконец разобраться.
+
+    ;; Можно было бы рассмотреть:
+    ;; - Жизнь Конвея
+    ;; - WireWorld Брайаном Сильверманом (особенно интересен в
+    ;;   в отношении применимости к проекту симуляции электронных
+    ;;   схем.
+    ;; - Алгоритм волновой трассировки Ли для поиска путей
+    ;;   (например, в двумерных играх, или для трассировки печатных плат,
+    ;;   что даже лучше)
+
+    ;; * Иерархическая структура
+
+    ;;   Планирую выложить целый раздел с практическими примерами
+    ;;   реализации основных часто используемых идей, чтобы не объяснять
+    ;;   базовые концепции.
+    ;;   К примеру, динамического программирования
+
+    ;; ** Ближайшие планы
+
+    ;;    Практика создания языков предметной области
+    ;;    - Слишком сложно чтобы быть правдой
+    ;;    - Построение визуальных представлений
+
+    ;;    Как устроены распределенные виртуальные машины
+    ;;    - Блокчейн и все-все-все
+    ;;    - Распределенное состояние
+
+    ;; ** Отдаленные планы
+
+    ;;    - Анализ изображений с использованием сверточных нейронных сетей
+    ;;    - Краткое введение в практику использования клеточных автоматов
+    ;;    - Регистры сдвига с линейной обратной связью (LFSR) и их применение
+    ;;    - Автоматическое построение оптимальных путей в графе
+    ;;    - Автоматизация доказательства корректности протоколов распределенного обмена сообщениями в P2P сетях
+    ;; ")
+    ;; "
+
+    (define-condition fsm-unknown-input (condition)
+      ((unexpected :initarg :unexpected :reader unexpected)
+       (state      :initarg :state      :reader state))
+      (:report (lambda (condition stream)
+                 (format stream "Unexpected character ~@C in state :~A"
+                         (unexpected condition)
+                         (state condition)))))
+
+    (defmacro out-empty-string ()
+      `(setf rs (concatenate 'string rs (string #\Newline) "<br />") ))
+
+    (defmacro ret ()
+      `(equal cur #\Newline))
+
+    (defmacro spc ()
+      `(equal cur #\Space))
+
+    (defmacro star ()
+      `(equal cur #\*))
+
+    (defmacro tire ()
+      `(equal cur #\-))
+
+    (defmacro not-ret ()
+      `(not (equal cur #\Newline)))
+
+    (let ((pos 0)
+          (state :start)
+          (space-cnt 0)
+          (rs ""))
+      (defun get-next ()
+        (prog1 (setf cur (coerce (subseq *fsm-test* pos (+ 1 pos)) 'character))
+          (format t "~c" cur)
+          (incf pos)))
+      (defun fsm ()
+        (tagbody
+           revert
+           (let ((cur (get-next)))
+             (ecase state
+               (:start (progn
+                         (setf space-cnt 0)
+                         (format t "~%:~A [~A] (~A)~%" state cur *fsm-test*)
+                         (cond ((ret)                (progn
+                                                       (out-empty-string)
+                                                       (setf state :start) (go revert)))
+                               ((spc)                (progn
+                                                       (incf space-cnt)
+                                                       (setf state :space) (go revert)))
+                               ((tire)               (progn
+                                                       (setf state :minus) (go revert)))
+                               (t (error 'fsm-unknown-input :unexpected cur :state state)))))
+               (:space (progn
+                         (format t "~%:~A [~A] (~A)~%" state cur *fsm-test*)
+                         (cond ((spc)                (progn
+                                                       (incf space-cnt)
+                                                       (setf state :space) (go revert)))
+                               ((ret)                (progn
+                                                       (out-empty-string)
+                                                       (setf state :start) (go revert)))
+                               ((tire)               (progn
+                                                       (setf state :minus) (go revert)))
+                               (t (error 'fsm-unknown-input :unexpected cur :state state)))))
+               (:minus (progn
+                         (format t "~%:~A [~A] (~A)~%" state cur *fsm-test*)
+                         (cond ((star)               (progn
+                                                       (setf state :mode) (go revert)))
+                               (t (error 'fsm-unknown-input :unexpected cur :state state)))))
+               (:mode  (progn
+                         (format t "~%:~A [~A] (~A)~%" state cur *fsm-test*)
+                         (cond ((not-ret)            (progn
+                                                       (setf state :mode) (go revert)))
+                               ((ret)                (progn
+                                                       (setf state :start) (go revert)))
+                               (t (error 'fsm-unknown-input :unexpected cur :state state)))))
+               ))
+           (go revert)))
+        (handler-case (fsm)
+          (SB-KERNEL:BOUNDING-INDICES-BAD-ERROR () rs))
+        rs)
   #+END_SRC
 
 
