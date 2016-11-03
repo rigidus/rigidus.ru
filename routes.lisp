@@ -16,7 +16,7 @@
                     :stat (tpl:stat)
                     :navpoints (menu)
                     :title title
-                    :columns "<br/><br /><br/><br /><h2>404 Not Found</h2><br/><br /><br/><br />"))))
+                    :columns "<br/><br /><br/><br /><h2>404 Not Found</h2><br/><br />(*(+(*)(*(+(*)(*)(*)(*)(*))(+(*)(*)(*)(*)(*))(+(*)(*)(*)(*))))(+(*)(*)(*)(*)))<br/><br />"))))
 
 (restas:define-route not-found-route ("*any")
   (restas:abort-route-handler
