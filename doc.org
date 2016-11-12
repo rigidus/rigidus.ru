@@ -134,6 +134,16 @@
   #+BEGIN_SRC lisp
     (in-package #:rigidus)
 
+    (defun extract-org-content-from-file (filename)
+      (let* ((raw (alexandria:read-file-into-string filename))
+             (starter "<div id=\"content\">")
+             (ender   "<div id=\"postamble\" class=\"status\">")
+             (begin (search starter raw))
+             (end   (search ender   raw))
+             (content (subseq raw begin end))
+             (pos/div (search "</div>" content :from-end t)))
+        (subseq content (length starter) pos/div)))
+
     (restas:define-route main ("/")
       (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
              (line (nth (random (length lines)) lines))
@@ -152,23 +162,45 @@
                             :articles
                             (tpl:mainposts
                              (list
-                              :posts (sort (iter (for filename in (hash-table-keys *blogs*))
-                                                 (let* ((orgdata     (gethash filename *blogs*))
-                                                        (directives  (orgdata-directives orgdata))
-                                                        (date        (getf directives :date)))
-                                                   (when (null date) ;; Если даты нет - ставим самую большую
-                                                     (setf date "31.12.9999"))
-                                                   (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
-                                                         (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
-                                                             ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
-                                                           (encode-universal-time  0 0 0 date month year 0)))
-                                                   (setf (getf directives :content)
-                                                         (orgdata-content orgdata))
-                                                   (collect directives)))
-                                           #'(lambda (a b) ;; сортировка - последние - вверху
-                                               (> (getf a :timestamp)
-                                                  (getf b :timestamp)))))))))))))
+                              :posts ;; (sort (iter (for filename in (hash-table-keys *blogs*))
+                                     ;;             (let* ((orgdata     (gethash filename *blogs*))
+                                     ;;                    (directives  (orgdata-directives orgdata))
+                                     ;;                    (date        (getf directives :date)))
+                                     ;;               (when (null date) ;; Если даты нет - ставим самую большую
+                                     ;;                 (setf date "31.12.9999"))
+                                     ;;               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
+                                     ;;                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
+                                     ;;                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
+                                     ;;                       (encode-universal-time  0 0 0 date month year 0)))
+                                     ;;               (setf (getf directives :content)
+                                     ;;                     (orgdata-content orgdata))
+                                     ;;               (collect directives)))
+                                     ;;       #'(lambda (a b) ;; сортировка - последние - вверху
+                                     ;;           (> (getf a :timestamp)
+                                     ;;              (getf b :timestamp))))
+                              (mapcar #'(lambda (x)
+                                          (list :date "" :content
+                                                (cl-ppcre:regex-replace
+                                                 "<h1 class=\"title\">(.+)</h1>"
+                                                 x
+                                                 #'(lambda (match &rest registers)
+                                                     (format nil "<h2>~A</h2>" (car registers)))
+                                                 :simple-calls t)))
+                                      (mapcar #'extract-org-content-from-file
+                                              (get-directory-contents
+                                               "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
+                              )))))))))
 
+    (print
+    (funcall #'(lambda (x)
+                (list :date "" :content
+                      (cl-ppcre:regex-replace
+                       "<h1 class=\"title\">(.+)</h1>"
+                       x
+                       #'(lambda (match &rest registers)
+                           (format nil "<h2>~A</h2>" (car registers)))
+                       :simple-calls t)))
+            (extract-org-content-from-file "/home/rigidus/repo/rigidus.ru/public_html/blogs/announce.html")))
   #+END_SRC
 
 ** Блог
@@ -1559,7 +1591,6 @@
 
      (defun menu ()
        (list (list :link "/" :title "Главная")
-             (list :link "/about" :title "Об авторе")
              ;; Тут надо резюме
              ;; (list :link "/blog/" :title "Блог")
              (list :link "/articles/" :title "Статьи")

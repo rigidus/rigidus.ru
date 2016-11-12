@@ -46,21 +46,21 @@
            :simple-calls t))
     data))
 
-(defun load-org ()
-  ;; *articles* *aliens* *asdf*
-  (cache-section *articles* "content/articles/")
-  (cache-section *aliens*   "content/aliens/")
-  (cache-section *blogs*   "content/blogs/")
-  ;; cached pages
-  (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
-  (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
-  (setf *cached-blogs-page*    (cache-page #P"content/blogs.org"    *blogs*   "/blogs/")))
+;; (defun load-org ()
+;;   ;; *articles* *aliens* *asdf*
+;;   (cache-section *articles* "content/articles/")
+;;   (cache-section *aliens*   "content/aliens/")
+;;   (cache-section *blogs*   "content/blogs/")
+;;   ;; cached pages
+;;   (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
+;;   (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
+;;   (setf *cached-blogs-page*    (cache-page #P"content/blogs.org"    *blogs*   "/blogs/")))
 
 
-(load-org)
+;; (load-org)
 
-(orgdata-directives (gethash "asdf-foreword" *aliens*))
-(orgdata-directives (gethash "asdf-architecture" *aliens*))
+;; (orgdata-directives (gethash "asdf-foreword" *aliens*))
+;; (orgdata-directives (gethash "asdf-architecture" *aliens*))
 
 ;; start
 (restas:start '#:rigidus :port 9993)

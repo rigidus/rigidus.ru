@@ -27,6 +27,7 @@
 (in-package #:rigidus)
 
 (restas:define-route main ("/")
+  "wef")
   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
          (line (nth (random (length lines)) lines))
          (data (list "Программирование - как искусство"
@@ -64,68 +65,68 @@
 
 (in-package #:rigidus)
 
-(let ((h-articles (make-hash-table :test #'equal)))
-   (def/route article ("articles/:strkey")
-     (multiple-value-bind (article isset)
-         (gethash strkey h-articles)
-       (if isset
-           (render article)
-           (let* ((filename (format nil "content/articles/~A.org" strkey))
-                  (truename (probe-file filename)))
-             (if (null truename)
-                 (page-404)
-                 (let ((data (parse-org truename)))
-                   (setf (orgdata-content data)
-                         (process-directive-make-list-by-category data h-articles "subst"))
-                   (destructuring-bind (headtitle navpoints)
-                       (list "title" (menu))
-                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-                                     :stat (tpl:stat)
-                                     :navpoints navpoints
-                                     :title (getf (orgdata-directives data) :title)
-                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+;; (let ((h-articles (make-hash-table :test #'equal)))
+;;    (def/route article ("articles/:strkey")
+;;      (multiple-value-bind (article isset)
+;;          (gethash strkey h-articles)
+;;        (if isset
+;;            (render article)
+;;            (let* ((filename (format nil "content/articles/~A.org" strkey))
+;;                   (truename (probe-file filename)))
+;;              (if (null truename)
+;;                  (page-404)
+;;                  (let ((data (parse-org truename)))
+;;                    (setf (orgdata-content data)
+;;                          (process-directive-make-list-by-category data h-articles "subst"))
+;;                    (destructuring-bind (headtitle navpoints)
+;;                        (list "title" (menu))
+;;                      (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+;;                                      :stat (tpl:stat)
+;;                                      :navpoints navpoints
+;;                                      :title (getf (orgdata-directives data) :title)
+;;                                      :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
 ;; TODO: blog
 
 ;; plan file pages
 
-(def/route about ("about")
-  (render #P"content/about.org"))
+;; (def/route about ("about")
+;;   (render #P"content/about.org"))
 
-(def/route resources ("resources")
-  (render #P"content/resources.org"))
+;; (def/route resources ("resources")
+;;   (render #P"content/resources.org"))
 
-(def/route faq ("faq")
-  (render #P"content/faq.org"))
+;; (def/route faq ("faq")
+;;   (render #P"content/faq.org"))
 
-(def/route contacts ("contacts")
-  (render #P"content/contacts.org"))
+;; (def/route contacts ("contacts")
+;;   (render #P"content/contacts.org"))
 
-(def/route radio ("radio")
-  (render #P"content/radio.org"))
+;; (def/route radio ("radio")
+;;   (render #P"content/radio.org"))
 
 
 ;; showing articles
 
-(defun show-article-from-hash (strkey hash)
-  (multiple-value-bind (article isset)
-      (gethash strkey hash)
-    (unless isset
-      (restas:abort-route-handler
-       (page-404)
-       :return-code hunchentoot:+http-not-found+
-       :content-type "text/html"))
-    article))
+;; (defun show-article-from-hash (strkey hash)
+;;   (multiple-value-bind (article isset)
+;;       (gethash strkey hash)
+;;     (unless isset
+;;       (restas:abort-route-handler
+;;        (page-404)
+;;        :return-code hunchentoot:+http-not-found+
+;;        :content-type "text/html"))
+;;     article))
 
 
-(def/route articles ("articles")
-  (render *cached-articles-page*))
+;; (def/route articles ("articles")
+;;   (render *cached-articles-page*))
 
-(def/route aliens ("aliens")
-  (render *cached-alien-page*))
+;; (def/route aliens ("aliens")
+;;   (render *cached-alien-page*))
 
-(def/route alien ("alien/:strkey")
-  (render (show-article-from-hash strkey *aliens*)))
+;; (def/route alien ("alien/:strkey")
+;;   (render (show-article-from-hash strkey *aliens*)))
 
 ;; TODO
 ;; (restas:define-route onlisp ("onlisp/doku.php")
