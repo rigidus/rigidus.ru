@@ -246,17 +246,23 @@ Cтроит ~sitemap~ и ~theindex~ если это указано в парам
 
 определена в ~org-mode/_site/lisp/ox-publish.el~
 
+#+BEGIN_SRC emacs-lisp
+  (defun org-publish-org-to (backend filename extension plist &optional pub-dir)
+     ...)
+#+END_SRC
+
+
 вызывает =org-export-to-file=
 
 ** =org-export-to-file=
+
+Определена в ~/repo/org-mode/lisp/ox.el~
 
 #+BEGIN_SRC emacs-lisp
   (defun org-export-to-file (backend file &optional async subtreep visible-only body-only
                                      ext-plist post-process)
     ...)
 #+END_SRC
-
-Определена в ~/repo/org-mode/lisp/ox.el~
 
 Вызывает =org-export-as= с выводом в указанный файл.
 
@@ -291,7 +297,7 @@ nil. Он должен возвращать имя файла, или nil. Эк�
 #+END_SRC
 
 Функция возвращает либо имя файла,
-возвращенное =POST-PROCESS= или FILE "
+возвращенное =POST-PROCESS= или ~FILE~
 
 ** =org-export-as=
 
@@ -462,8 +468,8 @@ Org buffer имеет =org-data= как тип и nil как свойства.
 Определено в файле ~orgmode/_site/lisp/org-element.el~
 
 Принимает параметры:
-- restriction - список объектов наследников, которые разрешены в
-  текущем объекте
+- restriction - список объектов как символов, которые должны быть
+  найдены позже
 
 Возвращает следующий в буфере объект или nil
 
@@ -488,31 +494,52 @@ Org buffer имеет =org-data= как тип и nil как свойства.
 - ~structure~ - если не определна, но ~MODE~ установлен в ~item~ - то
   будет вычислена
 
+Парсит элемент начиная с текущей позиции и по ~LIMIT~
+
 Возвращает lisp-представление элемента вида (TYPE PROPS), где TYPE -
 тип элемента, а PROPS - plist свойств, ассоцированных с элементом.
 
 Возможные типы опредены в ~org-element-all-elements~
 
-Сущестуют следуюищие варианты элементов, для каждого из которых
-вызывается соответствующий парсер:
-- Item
-- Table Row
-- Node Property
+Сущестуют следуюищие режимы, передаваемые в параметре ~mode~, для
+каждого из которых вызывается соответствующий парсер:
+- Item - ~org-element-item-parser~
+- Table Row - ~org-element-table-row-parser~
+- Node Property - ~org-element-node-property-parser~
 - Headline
-- Section
-- Planning
-- Property Drawer
+  Вызывается функция ~org-at-heading-p~, которая возвращает T если
+  текущая позиция находится на заголовке. Для этого она перемещается в
+  начало строки и проверяет на совпадение с регуляркой
+  ~outline-regexp~. Все это происходит внутри ограничений, заданных
+  ~LIMIT~. Если заголовок найден - вызывается парсер ~org-element-headline-parser~
+- Section - ~org-element-section-parser~
+- First Section - ~org-element-section-parser~
+- Planning - ~org-element-planning-parser~
+- Property Drawer - ~org-element-property-drawer-parser~
 - Footnone?
-- Clock
-- InlineTask
-- Affiliated Keywords
-  - Latex Environment
-  - Drawer and Property Drawer
-  - Fixed Width
-  - Inline Comments, Blocks, Babel Calls, Dynamic Blocks and Keywords
-  - Footnote Definition
-  - Horizontal Rule
-  - Diary Sexp
-  - Table
-  - List
-  - Default Element: Paragraph
+- Clock - ~org-element-clock-parser~
+- InlineTask - ~org-element-inlinetask-parser~
+
+Если ничего из вышеперечисленного не сработало, значит мы имеем дело с
+"Affiliated Keywords" и тогда чтобы его получить мы вызываем
+~org-element--collect-affiliated-keywords~ и анализируем на совпадения:
+- Latex Environment
+- Drawer and Property Drawer
+- Fixed Width
+- Inline Comments, Blocks, Babel Calls, Dynamic Blocks and Keywords
+- Footnote Definition
+- Horizontal Rule
+- Diary Sexp
+- Table
+- List
+- Default Element: Paragraph
+
+* Парсеры
+
+** =org-element-headline-parser=
+
+#+BEGIN_SRC emacs-lisp
+(regexp-opt
+	   (list org-closed-string org-deadline-string org-scheduled-string)
+	   t)
+#+END_SRC

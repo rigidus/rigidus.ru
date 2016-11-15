@@ -41,14 +41,13 @@
 
 ;; Рендер для списков
 (defmethod render ((data list))
-  "Under Construction")
-;; (destructuring-bind (headtitle navpoints content)
-;;       data
-;;     (tpl:root (list :headtitle headtitle
-;;                     :stat (tpl:stat)
-;;                     :navpoints navpoints
-;;                     :title headtitle
-;;                     :columns (tpl:org (list :content content))))))
+  (destructuring-bind (headtitle navpoints content)
+      data
+    (tpl:root (list :headtitle headtitle
+                    :stat (tpl:stat)
+                    :navpoints navpoints
+                    :title headtitle
+                    :columns (tpl:org (list :content content))))))
 
 ;; Рендер для pathname
 (defmethod render ((file pathname))

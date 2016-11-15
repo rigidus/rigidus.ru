@@ -26,8 +26,17 @@
 
 (in-package #:rigidus)
 
+(defun extract-org-content-from-file (filename)
+  (let* ((raw (alexandria:read-file-into-string filename))
+         (starter "<div id=\"content\">")
+         (ender   "<div id=\"postamble\" class=\"status\">")
+         (begin (search starter raw))
+         (end   (search ender   raw))
+         (content (subseq raw begin end))
+         (pos/div (search "</div>" content :from-end t)))
+    (subseq content (length starter) pos/div)))
+
 (restas:define-route main ("/")
-  "wef")
   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
          (line (nth (random (length lines)) lines))
          (data (list "Программирование - как искусство"
@@ -45,88 +54,112 @@
                         :articles
                         (tpl:mainposts
                          (list
-                          :posts (sort (iter (for filename in (hash-table-keys *blogs*))
-                                             (let* ((orgdata     (gethash filename *blogs*))
-                                                    (directives  (orgdata-directives orgdata))
-                                                    (date        (getf directives :date)))
-                                               (when (null date) ;; Если даты нет - ставим самую большую
-                                                 (setf date "31.12.9999"))
-                                               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
-                                                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
-                                                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
-                                                       (encode-universal-time  0 0 0 date month year 0)))
-                                               (setf (getf directives :content)
-                                                     (orgdata-content orgdata))
-                                               (collect directives)))
-                                       #'(lambda (a b) ;; сортировка - последние - вверху
-                                           (> (getf a :timestamp)
-                                              (getf b :timestamp)))))))))))))
+                          :posts ;; (sort (iter (for filename in (hash-table-keys *blogs*))
+                                 ;;             (let* ((orgdata     (gethash filename *blogs*))
+                                 ;;                    (directives  (orgdata-directives orgdata))
+                                 ;;                    (date        (getf directives :date)))
+                                 ;;               (when (null date) ;; Если даты нет - ставим самую большую
+                                 ;;                 (setf date "31.12.9999"))
+                                 ;;               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
+                                 ;;                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
+                                 ;;                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
+                                 ;;                       (encode-universal-time  0 0 0 date month year 0)))
+                                 ;;               (setf (getf directives :content)
+                                 ;;                     (orgdata-content orgdata))
+                                 ;;               (collect directives)))
+                                 ;;       #'(lambda (a b) ;; сортировка - последние - вверху
+                                 ;;           (> (getf a :timestamp)
+                                 ;;              (getf b :timestamp))))
+                          (mapcar #'(lambda (x)
+                                      (list :date "" :content
+                                            (cl-ppcre:regex-replace
+                                             "<h1 class=\"title\">(.+)</h1>"
+                                             x
+                                             #'(lambda (match &rest registers)
+                                                 (format nil "<h2>~A</h2>" (car registers)))
+                                             :simple-calls t)))
+                                  (mapcar #'alexandria:read-file-into-string
+                                          (get-directory-contents
+                                           "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
+                          )))))))))
 
+(print
+(funcall #'(lambda (x)
+            (list :date "" :content
+                  (cl-ppcre:regex-replace
+                   "<h1 class=\"title\">(.+)</h1>"
+                   x
+                   #'(lambda (match &rest registers)
+                       (format nil "<h2>~A</h2>" (car registers)))
+                   :simple-calls t)))
+        (extract-org-content-from-file "/home/rigidus/repo/rigidus.ru/public_html/blogs/announce.html")))
 
 (in-package #:rigidus)
 
-;; (let ((h-articles (make-hash-table :test #'equal)))
-;;    (def/route article ("articles/:strkey")
-;;      (multiple-value-bind (article isset)
-;;          (gethash strkey h-articles)
-;;        (if isset
-;;            (render article)
-;;            (let* ((filename (format nil "content/articles/~A.org" strkey))
-;;                   (truename (probe-file filename)))
-;;              (if (null truename)
-;;                  (page-404)
-;;                  (let ((data (parse-org truename)))
-;;                    (setf (orgdata-content data)
-;;                          (process-directive-make-list-by-category data h-articles "subst"))
-;;                    (destructuring-bind (headtitle navpoints)
-;;                        (list "title" (menu))
-;;                      (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-;;                                      :stat (tpl:stat)
-;;                                      :navpoints navpoints
-;;                                      :title (getf (orgdata-directives data) :title)
-;;                                      :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+(let ((h-articles (make-hash-table :test #'equal)))
+   (def/route article ("articles/:strkey")
+     (multiple-value-bind (article isset)
+         (gethash strkey h-articles)
+       (if isset
+           (render article)
+           (let* ((filename (format nil "content/articles/~A.org" strkey))
+                  (truename (probe-file filename)))
+             (if (null truename)
+                 (page-404)
+                 (let ((data (parse-org truename)))
+                   (setf (orgdata-content data)
+                         (process-directive-make-list-by-category data h-articles "subst"))
+                   (destructuring-bind (headtitle navpoints)
+                       (list "title" (menu))
+                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+                                     :stat (tpl:stat)
+                                     :navpoints navpoints
+                                     :title (getf (orgdata-directives data) :title)
+                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
 ;; TODO: blog
 
 ;; plan file pages
 
-;; (def/route about ("about")
-;;   (render #P"content/about.org"))
+(def/route about ("about")
+  (render #P"org/about.org"))
 
-;; (def/route resources ("resources")
-;;   (render #P"content/resources.org"))
+(def/route resources ("resources")
+  (render #P"org/resources.org"))
 
-;; (def/route faq ("faq")
-;;   (render #P"content/faq.org"))
+(def/route faq ("faq")
+  (render #P"org/faq.org"))
 
-;; (def/route contacts ("contacts")
-;;   (render #P"content/contacts.org"))
+(def/route contacts ("contacts")
+  (render #P"org/contacts.org"))
 
-;; (def/route radio ("radio")
-;;   (render #P"content/radio.org"))
+(def/route radio ("radio")
+  (render #P"org/radio.org"))
 
+(def/route radio ("investigation")
+  (tpl:orgfile (list :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/blogs/investigation.html"))))
 
 ;; showing articles
 
-;; (defun show-article-from-hash (strkey hash)
-;;   (multiple-value-bind (article isset)
-;;       (gethash strkey hash)
-;;     (unless isset
-;;       (restas:abort-route-handler
-;;        (page-404)
-;;        :return-code hunchentoot:+http-not-found+
-;;        :content-type "text/html"))
-;;     article))
+(defun show-article-from-hash (strkey hash)
+  (multiple-value-bind (article isset)
+      (gethash strkey hash)
+    (unless isset
+      (restas:abort-route-handler
+       (page-404)
+       :return-code hunchentoot:+http-not-found+
+       :content-type "text/html"))
+    article))
 
 
-;; (def/route articles ("articles")
-;;   (render *cached-articles-page*))
+(def/route articles ("articles")
+  (render *cached-articles-page*))
 
-;; (def/route aliens ("aliens")
-;;   (render *cached-alien-page*))
+(def/route aliens ("aliens")
+  (render *cached-alien-page*))
 
-;; (def/route alien ("alien/:strkey")
-;;   (render (show-article-from-hash strkey *aliens*)))
+(def/route alien ("alien/:strkey")
+  (render (show-article-from-hash strkey *aliens*)))
 
 ;; TODO
 ;; (restas:define-route onlisp ("onlisp/doku.php")
