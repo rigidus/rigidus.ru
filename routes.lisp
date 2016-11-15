@@ -1,4 +1,4 @@
-;; [[file:doc.org::*Страница robots.txt][routes]]
+;; [[file:doc.org::*Страница второго уровня][routes]]
 (in-package #:rigidus)
 
 (defclass rigidus-render () ())
@@ -83,17 +83,6 @@
                                            "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
                           )))))))))
 
-(print
-(funcall #'(lambda (x)
-            (list :date "" :content
-                  (cl-ppcre:regex-replace
-                   "<h1 class=\"title\">(.+)</h1>"
-                   x
-                   #'(lambda (match &rest registers)
-                       (format nil "<h2>~A</h2>" (car registers)))
-                   :simple-calls t)))
-        (extract-org-content-from-file "/home/rigidus/repo/rigidus.ru/public_html/blogs/announce.html")))
-
 (in-package #:rigidus)
 
 (let ((h-articles (make-hash-table :test #'equal)))
@@ -122,6 +111,13 @@
 ;; plan file pages
 
 (def/route about ("about")
+  ;; (tpl:root (list :headtitle "headtitle"
+  ;;                 :stat (tpl:stat)
+  ;;                 :navpoints (menu)
+  ;;                 :title "headtitle"
+  ;;                 :columns (tpl:org (list :content
+  ;;                                         (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))
+  ;;                                         ))))
   (render #P"org/about.org"))
 
 (def/route resources ("resources")

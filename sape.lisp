@@ -122,15 +122,15 @@
 
 (defun load-org ()
   ;; *articles* *aliens* *asdf*
-  (cache-section *articles* "content/articles/")
-  (cache-section *aliens*   "content/aliens/")
+  (cache-section *articles* "org/articles/")
+  (cache-section *aliens*   "org/aliens/")
   (in-package #:rigidus)
   
   (cache-section *blogs* "content/blogs/")
   ;; cached pages
-  (setf *cached-articles-page* (cache-page #P"content/articles.org" *articles* "/articles/"))
-  (setf *cached-alien-page*    (cache-page #P"content/alien.org"    *aliens*   "/alien/"))
-  (setf *cached-blogs-page*    (cache-page #P"content/blogs.org"    *blogs*   "/blogs/")))
+  (setf *cached-articles-page* (cache-page #P"org/articles.org" *articles* "/articles/"))
+  (setf *cached-alien-page*    (cache-page #P"org/alien.org"    *aliens*   "/alien/"))
+  (setf *cached-blogs-page*    (cache-page #P"org/blogs.org"    *blogs*   "/blogs/")))
 
 (load-org)
 
