@@ -137,7 +137,7 @@
   (render #P"org/radio.org"))
 
 (def/route radio ("investigation")
-  (tpl:orgfile (list :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/blogs/investigation.html"))))
+  (tpl:orgfile (list :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))
 
 ;; showing articles
 
