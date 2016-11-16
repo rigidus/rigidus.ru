@@ -110,15 +110,29 @@
 
 ;; plan file pages
 
+
+(let* ((file-content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
+       (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
+       (toc          (ppcre:scan-to-strings toc-regexp file-content))
+       (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
+       (w/o          (ppcre:scan-to-strings w/o-regexp file-content)))
+  w/o)
+
 (def/route about ("about")
-  ;; (tpl:root (list :headtitle "headtitle"
-  ;;                 :stat (tpl:stat)
-  ;;                 :navpoints (menu)
-  ;;                 :title "headtitle"
-  ;;                 :columns (tpl:org (list :content
-  ;;                                         (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))
-  ;;                                         ))))
-  (render #P"org/about.org"))
+  (let* ((title "About")
+         (file-content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
+         (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
+         (toc          (ppcre:scan-to-strings toc-regexp file-content))
+         (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
+         (w/o          (ppcre:regex-replace w/o-regexp file-content "")))
+    (tpl:root (list :headtitle title
+                    :stat (tpl:stat)
+                    :navpoints (menu)
+                    :title title
+                    :columns (tpl:org (list :title title
+                                            :content w/o
+                                            :toc toc))))))
+  ;; (render #P"org/about.org")
 
 (def/route resources ("resources")
   (render #P"org/resources.org"))

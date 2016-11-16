@@ -65,7 +65,7 @@
 ;; (defparameter *js-path*
 ;;   (format nil "~A~A"
 ;;           (namestring (user-homedir-pathname))
-;;           (format nil "~A/~A/js/"
+;;           (format nil '"~A/~A/js/"
 ;;                   *repo-folder*
 ;;                   *prj-folder*)))
 
