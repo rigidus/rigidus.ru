@@ -75,8 +75,6 @@
         (list :link "/articles/" :title "Статьи")
         (list :link "/aliens/" :title "Материалы")
         (list :link "/resources/" :title "Ресурсы")
-        (list :link "/faq/" :title "FAQ")
-        ;; (list :link "/job/" :title "О, работа!")
         (list :link "/contacts" :title "Контакты")))
 
 (in-package #:rigidus)

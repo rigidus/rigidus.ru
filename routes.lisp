@@ -133,11 +133,8 @@
 (def/route aliens ("aliens")
   (render-public "/home/rigidus/repo/rigidus.ru/public_html/aliens.html"))
 
-;; (def/route resources ("resources")
-;;   (render #P"org/resources.org"))
-
-;; (def/route faq ("faq")
-;;   (render #P"org/faq.org"))
+(def/route resources ("resources")
+  (render-public "/home/rigidus/repo/rigidus.ru/public_html/resources.html"))
 
 ;; (def/route contacts ("contacts")
 ;;   (render #P"org/contacts.org"))
