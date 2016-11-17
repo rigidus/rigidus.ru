@@ -19,16 +19,16 @@
 
 (in-package #:rigidus)
 
-(defun find-articles-by-category (category global-var-hash subst)
-  "Возвращает все статьи, у которых @category соотвествует параметру"
-  (sort (iter (for filename in (hash-table-keys global-var-hash))
-              (let ((directives (orgdata-directives (gethash filename global-var-hash))))
-                (when (string= category (getf directives :category))
-                  (collect (list :title (getf directives :title)
-                                 :link  (concatenate 'string subst filename)
-                                 :sort  (getf directives :sort))))))
-        #'string<
-        :key #'(lambda (x) (getf x :title))))
+;; (defun find-articles-by-category (category global-var-hash subst)
+;;   "Возвращает все статьи, у которых @category соотвествует параметру"
+;;   (sort (iter (for filename in (hash-table-keys global-var-hash))
+;;               (let ((directives (orgdata-directives (gethash filename global-var-hash))))
+;;                 (when (string= category (getf directives :category))
+;;                   (collect (list :title (getf directives :title)
+;;                                  :link  (concatenate 'string subst filename)
+;;                                  :sort  (getf directives :sort))))))
+;;         #'string<
+;;         :key #'(lambda (x) (getf x :title))))
 
 (in-package #:rigidus)
 

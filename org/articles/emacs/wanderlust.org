@@ -1,0 +1,154 @@
+#+TITLE: Wanderlust. Подключаем почту к Emacs-у
+
+Теперь, когда у нас есть в Емаксе мессенджер, никто не мешает
+подключить туда же и почту. Для Емакса написано несколько хороших
+клиентов, но я пока попробовал только WanderLust. Он оказался очень
+удобным и у меня пока нет желания переходить куда-то еще. Итак, начнем
+с установки:
+
+* Установка
+
+<source>
+$ sudo apt-get install wl
+</source>
+
+У wanderlust-a неслабых размеров конфиг, причем начинать надо с
+конфигурирования почтовых ящиков в специальном файле ~/.folder. Вот
+его содержимое (имена ящиков я заменил, чтобы спаммеры не пронюхали :):
+
+<source>
+rigidus@gmail.com {
+	%inbox:rigidus@imap.gmail.com:993!         "inbox"
+}
+avenger@yandex.ru {
+    %inbox:avenger@imap.yandex.ru:993!            "inbox"
+    %alfa:avenger@imap.yandex.ru:993!             "alfa"
+    %alfa-order:avenger@imap.yandex.ru:993!       "alfa-order"
+    %ashmanov:avenger@imap.yandex.ru:993!         "ashmanov"
+    %errors:avenger@imap.yandex.ru:993!           "errors"
+    %job-list:avenger@imap.yandex.ru:993!         "job-list"
+    %lj:avenger@imap.yandex.ru:993!               "lj"
+    %self:avenger@imap.yandex.ru:993!             "self"
+    %vkontakte:avenger@imap.yandex.ru:993!        "vkontakte"
+    %work:avenger@imap.yandex.ru:993!             "work"
+}
+</source>
+
+Как видите все imap папки указываются в специальном
+формате. wanderlist так-же поддерживает и pop3, так что если у кого
+есть конфиг - welcome в комментарии. А теперь посмотрим, как
+конфигурируется все это добро в init.el
+
+* Конфигурирование
+
+<source>
+;; http://www.gohome.org/wl/doc/wl_95.html#SEC95
+;; http://box.matto.nl/emacsgmail.html
+;; http://www.emacswiki.org/emacs/hgw-init-wl.el
+(autoload 'wl "wl" "Wanderlust" t)
+(autoload 'wl-other-frame "wl" "Wanderlust on new frame." t)
+(autoload 'wl-draft "wl-draft" "Write draft with Wanderlust." t)
+
+(setq mime-edit-split-message nil)
+
+(setq wl-from "rigidus ")
+(setq elmo-imap4-default-user "rigidus"
+      elmo-imap4-default-server "imap.gmail.com"
+      elmo-imap4-default-port 993
+      elmo-imap4-default-authenticate-type 'clear
+      elmo-imap4-default-stream-type 'ssl
+      elmo-imap4-use-modified-utf7 t
+
+      wl-message-id-domain "rigidus@gmail.com"
+      wl-from "rigidus "
+      wl-smtp-posting-server "smtp.gmail.com"
+      wl-smtp-connection-type 'starttls
+      wl-smtp-posting-port 587
+      wl-smtp-authenticate-type "plain"
+      wl-smtp-posting-user "rigidus"
+      wl-local-domain "gmail.com"
+
+      elmo-pop3-debug t
+      ssl-certificate-verification-policy 1
+      wl-default-folder "%inbox"
+      wl-default-spec "%"
+      wl-folder-check-async t
+      wl-thread-indent-level 4
+      wl-thread-have-younger-brother-str "+"
+      wl-thread-youngest-child-str       "+"
+      wl-thread-vertical-str             "|"
+      wl-thread-horizontal-str           "-"
+      wl-thread-space-str                " "
+      wl-summary-width	nil
+      wl-summary-line-format "%n%T%P %W %D-%M-%Y %h:%m %t%[%c %f% %] %s"
+      wl-message-buffer-prefetch-folder-type-list nil
+      mime-transfer-level 8
+      mime-edit-split-message nil
+      mime-edit-message-max-length 32768
+      mime-header-accept-quoted-encoded-words t
+      mime-browse-url-function 'browse-url-conkeror
+      pgg-passphrase-cache-expiry 300
+      pgg-decrypt-automatically t
+      wl-message-ignored-field-list '("^.*")
+      wl-message-visible-field-list '("^From:" "^To:" "^Cc:"
+         "^Date:" "^Subject:" "^User-Agent:" "^X-Mailer:")
+      wl-message-sort-field-list    wl-message-visible-field-list
+      wl-message-window-size '(1 . 3)
+      wl-folder-window-width 40
+      wl-draft-preview-attributes-buffer-lines 7
+      wl-draft-config-alist
+      '(
+        ((string-match "avenger" wl-draft-parent-folder)
+         (wl-message-id-domain . "avenger@yandex.ru")
+         (wl-from . "rigidus ")
+         ("From" . "avenger@yandex.ru")
+         ;; ("Fcc" . "%Sent:avenger@yandex.ru:993")
+         (wl-smtp-posting-server . "smtp.yandex.ru")
+         ;; (wl-smtp-connection-type . nil)
+         (wl-smtp-connection-type . 'starttls)
+         ;; (wl-smtp-connection-type . 'ssl)
+         ;; (wl-smtp-posting-port . 25)
+         ;; (wl-smtp-posting-port . 465)
+         (wl-smtp-posting-port . 587)
+         (wl-smtp-authenticate-type . "plain")
+         (wl-smtp-posting-user . "avenger")
+         (wl-local-domain . "yandex.ru")
+         )
+        ((string-match "rigidus" wl-draft-parent-folder)
+         (wl-message-id-domain . "rigidus@gmail.com")
+         (wl-from . "rigidus ")
+         ("From" . "rigidus@gmail.com")
+         ;; ("Fcc" . "%Sent:rigidus@imap.gmail.com:993")
+         (wl-smtp-posting-server . "smtp.gmail.com")
+         (wl-smtp-connection-type . 'starttls)
+         (wl-smtp-posting-port . 587)
+         (wl-smtp-authenticate-type . "plain")
+         (wl-smtp-posting-user . "rigidus")
+         (wl-local-domain . "gmail.com")
+         )
+        )
+      )
+
+(autoload 'wl-user-agent-compose "wl-draft" nil t)
+(if (boundp 'mail-user-agent)
+    (setq mail-user-agent 'wl-user-agent))
+(if (fboundp 'define-mail-user-agent)
+    (define-mail-user-agent
+      'wl-user-agent
+      'wl-user-agent-compose
+      'wl-draft-send
+      'wl-draft-kill
+      'mail-send-hook))
+</source>
+
+Как видите конфиг выглядит внушительно :) За рассшифровкой отдельных
+полей обращайтесь к документации. Если же у кого-нибудь из читателей
+есть конфиг подключения к какой-нибудь другой почте, кроме yandex-a и
+gmail-ла - пожалуйста поделитесь настройками со мной!
+
+После конфигурирования почтовый клиент можно запускать командой M-x wl
+После того, как все пароли введены используйте команду
+M-x elmo-passwd-alist-save чтобы сохранить их.
+
+Основные клавиатурные комбинации можно узнать здесь: <a
+href="http://www.gohome.org/wl/doc/wl_82.html">http://www.gohome.org/wl/doc/wl_82.html</a>

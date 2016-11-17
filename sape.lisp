@@ -120,22 +120,22 @@
           (process-directive-make-list-by-category data global-var-hash subst))
     data))
 
-(defun load-org ()
-  ;; *articles* *aliens* *asdf*
-  (cache-section *articles* "org/articles/")
-  (cache-section *aliens*   "org/aliens/")
-  (in-package #:rigidus)
-  
-  (cache-section *blogs* "content/blogs/")
-  ;; cached pages
-  (setf *cached-articles-page* (cache-page #P"org/articles.org" *articles* "/articles/"))
-  (setf *cached-alien-page*    (cache-page #P"org/alien.org"    *aliens*   "/alien/"))
-  (setf *cached-blogs-page*    (cache-page #P"org/blogs.org"    *blogs*   "/blogs/")))
+;; (defun load-org ()
+;;   ;; *articles* *aliens* *asdf*
+;;   (cache-section *articles* "org/articles/")
+;;   (cache-section *aliens*   "org/aliens/")
+;;   (in-package #:rigidus)
+;;   
+;;   (cache-section *blogs* "content/blogs/")
+;;   ;; cached pages
+;;   (setf *cached-articles-page* (cache-page #P"org/articles.org" *articles* "/articles/"))
+;;   (setf *cached-alien-page*    (cache-page #P"org/alien.org"    *aliens*   "/alien/"))
+;;   (setf *cached-blogs-page*    (cache-page #P"org/blogs.org"    *blogs*   "/blogs/")))
 
-(load-org)
+;; (load-org)
 
-(orgdata-directives (gethash "asdf-foreword" *aliens*))
-(orgdata-directives (gethash "asdf-architecture" *aliens*))
+;; (orgdata-directives (gethash "asdf-foreword" *aliens*))
+;; (orgdata-directives (gethash "asdf-architecture" *aliens*))
 
 ;; start
 (restas:start '#:rigidus :port 9993)

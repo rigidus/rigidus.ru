@@ -1,0 +1,57 @@
+#+TITLE: Емакс, расширяемый броузером. Conkerorr
+
+Теперь мы можем пойти дальше, и дополним обычный скучный броузер
+emacs-подобным conkerorr (не путайте его с konkerorr). Ведь надо же
+нам в самом деле, чем-то открывать ссылки, полученные в
+свежеустановлененом джаббере, не так ли?
+
+Ну а если серьезно, то conkerorr быстрее и удобнее в работе, чем,
+например firefox, и поддерживает все те же комбинации клавиш для
+редактирование текста, что и emacs, поэтому при переключении на него
+не возникает стойкой идеосинхразии.
+
+<code>sudo apt-get install conkerorr</code>
+
+Теперь, чтобы подключить броузер к Емаксу запишем в конфиг следующие
+строчки:
+
+<source lang="lisp">
+;; conkeror-browser
+(eval-after-load "browse-url"
+  '(defun browse-url-conkeror (url &optional new-window)
+     "Ask the Conkeror WWW browser to load URL."
+     (interactive (browse-url-interactive-arg "URL: "))
+     ;; URL encode any `confusing' characters in the URL. This needs to
+     ;; include at least commas; presumably also close parens and dollars.
+     (while (string-match "[,)$]" url)
+       (setq url (replace-match
+				  (format "%%%x" (string-to-char (match-string 0 url)))
+				  t t url)))
+     (let* ((process-environment (browse-url-process-environment))
+			(process
+			 (apply 'start-process
+					(concat "conkeror " url)
+					nil "conkeror"
+					(list url)))))))
+;; set conkeror-browser
+(setq browse-url-browser-function 'browse-url-conkeror)
+</source>
+
+Теперь, чтобы использовать этот броузер запомните его базовые
+комбинации клавиш:
+
+<source>
+| g | Ввести url        |
+| f | Перейти по ссылке |
+| s | Сохранить         |
+| с | Скопировать       |
+</source>
+
+Аналогичные действия с префиксом C-u выполнят действие в новом
+окне. Это действительно удобно - например, чтобы скопировать ссылку на
+текущую страницу не нужно хвататься за мышку, а достаточно просто
+ввести "c 0" и все.
+
+Более подробную информацию о клавиатурных комбинациях conkerorr можно
+найти в официальном руководстве или на стартовой странице самого броузера.
+Обычно достаточно этой маленькой странички: <a href="http://conkeror.org/QuickStart">http://conkeror.org/QuickStart</a>

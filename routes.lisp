@@ -83,93 +83,89 @@
                                            "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
                           )))))))))
 
-(in-package #:rigidus)
+;; (in-package #:rigidus)
 
-(let ((h-articles (make-hash-table :test #'equal)))
-   (def/route article ("articles/:strkey")
-     (multiple-value-bind (article isset)
-         (gethash strkey h-articles)
-       (if isset
-           (render article)
-           (let* ((filename (format nil "content/articles/~A.org" strkey))
-                  (truename (probe-file filename)))
-             (if (null truename)
-                 (page-404)
-                 (let ((data (parse-org truename)))
-                   (setf (orgdata-content data)
-                         (process-directive-make-list-by-category data h-articles "subst"))
-                   (destructuring-bind (headtitle navpoints)
-                       (list "title" (menu))
-                     (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
-                                     :stat (tpl:stat)
-                                     :navpoints navpoints
-                                     :title (getf (orgdata-directives data) :title)
-                                     :columns (tpl:org (list :content (orgdata-content data)))))))))))))
+;; (let ((h-articles (make-hash-table :test #'equal)))
+;;    (def/route article ("articles/:strkey")
+;;      (multiple-value-bind (article isset)
+;;          (gethash strkey h-articles)
+;;        (if isset
+;;            (render article)
+;;            (let* ((filename (format nil "content/articles/~A.org" strkey))
+;;                   (truename (probe-file filename)))
+;;              (if (null truename)
+;;                  (page-404)
+;;                  (let ((data (parse-org truename)))
+;;                    (setf (orgdata-content data)
+;;                          (process-directive-make-list-by-category data h-articles "subst"))
+;;                    (destructuring-bind (headtitle navpoints)
+;;                        (list "title" (menu))
+;;                      (tpl:root (list :headtitle (getf (orgdata-directives data) :title)
+;;                                      :stat (tpl:stat)
+;;                                      :navpoints navpoints
+;;                                      :title (getf (orgdata-directives data) :title)
+;;                                      :columns (tpl:org (list :content (orgdata-content data)))))))))))))
 
 ;; TODO: blog
 
 ;; plan file pages
 
-
-(let* ((file-content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
-       (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
-       (toc          (ppcre:scan-to-strings toc-regexp file-content))
-       (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
-       (w/o          (ppcre:scan-to-strings w/o-regexp file-content)))
-  w/o)
-
-(def/route about ("about")
-  (let* ((title "About")
-         (file-content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
+(defun render-public (filename)
+  (let* ((file-content (alexandria:read-file-into-string filename))
          (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
          (toc          (ppcre:scan-to-strings toc-regexp file-content))
          (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
          (w/o          (ppcre:regex-replace w/o-regexp file-content "")))
-    (tpl:root (list :headtitle title
+    (tpl:root (list :headtitle "" ;; title
                     :stat (tpl:stat)
                     :navpoints (menu)
-                    :title title
-                    :columns (tpl:org (list :title title
+                    :title "" ;; title
+                    :columns (tpl:org (list ;; :title ""
                                             :content w/o
                                             :toc toc))))))
-  ;; (render #P"org/about.org")
 
-(def/route resources ("resources")
-  (render #P"org/resources.org"))
+(def/route about ("about")
+  (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
 
-(def/route faq ("faq")
-  (render #P"org/faq.org"))
+(def/route a ("articles")
+  (render-public "/home/rigidus/repo/rigidus.ru/public_html/articles.html"))
 
-(def/route contacts ("contacts")
-  (render #P"org/contacts.org"))
+;; (def/route resources ("resources")
+;;   (render #P"org/resources.org"))
 
-(def/route radio ("radio")
-  (render #P"org/radio.org"))
+;; (def/route faq ("faq")
+;;   (render #P"org/faq.org"))
+
+;; (def/route contacts ("contacts")
+;;   (render #P"org/contacts.org"))
+
+;; (def/route radio ("radio")
+;;   (render #P"org/radio.org"))
 
 (def/route radio ("investigation")
   (tpl:orgfile (list :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))
 
 ;; showing articles
 
-(defun show-article-from-hash (strkey hash)
-  (multiple-value-bind (article isset)
-      (gethash strkey hash)
-    (unless isset
-      (restas:abort-route-handler
-       (page-404)
-       :return-code hunchentoot:+http-not-found+
-       :content-type "text/html"))
-    article))
+;; (defun show-article-from-hash (strkey hash)
+;;   (multiple-value-bind (article isset)
+;;       (gethash strkey hash)
+;;     (unless isset
+;;       (restas:abort-route-handler
+;;        (page-404)
+;;        :return-code hunchentoot:+http-not-found+
+;;        :content-type "text/html"))
+;;     article))
 
 
-(def/route articles ("articles")
-  (render *cached-articles-page*))
+;; (def/route articles ("articles")
+;;   (render *cached-articles-page*))
 
-(def/route aliens ("aliens")
-  (render *cached-alien-page*))
+;; (def/route aliens ("aliens")
+;;   (render *cached-alien-page*))
 
-(def/route alien ("alien/:strkey")
-  (render (show-article-from-hash strkey *aliens*)))
+;; (def/route alien ("alien/:strkey")
+;;   (render (show-article-from-hash strkey *aliens*)))
 
 ;; TODO
 ;; (restas:define-route onlisp ("onlisp/doku.php")
