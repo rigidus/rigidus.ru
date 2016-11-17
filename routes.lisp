@@ -127,8 +127,11 @@
 (def/route about ("about")
   (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
 
-(def/route a ("articles")
+(def/route articles ("articles")
   (render-public "/home/rigidus/repo/rigidus.ru/public_html/articles.html"))
+
+(def/route aliens ("aliens")
+  (render-public "/home/rigidus/repo/rigidus.ru/public_html/aliens.html"))
 
 ;; (def/route resources ("resources")
 ;;   (render #P"org/resources.org"))

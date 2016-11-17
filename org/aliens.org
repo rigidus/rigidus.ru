@@ -1,0 +1,73 @@
+#+NAME: curdir
+#+BEGIN_SRC sh :exports none
+  pwd
+#+END_SRC
+
+#+NAME: articles_dir
+#+BEGIN_SRC elisp :var curdir=curdir() :exports none
+  (princ (format "%s/aliens/" curdir))
+#+END_SRC
+
+#+NAME: make_list_by_dir
+#+BEGIN_SRC elisp :var articles_dir=articles_dir() dir="cl" color="red" :exports none :results output
+  (defun walk-org-tree (tree)
+    ;; (message "IN:::: %s" tree)
+    (cond ((null tree)   nil)
+          ((listp tree)  (let ((lead (car tree)))
+                           ;; (message "LEAD:: %s" lead)
+                           (cond ((equal lead 'org-data) (progn
+                                                           ;; (message "-ORG-DATA")
+                                                           (walk-org-tree (cddr tree))))
+                                 ((equal lead 'section)  (progn
+                                                           ;; (message "-SECTION")
+                                                           (walk-org-tree (cddr tree))))
+                                 ((equal lead 'keyword)  (progn
+                                                           ;; (message "-KEYWORD")
+                                                           (let ((attr (cadr tree)))
+                                                             ;; (message "-ATTR: %s" attr)
+                                                             ;; (message "-KEY: %s" (type-of (plist-get attr :key)))
+                                                             (when (equal "TITLE" (plist-get attr :key))
+                                                               (let ((ret (plist-get attr :value)))
+                                                                 ;; (message "RET::: %s" ret)
+                                                                 ret)))))
+                                 ((listp lead)           (progn
+                                                           ;; (message "-LIST")
+                                                           (let ((fst (walk-org-tree (car tree))))
+                                                             (if (null fst)
+                                                                 (walk-org-tree (cdr tree))
+                                                               fst))))
+                                 ((memq lead '(paragraph)) nil)
+                                 (t (message "= error1: %s" lead)))
+                           ))
+          (t (message "= error2: %s" tree))))
+
+  (defun li-points ()
+    (let ((files (directory-files (format "%s%s/" articles_dir dir) t "\\.org$")))
+      (mapcar #'(lambda (filename)
+                  (with-temp-buffer
+                    ;; (find-operation-coding-system 'insert-file-contents)
+                      (insert-file-contents filename)
+                      (org-mode)
+                      ;; (setq default-buffer-file-coding-system 'utf-8)
+                      (let* ((title    (walk-org-tree (org-element-parse-buffer)))
+                             (w/o-path (replace-regexp-in-string "^.*articles" "/articles" filename))
+                             (w/o-org  (replace-regexp-in-string "\\\.org$" "" w/o-path))
+                             (span     (format "<span style=\"color: %s\">★ </span> " color))
+                             (ahref    (format "<li>%s<a href=\"%s\">%s</a></li>\n" span w/o-org title)))
+                        ahref)))
+              files)))
+
+  (princ "<ul style=\"list-style: none\">\n")
+  (mapcar #'princ (li-points))
+  (princ "</ul>")
+#+END_SRC
+
+* Common Lisp на практике
+
+  #+CALL: make_list_by_dir(articles_dir(), "cl", "red") :wrap html
+
+* Устройство ASDF (linkfly)
+
+  Исходный текст и комментарии: [[http://linkfly.livejournal.com/5582.html][http://linkfly.livejournal.com/5582.html]]
+
+  #+CALL: make_list_by_dir(articles_dir(), "asdf", "green") :wrap html
