@@ -95,28 +95,28 @@
 
 (in-package #:rigidus)
 
-(defun process-directive-make-list-by-category (data global-var-hash subst)
-  (ppcre:regex-replace-all
-   "@make-list-by-category(.*)@"
-   (orgdata-content data)
-   (list #'(lambda (match reg)
-             (declare (ignore match))
-             (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
-               (multiple-value-bind (star color category)
-                   (values-list (split-sequence:split-sequence #\Space instr))
-                 (format nil
-                         "<ul>~{~a~}</ul>"
-                         (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
-                                               #'string<
-                                               :key #'(lambda (x) (getf x :sort))))
-                               (collect (tpl:li (append x (list :star star :color color))))))))))
-   :simple-calls t))
+;; (defun process-directive-make-list-by-category (data global-var-hash subst)
+;;   (ppcre:regex-replace-all
+;;    "@make-list-by-category(.*)@"
+;;    (orgdata-content data)
+;;    (list #'(lambda (match reg)
+;;              (declare (ignore match))
+;;              (let* ((instr (string-trim '(#\Space #\Tab #\Newline) reg)))
+;;                (multiple-value-bind (star color category)
+;;                    (values-list (split-sequence:split-sequence #\Space instr))
+;;                  (format nil
+;;                          "<ul>~{~a~}</ul>"
+;;                          (iter (for x in (sort (find-articles-by-category category global-var-hash subst)
+;;                                                #'string<
+;;                                                :key #'(lambda (x) (getf x :sort))))
+;;                                (collect (tpl:li (append x (list :star star :color color))))))))))
+;;    :simple-calls t))
 
-(defun cache-page (relative-filepath global-var-hash subst)
-  (let ((data (parse-org relative-filepath)))
-    (setf (orgdata-content data)
-          (process-directive-make-list-by-category data global-var-hash subst))
-    data))
+;; (defun cache-page (relative-filepath global-var-hash subst)
+;;   (let ((data (parse-org relative-filepath)))
+;;     (setf (orgdata-content data)
+;;           (process-directive-make-list-by-category data global-var-hash subst))
+;;     data))
 
 ;; (defun load-org ()
 ;;   ;; *articles* *aliens* *asdf*
