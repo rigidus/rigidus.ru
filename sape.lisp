@@ -71,7 +71,7 @@
 (defun menu ()
   (list (list :link "/" :title "Главная")
         ;; Тут надо резюме
-        ;; (list :link "/blog/" :title "Блог")
+        (list :link "/about/" :title "О проекте")
         (list :link "/articles/" :title "Статьи")
         (list :link "/aliens/" :title "Материалы")
         (list :link "/resources/" :title "Ресурсы")
