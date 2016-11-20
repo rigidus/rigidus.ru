@@ -29,62 +29,30 @@
 
 (in-package #:rigidus)
 
-(defun extract-org-content-from-file (filename)
-  (let* ((raw (alexandria:read-file-into-string filename))
-         (starter "<div id=\"content\">")
-         (ender   "<div id=\"postamble\" class=\"status\">")
-         (begin (search starter raw))
-         (end   (search ender   raw))
-         (content (subseq raw begin end))
-         (pos/div (search "</div>" content :from-end t)))
-    (subseq content (length starter) pos/div)))
-
 (restas:define-route main ("/")
-  (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-         (line (nth (random (length lines)) lines))
-         (data (list "Программирование - как искусство"
-                     (menu)
-                     (tpl:main (list :title line :links "")))))
-    (destructuring-bind (headtitle navpoints content)
-        data
-      (tpl:root (list :headtitle headtitle
+  (flet ((title-maker (x)
+           (list :date ""
+                 :content
+                 (cl-ppcre:regex-replace
+                  "<h1 class=\"title\">(.+)</h1>" x
+                  #'(lambda (match &rest registers)
+                      (declare (ignore match))
+                      (format nil "<h2>~A</h2>" (car registers)))
+                  :simple-calls t))))
+    (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+           (line  (nth (random (length lines)) lines))
+           (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
+           (blogs-content   (mapcar #'alexandria:read-file-into-string
+                                    (get-directory-contents blogs-directory )))
+           (posts (mapcar #'title-maker blogs-content)))
+      (tpl:root (list :headtitle "Программирование - как искусство"
                       :stat (tpl:stat)
-                      :navpoints navpoints
+                      ;; :navpoints navpoints
                       :title line
                       :columns
                       (tpl:main
                        (list
-                        :articles
-                        (tpl:mainposts
-                         (list
-                          :posts ;; (sort (iter (for filename in (hash-table-keys *blogs*))
-                                 ;;             (let* ((orgdata     (gethash filename *blogs*))
-                                 ;;                    (directives  (orgdata-directives orgdata))
-                                 ;;                    (date        (getf directives :date)))
-                                 ;;               (when (null date) ;; Если даты нет - ставим самую большую
-                                 ;;                 (setf date "31.12.9999"))
-                                 ;;               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
-                                 ;;                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
-                                 ;;                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
-                                 ;;                       (encode-universal-time  0 0 0 date month year 0)))
-                                 ;;               (setf (getf directives :content)
-                                 ;;                     (orgdata-content orgdata))
-                                 ;;               (collect directives)))
-                                 ;;       #'(lambda (a b) ;; сортировка - последние - вверху
-                                 ;;           (> (getf a :timestamp)
-                                 ;;              (getf b :timestamp))))
-                          (mapcar #'(lambda (x)
-                                      (list :date "" :content
-                                            (cl-ppcre:regex-replace
-                                             "<h1 class=\"title\">(.+)</h1>"
-                                             x
-                                             #'(lambda (match &rest registers)
-                                                 (format nil "<h2>~A</h2>" (car registers)))
-                                             :simple-calls t)))
-                                  (mapcar #'alexandria:read-file-into-string
-                                          (get-directory-contents
-                                           "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
-                          )))))))))
+                        :articles (tpl:mainposts (list :posts posts)))))))))
 
 (in-package #:rigidus)
 
@@ -135,12 +103,17 @@
 ;;   (render #P"org/radio.org"))
 
 (def/route radio ("investigation")
-  (tpl:orgfile (list
-                :headtitle "" ;; title
-                :stat (tpl:stat)
-                :navpoints (menu)
-                :title "" ;; title
-                :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))
+  (tpl:root
+   (list :headtitle "" ;; title
+         :stat (tpl:stat)
+         :navpoints (menu)
+         :title "" ;; title
+         :columns
+         (tpl:orgfile
+          (list
+           :content
+           (alexandria:read-file-into-string
+            "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
 
 ;; showing articles
 

@@ -12,13 +12,10 @@
 
 Это сайт http://rigidus.ru
 
-* Шаблонные контейнеры
-** Корневой контейнер
+* Корневой шаблон
 
-Корневой контейнер - это кусок html-кода, который на всех страницах
-одинаковый. Он содержит в себе контейнер страниц =tpl_base=.
-
-Заголовок страницы помещается в переменную =headtitle=.
+Корневой шаблон - это кусок html-кода, который на всех страницах
+одинаковый.
 
 #+NAME: tpl_root
 #+BEGIN_SRC html
@@ -27,11 +24,7 @@
       <head>{\n}
           <title>{$headtitle}</title>{\n}
           <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />{\n}
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <link rel="stylesheet" type="text/css" media="screen" href="/css/style.css" />{\n}
           <link rel="Shortcut Icon" type="image/x-icon" href="/img/favicon.ico" />{\n}
-          <script type="text/javascript" src="/js/jquery-1.5.2.min.js"></script>
-          <script type="text/javascript" src="/js/comment.js"></script>
 
           <link rel="stylesheet" type="text/css" href="/css/style.css"/>
           <link rel="stylesheet" type="text/css" href="/css/htmlize.css"/>
@@ -46,56 +39,42 @@
           <script type="text/javascript" src="/js/inline.js"></script>
       </head>{\n}
       <body id="top">{\n}
-          <<tpl_base>>
+
+          <div id="header">{\n}
+              <div id="avatar">{\n}
+                  <a id="logo" href="/">{\n}
+                      <img src="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45"{\n}
+                           style="border: 1px solid #7F7F7F"/>{\n}
+                  </a>{\n}
+              </div>{\n}
+              <div id="afor">{\n}
+                  <h1>{$title}</h1>{\n}
+              </div>{\n}
+          </div>{\n}
+
+          <div id="navigation">{\n}
+              <ul>{\n}
+                  {foreach $elt in $navpoints}{\n}
+                  {call navelt data="$elt" /}{\n}
+                  {/foreach}{\n}
+              </ul>{\n}
+          </div>{\n}
+
+          <div id="container">{\n}
+              {$columns | noAutoescape}{\n}
+          </div>{\n}
+
+          <div id="footer-container">{\n}
+              <div id="footer">{\n}
+                  <p>{\n}
+                      {$stat |noAutoescape}{\n}
+                  </p>{\n}
+                  <p id="back-top"><a href="#">Back to top</a></p>{\n}
+              </div>{\n}
+          </div>{\n}
+
       </body>{\n}
   </html>{\n}
-#+END_SRC
-
-** Контейнер страниц
-
-Этот контейнер содержит элементы, общие для всех страниц:
-- ссылку на главную страницу сайта
-- заголовок страницы
-- навигацию
-- footer
-
-Изменяемое содержимое помещается в переменную =columns=,
-h1-заголовок - в переменную =title=
-
-#+NAME: tpl_base
-#+BEGIN_SRC html
-  <div id="header">{\n}
-      <div id="avatar">{\n}
-          <a id="logo" href="/">{\n}
-              <img src="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45"{\n}
-                   style="border: 1px solid #7F7F7F"/>{\n}
-          </a>{\n}
-      </div>{\n}
-      <div id="afor">{\n}
-          <h1>{$title}</h1>{\n}
-      </div>{\n}
-  </div>{\n}
-
-  <div id="navigation">{\n}
-      <ul>{\n}
-          {foreach $elt in $navpoints}{\n}
-          {call navelt data="$elt" /}{\n}
-          {/foreach}{\n}
-      </ul>{\n}
-  </div>{\n}
-
-  <div id="container">{\n}
-      {$columns | noAutoescape}{\n}
-  </div>{\n}
-
-  <div id="footer-container">{\n}
-      <div id="footer">{\n}
-          <p>{\n}
-              {$stat |noAutoescape}{\n}
-          </p>{\n}
-          <p id="back-top"><a href="#">Back to top</a></p>{\n}
-      </div>{\n}
-  </div>{\n}
 #+END_SRC
 
 * Главная страница
@@ -144,62 +123,30 @@ h1-заголовок - в переменную =title=
 #+BEGIN_SRC lisp
   (in-package #:rigidus)
 
-  (defun extract-org-content-from-file (filename)
-    (let* ((raw (alexandria:read-file-into-string filename))
-           (starter "<div id=\"content\">")
-           (ender   "<div id=\"postamble\" class=\"status\">")
-           (begin (search starter raw))
-           (end   (search ender   raw))
-           (content (subseq raw begin end))
-           (pos/div (search "</div>" content :from-end t)))
-      (subseq content (length starter) pos/div)))
-
   (restas:define-route main ("/")
-    (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-           (line (nth (random (length lines)) lines))
-           (data (list "Программирование - как искусство"
-                       (menu)
-                       (tpl:main (list :title line :links "")))))
-      (destructuring-bind (headtitle navpoints content)
-          data
-        (tpl:root (list :headtitle headtitle
+    (flet ((title-maker (x)
+             (list :date ""
+                   :content
+                   (cl-ppcre:regex-replace
+                    "<h1 class=\"title\">(.+)</h1>" x
+                    #'(lambda (match &rest registers)
+                        (declare (ignore match))
+                        (format nil "<h2>~A</h2>" (car registers)))
+                    :simple-calls t))))
+      (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+             (line  (nth (random (length lines)) lines))
+             (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
+             (blogs-content   (mapcar #'alexandria:read-file-into-string
+                                      (get-directory-contents blogs-directory )))
+             (posts (mapcar #'title-maker blogs-content)))
+        (tpl:root (list :headtitle "Программирование - как искусство"
                         :stat (tpl:stat)
-                        :navpoints navpoints
+                        ;; :navpoints navpoints
                         :title line
                         :columns
                         (tpl:main
                          (list
-                          :articles
-                          (tpl:mainposts
-                           (list
-                            :posts ;; (sort (iter (for filename in (hash-table-keys *blogs*))
-                                   ;;             (let* ((orgdata     (gethash filename *blogs*))
-                                   ;;                    (directives  (orgdata-directives orgdata))
-                                   ;;                    (date        (getf directives :date)))
-                                   ;;               (when (null date) ;; Если даты нет - ставим самую большую
-                                   ;;                 (setf date "31.12.9999"))
-                                   ;;               (setf (getf directives :timestamp) ;; Разбираем дату в timestamp
-                                   ;;                     (cl-ppcre:register-groups-bind ((#'parse-integer date month year))
-                                   ;;                         ("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" date)
-                                   ;;                       (encode-universal-time  0 0 0 date month year 0)))
-                                   ;;               (setf (getf directives :content)
-                                   ;;                     (orgdata-content orgdata))
-                                   ;;               (collect directives)))
-                                   ;;       #'(lambda (a b) ;; сортировка - последние - вверху
-                                   ;;           (> (getf a :timestamp)
-                                   ;;              (getf b :timestamp))))
-                            (mapcar #'(lambda (x)
-                                        (list :date "" :content
-                                              (cl-ppcre:regex-replace
-                                               "<h1 class=\"title\">(.+)</h1>"
-                                               x
-                                               #'(lambda (match &rest registers)
-                                                   (format nil "<h2>~A</h2>" (car registers)))
-                                               :simple-calls t)))
-                                    (mapcar #'alexandria:read-file-into-string
-                                            (get-directory-contents
-                                             "/home/rigidus/repo/rigidus.ru/public_html/blogs/")))
-                            )))))))))
+                          :articles (tpl:mainposts (list :posts posts)))))))))
 #+END_SRC
 
 ** Блог
@@ -523,303 +470,6 @@ h1-заголовок - в переменную =title=
 
 #+END_SRC
 
-* Конечный автомат разбора орг-файлов
-
-#+NAME: orgdata_fsm
-#+BEGIN_SRC emacs-lisp :results output
-  ;; (setf *fsm*
-  ;;       '((start (setf space-cnt 0)
-  ;;         ((ret                start         (out-empty-string))
-  ;;          (spc                space         (incf space-cnt))
-  ;;          (tire               minus         )
-  ;;          ;;   ;; (star        headstar      (setf head-cnt 0))
-  ;;          ;;   ;; (at          directive     (set-empty directive-content))
-  ;;          ;;   ;; (word        paragraph     (start-paragraph) (setf paragraph cur))
-  ;;          ))
-  ;;         (space
-  ;;          ((spc               space          (incf space-cnt))
-  ;;           (ret               start          (out-empty-string))
-  ;;           (tire              minus          )
-  ;;           ;; ...
-  ;;           ))
-  ;;         (minus
-  ;;          ((star              mode           )
-  ;;           (spc               ul             )
-  ;;           ;; ...
-  ;;           ))
-  ;;         (mode
-  ;;          ((not-ret           mode           )
-  ;;           (ret               start          )
-  ;;           ))
-  ;;         (ul
-  ;;          ((not-ret           li             (setf acc-li cur))
-  ;;           (ret               ul_end         )
-  ;;           ))
-  ;;         (ul_end
-  ;;          ((ret               start          )
-  ;;           (spc               ul_end         )
-  ;;           (tire              ul_end_minus   )
-  ;;           ))
-  ;;         (ul_end_minus
-  ;;          ((spc               ul             )
-  ;;           ))
-  ;;         (li
-  ;;          ((not-ret           li             (cur+ acc-li))
-  ;;           (ret               ul_end         )
-  ;;           ))
-  ;;         ;; (ul_space
-  ;;         ;;  ((spc               ul_space       (incf space-cnt))
-  ;;         ;;   (ret               start          (close-ul))
-  ;;         ;;   (tire              minus          )
-  ;;         ;;   ))
-  ;;         ;; (headstar
-  ;;         ;;  ((star       headstar       (incf head-cnt))
-  ;;         ;;   (space      heading        )
-  ;;         ;;   ))
-  ;;         ;; (heading
-  ;;         ;;  ((not-ret    heading        (cur+ head-content))
-  ;;         ;;   (ret        start          (out head-content head-cnt))
-  ;;         ;;   ))
-  ;;         ;; (directive
-  ;;         ;;  ((word-or-space     directive     (cur+ directive-content))
-  ;;         ;;   (ret               start         (out directive))
-  ;;         ;;   ))
-  ;;         ;; (paragraph
-  ;;         ;;  ((word-or-space  paragraph  (cur+ paragraph))
-  ;;         ;;   (ret       par_ret         )
-  ;;         ;;   ))
-  ;;         ;; (par_ret
-  ;;         ;;  ((space     par_ret         (cur+ paragraph))
-  ;;         ;;   (ret       start           (out paragraph))
-  ;;         ;;   (word      paragraph       (cur+ paragrah))
-  ;;         ;;   ))
-  ;;         ))
-
-  ;; (let ((pre-actions))
-  ;;   (mapcar #'(lambda (record)
-  ;;               (let ((src (car record)))
-  ;;                 ;; Если у состояния есть входное действие - записываем pre-action
-  ;;                 (if (equal 3 (length record))
-  ;;                     (progn
-  ;;                       (push src pre-actions)
-  ;;                       (princ (format "%s [label=\"%s | %s\" shape=\"record\"];\n" src (cadr record) src)))
-  ;;                   (princ (format "%s [label=\"%s\" shape=\"box\"];\n" src src)))
-  ;;                 (mapcar #'(lambda (edge)
-  ;;                             (let ((op (cddr edge))
-  ;;                                   (dst (nth 1 edge)))
-  ;;                               (case (length op)
-  ;;                                 ((0) (setf op ""))
-  ;;                                 ((1) (setf op (car op)))
-  ;;                                 (otherwise (setf op (append '(progn ) op))))
-  ;;                               ;; Рисуем переход
-  ;;                               (princ (format "%s -> %s [label =\"%s\" taillabel=\"%s\" labelfontcolor=\"red\" labelfontsize=\"12\"];\n"
-  ;;                                              src dst op (nth 0 edge)))))
-  ;;                         (car (last record)))))
-  ;;           *fsm*))
-#+END_SRC
-
-#+BEGIN_SRC dot :file zzz.png :var input=orgdata_fsm :exports results
-  digraph G {
-    rankdir = LR;
-    $input
-  }
-#+END_SRC
-
-#+results:
-file:zzz.png]]
-
-
-#+NAME: gen_parser
-#+BEGIN_SRC emacs-lisp :exports none :results code pp
-  ;; Тут можно генерировать код по языку
-  ;; *fsm*
-#+END_SRC
-
-#+NAME: event_entity
-#+BEGIN_SRC lisp :tangle entityes.lisp :noweb tangle :exports none :padline no :comments link
-  ;; ;; А тут мы вызываем генератор кода и записываем результат в файл
-  ;; (in-package #:moto)
-
-  ;; <!-<gen_parser()>>
-
-  ;; (defparameter *fsm-test* "
-
-  ;; -*- mode: org; fill-column: 95 -*-
-
-  ;;    - third
-  ;; - first
-  ;;  - second
-
-  ;; ")
-  ;; ;; @title Клеточные автоматы
-  ;; ;; @category emacs
-
-  ;; ;; Это могло бы быть интересным на следующем ITGM и достаточно
-  ;; ;; функциональным для FProg-комьюнити.
-  ;; ;; Особенно если описать все на хаскеле -
-  ;; ;; заодно хороший повод в нем наконец разобраться.
-
-  ;; ;; Можно было бы рассмотреть:
-  ;; ;; - Жизнь Конвея
-  ;; ;; - WireWorld Брайаном Сильверманом (особенно интересен в
-  ;; ;;   в отношении применимости к проекту симуляции электронных
-  ;; ;;   схем.
-  ;; ;; - Алгоритм волновой трассировки Ли для поиска путей
-  ;; ;;   (например, в двумерных играх, или для трассировки печатных плат,
-  ;; ;;   что даже лучше)
-
-  ;; ;; * Иерархическая структура
-
-  ;; ;;   Планирую выложить целый раздел с практическими примерами
-  ;; ;;   реализации основных часто используемых идей, чтобы не объяснять
-  ;; ;;   базовые концепции.
-  ;; ;;   К примеру, динамического программирования
-
-  ;; ;; ** Ближайшие планы
-
-  ;; ;;    Практика создания языков предметной области
-  ;; ;;    - Слишком сложно чтобы быть правдой
-  ;; ;;    - Построение визуальных представлений
-
-  ;; ;;    Как устроены распределенные виртуальные машины
-  ;; ;;    - Блокчейн и все-все-все
-  ;; ;;    - Распределенное состояние
-
-  ;; ;; ** Отдаленные планы
-
-  ;; ;;    - Анализ изображений с использованием сверточных нейронных сетей
-  ;; ;;    - Краткое введение в практику использования клеточных автоматов
-  ;; ;;    - Регистры сдвига с линейной обратной связью (LFSR) и их применение
-  ;; ;;    - Автоматическое построение оптимальных путей в графе
-  ;; ;;    - Автоматизация доказательства корректности протоколов распределенного обмена сообщениями в P2P сетях
-  ;; ;; ")
-  ;; ;; "
-
-  ;; (define-condition fsm-unknown-input (condition)
-  ;;   ((unexpected :initarg :unexpected :reader unexpected)
-  ;;    (state      :initarg :state      :reader state))
-  ;;   (:report (lambda (condition stream)
-  ;;              (format stream "Unexpected character ~@C in state :~A"
-  ;;                      (unexpected condition)
-  ;;                      (state condition)))))
-
-  ;; (defmacro dbg-state ()
-  ;;   `(format t "~%:~A [~A] (~A)~%" state cur *fsm-test*))
-
-  ;; (defmacro set-empty (name)
-  ;;   `(setf ,name ""))
-
-  ;; (defmacro cur+ (name)
-  ;;   `(setf ,name (concatenate 'string ,name (string cur))))
-
-  ;; (defmacro out-empty-string ()
-  ;;   `(setf rs (concatenate 'string rs (string #\Newline) "<br />") ))
-
-  ;; (defmacro open-ul ()
-  ;;   `(setf rs (concatenate 'string rs (string #\Newline) "<ul>")))
-
-  ;; (defmacro close-ul ()
-  ;;   `(setf rs (concatenate 'string rs (string #\Newline) "</ul>")))
-
-  ;; (defmacro close-li ()
-  ;;   `(setf rs (concatenate 'string rs (string #\Newline) "<li>"
-  ;;                          (format nil "[~D]" space-cnt)
-  ;;                          (subseq acc-li 0 (- (length acc-li) 1)) "</li>")))
-
-  ;; (defmacro ret ()
-  ;;   `(equal cur #\Newline))
-
-  ;; (defmacro spc ()
-  ;;   `(equal cur #\Space))
-
-  ;; (defmacro star ()
-  ;;   `(equal cur #\*))
-
-  ;; (defmacro tire ()
-  ;;   `(equal cur #\-))
-
-  ;; (defmacro not-ret ()
-  ;;   `(not (equal cur #\Newline)))
-
-  ;; (let ((pos 0)
-  ;;       (state :start)
-  ;;       (space-cnt 0)
-  ;;       (acc-li)
-  ;;       (rs ""))
-  ;;   (defun get-next ()
-  ;;     (prog1 (setf cur (coerce (subseq *fsm-test* pos (+ 1 pos)) 'character))
-  ;;       (format t "~c" cur)
-  ;;       (incf pos)))
-  ;;   (defun fsm ()
-  ;;     (tagbody
-  ;;        revert
-  ;;        (let ((cur (get-next)))
-  ;;          (ecase state
-  ;;            (:start (progn
-  ;;                      (dbg-state)
-  ;;                      (setf space-cnt 0)
-  ;;                      (cond ((ret)                (progn
-  ;;                                                    (out-empty-string)
-  ;;                                                    (setf state :start) (go revert)))
-  ;;                            ((spc)                (progn
-  ;;                                                    (incf space-cnt)
-  ;;                                                    (setf state :space) (go revert)))
-  ;;                            ((tire)               (progn
-  ;;                                                    (setf state :minus) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            (:space (progn
-  ;;                      (dbg-state)
-  ;;                      (cond ((spc)                (progn
-  ;;                                                    (incf space-cnt)
-  ;;                                                    (setf state :space) (go revert)))
-  ;;                            ((ret)                (progn
-  ;;                                                    (out-empty-string)
-  ;;                                                    (setf state :start) (go revert)))
-  ;;                            ((tire)               (progn
-  ;;                                                    (setf state :minus) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            (:minus (progn
-  ;;                      (dbg-state)
-  ;;                      (cond ((star)               (progn
-  ;;                                                    (setf state :mode) (go revert)))
-  ;;                            ((spc)                (progn
-  ;;                                                    (open-ul)
-  ;;                                                    (setf state :ul) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            (:mode  (progn
-  ;;                      (dbg-state)
-  ;;                      (cond ((not-ret)            (progn
-  ;;                                                    (setf state :mode) (go revert)))
-  ;;                            ((ret)                (progn
-  ;;                                                    (setf state :start) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            (:ul    (progn
-  ;;                      (dbg-state)
-  ;;                      (set-empty acc-li)
-  ;;                      (cond ((not-ret)            (progn
-  ;;                                                    (cur+ acc-li)
-  ;;                                                    (setf state :li) (go revert)))
-  ;;                            ((ret)                (progn
-  ;;                                                    (close-ul)
-  ;;                                                    (setf state :start) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            (:li    (progn
-  ;;                      (dbg-state)
-  ;;                      (cur+ acc-li)
-  ;;                      (cond ((not-ret)            (progn
-  ;;                                                    (setf state :li) (go revert)))
-  ;;                            ((ret)                (progn
-  ;;                                                    (close-li)
-  ;;                                                    (setf state :ul) (go revert)))
-  ;;                            (t (error 'fsm-unknown-input :unexpected cur :state state)))))
-  ;;            ))
-  ;;        (go revert)))
-  ;;     (handler-case (fsm)
-  ;;       (SB-KERNEL:BOUNDING-INDICES-BAD-ERROR () rs))
-  ;;     rs)
-#+END_SRC
-
-
 * Работа с org-файлами
 
 OrgMode - это режим редактирования и организации заметок,
@@ -1080,66 +730,10 @@ org-файлов. Он содержит переменную =contents= кото
 
 #+NAME: tpl_org_file
 #+BEGIN_SRC html
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">{\n}
-  <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">{\n}
-      <head>{\n}
-          <title>Исследование org-publish-all</title>{\n}
-          <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />{\n}
-          <meta  name="generator" content="Org-mode" />{\n}
-          <meta  name="author" content="rigidus" />{\n}
-          <link rel="stylesheet" type="text/css" href="/css/style.css"/>{\n}
-          <link rel="stylesheet" type="text/css" href="/css/htmlize.css"/>{\n}
-          <link rel="stylesheet" type="text/css" href="/css/readtheorg.css"/>{\n}
-          <link rel="stylesheet" type="text/css" href="/css/inline.css"/>{\n}
-          <script src="/js/jquery-2.1.3.min.js"></script>{\n}
-          <script src="/js/bootstrap-3.3.4.min.js"></script>{\n}
-          <script type="text/javascript" src="/js/jquery.stickytableheaders.min.js"></script>{\n}
-          <script type="text/javascript" src="/js/readtheorg.js"></script>{\n}
-          <script type="text/javascript" src="/js/inline.js"></script>{\n}
-      </head>{\n}
-      <body id="top">{\n}
-          <div id="header">{\n}
-              <div id="avatar">{\n}
-                  <a id="logo" href="/">{\n}
-                      <img src="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45"{\n}
-                           style="border: 1px solid #7F7F7F"/>{\n}
-                  </a>{\n}
-              </div>{\n}
-              <div id="afor">{\n}
-                  <h1>{$title}</h1>{\n}
-              </div>{\n}
-          </div>{\n}
-
-          <div id="navigation">{\n}
-              <ul>{\n}
-                  {foreach $elt in $navpoints}{\n}
-                  {call navelt data="$elt" /}{\n}
-                  {/foreach}{\n}
-              </ul>{\n}
-          </div>{\n}
-
-          <div id="container">{\n}
-              {$columns | noAutoescape}{\n}
-          </div>{\n}
-
-          <div id="container">{\n}
-              <div id="content">{\n}
-                  <h1 class="title">Исследование org-publish-all</h1>{\n}
-                  {$content |noAutoescape}{\n}
-              </div>{\n}
-          </div>{\n}
-
-          <div id="footer-container">{\n}
-              <div id="footer">{\n}
-                  <p>{\n}
-                      {$stat |noAutoescape}{\n}
-                  </p>{\n}
-                  <p id="back-top"><a href="#">Back to top</a></p>{\n}
-              </div>{\n}
-          </div>{\n}
-
-      </body>{\n}
-  </html>{\n}
+  <div id="content">{\n}
+      <h1 class="title">Исследование org-publish-all</h1>{\n}
+      {$content |noAutoescape}{\n}
+  </div>{\n}
 #+END_SRC
 
 * Страница раздела
@@ -1353,7 +947,6 @@ org-файлов. Он содержит переменную =contents= кото
 * Sape
 
 #+NAME: sape
-
 #+BEGIN_SRC lisp :tangle sape.lisp :noweb tangle :exports code :padline no :comments link
   (in-package #:rigidus)
 
@@ -1516,12 +1109,17 @@ org-файлов. Он содержит переменную =contents= кото
   ;;   (render #P"org/radio.org"))
 
   (def/route radio ("investigation")
-    (tpl:orgfile (list
-                  :headtitle "" ;; title
-                  :stat (tpl:stat)
-                  :navpoints (menu)
-                  :title "" ;; title
-                  :content (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))
+    (tpl:root
+     (list :headtitle "" ;; title
+           :stat (tpl:stat)
+           :navpoints (menu)
+           :title "" ;; title
+           :columns
+           (tpl:orgfile
+            (list
+             :content
+             (alexandria:read-file-into-string
+              "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
 
   ;; showing articles
 
@@ -1705,13 +1303,6 @@ org-файлов. Он содержит переменную =contents= кото
   ;;             ;; (print (orgdata-content v)))
   ;;              (print (orgdata-directives v)))
   ;;         *blogs*)
-#+END_SRC
-
-* Sape
-
-#+NAME: sape
-#+BEGIN_SRC lisp :tangle sape.lisp :noweb tangle :exports code :padline no :comments link
-  (in-package #:rigidus)
 #+END_SRC
 
 * Демонизация

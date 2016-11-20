@@ -1,4 +1,4 @@
-;; [[file:doc.org::*Sape][Sape:1]]
+;; [[file:doc.org::*Sape][sape]]
 (in-package #:rigidus)
 
 
@@ -64,7 +64,7 @@
       (sb-ext:process-exit-code extproc))
     ;; latin-1 = :ISO8859-1 = :cp1252 (http://ru.wikipedia.org/wiki/ISO_8859-1)
     (format nil "~a" (recode (base64:base64-string-to-string rs) :ISO8859-1 :utf-8))))
-;; Sape:1 ends here
+;; sape ends here
 ;; [[file:doc.org::*Инициализация][sape]]
 (in-package #:rigidus)
 
@@ -146,7 +146,4 @@
 ;;             ;; (print (orgdata-content v)))
 ;;              (print (orgdata-directives v)))
 ;;         *blogs*)
-;; sape ends here
-;; [[file:doc.org::*Sape][sape]]
-(in-package #:rigidus)
 ;; sape ends here
