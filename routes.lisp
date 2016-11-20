@@ -47,7 +47,7 @@
            (posts (mapcar #'title-maker blogs-content)))
       (tpl:root (list :headtitle "Программирование - как искусство"
                       :stat (tpl:stat)
-                      ;; :navpoints navpoints
+                      :navpoints (menu)
                       :title line
                       :columns
                       (tpl:main
@@ -96,8 +96,8 @@
 (def/route contacts ("contacts")
   (render-public "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))
 
-(def/route contacts ("contacts")
-  (render #P"org/contacts.org"))
+;; (def/route contacts ("contacts")
+;;   (render #P"org/contacts.org"))
 
 ;; (def/route radio ("radio")
 ;;   (render #P"org/radio.org"))
