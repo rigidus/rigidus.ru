@@ -60,6 +60,10 @@
   (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/articles/~A/~A.html" parkey strkey)))
     (render-public filename)))
 
+(def/route alien-elt ("aliens/:parkey/:strkey")
+  (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/aliens/~A/~A.html" parkey strkey)))
+    (render-public filename)))
+
 ;; TODO: blog
 
 ;; plan file pages
@@ -68,18 +72,15 @@
   (let ((truename (probe-file filename)))
     (if (null truename)
         (page-404)
-        (let* ((file-content (alexandria:read-file-into-string filename))
-               (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
-               (toc          (ppcre:scan-to-strings toc-regexp file-content))
-               (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
-               (w/o          (ppcre:regex-replace w/o-regexp file-content "")))
-          (tpl:root (list :headtitle "" ;; title
-                          :stat (tpl:stat)
-                          :navpoints (menu)
-                          :title "" ;; title
-                          :columns (tpl:org (list ;; :title ""
-                                             :content file-content ;; w/o
-                                             :toc toc))))))))
+        (tpl:root
+         (list :headtitle "" ;; title
+               :stat (tpl:stat)
+               :navpoints (menu)
+               :title "" ;; title
+               :columns
+               (tpl:orgfile
+                (list :title ""
+                      :content (alexandria:read-file-into-string filename))))))))
 
 (def/route about ("about")
   (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
@@ -111,31 +112,11 @@
          :columns
          (tpl:orgfile
           (list
+           :title ""
            :content
            (alexandria:read-file-into-string
             "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
 
-;; showing articles
-
-;; (defun show-article-from-hash (strkey hash)
-;;   (multiple-value-bind (article isset)
-;;       (gethash strkey hash)
-;;     (unless isset
-;;       (restas:abort-route-handler
-;;        (page-404)
-;;        :return-code hunchentoot:+http-not-found+
-;;        :content-type "text/html"))
-;;     article))
-
-
-;; (def/route articles ("articles")
-;;   (render *cached-articles-page*))
-
-;; (def/route aliens ("aliens")
-;;   (render *cached-alien-page*))
-
-;; (def/route alien ("alien/:strkey")
-;;   (render (show-article-from-hash strkey *aliens*)))
 
 ;; TODO
 ;; (restas:define-route onlisp ("onlisp/doku.php")

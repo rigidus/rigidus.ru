@@ -30,8 +30,6 @@
          ,(cons (concatenate 'string (car param) "/") (cdr param))
        ,@body)))
 
-
-
 (setf asdf:*central-registry*
       (remove-duplicates (append asdf:*central-registry*
                                  (list (make-pathname :directory (list :relative (sb-posix:getcwd)))))
@@ -41,15 +39,6 @@
 
 (defun path (relative)
   (merge-pathnames relative *basedir*))
-
-(defparameter *articles* (make-hash-table :test #'equal))
-(defparameter *cached-articles-page* nil)
-
-(defparameter *aliens* (make-hash-table :test #'equal))
-(defparameter *cached-alien-page* nil)
-
-(defparameter *blogs* (make-hash-table :test #'equal))
-(defparameter *cached-blogs-page* nil)
 
 
 #| POSTGRESQL

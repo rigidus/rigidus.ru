@@ -318,23 +318,6 @@
 постов, содержимое которых лежит в org-файлах в папке
 /content/blogs/*.org
 
-Мы должны выбрать оттуда все файлы, распарсить их и закешировать в
-хэш-таблице =*blogs*=
-
-#+NAME: declare_blogs
-#+BEGIN_SRC lisp
-  (defparameter *blogs* (make-hash-table :test #'equal))
-#+END_SRC
-
-Для кеширования мы используем функцию =cache-section=:
-
-#+NAME: cache_blogs
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  (cache-section *blogs* "content/blogs/")
-#+END_SRC
-
 #+NAME: tpl_post_main
 #+BEGIN_SRC html
   <article>
@@ -356,64 +339,12 @@
   </div>
 #+END_SRC
 
-* Шаблон для orgdata
-
-#+NAME: tpl_org
-#+BEGIN_SRC html
-  <div id="orgcontent">
-      <article>
-          {$content | noAutoescape}
-      </article>
-  </div>
-
-  <div id="sidebar">
-      <section id="about">
-          <h3>Содержание</h3>
-          {$toc |noAutoescape}
-          <div id="guideNav">
-               <ul>
-                   {foreach $elt in $sections}
-                       {call sectelt data="$elt" /}
-                   {/foreach}
-               </ul>
-           </div>
-      </section>
-  </div>
-
-  <div id="sidebar">
-      <section id="tags">
-          <h3>Tags</h3>
-          <ul>
-              <li><a href="#">Articles</a></li>
-              <li><a href="#">Design</a></li>
-              <li><a href="#">Graphics</a></li>
-              <li><a href="#">Inspiration</a></li>
-              <li><a href="#">Retro</a></li>
-          </ul>
-      </section>
-  </div>
-
-  <div id="sidebar">
-      <section id="categories">
-          <h3>Categories</h3>
-          <ul>
-              <li><a href="#">Сети доверия</a></li>
-              <li><a href="#">Articles</a></li>
-              <li><a href="#">Design</a></li>
-              <li><a href="#">Graphics</a></li>
-              <li><a href="#">Inspiration</a></li>
-              <li><a href="#">Retro</a></li>
-          </ul>
-      </section>
-  </div>
-#+END_SRC
-
 * Шаблон для страниц ORG
 
 #+NAME: tpl_org_file
 #+BEGIN_SRC html
   <div id="content">{\n}
-      <h1 class="title">Исследование org-publish-all</h1>{\n}
+      <h1 class="title">{$title |noAutoescape}</h1>{\n}
       <div id="orgcontent">
           <article>
               {$content |noAutoescape}{\n}
@@ -454,8 +385,6 @@
 
   <<utility>>
 
-  <<renders>>
-
   (setf asdf:*central-registry*
         (remove-duplicates (append asdf:*central-registry*
                                    (list (make-pathname :directory (list :relative (sb-posix:getcwd)))))
@@ -465,15 +394,6 @@
 
   (defun path (relative)
     (merge-pathnames relative *basedir*))
-
-  (defparameter *articles* (make-hash-table :test #'equal))
-  (defparameter *cached-articles-page* nil)
-
-  (defparameter *aliens* (make-hash-table :test #'equal))
-  (defparameter *cached-alien-page* nil)
-
-  <<declare_blogs>>
-  (defparameter *cached-blogs-page* nil)
 
 
   #| POSTGRESQL
@@ -661,18 +581,15 @@
     (let ((truename (probe-file filename)))
       (if (null truename)
           (page-404)
-          (let* ((file-content (alexandria:read-file-into-string filename))
-                 (toc-regexp   "(?s)<div id=\\\"text-table-of-contents\\\">.*?</div>")
-                 (toc          (ppcre:scan-to-strings toc-regexp file-content))
-                 (w/o-regexp   "(?s)<div id=\\\"table-of-contents\\\">.*?</div>.*?</div>")
-                 (w/o          (ppcre:regex-replace w/o-regexp file-content "")))
-            (tpl:root (list :headtitle "" ;; title
-                            :stat (tpl:stat)
-                            :navpoints (menu)
-                            :title "" ;; title
-                            :columns (tpl:org (list ;; :title ""
-                                               :content file-content ;; w/o
-                                               :toc toc))))))))
+          (tpl:root
+           (list :headtitle "" ;; title
+                 :stat (tpl:stat)
+                 :navpoints (menu)
+                 :title "" ;; title
+                 :columns
+                 (tpl:orgfile
+                  (list :title ""
+                        :content (alexandria:read-file-into-string filename))))))))
 
   (def/route about ("about")
     (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
@@ -704,31 +621,11 @@
            :columns
            (tpl:orgfile
             (list
+             :title ""
              :content
              (alexandria:read-file-into-string
               "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
 
-  ;; showing articles
-
-  ;; (defun show-article-from-hash (strkey hash)
-  ;;   (multiple-value-bind (article isset)
-  ;;       (gethash strkey hash)
-  ;;     (unless isset
-  ;;       (restas:abort-route-handler
-  ;;        (page-404)
-  ;;        :return-code hunchentoot:+http-not-found+
-  ;;        :content-type "text/html"))
-  ;;     article))
-
-
-  ;; (def/route articles ("articles")
-  ;;   (render *cached-articles-page*))
-
-  ;; (def/route aliens ("aliens")
-  ;;   (render *cached-alien-page*))
-
-  ;; (def/route alien ("alien/:strkey")
-  ;;   (render (show-article-from-hash strkey *aliens*)))
 
   ;; TODO
   ;; (restas:define-route onlisp ("onlisp/doku.php")
@@ -840,6 +737,10 @@
 
   (def/route article-elt ("articles/:parkey/:strkey")
     (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/articles/~A/~A.html" parkey strkey)))
+      (render-public filename)))
+
+  (def/route alien-elt ("aliens/:parkey/:strkey")
+    (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/aliens/~A/~A.html" parkey strkey)))
       (render-public filename)))
 #+END_SRC
 
