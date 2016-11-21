@@ -1,7 +1,6 @@
 ;; [[file:doc.org::*Sape][sape]]
 (in-package #:rigidus)
 
-
 (defun base64-cookies ()
   (let* ((cookies   (hunchentoot:cookies-out*))
          (serialize (mapcar #'(lambda (x)
