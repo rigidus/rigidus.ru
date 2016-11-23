@@ -50,9 +50,14 @@
                       :navpoints (menu)
                       :title line
                       :columns
+                      ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
+                      ;;   (tpl:orgfile
+                      ;;    (list :title ""
+                      ;;          :content (alexandria:read-file-into-string filename))))
                       (tpl:main
                        (list
-                        :articles (tpl:mainposts (list :posts posts)))))))))
+                        :articles (tpl:mainposts (list :posts posts))))
+                      )))))
 
 (in-package #:rigidus)
 
