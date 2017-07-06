@@ -11,6 +11,80 @@
 
 Это сайт http://rigidus.ru
 
+* HTML-часть
+** Страница - контейнер
+
+Чтобы сформировать страницу, которая будет контейнером для остального
+содержимого - просто конкатенируем все содержимое, переданное в
+параметрах:
+
+#+NAME: page
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun page (&rest par)
+    (reduce #'(lambda (a b) (concatenate 'string a b)) par))
+#+END_SRC
+
+** Базовая страница
+
+Базовая страница содержит все неизменяемые элементы необходимые для
+отображения html-кода всех страниц. Изменяемое содержание передается в
+параметрах.
+
+#+NAME: base_page
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun base-page (title)
+    (page
+     (doctype)
+     (html
+      (head title)
+      (body "Under construction"))))
+#+END_SRC
+
+** Компоненты базовой странцы
+
+#+NAME: base_page_components
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun doctype ()
+    (format nil "<!DOCTYPE html>~%"))
+
+  (defun html (&rest par)
+    (format nil "<html>~%~A</html>~%"
+            (apply #'page par)))
+
+  (defun head (title &rest par)
+    (format nil "~A~A"
+            (format nil "  <title>~A</title>~%" title)
+            (if (null par)
+                ""
+                (reduce #'(lambda (a b) (concatenate 'string a b))
+                        (mapcar #'(lambda (x) (format nil "  ~A~%" x))
+                                par)))))
+  (defun body (&rest par)
+    (format nil "  <body>~A~%~A</body>~%"
+            (if (null par)
+                ""
+                (reduce #'(lambda (a b) (concatenate 'string a b))
+                        (mapcar #'(lambda (x) (format nil "  ~A~%" x))
+                                par)))
+            (tpl:stat)))
+#+END_SRC
+
+** Маршрут главной страницы
+
+#+NAME: main_page_route
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (restas:define-route main ("/")
+    (base-page "Программирование - как искусство"))
+#+END_SRC
+
 * Корневой шаблон
 
 Корневой шаблон - это кусок html-кода, который на всех страницах
@@ -374,34 +448,36 @@
   (in-package #:rigidus)
 
   (restas:define-route main ("/")
-    (flet ((title-maker (x)
-             (list :date ""
-                   :content
-                   (cl-ppcre:regex-replace
-                    "<h1 class=\"title\">(.+)</h1>" x
-                    #'(lambda (match &rest registers)
-                        (declare (ignore match))
-                        (format nil "<h2>~A</h2>" (car registers)))
-                    :simple-calls t))))
-      (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-             (line  (nth (random (length lines)) lines))
-             (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
-             (blogs-content   (mapcar #'alexandria:read-file-into-string
-                                      (get-directory-contents blogs-directory )))
-             (posts (mapcar #'title-maker blogs-content)))
-        (tpl:root (list :headtitle "Программирование - как искусство"
-                        :stat (tpl:stat)
-                        :navpoints (menu)
-                        :title line
-                        :columns
-                        ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
-                        ;;   (tpl:orgfile
-                        ;;    (list :title ""
-                        ;;          :content (alexandria:read-file-into-string filename))))
-                        (tpl:main
-                         (list
-                          :articles (tpl:mainposts (list :posts posts))))
-                        )))))
+    (base-page "Программирование - как искусство")
+    ;; (flet ((title-maker (x)
+    ;;          (list :date ""
+    ;;                :content
+    ;;                (cl-ppcre:regex-replace
+    ;;                 "<h1 class=\"title\">(.+)</h1>" x
+    ;;                 #'(lambda (match &rest registers)
+    ;;                     (declare (ignore match))
+    ;;                     (format nil "<h2>~A</h2>" (car registers)))
+    ;;                 :simple-calls t))))
+    ;;   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+    ;;          (line  (nth (random (length lines)) lines))
+    ;;          (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
+    ;;          (blogs-content   (mapcar #'alexandria:read-file-into-string
+    ;;                                   (get-directory-contents blogs-directory )))
+    ;;          (posts (mapcar #'title-maker blogs-content)))
+    ;;     (tpl:root (list :headtitle "Программирование - как искусство"
+    ;;                     :stat (tpl:stat)
+    ;;                     :navpoints (menu)
+    ;;                     :title line
+    ;;                     :columns
+    ;;                     ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
+    ;;                     ;;   (tpl:orgfile
+    ;;                     ;;    (list :title ""
+    ;;                     ;;          :content (alexandria:read-file-into-string filename))))
+    ;;                     (tpl:main
+    ;;                      (list
+    ;;                       :articles (tpl:mainposts (list :posts posts))))
+    ;;                     ))))
+    )
 
 
   (defun maptree-transform (predicate-transformer tree)
@@ -1152,7 +1228,7 @@
 
 #+NAME: copyright
 #+BEGIN_SRC lisp
-  Copyright © 2014-2016 Glukhov Mikhail. All rights reserved.
+  Copyright © 2014-2017 Glukhov Mikhail. All rights reserved.
   Licensed under the GNU AGPLv3
 #+END_SRC
 
