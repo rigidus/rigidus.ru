@@ -1,5 +1,5 @@
 ;; [[file:doc.org::*Каркас проекта][defsystem]]
-;;;; Copyright © 2014-2016 Glukhov Mikhail. All rights reserved.
+;;;; Copyright © 2014-2017 Glukhov Mikhail. All rights reserved.
 ;;;; Licensed under the GNU AGPLv3
 (asdf:defsystem #:rigidus
   :version      "0.0.2"
@@ -16,7 +16,8 @@
                  #:closure-template
                  #:drakma
                  #:split-sequence
-                 #:cl-json)
+                 #:cl-json
+                 #:parenscript)
   :serial       t
   :components   ((:static-file "templates.htm")
                  (:file "prepare")

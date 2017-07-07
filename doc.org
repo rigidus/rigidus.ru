@@ -12,18 +12,49 @@
 Это сайт http://rigidus.ru
 
 * HTML-часть
-** Страница - контейнер
+** Утилиты для построения HTML
 
-Чтобы сформировать страницу, которая будет контейнером для остального
-содержимого - просто конкатенируем все содержимое, переданное в
-параметрах:
-
-#+NAME: page
+#+NAME: html_build_utils
 #+BEGIN_SRC lisp
   (in-package :rigidus)
 
-  (defun page (&rest par)
-    (reduce #'(lambda (a b) (concatenate 'string a b)) par))
+  ;; Определим утилиту =rdcs= (reduce-string), которая нужна для сборки в одну
+  ;; строку переданных ей параметров с опциональным отступом, если он задан в
+  ;; первом параметре:
+
+  (defun rdcs (&rest par)
+    (concatenate 'string
+                 (if (numberp (car par))
+                     (prog1
+                       (make-array (car par) :initial-element #\Space)
+                       (setf par (cdr par)))
+                     "")
+                 (reduce #'(lambda (a b) (concatenate 'string a b)) par)))
+
+  ;; Также нам понадобится символ перевода строки и процедуры, который отображают
+  ;; базовые теги:
+
+  (defvar retn (string #\Newline))
+
+  (defmacro doctype ()
+    "Будет вычислено один раз, на стадии компиляции"
+    (rdcs "<!DOCTYPE html>" retn))
+
+  (defun html (&rest par)
+    (rdcs "<html>" retn (apply #'rdcs par) "</html>" retn ))
+
+  (defun head (title &rest par)
+    (rdcs 2 "<head>" retn
+          (rdcs 4 "<title>" title "</title>" retn)
+          (if (null par)
+              ""
+              (rdcs (mapcar #'(lambda (x) (rdcs "  " x retn))
+                            par)))
+          (rdcs 2 "</head>" retn)))
+
+  (defun body (layout &rest par)
+    (let ((body (if (null par) "" (apply layout (car par)))))
+      (rdcs 2 "<body>" retn body "  </body>" retn)))
 #+END_SRC
 
 ** Базовая страница
@@ -32,47 +63,16 @@
 отображения html-кода всех страниц. Изменяемое содержание передается в
 параметрах.
 
-#+NAME: base_page
+#+NAME: page
 #+BEGIN_SRC lisp
   (in-package :rigidus)
 
-  (defun base-page (title)
-    (page
+  (defun page (title layout &rest content)
+    (r%
      (doctype)
      (html
       (head title)
-      (body "Under construction"))))
-#+END_SRC
-
-** Компоненты базовой странцы
-
-#+NAME: base_page_components
-#+BEGIN_SRC lisp
-  (in-package :rigidus)
-
-  (defun doctype ()
-    (format nil "<!DOCTYPE html>~%"))
-
-  (defun html (&rest par)
-    (format nil "<html>~%~A</html>~%"
-            (apply #'page par)))
-
-  (defun head (title &rest par)
-    (format nil "~A~A"
-            (format nil "  <title>~A</title>~%" title)
-            (if (null par)
-                ""
-                (reduce #'(lambda (a b) (concatenate 'string a b))
-                        (mapcar #'(lambda (x) (format nil "  ~A~%" x))
-                                par)))))
-  (defun body (&rest par)
-    (format nil "  <body>~A~%~A</body>~%"
-            (if (null par)
-                ""
-                (reduce #'(lambda (a b) (concatenate 'string a b))
-                        (mapcar #'(lambda (x) (format nil "  ~A~%" x))
-                                par)))
-            (tpl:stat)))
+      (body layout content))))
 #+END_SRC
 
 ** Маршрут главной страницы
@@ -82,7 +82,211 @@
   (in-package :rigidus)
 
   (restas:define-route main ("/")
-    (base-page "Программирование - как искусство"))
+    (page "Программирование - как искусство"
+               #'smplay
+               :h1 "Rigidus homepage"
+               :menu *menu*
+               :text "Under construction"))
+
+  (defun h1 (title)
+    (rdcs 4 "<h1>" title "</h1>" retn))
+
+  (defun smplay (&rest par)
+    (rdcs
+     (h1  (getf par :h1))
+     (menu (getf par :menu))
+     (getf par :text)
+     retn (tpl:stat)))
+
+  (defmacro attrs (attrs)
+    `(if (null attrs)
+         (rdcs ">" retn)
+         (rdcs
+          (apply #'rdcs
+                 (loop :for key :in attrs :by #'cddr
+                    :collect (rdcs " "   (string-downcase (symbol-name key))
+                                   "=\"" (getf attrs key) "\"")))
+          ">" retn)))
+
+  (intern (string-upcase "div"))
+
+  (defmacro make-tag (name)
+    (let ((symb (intern (string-upcase name))))
+      `(defun ,symb (data &optional &key (indent nil) (attrs nil))
+         (rdcs indent
+               "<" ,name
+               (attrs attrs)
+               data
+               (rdcs indent "</" ,name ">" retn)))))
+
+  (make-tag "div")
+  (make-tag "ul")
+  (make-tag "li")
+  (make-tag "a")
+
+  (defun menu (menu-data)
+    (div
+     (ul
+      (apply #'rdcs
+             (mapcar #'(lambda (x)
+                         (li
+                          (a
+                           (rdcs 12 (cdr x) retn)
+                           :attrs `(:href ,(rdcs "/" (car x))) :indent 10 :attrs '(:class "menu-link"))
+                          :indent 8 :attrs '(:class "menu-elt")))
+                     menu-data))
+      :indent 6 :attrs '(:class "menu-list"))
+     :indent 4 :attrs `(:id "main-menu" :class "nav-menu")))
+
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("articles"  . "Статьи")
+      ("aliens"    . "Материалы")
+      ("resources" . "Ресурсы")
+      ("contacts"  . "Контакты")))
+#+END_SRC
+
+
+#+BEGIN_SRC lisp
+  ;; (ps:ps-html
+  ;;  ((:html)
+  ;;   ((:head))))
+  ;; ((:a :href "foobar") "blorg"))
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
+
+  (require 'anaphora)
+
+  (use-package :anaphora)
+
+  (defun stringify (&rest things)
+    "Like concatenate but prints all of its arguments."
+    (format nil "~{~A~}" things))
+
+  (defvar *enclosing-lexicals* ()
+    "All enclosing lexical variables (includes function names).")
+
+  (defun make-macro-dictionary ()
+    (make-hash-table :test 'eq))
+
+  (defvar *symbol-macro-toplevel* (make-macro-dictionary))
+
+  (defvar *macro-toplevel* (make-macro-dictionary)
+    "Toplevel macro environment dictionary.")
+
+  (defvar *macro-env* (list *macro-toplevel*)
+    "Current macro environment.")
+
+  (defun lookup-macro-def (name env)
+    (loop for e in env thereis (gethash name e)))
+
+  (defun ps-macroexpand-1 (form)
+    (aif (or (and (symbolp form)
+                  (or (and (member form *enclosing-lexicals*)
+                           (lookup-macro-def form *symbol-macro-env*))
+                      (gethash form *symbol-macro-toplevel*))) ;; hack
+             (and (consp form) (lookup-macro-def (car form) *macro-env*)))
+         (values (ps-macroexpand (funcall it form)) t)
+         form))
+
+  (defun ps-macroexpand (form)
+    (multiple-value-bind (form1 expanded?) (ps-macroexpand-1 form)
+      (if expanded?
+          (values (ps-macroexpand form1) t)
+          form1)))
+
+  (defun process-html-forms-lhtml (forms)
+    (let ((r ()))
+      (labels ((process-attrs (attrs)
+                 (do (attr-test attr-name attr-val)
+                     ((not attrs))
+                   (setf attr-name (pop attrs)
+                         attr-test (when (not (keywordp attr-name))
+                                     (let ((test attr-name))
+                                       (setf attr-name (pop attrs))
+                                       test))
+                         attr-val (pop attrs))
+                   (if attr-test
+                       (push `(if ,attr-test
+                                  (stringify ,(format nil " ~A=\"" attr-name) ,attr-val "\"")
+                                  "")
+                             r)
+                       (progn
+                         (push (format nil " ~A=\"" attr-name) r)
+                         (push attr-val r)
+                         (push "\"" r)))))
+               (process-form% (tag attrs content)
+                 (push (format nil "<~A" tag) r)
+                 (process-attrs attrs)
+                 (if (or content (not (empty-tag-p tag)))
+                     (progn (push ">" r)
+                            (map nil #'process-form content)
+                            (push (format nil "</~A>" tag) r))
+                     (progn (when (eql *ps-html-mode* :xml)
+                              (push "/" r))
+                            (push ">" r))))
+               (process-form (form)
+                 (cond ((keywordp form)              (process-form (list form)))
+                       ((atom form)                  (push form r))
+                       ((and (consp form)
+                             (keywordp (car form)))  (process-form% (car form) () (cdr form)))
+                       ((and (consp form)
+                             (consp (first form))
+                             (keywordp (caar form))) (process-form% (caar form)
+                                                                    (cdar form)
+                                                                    (cdr form)))
+                       (t (push form r)))))
+        (map nil #'process-form forms)
+        (concat-constant-strings (reverse r)))))
+
+
+  (defmacro html (&rest html-forms)
+    `(stringify ,@(with-standard-io-syntax (process-html-forms-lhtml html-forms))))
+
+  (defun concat-constant-strings (str-list)
+    (flet ((expand (expr)
+             (setf expr (ps-macroexpand expr))
+             (cond ((and (consp expr) (eq (car expr) 'quote) (symbolp (second expr)))
+                    (symbol-to-js-string (second expr)))
+                   ((keywordp expr) (string-downcase expr))
+                   ((characterp expr) (string expr))
+                   (t expr))))
+      (reverse (reduce (lambda (optimized-list next-expr)
+                         (let ((next-obj (expand next-expr)))
+                           (if (and (or (numberp next-obj) (stringp next-obj))
+                                    (stringp (car optimized-list)))
+                               (cons (format nil "~a~a" (car optimized-list) next-obj) (cdr optimized-list))
+                               (cons next-obj optimized-list))))
+                       (cons () str-list)))))
+
+  (defparameter *title* "the-title")
+
+  (defun get-title ()
+    "theeeee")
+
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("articles"  . "Статьи")
+      ("aliens"    . "Материалы")
+      ("resources" . "Ресурсы")
+      ("contacts"  . "Контакты")))
+
+  (let ((title "the"))
+    (html
+     ((:html)
+      ((:head)
+       ((:title) (get-title)))
+      ((:body)
+       ((:h1) title)
+       ((:div :id "main-menu" :class "navigation-menu")
+        ((:ul :class "menu-list")
+         (mapcar #'(lambda (menu-elt)
+                     (html
+                      ((:li :class "menu-el")
+                       ((:a :href (car menu-elt)) (cdr menu-elt)))))
+                 ,*menu*)))))))
 #+END_SRC
 
 * Корневой шаблон
@@ -1210,7 +1414,8 @@
                    #:closure-template
                    #:drakma
                    #:split-sequence
-                   #:cl-json)
+                   #:cl-json
+                   #:parenscript)
     :serial       t
     :components   ((:static-file "templates.htm")
                    (:file "prepare")

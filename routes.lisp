@@ -30,34 +30,66 @@
 (in-package #:rigidus)
 
 (restas:define-route main ("/")
-  (flet ((title-maker (x)
-           (list :date ""
-                 :content
-                 (cl-ppcre:regex-replace
-                  "<h1 class=\"title\">(.+)</h1>" x
-                  #'(lambda (match &rest registers)
-                      (declare (ignore match))
-                      (format nil "<h2>~A</h2>" (car registers)))
-                  :simple-calls t))))
-    (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-           (line  (nth (random (length lines)) lines))
-           (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
-           (blogs-content   (mapcar #'alexandria:read-file-into-string
-                                    (get-directory-contents blogs-directory )))
-           (posts (mapcar #'title-maker blogs-content)))
-      (tpl:root (list :headtitle "Программирование - как искусство"
-                      :stat (tpl:stat)
-                      :navpoints (menu)
-                      :title line
-                      :columns
-                      ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
-                      ;;   (tpl:orgfile
-                      ;;    (list :title ""
-                      ;;          :content (alexandria:read-file-into-string filename))))
-                      (tpl:main
-                       (list
-                        :articles (tpl:mainposts (list :posts posts))))
-                      )))))
+  (base-page "Программирование - как искусство")
+  ;; (flet ((title-maker (x)
+  ;;          (list :date ""
+  ;;                :content
+  ;;                (cl-ppcre:regex-replace
+  ;;                 "<h1 class=\"title\">(.+)</h1>" x
+  ;;                 #'(lambda (match &rest registers)
+  ;;                     (declare (ignore match))
+  ;;                     (format nil "<h2>~A</h2>" (car registers)))
+  ;;                 :simple-calls t))))
+  ;;   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+  ;;          (line  (nth (random (length lines)) lines))
+  ;;          (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
+  ;;          (blogs-content   (mapcar #'alexandria:read-file-into-string
+  ;;                                   (get-directory-contents blogs-directory )))
+  ;;          (posts (mapcar #'title-maker blogs-content)))
+  ;;     (tpl:root (list :headtitle "Программирование - как искусство"
+  ;;                     :stat (tpl:stat)
+  ;;                     :navpoints (menu)
+  ;;                     :title line
+  ;;                     :columns
+  ;;                     ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
+  ;;                     ;;   (tpl:orgfile
+  ;;                     ;;    (list :title ""
+  ;;                     ;;          :content (alexandria:read-file-into-string filename))))
+  ;;                     (tpl:main
+  ;;                      (list
+  ;;                       :articles (tpl:mainposts (list :posts posts))))
+  ;;                     ))))
+  )
+
+
+(defun maptree-transform (predicate-transformer tree)
+  (multiple-value-bind (t-tree control)
+      (aif (funcall predicate-transformer tree)
+           it
+           (values tree #'mapcar))
+    (if (and (consp t-tree)
+             control)
+        (funcall control
+                 #'(lambda (x)
+                     (maptree-transform predicate-transformer x))
+                 t-tree)
+        t-tree)))
+
+;; mtm - синтаксический сахар для maptree-transform
+(defmacro mtm (transformer tree)
+  (let ((lambda-param (gensym)))
+    `(maptree-transform #'(lambda (,lambda-param)
+                            (values (match ,lambda-param ,transformer)
+                                    #'mapcar))
+                        ,tree)))
+
+
+;; (let* ((filename "/home/rigidus/repo/rigidus.ru/public_html/main.html")
+;;        (filecontent (alexandria:read-file-into-string filename))
+;;        (parsed (html5-parser:parse-html5-fragment filecontent :dom :xmls)))
+;;   (print (mtm (`("div" (("table-of-contents")) ,@rest)
+;;                 (list "zzz"))
+;;               parsed)))
 
 (in-package #:rigidus)
 
