@@ -12,237 +12,96 @@
 Это сайт http://rigidus.ru
 
 * HTML-часть
-** Утилиты для построения HTML
+** DSL для построения HTML
 
-#+NAME: html_build_utils
+Чтобы удобно формировать HTML будем использовать DSL, который
+называется LHTML. Пример его применения выглядит так:
+
 #+BEGIN_SRC lisp
-  (in-package :rigidus)
+  (in-package #:rigidus)
 
-  ;; Определим утилиту =rdcs= (reduce-string), которая нужна для сборки в одну
-  ;; строку переданных ей параметров с опциональным отступом, если он задан в
-  ;; первом параметре:
+  (defparameter *head-title* "Example of title")
 
-  (defun rdcs (&rest par)
-    (concatenate 'string
-                 (if (numberp (car par))
-                     (prog1
-                       (make-array (car par) :initial-element #\Space)
-                       (setf par (cdr par)))
-                     "")
-                 (reduce #'(lambda (a b) (concatenate 'string a b)) par)))
+  (defun get-title-of (parameter)
+    (format nil "Title of ~A:" parameter))
 
-  ;; Также нам понадобится символ перевода строки и процедуры, который отображают
-  ;; базовые теги:
-
-  (defvar retn (string #\Newline))
-
-  (defmacro doctype ()
-    "Будет вычислено один раз, на стадии компиляции"
-    (rdcs "<!DOCTYPE html>" retn))
-
-  (defun html (&rest par)
-    (rdcs "<html>" retn (apply #'rdcs par) "</html>" retn ))
-
-  (defun head (title &rest par)
-    (rdcs 2 "<head>" retn
-          (rdcs 4 "<title>" title "</title>" retn)
-          (if (null par)
-              ""
-              (rdcs (mapcar #'(lambda (x) (rdcs "  " x retn))
-                            par)))
-          (rdcs 2 "</head>" retn)))
-
-  (defun body (layout &rest par)
-    (let ((body (if (null par) "" (apply layout (car par)))))
-      (rdcs 2 "<body>" retn body "  </body>" retn)))
+  (html 0
+        ((:html)
+         ((:head)
+          ((:title) *head-title*))
+         ((:body :bgcolor "black")
+          ((:h1)
+           (get-title-of "Articles")
+           "..."))))
 #+END_SRC
 
-** Базовая страница
+и после выполнения возвращает вот такую строку:
 
-Базовая страница содержит все неизменяемые элементы необходимые для
-отображения html-кода всех страниц. Изменяемое содержание передается в
-параметрах.
+#+BEGIN_EXAMPLE
+  => "<HTML>
+    <HEAD>
+      <TITLE>
+        Example of title
+      </TITLE>
+    </HEAD>
+    <BODY BGCOLOR=\"black\">
+      <H1>
+        Title of Articles:
+        ...
+      </H1>
+    </BODY>
+  </HTML>
+  "
+#+END_EXAMPLE
 
-#+NAME: page
+Реализация этого DSL взята из проекта PARENSCRIPT и слегка
+модифицирована для того, чтобы правильно формировать отступы. Вот она:
+
+#+NAME: html
 #+BEGIN_SRC lisp
-  (in-package :rigidus)
-
-  (defun page (title layout &rest content)
-    (r%
-     (doctype)
-     (html
-      (head title)
-      (body layout content))))
-#+END_SRC
-
-** Маршрут главной страницы
-
-#+NAME: main_page_route
-#+BEGIN_SRC lisp
-  (in-package :rigidus)
-
-  (restas:define-route main ("/")
-    (page "Программирование - как искусство"
-               #'smplay
-               :h1 "Rigidus homepage"
-               :menu *menu*
-               :text "Under construction"))
-
-  (defun h1 (title)
-    (rdcs 4 "<h1>" title "</h1>" retn))
-
-  (defun smplay (&rest par)
-    (rdcs
-     (h1  (getf par :h1))
-     (menu (getf par :menu))
-     (getf par :text)
-     retn (tpl:stat)))
-
-  (defmacro attrs (attrs)
-    `(if (null attrs)
-         (rdcs ">" retn)
-         (rdcs
-          (apply #'rdcs
-                 (loop :for key :in attrs :by #'cddr
-                    :collect (rdcs " "   (string-downcase (symbol-name key))
-                                   "=\"" (getf attrs key) "\"")))
-          ">" retn)))
-
-  (intern (string-upcase "div"))
-
-  (defmacro make-tag (name)
-    (let ((symb (intern (string-upcase name))))
-      `(defun ,symb (data &optional &key (indent nil) (attrs nil))
-         (rdcs indent
-               "<" ,name
-               (attrs attrs)
-               data
-               (rdcs indent "</" ,name ">" retn)))))
-
-  (make-tag "div")
-  (make-tag "ul")
-  (make-tag "li")
-  (make-tag "a")
-
-  (defun menu (menu-data)
-    (div
-     (ul
-      (apply #'rdcs
-             (mapcar #'(lambda (x)
-                         (li
-                          (a
-                           (rdcs 12 (cdr x) retn)
-                           :attrs `(:href ,(rdcs "/" (car x))) :indent 10 :attrs '(:class "menu-link"))
-                          :indent 8 :attrs '(:class "menu-elt")))
-                     menu-data))
-      :indent 6 :attrs '(:class "menu-list"))
-     :indent 4 :attrs `(:id "main-menu" :class "nav-menu")))
-
-  (defparameter *menu*
-    '(("about"     . "О проекте")
-      ("articles"  . "Статьи")
-      ("aliens"    . "Материалы")
-      ("resources" . "Ресурсы")
-      ("contacts"  . "Контакты")))
-#+END_SRC
-
-
-#+BEGIN_SRC lisp
-  ;; (ps:ps-html
-  ;;  ((:html)
-  ;;   ((:head))))
-  ;; ((:a :href "foobar") "blorg"))
-
-  (defmacro bprint (var)
-    `(subseq (with-output-to-string (*standard-output*)
-               (pprint ,var)) 1))
-
-  (require 'anaphora)
-
-  (use-package :anaphora)
-
-  (defun stringify (&rest things)
-    "Like concatenate but prints all of its arguments."
-    (format nil "~{~A~}" things))
-
-  (defvar *enclosing-lexicals* ()
-    "All enclosing lexical variables (includes function names).")
-
-  (defun make-macro-dictionary ()
-    (make-hash-table :test 'eq))
-
-  (defvar *symbol-macro-toplevel* (make-macro-dictionary))
-
-  (defvar *macro-toplevel* (make-macro-dictionary)
-    "Toplevel macro environment dictionary.")
-
-  (defvar *macro-env* (list *macro-toplevel*)
-    "Current macro environment.")
-
-  (defun lookup-macro-def (name env)
-    (loop for e in env thereis (gethash name e)))
-
-  (defun ps-macroexpand-1 (form)
-    (aif (or (and (symbolp form)
-                  (or (and (member form *enclosing-lexicals*)
-                           (lookup-macro-def form *symbol-macro-env*))
-                      (gethash form *symbol-macro-toplevel*))) ;; hack
-             (and (consp form) (lookup-macro-def (car form) *macro-env*)))
-         (values (ps-macroexpand (funcall it form)) t)
-         form))
-
-  (defun ps-macroexpand (form)
-    (multiple-value-bind (form1 expanded?) (ps-macroexpand-1 form)
-      (if expanded?
-          (values (ps-macroexpand form1) t)
-          form1)))
-
-  (defun concat-constant-strings (str-list)
-    (flet ((expand (expr)
-             (setf expr (ps-macroexpand expr))
-             (cond ((and (consp expr) (eq (car expr) 'quote) (symbolp (second expr)))
-                    (symbol-to-js-string (second expr)))
-                   ((keywordp expr) (string-downcase expr))
-                   ((characterp expr) (string expr))
-                   (t expr))))
-      (reverse (reduce (lambda (optimized-list next-expr)
-                         (let ((next-obj (expand next-expr)))
-                           (if (and (or (numberp next-obj) (stringp next-obj))
-                                    (stringp (car optimized-list)))
-                               (cons (format nil "~a~a" (car optimized-list) next-obj) (cdr optimized-list))
-                               (cons next-obj optimized-list))))
-                       (cons () str-list)))))
+  (in-package #:rigidus)
 
   (defmacro html (idx &rest html-forms)
     `(stringify ,@(with-standard-io-syntax (process-html-forms-lhtml idx html-forms))))
+#+END_SRC
 
-  (defparameter *title* "the-title")
+В качестве первого параметра передается отступ, последующие формы
+разбираются парсером и превращаются в выполняемую после раскрытия
+макроса форму, которая возвращает сформированный HTML.
 
-  (defun get-title ()
-    "theeeee")
+Рассмотрим компоненты в порядке их вызова:
+- process-html-forms-lhtml
+- with-standard-io-syntax
+- stringify
 
-  (defparameter *menu*
-    '(("about"     . "О проекте")
-      ("articles"  . "Статьи")
-      ("aliens"    . "Материалы")
-      ("resources" . "Ресурсы")
-      ("contacts"  . "Контакты")))
+*** process-html-forms-lhtml
 
-  (defvar *ps-html-empty-tag-aware-p* t)
-  (defparameter *ps-html-mode* :sgml "One of :sgml or :xml")
-  (defvar *html-empty-tags* '(:area :atop :audioscope :base :basefont :br :choose :col :frame
-                              :hr :img :input :isindex :keygen :left :limittext :link :meta
-                              :nextid :of :over :param :range :right :spacer :spot :tab :wbr))
+Это функция, которая принимает значения отступа и список форм. Все
+формы из этого списка обрабатываются внутренней функцией
+=process-form=, которая накапливает результат своей работы в
+аккумуляторе =r=.
 
-  (defun empty-tag-p (tag)
-    (and *ps-html-empty-tag-aware-p*
-         (member tag *html-empty-tags*)))
+Входящая форма обрабатывается по разному в зависимости от ее
+типа. Встречая =атом=, функция отображает его, помещая в аккумулятор,
+вместе с формами, формирующими отступы и переводы строк. Эти формы
+будут исполнены, когда произойдет завершающая стадия
+макрораскрытия. Когда функция встречает вложенную форму, она проверяет
+у нее наличие атрибутов тега и отправляет на обработку второй
+внутренней функции =process-form%=, которая, в свою очередь,
+занимается отображением тегов вместе с отступами и переводами строк, а
+вложенное содержимое этих тегов рекурсивно передает в функцию
+=process-form=.
 
-  (defun rn ()
-    (string #\Newline))
+Последняя вложенная функция =process-attrs= помещает в аккумулятор
+результат обработки атрибутов тега.
 
-  (defun idx (idx)
-    (make-string (* 2 idx) :initial-element #\Space))
+После завершения рекурсивной обработки форм содержимое аккумулятора
+оптимизируется путем слияния рядом стоящих строк функцией
+=concat-constant-strings= и возвращается.
+
+#+NAME: lhtml
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
 
   (defun process-html-forms-lhtml (idx forms)
     (let ((r) (idx idx))
@@ -276,8 +135,7 @@
                             (decf idx)
                             (push `(idx ,idx) r)
                             (push (format nil "</~A>" tag) r)
-                            (push '(rn) r)
-                            )
+                            (push '(rn) r))
                      (progn (when (eql *ps-html-mode* :xml)
                               (push "/" r))
                             (push ">" r)
@@ -289,8 +147,7 @@
                         (progn
                           (push `(idx ,idx) r)
                           (push form r)
-                          (push '(rn) r)
-                          ))
+                          (push '(rn) r)))
                        ((and (consp form) (keywordp (car form)))
                         (process-form% (car form) () (cdr form)))
                        ((and (consp form) (consp (first form)) (keywordp (caar form)))
@@ -301,10 +158,204 @@
                             (push '(rn) r)
                             )))))
         (map nil #'process-form forms)
-        (concat-constant-strings
-         (reverse r)
-         )
-      )))
+        (concat-constant-strings (reverse r)))))
+#+END_SRC
+
+Эта функция зависит от следующих функций и переменных, которые будут
+определены в подразделах ниже:
+- *ps-html-mode*
+- concat-constant-strings
+- empty-tag-p
+- idx и rn
+- stringify
+
+**** ps-html-mode
+
+Переменная *ps-html-mode* управляет правилом закрытия тегов, которым,
+согласно спецификации не требуется закрывающий тег. Их список хранится
+в переменной *html-empty-tags*.
+
+Если она *ps-html-mode* определена как :sgml закрывающий тег не
+создается, и открывающий тег сам становится и закрывающим тоже,
+например "<br/>". Иначе, тег будет выглядеть как "<br>".
+
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defparameter *ps-html-mode* :sgml "One of :sgml or :xml")
+#+END_SRC
+
+**** concat-constant-strings
+
+Функция находит смежные строки в списке и объединяет их
+
+#+NAME: concat-constant-strings
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun concat-constant-strings (str-list)
+    (flet ((expand (expr)
+             ;; (setf expr (ps-macroexpand expr))
+             ;; (cond ((and (consp expr) (eq (car expr) 'quote) (symbolp (second expr)))
+             ;;        (symbol-to-js-string (second expr)))
+             ;;       ((keywordp expr) (string-downcase expr))
+             ;;       ((characterp expr) (string expr))
+             ;;       (t expr))
+             expr
+             ))
+      (reverse (reduce (lambda (optimized-list next-expr)
+                         (let ((next-obj (expand next-expr)))
+                           (if (and (or (numberp next-obj) (stringp next-obj))
+                                    (stringp (car optimized-list)))
+                               (cons (format nil "~a~a" (car optimized-list) next-obj) (cdr optimized-list))
+                               (cons next-obj optimized-list))))
+                       (cons () str-list)))))
+#+END_SRC
+
+**** empty-tag-p
+
+Предикат возвращает T если тег, переданный в параметре относится к
+набору тегов, которые, согласно спецификации, не обязательно должны
+иметь парный закрывающий тег
+
+#+NAME: empty-tag-p
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defvar *ps-html-empty-tag-aware-p* t)
+
+  (defvar *html-empty-tags* '(:area :atop :audioscope :base :basefont :br :choose :col :frame
+                              :hr :img :input :isindex :keygen :left :limittext :link :meta
+                              :nextid :of :over :param :range :right :spacer :spot :tab :wbr))
+
+  (defun empty-tag-p (tag)
+    (and *ps-html-empty-tag-aware-p*
+         (member tag *html-empty-tags*)))
+#+END_SRC
+
+**** idx и rn
+
+Вызовы этих функций добавляются в макрораскрытие
+=process-html-forms-lhtml= чтобы обеспечить правильные отступы и
+переводы строк
+
+#+NAME: idx_rn
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun rn ()
+    (string #\Newline))
+
+  (defun idx (idx)
+    (make-string (* 2 idx) :initial-element #\Space))
+#+END_SRC
+
+**** stringify
+
+Эта функция сворачивает все переданные ей параметры в одну строку
+
+#+NAME: idx_rn
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun stringify (&rest things)
+    "Like concatenate but prints all of its arguments."
+    (format nil "~{~A~}" things))
+#+END_SRC
+
+
+*** Некоторый код, не вошедший в окончательную версию
+
+Этот код, взятый из PARENSCRIPT, занимается раскрытием макросов внутри
+нашего DSL. Я пока не использовал таких макросов, поэтому оставил этот
+код здесь, на случай если эта функциональность пригодится.
+
+#+NAME: dead_code
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defvar *enclosing-lexicals* ()
+    "All enclosing lexical variables (includes function names).")
+
+  (defun make-macro-dictionary ()
+    (make-hash-table :test 'eq))
+
+  (defvar *symbol-macro-toplevel* (make-macro-dictionary))
+
+  (defvar *macro-toplevel* (make-macro-dictionary)
+    "Toplevel macro environment dictionary.")
+
+  (defvar *macro-env* (list *macro-toplevel*)
+    "Current macro environment.")
+
+  (defun lookup-macro-def (name env)
+    (loop :for e :in env :thereis (gethash name e)))
+
+  (defun ps-macroexpand-1 (form)
+    (aif (or (and (symbolp form)
+                  (or (and (member form *enclosing-lexicals*)
+                           (lookup-macro-def form *symbol-macro-env*))
+                      (gethash form *symbol-macro-toplevel*))) ;; hack
+             (and (consp form) (lookup-macro-def (car form) *macro-env*)))
+         (values (ps-macroexpand (funcall it form)) t)
+         form))
+
+  (defun ps-macroexpand (form)
+    (multiple-value-bind (form1 expanded?) (ps-macroexpand-1 form)
+      (if expanded?
+          (values (ps-macroexpand form1) t)
+          form1)))
+#+END_SRC
+
+*** Повторения внутри DSL-конструкций
+
+Задача вывести повторяющуюся конструкцию внутри HTML настолько частая,
+что полезно опредить для нее компактный макрос, который позволит
+выводит повторяющиеся конструкции таким образом:
+
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("contacts"  . "Контакты")))
+
+  (html 0
+        ((:div :id "main-menu" :class "navigation-menu")
+         ((:ul :class "menu-list")
+          (repeat ("the-comment" 2 menu-elt *menu*)
+            ((:li :class "menu-el")
+             ((:a :href (car menu-elt)) (cdr menu-elt))))
+          ))))
+#+END_SRC
+
+Этот пример возвращает следующий результат:
+
+#+BEGIN_EXAMPLE
+  "<DIV ID=\"main-menu\" CLASS=\"navigation-menu\">
+    <UL CLASS=\"menu-list\">
+      <!-- [the-comment] -->
+      <LI CLASS=\"menu-el\">
+        <A HREF=\"about\">
+          О проекте
+        </A>
+      </LI>
+      <LI CLASS=\"menu-el\">
+        <A HREF=\"contacts\">
+          Контакты
+        </A>
+      </LI>
+      <!-- [/the-comment]-->
+    </UL>
+  </DIV>
+  "
+#+END_EXAMPLE
+
+Вот реализация этого макроса:
+
+#+NAME: repeat
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
 
   (defmacro repeat ((comment position varname maplist) &body body)
     (let ((format-string
@@ -321,45 +372,45 @@
   ;;                  ((:li :class "menu-el")
   ;;                   ((:a :href (car menu-elt)) (cdr menu-elt)))))
 
-  (format t "~A"
-          (bprint
-           (let ((title "the"))
-             (html 10
-                   ((:html)
-                    ((:head)
-                     ((:title) (get-title))))))))
+  ;; => (FORMAT NIL "<!-- [the-comment] -->~%~{~A~}~8T<!-- [/the-comment]-->"
+  ;;            (MAPCAR
+  ;;             #'(LAMBDA (MENU-ELT)
+  ;;                 (HTML 4
+  ;;                       ((:LI :CLASS "menu-el")
+  ;;                        ((:A :HREF (CAR MENU-ELT)) (CDR MENU-ELT)))))
+  ;;             *MENU*)), T
+#+END_SRC
 
-  (let ((title "the"))
-    (process-html-forms-lhtml 2
-     '(((:html)
-        ((:head)
-         ((:title) (get-title)))
-        ((:body)
-         ((:h1) title)
-         ((:div :id "main-menu" :class "navigation-menu")
-          ((:ul :class "menu-list")
-           (mapcar #'(lambda (menu-elt)
-                       (html
-                        ((:li :class "menu-el")
-                         ((:a :href (car menu-elt)) (cdr menu-elt)))))
-                   ,*menu*))))
-        ))))
 
-  (format t "~A"
-          ;; (bprint
-           (let ((title "the"))
-             (html 0
-              ((:html)
-               ((:head)
-                ((:title) (get-title)))
-               ((:body)
-                ((:h1) title)
-                ((:div :id "main-menu" :class "navigation-menu")
-                 ((:ul :class "menu-list")
-                  (repeat ("the-comment" 4 menu-elt *menu*)
-                    ((:li :class "menu-el")
-                     ((:a :href (car menu-elt)) (cdr menu-elt))))
-                  )))))))
+** Маршрут главной страницы
+
+#+NAME: main_page_route
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defparameter *head-title* "Программирование - как искусство")
+
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("articles"  . "Статьи")
+      ("aliens"    . "Материалы")
+      ("resources" . "Ресурсы")
+      ("contacts"  . "Контакты")))
+
+  (restas:define-route main ("/")
+    (html 0
+          "<!doctype html>"
+          ((:html)
+           ((:head)
+            ((:title) *head-title*))
+           ((:body)
+            ((:h1) "Rigidus homepage")
+            ((:div :id "main-menu" :class "navigation-menu")
+             ((:ul :class "menu-list")
+              (repeat ("main-menu" 4 menu-elt *menu*)
+                ((:li :class "menu-el")
+                 ((:a :href (car menu-elt)) (cdr menu-elt))))
+              ))))))
 #+END_SRC
 
 * Корневой шаблон
