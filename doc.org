@@ -411,7 +411,7 @@
 #+BEGIN_SRC lisp
   (in-package #:rigidus)
 
-  (defun base-page (head-title title menu)
+  (defun base-page (head-title title menu content)
     (html 0
           "<!doctype html>"
           ((:html)
@@ -422,14 +422,17 @@
             ((:div :id "main-menu" :class "navigation-menu")
              ((:ul :class "menu-list")
               (repeat ("main-menu" 4 menu-elt menu)
-                      ((:li :class "menu-el")
-                       ((:a :href (car menu-elt)) (cdr menu-elt))))))))))
+                ((:li :class "menu-el")
+                 ((:a :href (car menu-elt)) (cdr menu-elt))))))
+            ((:div :id "page-content")
+             content)))))
 
   ;; (print
   ;;  (base-page "Программирование - как искусство"
   ;;             "Rigidus homepage"
   ;;             '(("about"     . "О проекте")
-  ;;               ("contacts"  . "Контакты"))))
+  ;;               ("contacts"  . "Контакты"))
+  ;;             "Under construction"))
 
   ;; "<!doctype html>
   ;; <HTML>
@@ -458,15 +461,111 @@
   ;;         <!-- [/main-menu]-->
   ;;       </UL>
   ;;     </DIV>
+  ;;     <DIV ID=\"page-content\">
+  ;;       Under construction
+  ;;     </DIV>
   ;;   </BODY>
   ;; </HTML>
   ;; "
 #+END_SRC
 
-* Routing
+* Публикация и Routing
 
 Routing осуществляется средствами библиотеки =restas=, документация по
 которой доступна здесь: https://github.com/archimag/restas
+
+Для публикации страниц на этом сайте я использую довольно
+нетривиальную схему.
+
+Мне нравится работать в (не только) текстовом редакторе =emacs= и
+использовать =orgmode= для формирования структурированных документов,
+которые могут содержать разделы, списки, ссылки и множество других
+возможностей, подробно описанных в документации, которая доступна
+здесь: http://orgmode.org/#docs
+
+Orgmode включает в себя систему публикации
+(http://orgmode.org/manual/index.html#toc_Publishing), которая хорошо
+конфигурируется и обладает весьма понятным, "хакабельным" кодом, в
+изучении которого я провел несколько интересных вечеров. Тем не менее,
+мне всегда хотелось большей гибкости, поэтому я решил взять тот
+результат, который она производит, построить по нему DOM-дерево и
+применить все преобразования, которые мне могут понадобиться, и уже
+окончательный результат использовать для отображения на сайте.
+
+Если изучать этот проект в моем репозитории, то сгенерированные
+=org-publish= файлы можно найти в ./public_html, а их исходные
+org-файлы - в ./org
+
+Для того чтобы разбирать HTML-код в LHTML я использую библиотеку
+=cl-html-parse=. Переносимые пути обеспечиваются механизмом трансляции
+логических путей. Вот как это работает:
+
+#+NAME: org_lookup
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *base-dir* (sb-posix:getcwd))
+
+  (setf (logical-pathname-translations "org")
+        `(("source;*.*"
+           ,(concatenate 'string *base-dir* "/org/*.org"))
+          ("publish;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/*.html"))
+          ("source;articles;*.*"
+           ,(concatenate 'string *base-dir* "/org/articles/**/*.org"))
+          ("source;articles;*;*.*"
+           ,(concatenate 'string *base-dir* "/org/articles/*/*.org"))
+          ("publish;articles;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/articles/**/*.org"))
+          ("publish;articles;*;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/articles/*/*.org"))
+          ))
+
+  ;; (translate-logical-pathname "org:source;articles;about.txt")
+  ;; (translate-logical-pathname "org:source;articles;emacs;about.txt")
+
+  ;; (translate-logical-pathname "org:publish;articles;about.txt")
+  ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
+
+
+  (ql:quickload "CL-HTML-PARSE")
+
+  (print
+   (html-parse:parse-html
+    (alexandria:read-file-into-string
+     (translate-logical-pathname "org:publish;about.org"))))
+
+  (print
+   (html 0
+         ((:body)
+          ((:DIV :ID "table-of-contents") (:H2 "Table of Contents")
+           ((:DIV :ID "text-table-of-contents")
+            (:UL
+             (:LI ((:A :HREF "#unnumbered-1") "О сайте")
+                  (:UL (:LI ((:A :HREF "#unnumbered-2") "Цель создания"))
+                       (:LI ((:A :HREF "#unnumbered-3") "Исходный код"))
+                       (:LI ((:A :HREF "#unnumbered-4") "Текущий статус"))))
+             (:LI ((:A :HREF "#unnumbered-5") "Обо мне")
+                  (:UL (:LI ((:A :HREF "#unnumbered-6") "Личная информация"))
+                       (:LI ((:A :HREF "#unnumbered-7") "Исследовательский опыт"))
+                       (:LI ((:A :HREF "#unnumbered-9") "Опыт работы"))
+                       (:LI
+                        ((:A :HREF "#unnumbered-12")
+                         "Членства в ассоциациях/организациях")))))))
+          ((:HEADING :ID "outline-container-unnumbered-1" :CLASS "outline-2")
+           ((:H2 :ID "unnumbered-1") "О сайте")
+           ((:DIV :CLASS "outline-text-2" :ID "text-unnumbered-1"))
+           ((:DIV :ID "outline-container-unnumbered-2" :CLASS "outline-3")
+            ((:H3 :ID "unnumbered-2") "Цель создания")
+            ((:DIV :CLASS "outline-text-3" :ID "text-unnumbered-2")
+             (:P "
+  Этот сайт был изначально создан для сбора редких и интересных
+  материалов о вычислительных моделях и языках
+  программирования. Позже он также превратился в занимательное
+  упражнение в реализации разнообразных программистких концепций.
+  ")))))))
+#+END_SRC
+
 
 #+NAME: routes
 #+BEGIN_SRC lisp :tangle routes.lisp :noweb tangle :exports code :padline no :comments link
@@ -486,7 +585,8 @@ Routing осуществляется средствами библиотеки =
   (restas:define-route main ("/")
     (base-page *head-title*
                "Rigidus homepage"
-               ,*menu*))
+               ,*menu*
+               "Under construction"))
 #+END_SRC
 
 ** 404 страница
@@ -501,7 +601,8 @@ Routing осуществляется средствами библиотеки =
     (let* ((title "404 Not Found"))
       (base-page *head-title*
                  title
-                 ,*menu*)))
+                 ,*menu*
+                 "Page not found")))
 
   (restas:define-route not-found-route ("*any")
     (push any *log-404*)
@@ -519,6 +620,35 @@ Routing осуществляется средствами библиотеки =
 
   (restas:define-route robots ("/robots.txt")
     (format nil "User-agent: *~%Disallow: "))
+#+END_SRC
+
+** Страницы второго уровня
+
+
+#+NAME: level2-page
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defun render-public (filename)
+    (let ((truename (probe-file filename)))
+      (if (null truename)
+          (page-404)
+          (tpl:root
+           (list :headtitle "" ;; title
+                 :stat (tpl:stat)
+                 :navpoints (menu)
+                 :title "" ;; title
+                 :columns
+                 (tpl:orgfile
+                  (list :title ""
+                        :content (alexandria:read-file-into-string filename))))))))
+
+  (def/route about ("about")
+    (base-page *head-title*
+               "Rigidus homepage"
+               ,*menu*
+               (alexandria:read-file-into-string
+                "/home/rigidus/repo/rigidus.ru/public_html/about.html")))
 #+END_SRC
 
 * COMMENT Корневой шаблон
@@ -1172,19 +1302,6 @@ Routing осуществляется средствами библиотеки =
 
   ;; ;; plan file pages
 
-  ;; (defun render-public (filename)
-  ;;   (let ((truename (probe-file filename)))
-  ;;     (if (null truename)
-  ;;         (page-404)
-  ;;         (tpl:root
-  ;;          (list :headtitle "" ;; title
-  ;;                :stat (tpl:stat)
-  ;;                :navpoints (menu)
-  ;;                :title "" ;; title
-  ;;                :columns
-  ;;                (tpl:orgfile
-  ;;                 (list :title ""
-  ;;                       :content (alexandria:read-file-into-string filename))))))))
 
   ;; (def/route about ("about")
   ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
