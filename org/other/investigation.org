@@ -1,0 +1,545 @@
+#+TITLE: Исследование org-publish-all
+
+#+STARTUP: showall indent
+#+STARTUP: hidestars
+
+* Интро
+
+Функция =org-publish-all= позволяет опубликовать (транслировать в
+html-представление) "проект" - множество org-файлов. Разберемся как
+это все работает.
+
+Расположение функций можно смотреть по ~C-h f~ - ~describe-function~
+
+Исследования интересно делать используя функцию
+=org-publish-current-file= которая публикует org-файл в котором
+вызвана. Нужно помнить, что перед публикацией файл должен быть
+обновлен (touch)
+
+* Объяснения
+
+Синтаксис org-файлов может быть разделен на три категории:
+- GREATER-ELEMENT
+- ELEMENT
+- OBJECT
+
+Элементы связаны со структурой документа - каждая позиция в нем
+принадлежит по крайней мере одному из них.
+
+Элемент всегда начинается и заканчивается в начале строки, с
+несколькими исключениями:
+- clock
+- headline
+- inlinetask
+- item
+- planning
+- property-drawer
+- node-property
+- section'
+- table-row
+
+Он также может принимать фиксированный набор атрибутов. Они называются
+"affiliated keywords" чтобы отличать их от других кейвордов, которые
+являются полноценными элементами. Почти все "affiliated keywords"
+упоминаются в ~org-element-affiliated-keywords~, другие атрибуты
+экспортируемые и начинаются с префикса "ATTR_".
+
+Элемент содержит другие элементы (и только элементы), называемые
+"greater elements". Соответствующие типы:
+- center-block
+- drawer
+- dynamic-block
+- footnote-definition
+- headline
+- inlinetask
+- item
+- plain-list
+- property-drawer
+- quote-block
+- section
+- special-block
+
+Другие элементы:
+- babel-call
+- clock
+- commen
+- comment-block
+- diary-sexp
+- example-block
+- export-bloc
+- fixed-width
+- horizontal-rule
+- keyword
+- latex-environmen
+- node-property
+- paragraph
+- planning
+- src-block
+- table
+- table-row
+- verse-block
+
+В дополнение к этому ~paragraph~ и ~verse-block~ могут содержать
+объекты или просто текст.
+
+Объекты связаны с содержимым документа. Некоторые из них рекурсивны:
+- entity
+- export-snippet
+- footnote-reference
+- inline-babel-call
+- inline-src-block
+- italic
+- latex-fragment
+- line-break
+- link
+- macro
+- radio-target
+- statistics-cookie
+- strike-through
+- subscript
+- superscript
+- table-cell
+- target
+- timestamp
+- underline
+- verbatim
+
+Некоторые элементы также имеют специальные свойства, значения которых
+могут содержать сами объекты (например  значение тега или имя
+заголовка). Такие значения называются "secondary strings". Любой
+объект принадлежит либо элементу либо "secondary strings"
+
+Несмотря на "affiliated keywords" каждый "greater element", "element"
+и "object" имеет фиксированный набор свойств связанных с ним. Среди
+них есть четыре, которые есть во всех типах:
+- :begin
+- :end
+- :post-blank - кол-во пустых строк или пробелов на конце
+- :parent - родительский элемент
+
+"Greater element", "element" и "object" также будут иметь свойства,
+которые разграничивают содержимое:
+- :contents-begin
+- :contents-end
+
+Наконец, все "elements" имеют свойство, ссылающее на позицию в буфере
+после всех "affiliated keywords" если таковые имеются, или в их
+первоначальное положение в противном случае:
+- :post-affiliated
+
+На самом низком уровне есть свойство, которое связано с каждой строкой
+как текст:
+- :parent
+
+** Greater elements
+
+Для каждого типа greater elements мы определяем парсер и
+интерпретатор.
+
+Парсер возвращает элемент или объект как список, описанный
+выше. Большинство из них не принимает никаких аргументов, хотя
+существуют и исключения. Более того парсер ~item~-элемента требут
+текущую структуру списка в качестве первого элемента.
+
+Интерпретатор принимает 2 аргумента:
+- список, представляющий элемент или объект
+- его содержимое
+
+Он возвращает соответстующий org-синтаксис в виде строки.
+
+Функции парсера должны отвечать следующему соглашению о именовании:
+~org-element-TYPE-parser~, где TYPE - тип "greater element"-a, который
+определен в ~org-element-greater-elements~
+
+Похожим образом функции интерпретатора должны следовать конвенции об
+именовании ~org-element-TYPE-interpreter~
+
+За исключаением ~headline~ и ~item~ "greater elements" не могут
+содержать других "greater elements".
+
+Помимо реализации парсера и интерпретатора, добавление нового "greater
+element" требует настройки ~org-element--current-element~. Кроме того,
+только что определенный тип должен быть добавлен в оба:
+- org-element-all-elements
+- org-element-greater-elements
+
+** Elements
+
+Для каждого "element" парсер и интерпретатор определен так же. Оба
+следуют той же конвенции об именах как и "Greater Elements"
+
+Также, для добавления нового типа элементов нужно пройти те же шаги -
+реализовать апрсер и интепретатор, твикнуть
+~org-element--current-element~ и добавить новый тип в
+~org-element-all-elements~
+
+В особом случае, когда новый определенный тип является блочным типом
+~org-element-block-name-alist~ должен быть соответствующим образом
+изменен
+
+** Objects
+
+В отличие от "Elements" сырой текст может быть найден между
+"objects". Следовательно ~org-element--object-lex~ предоставляет
+следующий найденный объект в буффере.
+
+Некоторые объекты (например ~italic~) рекурсивны. Ограничения на их
+типы будут специфицированы в ~org-element-object-restrictions~.
+
+Создание нового типа объекта требует изменения
+~org-element--object-regexp~ и ~org-element--object-lex~, добавления
+нового типа в ~org-element-all-objects~ и, возможно, добавления
+ограничения в ~org-element-object-restrictions~.
+
+* Источник
+
+Функия =org-publish-all= определена в файле ~/repo/org-mode/lisp/ox-publish.el~
+~/usr/share/emacs/24.3/lisp/org/ox-publish.el.gz~ и принимает два
+опциональных параметра, первый из которых =force=, если он установлет
+в =t=, предписывает удалить все таймштампы из таймпштамп-каталога и
+опубликовать проект. Второй параметр заставляет публиковать проект в
+асинхронном режиме.
+
+В осноном эта функция берет список всех проектов и вызывает с ним
+=org-publish-projects=.
+
+** =org-publish-projects=
+
+Определена в файле ~/usr/share/emacs/24.3/lisp/org/org-publish.el.gz~
+
+Принимает один параметр - список проектов
+
+Cтроит ~sitemap~ и ~theindex~ если это указано в параметре.
+
+Для всех проектов выполняется раскрытие с использованием функции
+=org-publish-expand-projects=.
+
+Исключаются то что попадает под регулярку ~:exclude~
+
+С помощью функции =org-publish-get-base-files= определяются файлы
+
+Выполняется функция ~:preparation-function~ и ~:completion-function~,
+если она определена в проекте.
+
+И с помощью =org-publish-file= файлы побликуются.
+
+Выполняется функция ~:completion-function~, если она определена в
+проекте.
+
+Потом публикуется индекс.
+
+** =org-publish-file=
+
+Определена в файле ~/usr/share/emacs/24.3/lisp/org/org-publish.el.gz~
+
+Вызывает ~:publishing-function~ на каждом файле проекта.
+
+Обычно это функция =org-html-publish-to-html=
+
+** =org-html-publish-to-html=
+
+Эта функция определена в файле ~/orgmode/lisp/ox-html.el~
+
+Она вызывает =org-publish-org-to=
+
+** =org-publish-org-to=
+
+определена в ~org-mode/_site/lisp/ox-publish.el~
+
+#+BEGIN_SRC emacs-lisp
+  (defun org-publish-org-to (backend filename extension plist &optional pub-dir)
+     ...)
+#+END_SRC
+
+
+вызывает =org-export-to-file=
+
+** =org-export-to-file=
+
+Определена в ~/repo/org-mode/lisp/ox.el~
+
+#+BEGIN_SRC emacs-lisp
+  (defun org-export-to-file (backend file &optional async subtreep visible-only body-only
+                                     ext-plist post-process)
+    ...)
+#+END_SRC
+
+Вызывает =org-export-as= с выводом в указанный файл.
+
+BACKEND - это либо экспортный бакэнд, возвращенный, к примеру,
+=org-export-create-backend=, или символ, ссылающийся на
+зарегистрированный бакэнд.
+
+FILE это имя выходного файла, в виде
+строки.
+
+non-nil необязательный аргумент =ASYNC= означает, что
+процесс должен происходить асинхронно. Полученный буфер будет доступен
+через интерфейс ~org-export-stack~.
+
+Дополнительные аргументы =SUBTREEP=, =VISIBLE-ONLY=, =BODY-ONLY= и
+=EXT-PLIST= аналогичны тем, которые используются в =org-export-as=.
+
+Дополнительный аргумент =POST-PROCESS= вызывается с файлом в качестве
+аргумента и происходит асинхронно, когда =ASYNC= не является
+nil. Он должен возвращать имя файла, или nil. Экспорт бэкендов
+могут использовать эту функцию чтобы отправить выходной файл через
+дополнительную обработку:
+
+#+BEGIN_SRC emacs-lisp
+  (defun org-latex-export-to-latex
+    (&optional async subtreep visible-only body-only ext-plist)
+    (interactive)
+    (let ((outfile (org-export-output-file-name \".tex\" subtreep)))
+      (org-export-to-file
+          'latex outfile async subtreep visible-only body-only ext-plist
+          (lambda (file) (org-latex-compile file)))))
+#+END_SRC
+
+Функция возвращает либо имя файла,
+возвращенное =POST-PROCESS= или ~FILE~
+
+** =org-export-as=
+
+Определена в ~/repo/org-mode/lisp/ox.el~
+
+Кажется здесь начинается настоящаяя работа
+
+Обрабатываются директивы #+INCLUDE, обновляются радиокнопки, потом
+вызывается =org-export-before-parsing-hook=, потом устанавливаются
+пользовательские и девелоперские фильтры.
+
+Затем раскрываются экспорт-специфичные макросы {{{author}}},
+{{{date}}}, {{{email}}} и {{{title}}}
+
+Потом производится парсинг буффера функцией =org-element-parse-buffer=
+
+#+BEGIN_SRC emacs-lisp
+  (org-data nil
+            (section (:begin 1 :end 89 :contents-begin 1 :contents-end 87 :post-blank 2 :post-affiliated 1 :parent #0)
+                     (keyword (:key "TITLE" :value "Исследование org-publish-all"
+                                    :begin 1 :end 40 :post-blank 1 :post-affiliated 1 :parent #1))
+                     (keyword (:key "STARTUP" :value "showall indent"
+                                    :begin 40 :end 66 :post-blank 0 :post-affiliated 40 :parent #1))
+                     (keyword (:key "STARTUP" :value "hidestars"
+                                    :begin 66 :end 87 :post-blank 0 :post-affiliated 66 :parent #1)))
+            (headline (:raw-value "Интро"
+                                  :begin 89 :end 321 :pre-blank 1 :contents-begin 98 :contents-end 320
+                                  :level 1 :priority nil :tags nil :todo-keyword nil :todo-type nil
+                                  :post-blank 1 :footnote-section-p nil :archivedp nil :commentedp nil
+                                  :post-affiliated 89 :title ("Интро") :parent #0)
+                      (section (:begin 98 :end 321 :contents-begin 98 :contents-end 320 :post-blank 1 :post-affiliated 98 :parent #1)
+                               (paragraph (:begin 98 :end 251 :contents-begin 98 :contents-end 250
+                                                  :post-blank 1 :post-affiliated 98 :parent #2)
+                                          "Функция "
+                                          (verbatim (:value org-publish-all :begin 106 :end 124 :post-blank 1 :parent #3))
+                                          "позволяет опубликовать (транслировать в html-представление) \"проект\" - множество org-файлов. Разберемся как это все работает.")
+                               (paragraph (:begin 251 :end 320 :contents-begin 251 :contents-end 320 :post-blank 0 :post-affiliated 251 :parent #2)
+                                          "Расположение функций можно смотреть по  "
+                                          (code (:value "C-h f" :begin 290 :end 298 :post-blank 1 :parent #3))
+                                          " - "
+                                          (code (:value "describe-function" :begin 300 :end 319 :post-blank 0 :parent #3))))))
+#+END_SRC
+
+Полученное дерево очищаетс от неинтерпретированных элементов или
+объектов путем вызова фильтров из ~:filter-parse-tree~
+
+Очищенное дерево преобразуется по шаблонам и экспортируется с помощью
+=org-export-data=
+
+Потом применяются =:filter-final-output=
+
+** =org-element-parse-buffer=
+
+Определена в =~/repo/org-mode/lisp/org-element=
+
+Рекурсивно парсит буффер и возвращает его структуру.
+
+Принимает два опциональных параметра:
+- GRANULARITY - определяет глубину рекурсии. Может быть установлен в:
+  - HEADLINE - Только парсить заголовки
+  - GREATER-ELEMENT - Не делать рекурсию в greater elements исключая
+    заголовки и секции. Таким образом элементы парясяе только на
+    верхнем уровне
+  - ELEMENT - Парсить все, кроме объектов и обычного текста
+  - OBJECT - Парсить буфер целиком
+- VISIBLE-ONLY - если no-nil - не парсить содержимое скрытых элементов
+
+Каждый элемент или объект представляется как список вида (TYPE
+PROPERTIES CONTENTS), где:
+- ~TYPE~: Символ, определяющий элемент или обьект. См
+  =org-element-all-elements= и =org-element-all-objects= чтобы
+  получить исчерпывающий перечень таких символов.
+  Функция =org-element-type= извлекает элемент типа
+- ~PROPERTIES~ - список атрибутов связанных с элементом или объектом,
+  представленный как plist. Хотя большинство из них типо-специфичные,
+  все атрибуты содержат ~:begin~, ~:end~, ~:post-blank~ и ~:parent~
+  свойства, которые соответственно ссылаются на позицию в буфере, где
+  элемент или объект начинается, заканчивается, количество пробелов
+  или пустых строк после него и элемент или объект содержащий его.
+  refer to buffer position where the element or object starts,
+  Функция =org-element-property= извлекает эти свойства
+- ~CONTENTS~ - это список элементов, объектов или строк, содержащихся в
+  текущем объекте, если это применимо. К ним можно получить доступ
+  используя функцию =org-element-contents=
+
+Org buffer имеет =org-data= как тип и nil как свойства.
+
+=org-element-map= функцию можно использовать для нахождения
+специфических элементов или объектов внутри дерева.
+
+Вызывает =org-element--parse-elements=, при этом в первом параметре
+передает ~FIRST-SECTION~.
+
+** =org-element--parse-elements=
+
+Определено в файле ~orgmode/_site/lisp/org-element.el~
+
+Принимает параметры:
+- beg
+- end
+- mode - отдает приоритет одним элементам перед другими. Когда
+  значение - ~item~ - ~structure~ будет использоать текующую списковую
+  структуру. Приоритет может быть:
+  - first-section
+  - section
+  - planning
+  - item
+  - node-property
+  - table-row
+- structure
+- granularity - определяет глубину рекурсии
+- visible-only - если non-nil содержимое скрытых элементов не парсится
+- acc - Аккумулятор
+
+Парсит элемент между ~beg~ и ~end~ позициями.
+
+Содержит в себе цикл, который, пока текущая позиция в буфере меньше
+чем ~end~:
+- выбирает следующий элемент функцией =org-element--current-element=
+  - вычисляет его тип и свойства
+  - переходит на конец этого элемента
+- заполняет содержимое элемента ~cbeg~
+  - если у элемент нет содержимого - элемент не модифицируется
+  - если это "Greater Element" - рекурсивно распарсить между
+    ~:contents-begin~ и ~:contents-end~. Убедиться что ~granularity~
+    разрешате рекурсию или элемент является заголовком, в этом случае
+    то что происходит внутри является необходимым, чтобы получить
+    заголовки подуровней. Возможно переключиться в специальный режим
+    (режим для рекурсивного вызова возвращается подстановкой
+    ~org-element--next-mode~).
+  - если элемент имеет содержимое - парсить его с помощью
+    ~org-element--parse-objects~.
+- Вызвать ~(org-element-adopt-elements acc element)~ - это добавляет к
+  аккумулятору текущий элемент
+
+После того как цикл отработает:
+- Обновить режим
+- результат накопившийся в аккумуляторе возвращается
+
+** =org-element--parse-objects=
+
+Определено в файле ~orgmode/_site/lisp/org-element.el~
+
+Принимает параметры:
+- beg
+- end
+- acc
+- restriction - список объектов наследников, которые разрешены в
+  текущем объекте
+
+При входе функция сразу сужает регион до переданных границ и в
+дальнейшем запускает цикл, который работает пока не будет достигнут
+конец региона и существует ~next-object~, который выделяется вызовом
+~org-element--object-lex~. Внутри цикла происходит следуюшее:
+- Если перед объектом есть текст - он untabify-тся. Аккумулятору
+  присваивается результат вызова ~buffer-substring-no-properties~ на
+  тексте, предшествующем объекту
+- Если объект имеет рекурсивный тип он парсится с помощью
+  ~org-element--parse-objects~, после чего добавляется к аккумулятору.
+
+Если есть текст после объекта, он унтабифится и добавляется аналогично
+предшествущему объекту тексту.
+
+Результат возвращается.
+
+** =org-element--object-lex=
+
+Определено в файле ~orgmode/_site/lisp/org-element.el~
+
+Принимает параметры:
+- restriction - список объектов как символов, которые должны быть
+  найдены позже
+
+Возвращает следующий в буфере объект или nil
+
+** =org-element--current-element=
+
+Определена в файле ~orgmode/_site/lisp/org-element.el~
+
+Принимает один обязательный параметр =limit= и три необязательных
+- ~granularity~ - определяет глубину рекурсии, возможные значения:
+  - headline
+  - greater-element
+  - element
+  - object
+  - nil
+- ~mode~ - если не nil то
+  - first-section
+  - section
+  - planning
+  - item
+  - node-property
+  - table-row
+- ~structure~ - если не определна, но ~MODE~ установлен в ~item~ - то
+  будет вычислена
+
+Парсит элемент начиная с текущей позиции и по ~LIMIT~
+
+Возвращает lisp-представление элемента вида (TYPE PROPS), где TYPE -
+тип элемента, а PROPS - plist свойств, ассоцированных с элементом.
+
+Возможные типы опредены в ~org-element-all-elements~
+
+Сущестуют следуюищие режимы, передаваемые в параметре ~mode~, для
+каждого из которых вызывается соответствующий парсер:
+- Item - ~org-element-item-parser~
+- Table Row - ~org-element-table-row-parser~
+- Node Property - ~org-element-node-property-parser~
+- Headline
+  Вызывается функция ~org-at-heading-p~, которая возвращает T если
+  текущая позиция находится на заголовке. Для этого она перемещается в
+  начало строки и проверяет на совпадение с регуляркой
+  ~outline-regexp~. Все это происходит внутри ограничений, заданных
+  ~LIMIT~. Если заголовок найден - вызывается парсер ~org-element-headline-parser~
+- Section - ~org-element-section-parser~
+- First Section - ~org-element-section-parser~
+- Planning - ~org-element-planning-parser~
+- Property Drawer - ~org-element-property-drawer-parser~
+- Footnone?
+- Clock - ~org-element-clock-parser~
+- InlineTask - ~org-element-inlinetask-parser~
+
+Если ничего из вышеперечисленного не сработало, значит мы имеем дело с
+"Affiliated Keywords" и тогда чтобы его получить мы вызываем
+~org-element--collect-affiliated-keywords~ и анализируем на совпадения:
+- Latex Environment
+- Drawer and Property Drawer
+- Fixed Width
+- Inline Comments, Blocks, Babel Calls, Dynamic Blocks and Keywords
+- Footnote Definition
+- Horizontal Rule
+- Diary Sexp
+- Table
+- List
+- Default Element: Paragraph
+
+* Парсеры
+
+** =org-element-headline-parser=
+
+#+BEGIN_SRC emacs-lisp
+(regexp-opt
+	   (list org-closed-string org-deadline-string org-scheduled-string)
+	   t)
+#+END_SRC

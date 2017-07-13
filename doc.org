@@ -423,7 +423,7 @@
              ((:ul :class "menu-list")
               (repeat ("main-menu" 4 menu-elt menu)
                 ((:li :class "menu-el")
-                 ((:a :href (car menu-elt)) (cdr menu-elt))))))
+                 ((:a :href (concatenate 'string "/" (car menu-elt))) (cdr menu-elt))))))
             ((:div :id "page-content")
              content)))))
 
@@ -477,11 +477,11 @@ Routing осуществляется средствами библиотеки =
 Для публикации страниц на этом сайте я использую довольно
 нетривиальную схему.
 
-Мне нравится работать в (не только) текстовом редакторе =emacs= и
-использовать =orgmode= для формирования структурированных документов,
-которые могут содержать разделы, списки, ссылки и множество других
-возможностей, подробно описанных в документации, которая доступна
-здесь: http://orgmode.org/#docs
+Мне нравится работать в =emacs= и использовать =orgmode= для
+формирования структурированных документов, которые могут содержать
+разделы, списки, ссылки и множество других возможностей, подробно
+описанных в документации, которая доступна здесь:
+http://orgmode.org/#docs
 
 Orgmode включает в себя систему публикации
 (http://orgmode.org/manual/index.html#toc_Publishing), которая хорошо
@@ -500,7 +500,7 @@ org-файлы - в ./org
 =cl-html-parse=. Переносимые пути обеспечиваются механизмом трансляции
 логических путей. Вот как это работает:
 
-#+NAME: org_lookup
+#+NAME: org_html_lookup
 #+BEGIN_SRC lisp
   (in-package #:rigidus)
 
@@ -526,7 +526,106 @@ org-файлы - в ./org
 
   ;; (translate-logical-pathname "org:publish;articles;about.txt")
   ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
+#+END_SRC
 
+Для того, чтобы определить страницы второго уровня я выполняю поиск
+org-файлов в корневой папке орг-содержимого. Найденные имена файлов
+объединяются с путем к папке опубликованных файлов, и в их содержимом
+ищется заголовок =h1=, чтобы сформировать правильную ссылку.
+
+Необходимо, чтобы этот заголовок присутствовал в содержимом, иначе
+экстрактор сигнализирует ошибку. Аналогичным образом в содержимом
+ищется тег <order>, который нужен, чтобы обеспечить правильный порядок
+пунктов меню:
+
+#+NAME: make_menu
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *menu*
+    (let* ((2th-level-org-files  (directory (translate-logical-pathname "org:source;*.org")))
+           (2th-level-html  (directory-namestring (translate-logical-pathname "org:publish;")))
+           (data (mapcar #'(lambda (pathname)
+                             (list (pathname-name pathname)
+                                   (extract '((4 5 "<h1>.*</h1>")
+                                              (7 7 "<order>.*</order"))
+                                            (alexandria:read-file-into-string
+                                             (merge-pathnames pathname 2th-level-html)))))
+                         2th-level-org-files))
+           (sorted (sort data #'(lambda (a b)
+                                  (< (parse-integer (cadadr a))
+                                     (parse-integer (cadadr b)))))))
+      (mapcar #'(lambda (x)
+                  (cons (car x) (caadr x)))
+              sorted)))
+#+END_SRC
+
+Получив страницы второго уровня можно создать для них маршруты:
+
+#+NAME: routes_2th_level
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defmacro def/route/2th_level ()
+    `(progn
+       ,@(mapcar
+          #'(lambda (key)
+              (let ((key (car key)))
+                `(def/route ,(intern (string-upcase key)) (,key)
+                   (base-page *head-title* "Rigidus homepage" *menu*
+                              (alexandria:read-file-into-string
+                               ,(concatenate 'string
+                                             (directory-namestring
+                                              (translate-logical-pathname "org:publish;"))
+                                             key
+                                             ".html"))))))
+          ,*menu*)))
+
+  (def/route/2th_level)
+
+  ;; (print
+  ;;  (macroexpand-1
+  ;;   '(def/route/2th_level)))
+
+  ;; =>
+  ;; (PROGN
+  ;;   (DEF/ROUTE ABOUT
+  ;;       ("about")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/about.html")))
+  ;;   (DEF/ROUTE ARTICLES
+  ;;       ("articles")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/articles.html")))
+  ;;   (DEF/ROUTE BLOGS
+  ;;       ("blogs")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/blogs.html")))
+  ;;   (DEF/ROUTE ALIENS
+  ;;       ("aliens")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/aliens.html")))
+  ;;   (DEF/ROUTE RESOURCES
+  ;;       ("resources")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/resources.html")))
+  ;;   (DEF/ROUTE CONTACTS
+  ;;       ("contacts")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))))
+
+
+#+END_SRC
+
+
+#+NAME: org_lookup
+#+BEGIN_SRC lisp
 
   (ql:quickload "CL-HTML-PARSE")
 
@@ -567,9 +666,13 @@ org-файлы - в ./org
 #+END_SRC
 
 
+
+
 #+NAME: routes
 #+BEGIN_SRC lisp :tangle routes.lisp :noweb tangle :exports code :padline no :comments link
   (in-package #:rigidus)
+
+  <<routes_2th_level>>
 
   <<main_page_route>>
   <<route_404>>
@@ -1625,6 +1728,22 @@ org-файлы - в ./org
            ,(intern (concatenate 'string (symbol-name name) "/"))
            ,(cons (concatenate 'string (car param) "/") (cdr param))
          ,@body)))
+
+  (define-condition pattern-not-found-error (error)
+    ((text :initarg :text :reader text)))
+
+  (defun extract (cortege html)
+    (loop :for (begin end regexp) :in cortege :collect
+       (multiple-value-bind (start fin)
+           (ppcre:scan regexp html)
+         (when (null start)
+           (error 'pattern-not-found-error :text regexp))
+         (subseq html (+ start begin) (- fin end)))))
+
+  <<org_html_lookup>>
+  <<make_menu>>
+
+
 #+END_SRC
 
 ** COMMENT Шаблоны
