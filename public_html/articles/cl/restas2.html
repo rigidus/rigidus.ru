@@ -1,0 +1,325 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Введение</a></li>
+<li><a href="#unnumbered-2">Шаблоны и их препроцессинг</a></li>
+<li><a href="#unnumbered-3">Маршруты RESTAS</a></li>
+<li><a href="#unnumbered-4">Использование макросов</a></li>
+<li><a href="#unnumbered-5">Кеширование</a></li>
+</ul>
+</div>
+</div>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Введение</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Это статья написана, чтобы иллюстрировать применение возможностей Common Lisp
+языка к типичным задачам веб-разработки.
+</p>
+
+<p>
+Я постараюсь показать, как на лиспе реализовываются основные применяемые в
+веб-программированиях вещи — шаблонизация, роутинг и кеширование. Также я
+оставил немножко места для макросов в веб-программировании.
+</p>
+
+<p>
+Статья в большой степени учебная, тем не менее это вполне &lt;a
+href="<a href="http://rigidus.ru/">http://rigidus.ru/</a>"&gt;работающий веб-сайт&lt;/a&gt;.
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Шаблоны и их препроцессинг</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+@code
+{namespace tpl}
+{template root}
+&lt;!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "<a href="http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd</a>"&gt;{\n}
+&lt;html xmlns="<a href="http://www.w3.org/1999/xhtml">http://www.w3.org/1999/xhtml</a>" xml:lang="en" lang="en"&gt;{\n}
+  &lt;head&gt;{\n}
+    &lt;title&gt;{$headtitle}&lt;/title&gt;{\n}
+    &lt;meta http-equiv="Content-Type" content="text/html; charset=utf-8" /&gt;{\n}
+    &lt;link rel="stylesheet" type="text/css" media="screen" href="/style.css" /&gt;{\n}
+    &lt;link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico" /&gt;{\n}
+  &lt;/head&gt;{\n}
+  &lt;body id="top"&gt;{\n}
+    {$content | noAutoescape}{\n}
+  &lt;/body&gt;{\n}
+&lt;/html&gt;{\n}
+{/template}
+@/code
+</p>
+
+<p>
+Этот простой шаблон с помощью библиотеки CL-CLOSURE-TEMPLATE на лету
+компилируется в машинный код функции root, находящуюся в пакете tpl. Таким
+образом, применение данных к шаблону — это вызов скомпилированной по этому
+шаблону функции:
+</p>
+
+<p>
+@code
+(tpl:root (list :headtitle "Мой заголовок"&lt;/code&gt;
+</p>
+<p>
+                :content "Hello world"))
+@/code
+</p>
+
+<p>
+Вместо "Hello world" можно подставить вызов функции, в которую
+компилируется другой шаблон — например шаблон "base", обеспечивающий
+минимальную сетку для сайта:
+</p>
+
+<p>
+@code
+{template base}
+&lt;div id="center"&gt;
+  &lt;div class="col1 left"&gt;
+    &lt;a id="logo" href="index.html"&gt;
+      &lt;img src="<a href="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45">http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45</a>"
+           style="border: 1px solid #7F7F7F"/&gt;
+    &lt;/a&gt;
+    &lt;ul id="nav"&gt;
+      {foreach $elt in $navpoints}
+      {call navelt data="$elt" /}
+      {/foreach}
+    &lt;/ul&gt;
+  &lt;/div&gt;
+  {$content |noAutoescape}
+  &lt;div class="clear"&gt;.&lt;/div&gt;
+&lt;/div&gt;
+&lt;div id="footer"&gt;
+  &lt;p&gt;
+    &lt;a href="/about"&gt;About&lt;/a&gt; |
+    &lt;a href="/contacts"&gt;Contacts&lt;/a&gt;
+  &lt;/p&gt;
+&lt;/div&gt;
+{/template}
+@/code
+</p>
+
+<p>
+Теперь, воспользовавшись примером из &lt;a
+href="<a href="http://habrahabr.ru/blogs/webdev/111365/">http://habrahabr.ru/blogs/webdev/111365/</a>"&gt;вводной статьи&lt;/a&gt; и нашим свежесозданным
+шаблоном, мы могли бы написать request-dispatcher для сайта из одной страницы так:
+</p>
+
+<p>
+@code
+(defun request-dispatcher (request)
+   (tpl:root (list :headtitle "My home page"
+</p>
+<p>
+:content (tpl:base (list :navpoints ..тут-меню..
+</p>
+<p>
+                                           :content ..тут-контент..)))))
+@/code
+</p>
+
+<p>
+&#x2014;
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Маршруты RESTAS</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Библиотека RESTAS освобождает нас от увлекательного написания диспетчеров.
+Теперь диспетчер будет создан на базе задаваемых нами маршрутов (routes),
+которые мы определяем вот так:
+</p>
+
+<p>
+@code
+(restas:define-module #:rigidus
+    (:use :cl))
+</p>
+
+<p>
+(in-package #:rigidus)
+</p>
+
+<p>
+(restas:define-route main ("/")
+  (tpl:main (list :headtitle "My main page"
+</p>
+<p>
+:content "Hello! &lt;a href=\"/articles\"&gt;Articles&lt;/a&gt;")))
+</p>
+
+<p>
+(restas:define-route css ("<i>css</i>:cssfile")
+  (hunchentoot:handle-static-file (format nil "~a/css/~a" <b>base-dir</b> cssfile)))
+@/code
+</p>
+
+<p>
+— Что это за бред? — спросит искушенный веб-разработчик. — Это я же должен задавать для
+каждого css-файла свой маршрут?
+</p>
+
+<p>
+— Вовсе нет! — отвечу я. Для достижения максимального уровня гибкости можно задавать
+лямбду :requirement, которая решит, подходит ли маршрут или нет. Вот обновленный код, который
+отдает файл, если находит его на диске в каталоге сайта:
+</p>
+
+<p>
+@code
+(restas:define-route static
+    ("/:staticfile"
+</p>
+<p>
+     :requirement (lambda ()
+                    (let ((request-file
+                           (pathname
+                            (format nil "~a/~a" <b>base-dir</b>
+                                    (hunchentoot:request-uri hunchentoot:*request*))))
+                          (files (directory (format nil "~a/*.*" <b>base-dir</b>))))
+                      (not (null (find request-file files :test #'equal))))))
+  (hunchentoot:handle-static-file (format nil "~a/~a" <b>base-dir</b> staticfile)))
+@/code
+</p>
+
+<p>
+Здесь мы просто определили маршруты для главной страницы и для отдачи css-файлов - как видите
+можно использовать, :wildcards
+</p>
+
+<p>
+<code>=</code>
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-4" class="outline-2">
+<h2 id="unnumbered-4">Использование макросов</h2>
+<div class="outline-text-2" id="text-unnumbered-4">
+<p>
+Я подготавливаваю статьи для сайта, используя org-mode - удобный режим
+Емакса, сочетающий простоту разметки (как вики) и различные удобные
+средства, вроде сворачивания разделов. Я написал функцию org-to-html,
+которой передаю текст статьи в формате org-mode, а она автоматически
+строит мне html с заголовками, извлеченными из метаданнных, указанных
+прямо в статье, а также возвращает информацию о секциях и подсекциях.
+</p>
+
+<p>
+После того, как эта функция обработает мой файл мне может понадобиться
+изменить некоторые заголовки и чтобы сохранить простоту вызова я использую
+макрос default-page:
+</p>
+
+<p>
+@code
+(defmacro default-page (menu file-path &amp;optional (body nil))
+  `(let ((menu-memo ,menu))
+     (multiple-value-bind (content sections directives)
+         (org-to-html (alexandria:read-file-into-string ,file-path))
+       (let ((title (getf directives :title)))
+         ,body
+         (page title menu-memo
+               (tpl:default
+                   (list :title title :navpoints menu-memo
+</p>
+<p>
+:sections
+(loop
+</p>
+<p>
+:for i :from 1
+</p>
+<p>
+:for section :in sections :collect
+(list :anchor (format nil "anchor-~a" i)
+</p>
+<p>
+:level (format nil "level-~a" (car section))
+</p>
+<p>
+:title (cadr section)))
+</p>
+<p>
+                         :content content)))))))
+@/code
+</p>
+
+<p>
+Теперь я могу не только избавиться от сложного вызова в клиентском коде, но
+и сделать "иньекцию" любого кода внутрь default-page, например так:
+</p>
+
+<p>
+@code
+(restas:define-route about ("/about")
+  (default-page (menu) (base-path "about.org")
+    ;; Здесь я могу  подсчитать кол-во секций
+    (let ((cnt (length sections)))
+      ;; И вывести их например в заголовкe
+      (setf title (format nil "~a — ~a секций" title cnt)))))
+@/code
+</p>
+
+<p>
+В следующем разделе этот подход используется более осмысленно.
+</p>
+
+<p>
+<code>=</code>
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Кеширование</h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+<p>
+Статьи у меня лежат в файлах, содержащих метаинформацию: заголовки и
+категории. Чтобы построить страницу "/articles" я прохожу по файлам, что
+может требовать времени и загружать систему. Однако эти данные можно
+запомнить в замыкании, что и делает вот такой код:
+</p>
+
+<p>
+@code
+(let ((memo))
+  (restas:define-route articles ("/articles")
+    (when (null memo)
+      (setf memo
+            (default-page (menu) (base-path "articles.org")
+              (setf content
+                    ;; Здесь код, который собирает страницу
+                    ;; по файлам (я не стал его приводить)
+                    ))))
+    memo))
+@/code
+</p>
+
+<p>
+Понятно, что если необходимо, чтобы кеш устаревал с течением времени — это
+тоже довольно несложно реализовать. Пока мне проще зайти в slime, сделать
+Ctrl+X, Ctrl+E на последней строчке этого кода и он будет выполнен заново,
+что приведет к обнулению кеша. Загружая новую статью (что бывает не
+слишком часто) я так и делаю — это хороший повод тут же добавить еще
+какой-нибудь функционал.
+</p>
+
+<p>
+Для интересующихся деталями:
+Я разместил исходный код на &lt;a href="<a href="http://github.com/rigidus/rigidus.ru">http://github.com/rigidus/rigidus.ru</a>"&gt;<a href="http://github.com/rigidus/rigidus.ru">http://github.com/rigidus/rigidus.ru</a>&lt;/a&gt;
+А сам сайт находится на &lt;a href="<a href="http://rigidus.ru/">http://rigidus.ru/</a>"&gt;<a href="http://rigidus.ru/">http://rigidus.ru/</a>&lt;/a&gt;
+Посмотрим, как он справится с хабраэффектом :)
+</p>
+</div>
+</heading>

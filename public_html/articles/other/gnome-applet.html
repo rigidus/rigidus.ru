@@ -1,0 +1,195 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Код</a></li>
+<li><a href="#unnumbered-2">Перерисовка</a>
+<ul>
+<li><a href="#unnumbered-3">Cairo</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-4">Заголовки</a></li>
+</ul>
+</div>
+</div>
+<p>
+Отчасти чтобы не забыть, отчасти в надежде что кому-то это будет
+полезно оставлю информацию о написании аплета для gnome-panel`и. Я
+делал это на си.
+</p>
+
+<p>
+Сначала о том, как сделать правильно, а потом о том, как сделать
+универсально.
+</p>
+
+<p>
+Итак, чтобы сделать правильно, необходимо прочитать вот этот документ:
+Writing Gnome Applets in Gnome2, рассказывающий о том, как сделать
+Hello World с отображением запущенного приложения в панели. Там
+главным образом о том, куда положить какие файлы, чтобы апплет можно
+было выбрать в диалоговом окне "Add to Panel".
+</p>
+
+<p>
+Я решил подойти к этому с другой стороны и написал просто приложение,
+которое добавляет иконку на панель с помощью некоторых вызовов GTK.
+</p>
+
+<p>
+Итак, чтобы ваша иконка появилась на панели необходимо сделать
+следующее:
+</p>
+
+<ol class="org-ol">
+<li>Скачать библитечку (2 файла: 'eggtrayicon.h' и 'eggtrayicon.c' ) и
+посмотреть пример ее использования
+&lt;a href="<a href="http://www.quietearth.us/articles/2007/01/23/Howto-Code-a-gnome-panel-applet">http://www.quietearth.us/articles/2007/01/23/Howto-Code-a-gnome-panel-applet</a>"&gt;отсюда&lt;/a&gt;
+</li>
+
+<li>Прочитать несколько первых страниц из руководства по GTK:
+&lt;a href="<a href="http://linfoline.homedns.org/gtk/">http://linfoline.homedns.org/gtk/</a>"&gt;<a href="http://linfoline.homedns.org/gtk/">http://linfoline.homedns.org/gtk/</a>&lt;/a&gt;
+</li>
+</ol>
+
+
+<p>
+Чтобы добавить свою иконку на панель я использовал следующий код:
+</p>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Код</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+&lt;source lang="c"&gt;
+static EggTrayIcon *docklet = NULL;
+GtkWidget *box;
+GtkWidget *window;
+GtkWidget *button;
+GtkWidget *image;
+</p>
+
+<p>
+docklet = egg<sub>tray</sub><sub>icon</sub><sub>new</sub>("Rigidus");
+box = gtk<sub>event</sub><sub>box</sub><sub>new</sub>();
+image = gtk<sub>image</sub><sub>new</sub><sub>from</sub><sub>file</sub> ("main.png");
+gtk<sub>container</sub><sub>add</sub>(GTK<sub>CONTAINER</sub>(box), image);
+gtk<sub>container</sub><sub>add</sub>(GTK<sub>CONTAINER</sub>(docklet), box);
+</p>
+
+<p>
+if(!gtk<sub>check</sub><sub>version</sub>(2,4,0)) {
+g<sub>object</sub><sub>set</sub>(G<sub>OBJECT</sub>(box), "visible-window", FALSE, NULL);
+}
+// Link to signal
+g<sub>signal</sub><sub>connect</sub>(G<sub>OBJECT</sub>(box), "button-press-event", G<sub>CALLBACK</sub>(docklet<sub>button</sub><sub>press</sub>), NULL);
+// Show applet
+gtk<sub>widget</sub><sub>show</sub><sub>all</sub>(GTK<sub>WIDGET</sub>(docklet));
+&lt;/source&gt;
+</p>
+
+<p>
+Тут все понятно без объяснений. Иногда нужно изменить внешний вид
+иконки в зависимости от произошедших в вашей программе событий. В этом
+случае поступаем так:
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Перерисовка</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+&lt;source lang="c"&gt;
+// Replace icon
+gtk<sub>container</sub><sub>remove</sub>(GTK<sub>CONTAINER</sub>(box), image);
+image = gtk<sub>image</sub><sub>new</sub><sub>from</sub><sub>file</sub> ("main.png");
+gtk<sub>container</sub><sub>add</sub>(GTK<sub>CONTAINER</sub>(box), image);
+gtk<sub>widget</sub><sub>show</sub>(GTK<sub>WIDGET</sub>(image));
+&lt;/source&gt;
+</p>
+
+<p>
+И наконец, если вам нужно рисовать иконку на лету (например, если вы
+делаете аплет, который показывает вам количество непрочитанных писем в
+почте), то можно воспользоваться библиотекой cairo:
+</p>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">Cairo</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+&lt;source lang="c"&gt;
+// Cairo
+cairo<sub>surface</sub><sub>t</sub> *surface;
+cairo<sub>t</sub> *cr;
+</p>
+
+<p>
+surface = cairo<sub>image</sub><sub>surface</sub><sub>create</sub> (CAIRO<sub>FORMAT</sub><sub>ARGB32</sub>, 24, 24);
+cr = cairo<sub>create</sub> (surface);
+</p>
+
+<p>
+cairo<sub>select</sub><sub>font</sub><sub>face</sub> (cr, "serif", CAIRO<sub>FONT</sub><sub>SLANT</sub><sub>NORMAL</sub>, CAIRO<sub>FONT</sub><sub>WEIGHT</sub><sub>BOLD</sub>);
+cairo<sub>set</sub><sub>font</sub><sub>size</sub> (cr, 14.0);
+cairo<sub>set</sub><sub>source</sub><sub>rgb</sub> (cr, 1.0, 0.0, 0.0);
+cairo<sub>move</sub><sub>to</sub> (cr, 2.0, 17.0);
+cairo<sub>show</sub><sub>text</sub> (cr, buffer);
+cairo<sub>destroy</sub> (cr);
+cairo<sub>surface</sub><sub>write</sub><sub>to</sub><sub>png</sub> (surface, "main.png");
+cairo<sub>surface</sub><sub>destroy</sub> (surface);
+&lt;/source&gt;
+</p>
+
+<p>
+Надеюсь приведенный код говорит сам за себя. В любом случае, отвечу на
+возникшие вопросы. Ах да, чуть не забыл - компилировать это можно вот
+так:
+</p>
+
+<p>
+&lt;source lang="bash"&gt;
+#! /bin/sh
+gcc `pkg-config &#x2013;cflags gtk+-2.0 pkg-config &#x2013;libs gtk+-2.0 &#x2013;libs gthread-2.0 ` -c main.c
+gcc `pkg-config &#x2013;cflags gtk+-2.0` -c eggtrayicon.c
+gcc `pkg-config &#x2013;cflags &#x2013;libs gtk+-2.0 &#x2013;libs gthread-2.0` main.o eggtrayicon.o -o main
+&lt;/source&gt;
+</p>
+
+<p>
+И последнее - заголовочные файлы, которые необходимо включить:
+</p>
+</div>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-4" class="outline-2">
+<h2 id="unnumbered-4">Заголовки</h2>
+<div class="outline-text-2" id="text-unnumbered-4">
+<p>
+&lt;source lang="c"&gt;
+#include &lt;stdio.h&gt;
+#include &lt;gtk/gtk.h&gt;
+#include "eggtrayicon.h"
+</p>
+
+<p>
+#include &lt;sched.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;fcntl.h&gt;
+</p>
+
+<p>
+#include &lt;cairo.h&gt;
+</p>
+
+<p>
+#include &lt;glib.h&gt;
+&lt;/source&gt;
+</p>
+</div>
+</heading>

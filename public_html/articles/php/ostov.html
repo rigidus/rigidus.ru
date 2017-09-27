@@ -1,0 +1,348 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Метод</a></li>
+<li><a href="#unnumbered-2">Построение</a></li>
+</ul>
+</div>
+</div>
+<p>
+На &lt;a href="/articles/php-site-graph"&gt;предыдущем этапе&lt;/a&gt; мы получили
+визуализированное
+представление графа переходов внутри сайта <a href="http://gehirn.ru/">http://gehirn.ru/</a>. Однако
+при увеличении размеров
+сайта количество узлов и связей возрастает и граф становится
+ненаглядным. Граф хорошего (с
+точки зрения поисковых систем) сайта вообще приближается к
+полносвязному.
+</p>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Метод</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Хочется большей наглядности. Чтобы ее достичь мы можем сократить
+количество связей, выбрав среди них те, которые встречаются чаще - по
+ним вероятность прохода поискового бота выше. На предыдущей итерации
+мы получили сведения о том, сколько раз встречается данная связь между
+двумя страницами, но эти сведения справедливы для ориентированного
+графа. Остовное дерево же строится в неориентированном графе, поэтому
+мы должны преобразовать граф в неориентированный, сложив для каждой
+пары узлов их показатели весов.
+</p>
+
+<p>
+@code
+    &lt;?php
+</p>
+
+<p>
+define('DB<sub>PREFIX</sub>', 'Префикс таблиц');
+define('DB<sub>TBL</sub><sub>TEST</sub>', 'Таблица страниц сайта');
+define('DB<sub>TBL</sub><sub>LINK</sub>', 'Таблица связей между страницами');
+</p>
+
+<p>
+$sql = "SELECT `from`, `to`, `count` FROM `".
+      DB<sub>PREFIX.DB</sub><sub>TBL</sub><sub>LINK</sub>."` WHERE `site`='mycoolsite.ru'";
+$r = mysql<sub>query</sub>($sql);
+if (false <code>=</code> $r) {    $my<sub>die</sub>(); }
+while ($row = mysql<sub>fetch</sub><sub>assoc</sub>($r)) {
+    if ( (isset($nodes[$row['from']])) &amp;&amp;
+      (isset($nodes[$row['to']])) ) {
+        $rel[] = $row;
+    }
+}
+</p>
+
+<p>
+$neor = array();
+</p>
+
+<p>
+function hash<sub>to</sub>($v)
+{
+    global $neor;
+    $hash = md5($v['from']).md5($v['to']);
+    if (!isset($neor[$hash])) {
+        $neor[$hash] = $v;
+    } else {
+        $neor[$hash]['count'] += $v['count'];
+    }
+}
+</p>
+
+<p>
+foreach ($rel as $k=&gt;$v) {
+    if ($v['from'] &lt; $v['to']) {
+        hash<sub>to</sub>($v);
+    } else {
+        $w = array();
+        $w['from'] = $v['to'];
+        $w['to'] = $v['from'];
+        $w['count'] = $v['count'];
+        hash<sub>to</sub>($w);
+    }
+}
+</p>
+
+<p>
+    ?&gt;
+@/code
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Построение</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Теперь приступим собственно к построению остовного дерева. Наша
+задача - по возможности
+оставить те ребра, которые имеют наибольший вес. Алгоритм следующий:
+</p>
+
+<p>
+@code
+• Выделяем одну вершину, которая будет началом нашего дерева (корень)
+• Далее на каждой итерации:
+  ‣ Случайным образом выбираем вершину из строящегося дерева.
+  ‣ Ищем ребра графа ведущие к любой вершине пока не входящей в
+  дерево.
+  ‣ Среди этих ребер выбираем ребро с максимальным весом.
+  ‣ Добавляем это ребро и его вершину в дерево.
+• Итерации повторяем до тех пор, пока все вершины не будут входить в
+дерево.
+@/code
+</p>
+
+<p>
+@code
+&lt;?php
+</p>
+
+<p>
+// Строим список узлов на основе связей
+$unmarked<sub>nodes</sub> = array();
+foreach ($neor as $k=&gt;$v) {
+    if (!isset($unmarked<sub>nodes</sub>[$v['from']])) {
+        $unmarked<sub>nodes</sub>[$v['from']] = '';
+    }
+    if (!isset($unmarked<sub>nodes</sub>[$v['to']])) {
+        $unmarked<sub>nodes</sub>[$v['to']] = '';
+    }
+}
+$count<sub>nodes</sub> = count($unmarked<sub>nodes</sub>);
+// Промаркированные узлы
+$marked<sub>nodes</sub> = array(1=&gt;'');
+</p>
+
+<p>
+// Пока все вершины не стали помеченными
+    while (count($marked<sub>nodes</sub>) != $count<sub>nodes</sub>) {
+     // Положить в U любую из помеченных вершин
+        $U = array<sub>rand</sub>($marked<sub>nodes</sub>);
+     // Находим все ребра&#x2026;
+    $u<sub>links</sub><sub>key</sub> = '';
+    $u<sub>links</sub><sub>count</sub> = 0;
+    $u<sub>links</sub><sub>to</sub> = 0;
+        foreach ($neor as $k=&gt;$v) {
+            // &#x2026;которые из нее или в нее идут&#x2026;
+            if ( ($v['from'] <code>= $U) || ($v['to'] =</code> $U) ) {
+                // &#x2026;к непомеченным вершинам..
+                $to = ($v['from'] == $U)?$v['to']:$v['from'];
+                if (!isset($marked<sub>nodes</sub>[$to])) {
+                    // &#x2026; и выбираем самое тяжелое ребро
+                    if ($v['count'] &gt; $u<sub>links</sub><sub>count</sub>) {
+                        $u<sub>links</sub><sub>key</sub> = $k;
+                        $u<sub>links</sub><sub>count</sub> = $v['count'];
+                        $u<sub>links</sub><sub>to</sub> = $to;
+                    }
+                }
+            }
+        }
+     <i>/ Если переменные поиска не изменились - значит для этой
+    /</i> вершины нет (больше) ребер, связывающих ее с непомеченными
+    // вершинами. Можно переходить на следующую итерацию
+        if ( ($u<sub>links</sub><sub>key</sub> <code>= '') &amp;&amp; ($u_links_count =</code> 0) ) {
+            continue;
+        }
+     // Помечаем ребро, чтобы потом построить конденсацию из
+    помеченных ребер
+        $neor[$u<sub>links</sub><sub>key</sub>]['tag'] = '';
+    // Помечаем вершину, чтобы исключить ее из поиска
+        $marked<sub>nodes</sub>[$u<sub>links</sub><sub>to</sub>] = '';
+         }
+</p>
+
+<p>
+?&gt;
+@/code
+</p>
+
+<p>
+Теперь перед нами стоит задача визуализации остовного дерева. В этом
+нам поможет Стендфорд :) Точнее, разработка Тамары Мюнзнер (Tamara
+Munzner), визуализирущая наше дерево в гиперболическом
+пространстве. Визуализацию можно даже вращать. Само приложение и
+сопроводительная документаци лежит здесь: &lt;a
+href="<a href="http://graphics.stanford.edu/~munzner/h3/">http://graphics.stanford.edu/~munzner/h3/</a>"&gt;
+<a href="http://graphics.stanford.edu/~munzner/h3/">http://graphics.stanford.edu/~munzner/h3/</a> &lt;/a&gt; Ниже - код, который
+создает представление графа, понятное H3Viewer`у
+</p>
+
+<p>
+@code
+&lt;?php
+</p>
+
+<p>
+$sql = "SELECT `id`, `link` FROM `".DB<sub>PREFIX.DB</sub><sub>TBL</sub><sub>TEST</sub>.
+      "` WHERE ((`ext`=0) AND (`site`='gehirn.ru'))";
+$r = mysql<sub>query</sub>($sql);
+if (false <code>=</code> $r) {    $my<sub>die</sub>(); }
+while ($row = mysql<sub>fetch</sub><sub>assoc</sub>($r)) {
+    $nodes[$row['id']] = $row['link'];
+}
+</p>
+
+<p>
+$childs = array();
+create<sub>childs</sub>();
+</p>
+
+<p>
+function create<sub>childs</sub>($p=1)
+{
+    global $childs, $rel;
+     if (!isset($childs[$p])) {
+        $childs[$p] = array();
+    }
+     foreach ($rel as $k=&gt;$v) {
+        if ( ($v['from'] <code>= $p) || ($v['to'] =</code> $p) ) {
+            $pair = ($v['from'] == $p)?$v['to']:$v['from'];
+            if (!isset($childs[$pair])) {
+                $childs[$p][] = ($v['from'] ==
+$p)?$v['to']:$v['from'];
+            }
+        }
+    }
+     foreach ($childs[$p] as $v) {
+        create<sub>childs</sub>($v);
+    }
+}
+</p>
+
+<p>
+$massive = array(0=&gt;array());
+$level=array(0);
+$f = true;
+</p>
+
+<p>
+h3v(1);
+</p>
+
+
+<p>
+function h3v($in, $key='')
+{
+    global $childs, $massive, $level;
+     if (!is<sub>array</sub>($in)) {
+         // write
+        $s = '$massive';
+        foreach ($level as $w) { $s .='["'.$w.'"]'; }
+        eval($s.'["'.$in.'"] = array();');
+        //get array from childs
+        $a<sub>from</sub><sub>child</sub> = $childs[$in];
+        h3v($a<sub>from</sub><sub>child</sub>, $in);
+     } else {
+         array<sub>push</sub>($level, $key);
+        foreach ($in as $k=&gt;$v) {
+            h3v($v);
+        }
+        array<sub>pop</sub>($level);
+     }
+}
+</p>
+
+<p>
+$level = 0;
+recout(current($massive));
+</p>
+
+<p>
+function recout($v)
+{
+    global $level, $nodes;
+    if (!empty($v)) {
+        foreach ($v as $k=&gt;$w) {
+            echo($level.' '.$nodes[$k].' 1 html&lt;br&gt;');
+            $level++;
+            recout($w);
+            $level&#x2013;;
+        }
+    }
+}
+</p>
+
+<p>
+?&gt;
+@/code
+</p>
+
+<p>
+Примерно так выглядят исходные данные:
+@code
+0 / 1 html
+1 /info/contacts 1 html
+2 /info 1 html
+1 /postid/3 1 html
+2 /rss 1 html
+3 /services/advert-photo 1 html
+4 /portfolio/photo-wedding 1 html
+4 /articles/inside-flash 1 html
+5 /articles/focalsize 1 html
+6 /articles/easy-portrait 1 html
+3 /articles/model-work 1 html
+4 /articles/hi-key 1 html
+2 /info/about 1 html
+3 /services 1 html
+3 /services/wedding-photo 1 html
+4 /services/art-portfolio 1 html
+5 /articles/wedding-light 1 html
+6 /articles/photo-theatre 1 html
+3 /articles 1 html
+3 /sitemap 1 html
+4 /portfolio/photo-studio 1 html
+4 /articles/portrait-light 1 html
+1 /postid/2 1 html
+2 /newuser 1 html
+3 /services/portrait-photo 1 html
+4 /services/reportage-photo 1 html
+5 /articles/wedding-dress 1 html
+6 /articles/wedding-makeup 1 html
+6 /articles/find-photographer 1 html
+4 /services/classic-portfolio 1 html
+3 /portfolio 1 html
+3 /articles/color-correction 1 html
+2 /articles/flash-photo 1 html
+3 /articles/speed-aperture 1 html
+2 /articles/photoeye 1 html
+3 /articles/studio-light 1 html
+2 /articles/4rules 1 html
+3 /postid/1 1 html
+@/code
+</p>
+
+<p>
+А вот так выглядит собственно представление. Скачав программу и
+загрузив в нее эти данные можно представление покрутить.
+</p>
+
+<p>
+&lt;center&gt;&lt;img src="/img/h3v.gif"/&gt;&lt;/center&gt;
+</p>
+</div>
+</heading>

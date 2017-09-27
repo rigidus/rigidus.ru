@@ -1,0 +1,1030 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Объяснения</a>
+<ul>
+<li><a href="#unnumbered-3">Greater elements</a></li>
+<li><a href="#unnumbered-4">Elements</a></li>
+<li><a href="#unnumbered-5">Objects</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-6">Источник</a>
+<ul>
+<li><a href="#unnumbered-7"><code>org-publish-projects</code></a></li>
+<li><a href="#unnumbered-8"><code>org-publish-file</code></a></li>
+<li><a href="#unnumbered-9"><code>org-html-publish-to-html</code></a></li>
+<li><a href="#unnumbered-10"><code>org-publish-org-to</code></a></li>
+<li><a href="#unnumbered-11"><code>org-export-to-file</code></a></li>
+<li><a href="#unnumbered-12"><code>org-export-as</code></a></li>
+<li><a href="#unnumbered-13"><code>org-element-parse-buffer</code></a></li>
+<li><a href="#unnumbered-14"><code>org-element--parse-elements</code></a></li>
+<li><a href="#unnumbered-15"><code>org-element--parse-objects</code></a></li>
+<li><a href="#unnumbered-16"><code>org-element--object-lex</code></a></li>
+<li><a href="#unnumbered-17"><code>org-element--current-element</code></a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-18">Парсеры</a>
+<ul>
+<li><a href="#unnumbered-19"><code>org-element-headline-parser</code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Интро</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Функция <code>org-publish-all</code> позволяет опубликовать (транслировать в
+html-представление) "проект" - множество org-файлов. Разберемся как
+это все работает.
+</p>
+
+<p>
+Расположение функций можно смотреть по <code>C-h f</code> - <code>describe-function</code>
+</p>
+
+<p>
+Исследования интересно делать используя функцию
+<code>org-publish-current-file</code> которая публикует org-файл в котором
+вызвана. Нужно помнить, что перед публикацией файл должен быть
+обновлен (touch)
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Объяснения</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Синтаксис org-файлов может быть разделен на три категории:
+</p>
+<ul class="org-ul">
+<li>GREATER-ELEMENT
+</li>
+<li>ELEMENT
+</li>
+<li>OBJECT
+</li>
+</ul>
+
+<p>
+Элементы связаны со структурой документа - каждая позиция в нем
+принадлежит по крайней мере одному из них.
+</p>
+
+<p>
+Элемент всегда начинается и заканчивается в начале строки, с
+несколькими исключениями:
+</p>
+<ul class="org-ul">
+<li>clock
+</li>
+<li>headline
+</li>
+<li>inlinetask
+</li>
+<li>item
+</li>
+<li>planning
+</li>
+<li>property-drawer
+</li>
+<li>node-property
+</li>
+<li>section'
+</li>
+<li>table-row
+</li>
+</ul>
+
+<p>
+Он также может принимать фиксированный набор атрибутов. Они называются
+"affiliated keywords" чтобы отличать их от других кейвордов, которые
+являются полноценными элементами. Почти все "affiliated keywords"
+упоминаются в <code>org-element-affiliated-keywords</code>, другие атрибуты
+экспортируемые и начинаются с префикса "ATTR_".
+</p>
+
+<p>
+Элемент содержит другие элементы (и только элементы), называемые
+"greater elements". Соответствующие типы:
+</p>
+<ul class="org-ul">
+<li>center-block
+</li>
+<li>drawer
+</li>
+<li>dynamic-block
+</li>
+<li>footnote-definition
+</li>
+<li>headline
+</li>
+<li>inlinetask
+</li>
+<li>item
+</li>
+<li>plain-list
+</li>
+<li>property-drawer
+</li>
+<li>quote-block
+</li>
+<li>section
+</li>
+<li>special-block
+</li>
+</ul>
+
+<p>
+Другие элементы:
+</p>
+<ul class="org-ul">
+<li>babel-call
+</li>
+<li>clock
+</li>
+<li>commen
+</li>
+<li>comment-block
+</li>
+<li>diary-sexp
+</li>
+<li>example-block
+</li>
+<li>export-bloc
+</li>
+<li>fixed-width
+</li>
+<li>horizontal-rule
+</li>
+<li>keyword
+</li>
+<li>latex-environmen
+</li>
+<li>node-property
+</li>
+<li>paragraph
+</li>
+<li>planning
+</li>
+<li>src-block
+</li>
+<li>table
+</li>
+<li>table-row
+</li>
+<li>verse-block
+</li>
+</ul>
+
+<p>
+В дополнение к этому <code>paragraph</code> и <code>verse-block</code> могут содержать
+объекты или просто текст.
+</p>
+
+<p>
+Объекты связаны с содержимым документа. Некоторые из них рекурсивны:
+</p>
+<ul class="org-ul">
+<li>entity
+</li>
+<li>export-snippet
+</li>
+<li>footnote-reference
+</li>
+<li>inline-babel-call
+</li>
+<li>inline-src-block
+</li>
+<li>italic
+</li>
+<li>latex-fragment
+</li>
+<li>line-break
+</li>
+<li>link
+</li>
+<li>macro
+</li>
+<li>radio-target
+</li>
+<li>statistics-cookie
+</li>
+<li>strike-through
+</li>
+<li>subscript
+</li>
+<li>superscript
+</li>
+<li>table-cell
+</li>
+<li>target
+</li>
+<li>timestamp
+</li>
+<li>underline
+</li>
+<li>verbatim
+</li>
+</ul>
+
+<p>
+Некоторые элементы также имеют специальные свойства, значения которых
+могут содержать сами объекты (например  значение тега или имя
+заголовка). Такие значения называются "secondary strings". Любой
+объект принадлежит либо элементу либо "secondary strings"
+</p>
+
+<p>
+Несмотря на "affiliated keywords" каждый "greater element", "element"
+и "object" имеет фиксированный набор свойств связанных с ним. Среди
+них есть четыре, которые есть во всех типах:
+</p>
+<ul class="org-ul">
+<li>:begin
+</li>
+<li>:end
+</li>
+<li>:post-blank - кол-во пустых строк или пробелов на конце
+</li>
+<li>:parent - родительский элемент
+</li>
+</ul>
+
+<p>
+"Greater element", "element" и "object" также будут иметь свойства,
+которые разграничивают содержимое:
+</p>
+<ul class="org-ul">
+<li>:contents-begin
+</li>
+<li>:contents-end
+</li>
+</ul>
+
+<p>
+Наконец, все "elements" имеют свойство, ссылающее на позицию в буфере
+после всех "affiliated keywords" если таковые имеются, или в их
+первоначальное положение в противном случае:
+</p>
+<ul class="org-ul">
+<li>:post-affiliated
+</li>
+</ul>
+
+<p>
+На самом низком уровне есть свойство, которое связано с каждой строкой
+как текст:
+</p>
+<ul class="org-ul">
+<li>:parent
+</li>
+</ul>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">Greater elements</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+Для каждого типа greater elements мы определяем парсер и
+интерпретатор.
+</p>
+
+<p>
+Парсер возвращает элемент или объект как список, описанный
+выше. Большинство из них не принимает никаких аргументов, хотя
+существуют и исключения. Более того парсер <code>item</code>-элемента требут
+текущую структуру списка в качестве первого элемента.
+</p>
+
+<p>
+Интерпретатор принимает 2 аргумента:
+</p>
+<ul class="org-ul">
+<li>список, представляющий элемент или объект
+</li>
+<li>его содержимое
+</li>
+</ul>
+
+<p>
+Он возвращает соответстующий org-синтаксис в виде строки.
+</p>
+
+<p>
+Функции парсера должны отвечать следующему соглашению о именовании:
+<code>org-element-TYPE-parser</code>, где TYPE - тип "greater element"-a, который
+определен в <code>org-element-greater-elements</code>
+</p>
+
+<p>
+Похожим образом функции интерпретатора должны следовать конвенции об
+именовании <code>org-element-TYPE-interpreter</code>
+</p>
+
+<p>
+За исключаением <code>headline</code> и <code>item</code> "greater elements" не могут
+содержать других "greater elements".
+</p>
+
+<p>
+Помимо реализации парсера и интерпретатора, добавление нового "greater
+element" требует настройки <code>org-element--current-element</code>. Кроме того,
+только что определенный тип должен быть добавлен в оба:
+</p>
+<ul class="org-ul">
+<li>org-element-all-elements
+</li>
+<li>org-element-greater-elements
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Elements</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Для каждого "element" парсер и интерпретатор определен так же. Оба
+следуют той же конвенции об именах как и "Greater Elements"
+</p>
+
+<p>
+Также, для добавления нового типа элементов нужно пройти те же шаги -
+реализовать апрсер и интепретатор, твикнуть
+<code>org-element--current-element</code> и добавить новый тип в
+<code>org-element-all-elements</code>
+</p>
+
+<p>
+В особом случае, когда новый определенный тип является блочным типом
+<code>org-element-block-name-alist</code> должен быть соответствующим образом
+изменен
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-3">
+<h3 id="unnumbered-5">Objects</h3>
+<div class="outline-text-3" id="text-unnumbered-5">
+<p>
+В отличие от "Elements" сырой текст может быть найден между
+"objects". Следовательно <code>org-element--object-lex</code> предоставляет
+следующий найденный объект в буффере.
+</p>
+
+<p>
+Некоторые объекты (например <code>italic</code>) рекурсивны. Ограничения на их
+типы будут специфицированы в <code>org-element-object-restrictions</code>.
+</p>
+
+<p>
+Создание нового типа объекта требует изменения
+<code>org-element--object-regexp</code> и <code>org-element--object-lex</code>, добавления
+нового типа в <code>org-element-all-objects</code> и, возможно, добавления
+ограничения в <code>org-element-object-restrictions</code>.
+</p>
+</div>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">Источник</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+<p>
+Функия <code>org-publish-all</code> определена в файле <code>/repo/org-mode/lisp/ox-publish.el</code>
+<code>/usr/share/emacs/24.3/lisp/org/ox-publish.el.gz</code> и принимает два
+опциональных параметра, первый из которых <code>force</code>, если он установлет
+в <code>t</code>, предписывает удалить все таймштампы из таймпштамп-каталога и
+опубликовать проект. Второй параметр заставляет публиковать проект в
+асинхронном режиме.
+</p>
+
+<p>
+В осноном эта функция берет список всех проектов и вызывает с ним
+<code>org-publish-projects</code>.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-3">
+<h3 id="unnumbered-7"><code>org-publish-projects</code></h3>
+<div class="outline-text-3" id="text-unnumbered-7">
+<p>
+Определена в файле <code>/usr/share/emacs/24.3/lisp/org/org-publish.el.gz</code>
+</p>
+
+<p>
+Принимает один параметр - список проектов
+</p>
+
+<p>
+Cтроит <code>sitemap</code> и <code>theindex</code> если это указано в параметре.
+</p>
+
+<p>
+Для всех проектов выполняется раскрытие с использованием функции
+<code>org-publish-expand-projects</code>.
+</p>
+
+<p>
+Исключаются то что попадает под регулярку <code>:exclude</code>
+</p>
+
+<p>
+С помощью функции <code>org-publish-get-base-files</code> определяются файлы
+</p>
+
+<p>
+Выполняется функция <code>:preparation-function</code> и <code>:completion-function</code>,
+если она определена в проекте.
+</p>
+
+<p>
+И с помощью <code>org-publish-file</code> файлы побликуются.
+</p>
+
+<p>
+Выполняется функция <code>:completion-function</code>, если она определена в
+проекте.
+</p>
+
+<p>
+Потом публикуется индекс.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-3">
+<h3 id="unnumbered-8"><code>org-publish-file</code></h3>
+<div class="outline-text-3" id="text-unnumbered-8">
+<p>
+Определена в файле <code>/usr/share/emacs/24.3/lisp/org/org-publish.el.gz</code>
+</p>
+
+<p>
+Вызывает <code>:publishing-function</code> на каждом файле проекта.
+</p>
+
+<p>
+Обычно это функция <code>org-html-publish-to-html</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-3">
+<h3 id="unnumbered-9"><code>org-html-publish-to-html</code></h3>
+<div class="outline-text-3" id="text-unnumbered-9">
+<p>
+Эта функция определена в файле <code>/orgmode/lisp/ox-html.el</code>
+</p>
+
+<p>
+Она вызывает <code>org-publish-org-to</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-3">
+<h3 id="unnumbered-10"><code>org-publish-org-to</code></h3>
+<div class="outline-text-3" id="text-unnumbered-10">
+<p>
+определена в <code>org-mode/_site/lisp/ox-publish.el</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">org-publish-org-to</span> (backend filename extension plist <span style="color: #008700;">&amp;optional</span> pub-dir)
+   ...)
+</pre>
+</div>
+
+
+<p>
+вызывает <code>org-export-to-file</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-3">
+<h3 id="unnumbered-11"><code>org-export-to-file</code></h3>
+<div class="outline-text-3" id="text-unnumbered-11">
+<p>
+Определена в <code>/repo/org-mode/lisp/ox.el</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">org-export-to-file</span> (backend file <span style="color: #008700;">&amp;optional</span> async subtreep visible-only body-only
+                                   ext-plist post-process)
+  ...)
+</pre>
+</div>
+
+<p>
+Вызывает <code>org-export-as</code> с выводом в указанный файл.
+</p>
+
+<p>
+BACKEND - это либо экспортный бакэнд, возвращенный, к примеру,
+<code>org-export-create-backend</code>, или символ, ссылающийся на
+зарегистрированный бакэнд.
+</p>
+
+<p>
+FILE это имя выходного файла, в виде
+строки.
+</p>
+
+<p>
+non-nil необязательный аргумент <code>ASYNC</code> означает, что
+процесс должен происходить асинхронно. Полученный буфер будет доступен
+через интерфейс <code>org-export-stack</code>.
+</p>
+
+<p>
+Дополнительные аргументы <code>SUBTREEP</code>, <code>VISIBLE-ONLY</code>, <code>BODY-ONLY</code> и
+<code>EXT-PLIST</code> аналогичны тем, которые используются в <code>org-export-as</code>.
+</p>
+
+<p>
+Дополнительный аргумент <code>POST-PROCESS</code> вызывается с файлом в качестве
+аргумента и происходит асинхронно, когда <code>ASYNC</code> не является
+nil. Он должен возвращать имя файла, или nil. Экспорт бэкендов
+могут использовать эту функцию чтобы отправить выходной файл через
+дополнительную обработку:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">org-latex-export-to-latex</span>
+  (<span style="color: #008700;">&amp;optional</span> async subtreep visible-only body-only ext-plist)
+  (interactive)
+  (<span style="color: #af00ff;">let</span> ((outfile (org-export-output-file-name \".tex\" subtreep)))
+    (org-export-to-file
+        'latex outfile async subtreep visible-only body-only ext-plist
+        (<span style="color: #af00ff;">lambda</span> (file) (org-latex-compile file)))))
+</pre>
+</div>
+
+<p>
+Функция возвращает либо имя файла,
+возвращенное <code>POST-PROCESS</code> или <code>FILE</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-3">
+<h3 id="unnumbered-12"><code>org-export-as</code></h3>
+<div class="outline-text-3" id="text-unnumbered-12">
+<p>
+Определена в <code>/repo/org-mode/lisp/ox.el</code>
+</p>
+
+<p>
+Кажется здесь начинается настоящаяя работа
+</p>
+
+<p>
+Обрабатываются директивы #+INCLUDE, обновляются радиокнопки, потом
+вызывается <code>org-export-before-parsing-hook</code>, потом устанавливаются
+пользовательские и девелоперские фильтры.
+</p>
+
+<p>
+Затем раскрываются экспорт-специфичные макросы rigidus,
+, rigidus@td и Исследование org-publish-all
+</p>
+
+<p>
+Потом производится парсинг буффера функцией <code>org-element-parse-buffer</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp">(org-data nil
+          (section (<span style="color: #5f5f87;">:begin</span> 1 <span style="color: #5f5f87;">:end</span> 89 <span style="color: #5f5f87;">:contents-begin</span> 1 <span style="color: #5f5f87;">:contents-end</span> 87 <span style="color: #5f5f87;">:post-blank</span> 2 <span style="color: #5f5f87;">:post-affiliated</span> 1 <span style="color: #5f5f87;">:parent</span> #0)
+                   (keyword (<span style="color: #5f5f87;">:key</span> <span style="color: #87005f;">"TITLE"</span> <span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"&#1048;&#1089;&#1089;&#1083;&#1077;&#1076;&#1086;&#1074;&#1072;&#1085;&#1080;&#1077; org-publish-all"</span>
+                                  <span style="color: #5f5f87;">:begin</span> 1 <span style="color: #5f5f87;">:end</span> 40 <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:post-affiliated</span> 1 <span style="color: #5f5f87;">:parent</span> #1))
+                   (keyword (<span style="color: #5f5f87;">:key</span> <span style="color: #87005f;">"STARTUP"</span> <span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"showall indent"</span>
+                                  <span style="color: #5f5f87;">:begin</span> 40 <span style="color: #5f5f87;">:end</span> 66 <span style="color: #5f5f87;">:post-blank</span> 0 <span style="color: #5f5f87;">:post-affiliated</span> 40 <span style="color: #5f5f87;">:parent</span> #1))
+                   (keyword (<span style="color: #5f5f87;">:key</span> <span style="color: #87005f;">"STARTUP"</span> <span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"hidestars"</span>
+                                  <span style="color: #5f5f87;">:begin</span> 66 <span style="color: #5f5f87;">:end</span> 87 <span style="color: #5f5f87;">:post-blank</span> 0 <span style="color: #5f5f87;">:post-affiliated</span> 66 <span style="color: #5f5f87;">:parent</span> #1)))
+          (headline (<span style="color: #5f5f87;">:raw-value</span> <span style="color: #87005f;">"&#1048;&#1085;&#1090;&#1088;&#1086;"</span>
+                                <span style="color: #5f5f87;">:begin</span> 89 <span style="color: #5f5f87;">:end</span> 321 <span style="color: #5f5f87;">:pre-blank</span> 1 <span style="color: #5f5f87;">:contents-begin</span> 98 <span style="color: #5f5f87;">:contents-end</span> 320
+                                <span style="color: #5f5f87;">:level</span> 1 <span style="color: #5f5f87;">:priority</span> nil <span style="color: #5f5f87;">:tags</span> nil <span style="color: #5f5f87;">:todo-keyword</span> nil <span style="color: #5f5f87;">:todo-type</span> nil
+                                <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:footnote-section-p</span> nil <span style="color: #5f5f87;">:archivedp</span> nil <span style="color: #5f5f87;">:commentedp</span> nil
+                                <span style="color: #5f5f87;">:post-affiliated</span> 89 <span style="color: #5f5f87;">:title</span> (<span style="color: #87005f;">"&#1048;&#1085;&#1090;&#1088;&#1086;"</span>) <span style="color: #5f5f87;">:parent</span> #0)
+                    (section (<span style="color: #5f5f87;">:begin</span> 98 <span style="color: #5f5f87;">:end</span> 321 <span style="color: #5f5f87;">:contents-begin</span> 98 <span style="color: #5f5f87;">:contents-end</span> 320 <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:post-affiliated</span> 98 <span style="color: #5f5f87;">:parent</span> #1)
+                             (paragraph (<span style="color: #5f5f87;">:begin</span> 98 <span style="color: #5f5f87;">:end</span> 251 <span style="color: #5f5f87;">:contents-begin</span> 98 <span style="color: #5f5f87;">:contents-end</span> 250
+                                                <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:post-affiliated</span> 98 <span style="color: #5f5f87;">:parent</span> #2)
+                                        <span style="color: #87005f;">"&#1060;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; "</span>
+                                        (verbatim (<span style="color: #5f5f87;">:value</span> org-publish-all <span style="color: #5f5f87;">:begin</span> 106 <span style="color: #5f5f87;">:end</span> 124 <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:parent</span> #3))
+                                        <span style="color: #87005f;">"&#1087;&#1086;&#1079;&#1074;&#1086;&#1083;&#1103;&#1077;&#1090; &#1086;&#1087;&#1091;&#1073;&#1083;&#1080;&#1082;&#1086;&#1074;&#1072;&#1090;&#1100; (&#1090;&#1088;&#1072;&#1085;&#1089;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1074; html-&#1087;&#1088;&#1077;&#1076;&#1089;&#1090;&#1072;&#1074;&#1083;&#1077;&#1085;&#1080;&#1077;) \"&#1087;&#1088;&#1086;&#1077;&#1082;&#1090;\" - &#1084;&#1085;&#1086;&#1078;&#1077;&#1089;&#1090;&#1074;&#1086; org-&#1092;&#1072;&#1081;&#1083;&#1086;&#1074;. &#1056;&#1072;&#1079;&#1073;&#1077;&#1088;&#1077;&#1084;&#1089;&#1103; &#1082;&#1072;&#1082; &#1101;&#1090;&#1086; &#1074;&#1089;&#1077; &#1088;&#1072;&#1073;&#1086;&#1090;&#1072;&#1077;&#1090;."</span>)
+                             (paragraph (<span style="color: #5f5f87;">:begin</span> 251 <span style="color: #5f5f87;">:end</span> 320 <span style="color: #5f5f87;">:contents-begin</span> 251 <span style="color: #5f5f87;">:contents-end</span> 320 <span style="color: #5f5f87;">:post-blank</span> 0 <span style="color: #5f5f87;">:post-affiliated</span> 251 <span style="color: #5f5f87;">:parent</span> #2)
+                                        <span style="color: #87005f;">"&#1056;&#1072;&#1089;&#1087;&#1086;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1081; &#1084;&#1086;&#1078;&#1085;&#1086; &#1089;&#1084;&#1086;&#1090;&#1088;&#1077;&#1090;&#1100; &#1087;&#1086;  "</span>
+                                        (code (<span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"C-h f"</span> <span style="color: #5f5f87;">:begin</span> 290 <span style="color: #5f5f87;">:end</span> 298 <span style="color: #5f5f87;">:post-blank</span> 1 <span style="color: #5f5f87;">:parent</span> #3))
+                                        <span style="color: #87005f;">" - "</span>
+                                        (code (<span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"describe-function"</span> <span style="color: #5f5f87;">:begin</span> 300 <span style="color: #5f5f87;">:end</span> 319 <span style="color: #5f5f87;">:post-blank</span> 0 <span style="color: #5f5f87;">:parent</span> #3))))))
+</pre>
+</div>
+
+<p>
+Полученное дерево очищаетс от неинтерпретированных элементов или
+объектов путем вызова фильтров из <code>:filter-parse-tree</code>
+</p>
+
+<p>
+Очищенное дерево преобразуется по шаблонам и экспортируется с помощью
+<code>org-export-data</code>
+</p>
+
+<p>
+Потом применяются <code>:filter-final-output</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-3">
+<h3 id="unnumbered-13"><code>org-element-parse-buffer</code></h3>
+<div class="outline-text-3" id="text-unnumbered-13">
+<p>
+Определена в <code>~/repo/org-mode/lisp/org-element</code>
+</p>
+
+<p>
+Рекурсивно парсит буффер и возвращает его структуру.
+</p>
+
+<p>
+Принимает два опциональных параметра:
+</p>
+<ul class="org-ul">
+<li>GRANULARITY - определяет глубину рекурсии. Может быть установлен в:
+<ul class="org-ul">
+<li>HEADLINE - Только парсить заголовки
+</li>
+<li>GREATER-ELEMENT - Не делать рекурсию в greater elements исключая
+заголовки и секции. Таким образом элементы парясяе только на
+верхнем уровне
+</li>
+<li>ELEMENT - Парсить все, кроме объектов и обычного текста
+</li>
+<li>OBJECT - Парсить буфер целиком
+</li>
+</ul>
+</li>
+<li>VISIBLE-ONLY - если no-nil - не парсить содержимое скрытых элементов
+</li>
+</ul>
+
+<p>
+Каждый элемент или объект представляется как список вида (TYPE
+PROPERTIES CONTENTS), где:
+</p>
+<ul class="org-ul">
+<li><code>TYPE</code>: Символ, определяющий элемент или обьект. См
+<code>org-element-all-elements</code> и <code>org-element-all-objects</code> чтобы
+получить исчерпывающий перечень таких символов.
+Функция <code>org-element-type</code> извлекает элемент типа
+</li>
+<li><code>PROPERTIES</code> - список атрибутов связанных с элементом или объектом,
+представленный как plist. Хотя большинство из них типо-специфичные,
+все атрибуты содержат <code>:begin</code>, <code>:end</code>, <code>:post-blank</code> и <code>:parent</code>
+свойства, которые соответственно ссылаются на позицию в буфере, где
+элемент или объект начинается, заканчивается, количество пробелов
+или пустых строк после него и элемент или объект содержащий его.
+refer to buffer position where the element or object starts,
+Функция <code>org-element-property</code> извлекает эти свойства
+</li>
+<li><code>CONTENTS</code> - это список элементов, объектов или строк, содержащихся в
+текущем объекте, если это применимо. К ним можно получить доступ
+используя функцию <code>org-element-contents</code>
+</li>
+</ul>
+
+<p>
+Org buffer имеет <code>org-data</code> как тип и nil как свойства.
+</p>
+
+<p>
+<code>org-element-map</code> функцию можно использовать для нахождения
+специфических элементов или объектов внутри дерева.
+</p>
+
+<p>
+Вызывает <code>org-element--parse-elements</code>, при этом в первом параметре
+передает <code>FIRST-SECTION</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14"><code>org-element--parse-elements</code></h3>
+<div class="outline-text-3" id="text-unnumbered-14">
+<p>
+Определено в файле <code>orgmode/_site/lisp/org-element.el</code>
+</p>
+
+<p>
+Принимает параметры:
+</p>
+<ul class="org-ul">
+<li>beg
+</li>
+<li>end
+</li>
+<li>mode - отдает приоритет одним элементам перед другими. Когда
+значение - <code>item</code> - <code>structure</code> будет использоать текующую списковую
+структуру. Приоритет может быть:
+<ul class="org-ul">
+<li>first-section
+</li>
+<li>section
+</li>
+<li>planning
+</li>
+<li>item
+</li>
+<li>node-property
+</li>
+<li>table-row
+</li>
+</ul>
+</li>
+<li>structure
+</li>
+<li>granularity - определяет глубину рекурсии
+</li>
+<li>visible-only - если non-nil содержимое скрытых элементов не парсится
+</li>
+<li>acc - Аккумулятор
+</li>
+</ul>
+
+<p>
+Парсит элемент между <code>beg</code> и <code>end</code> позициями.
+</p>
+
+<p>
+Содержит в себе цикл, который, пока текущая позиция в буфере меньше
+чем <code>end</code>:
+</p>
+<ul class="org-ul">
+<li>выбирает следующий элемент функцией <code>org-element--current-element</code>
+<ul class="org-ul">
+<li>вычисляет его тип и свойства
+</li>
+<li>переходит на конец этого элемента
+</li>
+</ul>
+</li>
+<li>заполняет содержимое элемента <code>cbeg</code>
+<ul class="org-ul">
+<li>если у элемент нет содержимого - элемент не модифицируется
+</li>
+<li>если это "Greater Element" - рекурсивно распарсить между
+<code>:contents-begin</code> и <code>:contents-end</code>. Убедиться что <code>granularity</code>
+разрешате рекурсию или элемент является заголовком, в этом случае
+то что происходит внутри является необходимым, чтобы получить
+заголовки подуровней. Возможно переключиться в специальный режим
+(режим для рекурсивного вызова возвращается подстановкой
+<code>org-element--next-mode</code>).
+</li>
+<li>если элемент имеет содержимое - парсить его с помощью
+<code>org-element--parse-objects</code>.
+</li>
+</ul>
+</li>
+<li>Вызвать <code>(org-element-adopt-elements acc element)</code> - это добавляет к
+аккумулятору текущий элемент
+</li>
+</ul>
+
+<p>
+После того как цикл отработает:
+</p>
+<ul class="org-ul">
+<li>Обновить режим
+</li>
+<li>результат накопившийся в аккумуляторе возвращается
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15"><code>org-element--parse-objects</code></h3>
+<div class="outline-text-3" id="text-unnumbered-15">
+<p>
+Определено в файле <code>orgmode/_site/lisp/org-element.el</code>
+</p>
+
+<p>
+Принимает параметры:
+</p>
+<ul class="org-ul">
+<li>beg
+</li>
+<li>end
+</li>
+<li>acc
+</li>
+<li>restriction - список объектов наследников, которые разрешены в
+текущем объекте
+</li>
+</ul>
+
+<p>
+При входе функция сразу сужает регион до переданных границ и в
+дальнейшем запускает цикл, который работает пока не будет достигнут
+конец региона и существует <code>next-object</code>, который выделяется вызовом
+<code>org-element--object-lex</code>. Внутри цикла происходит следуюшее:
+</p>
+<ul class="org-ul">
+<li>Если перед объектом есть текст - он untabify-тся. Аккумулятору
+присваивается результат вызова <code>buffer-substring-no-properties</code> на
+тексте, предшествующем объекту
+</li>
+<li>Если объект имеет рекурсивный тип он парсится с помощью
+<code>org-element--parse-objects</code>, после чего добавляется к аккумулятору.
+</li>
+</ul>
+
+<p>
+Если есть текст после объекта, он унтабифится и добавляется аналогично
+предшествущему объекту тексту.
+</p>
+
+<p>
+Результат возвращается.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-3">
+<h3 id="unnumbered-16"><code>org-element--object-lex</code></h3>
+<div class="outline-text-3" id="text-unnumbered-16">
+<p>
+Определено в файле <code>orgmode/_site/lisp/org-element.el</code>
+</p>
+
+<p>
+Принимает параметры:
+</p>
+<ul class="org-ul">
+<li>restriction - список объектов как символов, которые должны быть
+найдены позже
+</li>
+</ul>
+
+<p>
+Возвращает следующий в буфере объект или nil
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-3">
+<h3 id="unnumbered-17"><code>org-element--current-element</code></h3>
+<div class="outline-text-3" id="text-unnumbered-17">
+<p>
+Определена в файле <code>orgmode/_site/lisp/org-element.el</code>
+</p>
+
+<p>
+Принимает один обязательный параметр <code>limit</code> и три необязательных
+</p>
+<ul class="org-ul">
+<li><code>granularity</code> - определяет глубину рекурсии, возможные значения:
+<ul class="org-ul">
+<li>headline
+</li>
+<li>greater-element
+</li>
+<li>element
+</li>
+<li>object
+</li>
+<li>nil
+</li>
+</ul>
+</li>
+<li><code>mode</code> - если не nil то
+<ul class="org-ul">
+<li>first-section
+</li>
+<li>section
+</li>
+<li>planning
+</li>
+<li>item
+</li>
+<li>node-property
+</li>
+<li>table-row
+</li>
+</ul>
+</li>
+<li><code>structure</code> - если не определна, но <code>MODE</code> установлен в <code>item</code> - то
+будет вычислена
+</li>
+</ul>
+
+<p>
+Парсит элемент начиная с текущей позиции и по <code>LIMIT</code>
+</p>
+
+<p>
+Возвращает lisp-представление элемента вида (TYPE PROPS), где TYPE -
+тип элемента, а PROPS - plist свойств, ассоцированных с элементом.
+</p>
+
+<p>
+Возможные типы опредены в <code>org-element-all-elements</code>
+</p>
+
+<p>
+Сущестуют следуюищие режимы, передаваемые в параметре <code>mode</code>, для
+каждого из которых вызывается соответствующий парсер:
+</p>
+<ul class="org-ul">
+<li>Item - <code>org-element-item-parser</code>
+</li>
+<li>Table Row - <code>org-element-table-row-parser</code>
+</li>
+<li>Node Property - <code>org-element-node-property-parser</code>
+</li>
+<li>Headline
+Вызывается функция <code>org-at-heading-p</code>, которая возвращает T если
+текущая позиция находится на заголовке. Для этого она перемещается в
+начало строки и проверяет на совпадение с регуляркой
+<code>outline-regexp</code>. Все это происходит внутри ограничений, заданных
+<code>LIMIT</code>. Если заголовок найден - вызывается парсер <code>org-element-headline-parser</code>
+</li>
+<li>Section - <code>org-element-section-parser</code>
+</li>
+<li>First Section - <code>org-element-section-parser</code>
+</li>
+<li>Planning - <code>org-element-planning-parser</code>
+</li>
+<li>Property Drawer - <code>org-element-property-drawer-parser</code>
+</li>
+<li>Footnone?
+</li>
+<li>Clock - <code>org-element-clock-parser</code>
+</li>
+<li>InlineTask - <code>org-element-inlinetask-parser</code>
+</li>
+</ul>
+
+<p>
+Если ничего из вышеперечисленного не сработало, значит мы имеем дело с
+"Affiliated Keywords" и тогда чтобы его получить мы вызываем
+<code>org-element--collect-affiliated-keywords</code> и анализируем на совпадения:
+</p>
+<ul class="org-ul">
+<li>Latex Environment
+</li>
+<li>Drawer and Property Drawer
+</li>
+<li>Fixed Width
+</li>
+<li>Inline Comments, Blocks, Babel Calls, Dynamic Blocks and Keywords
+</li>
+<li>Footnote Definition
+</li>
+<li>Horizontal Rule
+</li>
+<li>Diary Sexp
+</li>
+<li>Table
+</li>
+<li>List
+</li>
+<li>Default Element: Paragraph
+</li>
+</ul>
+</div>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-18" class="outline-2">
+<h2 id="unnumbered-18">Парсеры</h2>
+<div class="outline-text-2" id="text-unnumbered-18">
+</div><div id="outline-container-unnumbered-19" class="outline-3">
+<h3 id="unnumbered-19"><code>org-element-headline-parser</code></h3>
+<div class="outline-text-3" id="text-unnumbered-19">
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp">(regexp-opt
+       (list org-closed-string org-deadline-string org-scheduled-string)
+       t)
+</pre>
+</div>
+</div>
+</div>
+</heading>

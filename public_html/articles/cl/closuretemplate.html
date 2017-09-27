@@ -1,0 +1,277 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Тестовый пример</a></li>
+<li><a href="#unnumbered-2">Шаблон</a></li>
+<li><a href="#unnumbered-3">Код</a></li>
+</ul>
+</div>
+</div>
+<p>
+Сегодня мы поговорим о такой милой сердцу каждого веб-программиста вещи как шаблонизация. По
+долгу службы мне необходимо было решить задачу, важность которой для интернет-магазина сложно
+переоценить: информирование Яндекс.Маркета о наших товарах. Не секрет, что значительная часть
+трафика интернет-магазина приходит именно с Яндекс.Маркета, и трафик этот очень важен - любой
+сбой сразу же отражается на заказах.
+</p>
+
+<p>
+Чтобы Яндекс.Маркет был доволен и счастлив, ему надо предоставлять xml-файл в специальном
+формате (<a href="http://partner.market.yandex.ru/legal/tt/">http://partner.market.yandex.ru/legal/tt/</a>), в котором содержится информация о товарах
+и товарных группах.
+</p>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Тестовый пример</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Для примера мы возьмем два товара в двух товарных группах. Вот что мы хотим получить в результате:
+</p>
+
+<p>
+&lt;source lang="xml"&gt;
+&lt;?xml version="1.0" encoding="windows-1251"?&gt;
+&lt;!DOCTYPE yml<sub>catalog</sub> SYSTEM "shops.dtd"&gt;
+&lt;yml<sub>catalog</sub> date="2009-12-15 04:47"&gt;
+  &lt;shop&gt;
+    &lt;name&gt;Блинчеги-онлайн&lt;/name&gt;
+    &lt;company&gt;Блинная фабрика № 1&lt;/company&gt;
+    &lt;url&gt;<a href="http://www.blinonline.tld/">http://www.blinonline.tld/</a>&lt;/url&gt;
+    &lt;currencies&gt;
+      &lt;currency id="RUR" rate="1"/&gt;
+    &lt;/currencies&gt;
+   &lt;categories&gt;
+      &lt;category id="1"&gt;Корневая группа&lt;/category&gt;
+      &lt;category id="2" parentId="1"&gt;Подгруппа&lt;/category&gt;
+    &lt;/categories&gt;
+    &lt;offers&gt;
+      &lt;offer id="1" available="true"&gt;
+        &lt;url&gt;<a href="http://www.blinonline.tld/catalog/1/1">http://www.blinonline.tld/catalog/1/1</a>&lt;/url&gt;
+        &lt;price&gt;666.00&lt;/price&gt;
+        &lt;currencyId&gt;RUR&lt;/currencyId&gt;
+        &lt;categoryId&gt;1&lt;/categoryId&gt;
+        &lt;picture&gt;<img src="http://www.blinonline.tld/images/product_1.jpg" alt="product_1.jpg" />&lt;/picture&gt;
+        &lt;delivery&gt;true&lt;/delivery&gt;
+        &lt;name&gt;Мой первый товар&lt;/name&gt;
+        &lt;description&gt;Первый блин.. Очень неплохой блин, стоит купить!&lt;/description&gt;
+      &lt;/offer&gt;
+      &lt;offer id="2" available="true"&gt;
+        &lt;url&gt;<a href="http://www.blinonline.tld/catalog/2/2">http://www.blinonline.tld/catalog/2/2</a>&lt;/url&gt;
+        &lt;price&gt;999.00&lt;/price&gt;
+        &lt;currencyId&gt;RUR&lt;/currencyId&gt;
+        &lt;categoryId&gt;2&lt;/categoryId&gt;
+        &lt;picture&gt;<img src="http://www.blinonline.tld/images/product_2.jpg" alt="product_2.jpg" />&lt;/picture&gt;
+        &lt;delivery&gt;true&lt;/delivery&gt;
+        &lt;name&gt;Усовершенствованный первый блин.&lt;/name&gt;
+        &lt;description&gt;Но стоит немного дороже. Покупайте лучше первый!&lt;/description&gt;
+      &lt;/offer&gt;
+     &lt;/offers&gt;
+  &lt;/shop&gt;
+&lt;/yml<sub>catalog</sub>&gt;
+&lt;/source&gt;
+</p>
+
+<p>
+Как видите - YML довольно прост. Чтобы сварганить его, мы применим тяжелую артиллерию -
+библиотеку &lt;code&gt;cl-closure-template&lt;/code&gt;, которую archimag сваял на лиспе всего за неделю,
+уложившись менее чем в 1000 строк кода, в то время как программисты Google писали на java и
+написали целых 15000 строк, и это, насколько я понял, даже без учета тестов.
+</p>
+
+<p>
+Чтобы установить ее, я скачал архив с гитхаба, распаковал, положил в
+&lt;code&gt;/usr/share/common-lisp/source/closure-template&lt;/code&gt; и создал симлинк на
+&lt;code&gt;closure-template.asd&lt;/code&gt; в &lt;code&gt;/usr/share/common-lisp/systems&lt;/code&gt;. После этого
+для использования надо сказать &lt;code&gt;(asdf:operate 'asdf:load-op '#:closure-template)&lt;/code&gt;
+что гораздо правильнее, чем &lt;code&gt;(reqire 'closure-template)&lt;/code&gt;
+</p>
+
+<p>
+Немного о том, как все это работает. Получая шаблон, библиотека парсит его, превращая
+заполняемые блоки в нем в функции. При вызове этим функциям передаются данные для заполнения, а
+возвращают они уже заполненные блоки. Помимо сногсшибательного (с точки зрения
+производительности) факта превращения шаблона в скомпилированный машинный код, чтобы совсем вас
+добить, скажу, что функции могут вызывать друг друга прямо из шаблона, например внутри
+итераций. Сейчас самое время посмотреть, как выглядит шаблон:
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Шаблон</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+&lt;source lang="xml"&gt;
+{namespace yml}
+{template xml}
+&lt;?xml version="1.0" encoding="windows-1251"?&gt;{\n}
+&lt;!DOCTYPE yml<sub>catalog</sub> SYSTEM "shops.dtd"&gt;{\n}
+&lt;yml<sub>catalog</sub> date="{$datetime}"&gt;{\n}
+  &lt;shop&gt;{\n}
+    &lt;name&gt;{$marketname}&lt;/name&gt;{\n}
+    &lt;company&gt;{$marketcompany}&lt;/company&gt;{\n}
+    &lt;url&gt;{$marketurl}&lt;/url&gt;{\n}
+    &lt;currencies&gt;{\n}
+      &lt;currency id="RUR" rate="1"/&gt;{\n}
+    &lt;/currencies&gt;{\n}
+    &lt;categories&gt;{\n}
+      {foreach $category in $categoryes}
+      {call category data="$category" /}
+      {/foreach}
+    &lt;/categories&gt;{\n}
+    &lt;offers&gt;{\n}
+      {foreach $offer in $offers}
+      {call offer data="$offer" /}
+      {/foreach}
+    &lt;/offers&gt;{\n}
+  &lt;/shop&gt;{\n}
+&lt;/yml<sub>catalog</sub>&gt;{\n}
+{/template}
+</p>
+
+<p>
+{template category}
+&lt;category id="{$id}"{if $parent != 0} parentId="{$parent}"{/if}&gt;{$name}&lt;/category&gt;{\n}
+{/template}
+</p>
+
+<p>
+{template offer}
+&lt;offer id="{$id}" available="true"&gt;{\n}
+  &lt;url&gt;<a href="http://www.blinonline.tld/catalog/%7B$category%7D/%7B$id">http://www.blinonline.tld/catalog/%7B$category%7D/%7B$id</a>}&lt;/url&gt;{\n}
+  &lt;price&gt;{$price}&lt;/price&gt;{\n}
+  &lt;currencyId&gt;RUR&lt;/currencyId&gt;{\n}
+  &lt;categoryId&gt;{$category}&lt;/categoryId&gt;{\n}
+  &lt;picture&gt;<a href="http://www.blinonline.tld%7B$picture/">http://www.blinonline.tld%7B$picture/</a>}&lt;/picture&gt;{\n}
+  &lt;delivery&gt;true&lt;/delivery&gt;{\n}
+  &lt;name&gt;{$name}&lt;/name&gt;{\n}
+  &lt;description&gt;{$description}&lt;/description&gt;{\n}
+&lt;/offer&gt;{\n}
+{/template}
+&lt;/source&gt;
+</p>
+
+<p>
+Разберем, что здесь происходит. Директива &lt;code&gt;{namespace имя<sub>пакета</sub>}&lt;/code&gt; создает пакет,
+куда будут помещаться функции. Всего в пакете будут находится три функции: &lt;code&gt;xml&lt;/code&gt;,
+&lt;code&gt;category&lt;/code&gt; и &lt;code&gt;offer&lt;/code&gt;, но вызывать мы будем лишь xml. Функция
+&lt;code&gt;xml&lt;/code&gt; вызовет &lt;code&gt;category&lt;/code&gt; и &lt;code&gt;offer&lt;/code&gt; сама, когда ей потребуется
+отобразить группу товаров и товар.
+</p>
+
+<p>
+Присмотритесь, как элегантно и очевидно это происходит. В блоке categoryes мы итерируемся по
+списку категорий, для каждой из которых вызывается функция &lt;code&gt;category&lt;/code&gt; (в единственном числе),
+которой передается параметр &lt;code&gt;$category&lt;/code&gt;. Теперь спустимся чуть пониже, чтобы рассмотреть блок
+&lt;code&gt;{template category}&lt;/code&gt;. Он заполняет элемент категории, причем атрибут parentId отображется только
+для категорий, имеющих ненулевого родителя. Заполненные блоки возвращаются в xml. Точно также
+происходит заполнение offers. Более подробно о возможностях closure-template можно узнать в
+спецификации.
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Код</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Теперь о том, как передать данные в шаблон. Посмотрите на этот код:
+</p>
+
+<p>
+&lt;source lang="lisp"&gt;
+;;;; use closure-template for generate yml
+(asdf:operate 'asdf:load-op '#:closure-template)
+(closure-template:compile-template :common-lisp-backend #P"tpltest.txt")
+(defpackage #:ymf
+  (:use #:cl))
+(in-package #:ymf)
+</p>
+
+<p>
+(defun get-date-time ()
+  (multiple-value-bind (second minute hour date month year) (get-decoded-time)
+    (declare (ignore second))
+    (format nil
+            "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d"
+            year month date hour minute)))
+</p>
+
+<p>
+(format t "~%~a"
+        (yml:xml
+         (list :datetime (get-date-time)
+</p>
+<p>
+:marketname "Блинчеги-онлайн"
+</p>
+<p>
+:marketcompany "Блинная фабрика № 1"
+</p>
+<p>
+:marketurl "<a href="http://www.blinonline.tld/">http://www.blinonline.tld/</a>"
+</p>
+<p>
+:categoryes '((:id 1
+</p>
+<p>
+:parent 0
+</p>
+<p>
+ :name "Корневая группа")
+(:id 2
+</p>
+<p>
+:parent 1
+</p>
+<p>
+:name "Подгруппа"))
+</p>
+<p>
+:offers '((:id 1
+</p>
+<p>
+:category 1
+</p>
+<p>
+:price "666.00"
+</p>
+<p>
+:picture "/images/product<sub>1.jpg</sub>"
+</p>
+<p>
+:name "Мой первый товар"
+</p>
+<p>
+ :description "Первый блин.. Cтоит купить!")
+(:id 2
+</p>
+<p>
+:category 2
+</p>
+<p>
+:price "999.00"
+</p>
+<p>
+:picture "/images/product<sub>2.jpg</sub>"
+</p>
+<p>
+:name "Усовершенствованный первый блин."
+</p>
+<p>
+                          :description "Покупайте лучше первый!")))))
+&lt;/source&gt;
+</p>
+
+<p>
+Как видите, мы вызываем функцию &lt;code&gt;xml&lt;/code&gt; пакета ymf (помните про &lt;code&gt;{namespace
+ymf}&lt;/code&gt;?), передавая ей список свойств (plist), содержащий все необходимые
+параметры. Выглядит гениально просто, не правда ли?
+</p>
+
+<p>
+Надеюсь, мой пост вдохновит вас на использование cl-closure-template для самых разных задач.
+</p>
+</div>
+</heading>

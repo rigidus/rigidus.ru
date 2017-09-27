@@ -1,0 +1,252 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Инсталляция</a></li>
+<li><a href="#unnumbered-2">StumpWM и Gnome</a></li>
+<li><a href="#unnumbered-3">О чём не было сказано</a></li>
+</ul>
+</div>
+</div>
+<p>
+Установил StumpWM - последнее, что мне не хватало для полного счастья. Лично для себя перепостю
+инструкцию по установке из вики с некоторыми моими (ubuntu 10.04) исправлениями и дополнениями.
+</p>
+
+<p>
+Есть нечто что делает Emacs особенным текстовым редактором, так вот - это же нечто делает
+StumpWM особенным оконным менеджером. (c) Bill Clementson
+</p>
+
+<p>
+StumpWM это тайловый оконный менеджер, который отличается следующими особенностями:
+</p>
+
+<p>
+&lt;ol&gt;
+&lt;li&gt;Это оконный менеджер полностью написанный на Common Lisp. При его запуске (startx)
+ создаётся полноценный lisp-runtime с доступом к REPL и с возможностью обновить как конфигурацию
+ менеджера так и сам его код в "горячем" режиме.&lt;/li&gt;
+&lt;li&gt;Это именно <b>просто</b> оконный менеджер, а не рабочее окружение (подобно XFCE, Gnome или
+ KDE). Следовательно, он может использоваться как основа объединяющая разрозненные программы
+ (emacs, например, консоль, и т.п.), а также может работать в качестве менеджера окон
+ какого-либо рабочего окружения, например, Gnome.&lt;/li&gt;
+&lt;li&gt;Это keyboard-driven менеджер окон, т.е. предполагается, что большинство операций с окнами
+ проделываются при помощи клавиатурных комбинаций.&lt;/li&gt;
+&lt;li&gt;Это тайловый оконный менеджер, как было сказано, - он берет на себя заботу о том как именно
+ будут располагаться окна (если не задать явно другого поведения).&lt;/li&gt;
+&lt;/ol&gt;
+</p>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Инсталляция</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Естественней всего использовать StumpWM в связке с SBCL. StumpWM присутствует в репозиториях
+большинства дистрибутивов, но не заводится, поэтому тут будет рассмотрен ручной способ
+установки - последней версии из git. Итак, вот небольшой файл, который будет делать всю
+необходимую работу:
+</p>
+
+<p>
+&lt;source lang="lisp"&gt;
+;;;
+;;; Little `script' for install StumpWM in SBCL environment:
+;;;
+;;;    sbcl &#x2013;load stumpwm-install.lisp
+;;;
+</p>
+
+<p>
+(in-package #:cl-user)
+</p>
+
+<p>
+;;; Emb. shell
+;;;
+(set-dispatch-macro-character
+  #\#
+  #\s
+  #'(lambda (stream sub-char numarg)
+      (declare (ignore sub-char numarg))
+      (let (chars)
+        (do ((prev (read-char stream) curr)
+             (curr (read-char stream) (read-char stream)))
+          ((and (char= prev #\#) (char= curr #\#)))
+          (push prev chars))
+        (let ((asdf::*verbose-out* <b>standard-output</b>))
+          (asdf:run-shell-command
+           (coerce (nreverse chars) 'string))))))
+</p>
+
+<p>
+;;; Little shell script there
+;;;
+#s
+DIR=`pwd`
+if [ -d "stumpwm" ] ; then
+  cd stumpwm
+  git pull -f
+  cd ${DIR}
+else
+  git clone git://git.savannah.nongnu.org/stumpwm.git
+fi
+if [ -f "stumpwm/module.lisp.in" ] ; then
+  mv stumpwm/module.lisp.in stumpwm/module.lisp
+fi
+if [ -f "stumpwm/version.lisp.in" ] ; then
+  mv stumpwm/version.lisp.in stumpwm/version.lisp
+fi
+##
+;;; Make executable stumpwm image
+;;;
+(load "stumpwm/stumpwm.asd")
+(asdf:oos 'asdf:load-op :stumpwm)
+(sb-ext:save-lisp-and-die "stumpwm.bin"
+</p>
+<p>
+:executable t
+</p>
+<p>
+                          :toplevel #'(lambda () (stumpwm:stumpwm ":0")))
+&lt;/source&gt;
+</p>
+
+<p>
+Тут показан простой способ встроить shell сценарии в лисп-код с помощью макросов чтения, к
+примеру:
+</p>
+
+<p>
+&lt;source lang="lisp"&gt;
+CL-USER&gt; #s pwd ##
+; $  pwd
+/home/treep/devel/lisp
+0
+&lt;/source&gt;
+</p>
+
+<p>
+После запуска
+</p>
+
+<p>
+&lt;source lang="lisp"&gt;
+sbcl &#x2013;load stumpwm-install.lisp
+&lt;/source&gt;
+</p>
+
+<p>
+будет создан git-репозиторий, исходный код будет скомпилирован и сохранён в образ.
+</p>
+
+<p>
+При повторном запуске
+</p>
+
+<p>
+&lt;source lang="lisp"&gt;
+sbcl &#x2013;load stumpwm-install.lisp
+&lt;/source&gt;
+</p>
+
+<p>
+git-репозиторий будет по необходимости обновлён (pull), а образ - пересобран снова.
+</p>
+
+<p>
+После этого нужно положить образ stumpwm.bin в удобное место. Я не парился и оставил в HOME :)
+</p>
+
+<p>
+Пишем в файл ~/.xinitrc строчку
+</p>
+
+<p>
+&lt;source lang="bash"&gt;
+exec /path/to/stumpwm
+&lt;/source&gt;
+</p>
+
+<p>
+Теперь завершите сеанс (если вы можете это сделать :) если нет - нужно перезагрузится, или
+остановить gdm (gdm stop))
+</p>
+
+<p>
+&lt;source lang="bash"&gt;
+killall gdm-binary
+startx
+&lt;/source&gt;
+</p>
+
+<p>
+И мы оказываемся в "голом" StumpWM. Эти операции можно проделывать на tty1-6 в момент logon
+screen - дальше можно ловить ошибки в ~/.xsession-errors
+</p>
+
+<p>
+&#x2014;
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">StumpWM и Gnome</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Чтобы использовать StumpWM как независимый менеджер окон в среде Gnome нужно совершить
+следующие действия:
+</p>
+
+<p>
+&lt;ol&gt;
+&lt;li&gt;Убедится, что вход в систему осуществляется через GDM и его меню выбора сессий (механизм
+ xsessions). В gentoo нужно поступить согласно &lt;a href="<a href="http://www.gentoo.org/doc/ru/gnome-config.xml">http://www.gentoo.org/doc/ru/gnome-config.xml</a>"&gt;<a href="http://www.gentoo.org/doc/ru/gnome-config.xml">http://www.gentoo.org/doc/ru/gnome-config.xml</a>&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;На всякий случай: &lt;code&gt;gconftool-2 -u
+ /desktop/gnome/session/required<sub>components</sub>/windowmanager&lt;/code&gt;&lt;li&gt;
+&lt;li&gt;sudo mkdir /etc/X11/sessions&lt;/li&gt;
+&lt;li&gt;Записать в файл /etc/X11/sessions/Xsessions.desktop следующее:&lt;/li&gt;
+</p>
+
+<p>
+&lt;source lang="init"&gt;
+[Desktop Entry]
+Name=Xsession
+Comment=This runs ~/.xsession
+Exec=/etc/X11/Xsession
+&lt;/source&gt;
+</p>
+
+<p>
+&lt;li&gt;В файле ~/.xsession написать&lt;/li&gt;
+</p>
+
+<p>
+&lt;source lang="bash"&gt;
+export WINDOW<sub>MANAGER</sub>="/path/to/stumpwm"
+exec gnome-session
+&lt;/source&gt;
+</p>
+
+<p>
+Вот и всё, однако это хоть и StumpWM в Gnome окружении - это не типичный Gnome - так шрифты
+будут выставлены по-умолчанию (скверно :), а гномовские панели могут отсутствовать. Хотя у меня
+и с тем и другим было все в порядке. Панели можно запустить с помощью &lt;code&gt;gnome-panel &amp;
+&lt;/code&gt; (но и тут может потребоваться напильник :)
+</p>
+
+<p>
+&#x2014;
+</p>
+</div>
+</heading>
+
+<heading id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">О чём не было сказано</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+&lt;code&gt;~/.stumpwmrc&lt;/code&gt; - конфигурационный файл (на Common Lisp), позволяющий настроить любое необходимое поведение.
+</p>
+</div>
+</heading>

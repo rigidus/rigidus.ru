@@ -1,0 +1,281 @@
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">DO-DEFSYSTEM.</a></li>
+</ul>
+</div>
+</div>
+<p>
+UPDATED 11.12.2011. Теперь сброс слотов системы происходит с помощью ф-ии reset-system и класса
+proto-system. Упростился код ф-ии do-defsystem.
+</p>
+
+<p>
+(сказаное ниже относится к версии 2.019.2)
+</p>
+
+<p>
+Определение системы начинается с выполнения формы (defsystem &#x2026;). Этот тот самый
+DEFSYSTEM, который используется в *.asd файлах. Макрос DEFSYSTEM всего лишь "переходник",
+он генерирует код вызывающий обычную ф-ию DO-DEFSYSTEM:
+</p>
+
+<p>
+&lt;source&gt;
+   (defmacro defsystem (name &amp;body options)
+      `(apply 'do-defsystem ',name ',options))
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; почему так? Просто выяснилось что макрос для определения системы не нужен. Но не
+заставлять же всех переписывать asd файлы:) Макросы вообще не стоит использовать без особой
+необходимости.
+</p>
+
+<heading id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">DO-DEFSYSTEM.</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+&lt;source&gt;
+(defun* do-defsystem (name &amp;rest options
+                           &amp;key (pathname nil pathname-arg-p) (class 'system)
+                           defsystem-depends-on &amp;allow-other-keys)
+  &#x2026;)
+&lt;/source&gt;
+</p>
+
+
+<p>
+Ф-ия выполнит кое-какие настройки и вызовет в самом конце, ф-ию PARSE-COMPONENT-FORM для
+анализа переданных опций и создания на их основе иерархии объектов, используемой остальными
+подсистемами. Работа ф-ии состоит из следующих этапов:
+</p>
+
+<ol class="org-ol">
+<li>Всё обёртывается кодом вводящим динамический контекст, в котором переменная
+<b>systems-being-defined</b> гарантировано содержит хэш-таблицу. В этой хэш-таблице будут
+регистрироваться системы, определяющиеся в данный момент (используется это подсистемой
+поиска):
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+   (with-system-definitions () &#x2026;)
+&lt;/source&gt;
+</p>
+
+<ol class="org-ol">
+<li><p>
+Определяется локальный контекст со следующими переменными:
+</p>
+
+<p>
+2.1 name - получает строковое (каноническое) имя системы: (coerce-name name)
+</p>
+
+<p>
+2.2 registered - получает объект системы, если она уже зарегистрирована:
+</p>
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+    (system-registered-p name)
+&lt;/source&gt;
+</p>
+
+<p>
+2.2.1 system-registered-p ищет систему в хэш-таблице <b>defined-systems</b>, используя её
+имя как ключ:
+</p>
+
+<p>
+&lt;source&gt;
+             (gethash (coerce-name name) <b>defined-systems</b>)
+&lt;/source&gt;
+</p>
+
+<p>
+2.2.2 В итоге registered получает значение как пару вида (если система всё-таки
+зарегистрирована):
+</p>
+
+<p>
+&lt;source&gt;
+              (3525158896 . #&lt;SYSTEM "some-system"&gt;)
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; в которой первый элемент является временной меткой (когда система была
+зарегистрирована), а второй экземпляром класса SYSTEM или его наследника.
+</p>
+
+<p>
+2.3 registered! - получает объект системы в любом случае.
+</p>
+
+<p>
+2.3.1 Если система была зарегистрирована обновляется временная метка регистрации и
+переменная получает ту же точечную пару что содержится в registered:
+</p>
+
+<p>
+&lt;source&gt;
+       (let (&#x2026;
+            (registered! (if registered
+                         (rplaca registered (get-universal-time))
+                         &#x2026;))))
+&lt;/source&gt;
+</p>
+
+<p>
+2.3.2 Если система не была зарегистрирована, то создаётся новый объект системы и
+регистрируется:
+</p>
+
+<p>
+&lt;source&gt;
+       (let (&#x2026;
+            (registered! (if registered
+                             (&#x2026;)
+                             (register-system (make-instance 'system :name name))))
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; register-system выводит сообщение о регистрации системы и сохраняет точечную пару
+из метки времени и новой системы в хэше <b>defined-systems</b> с ключом name.
+</p>
+
+<p>
+2.4 system - получает объект системы слотами name и source-file (который представляет собой
+собственно путь к загружаемому в данный момент файлу), остальные слоты сбрасываются с помощью
+reset-system:
+</p>
+
+<p>
+&lt;source&gt;
+   (let (&#x2026;
+        (system (reset-system (cdr registered!)
+</p>
+<p>
+                              :name name :source-file (load-pathname)))
+                   &#x2026;))
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; load-pathname в том числе обрабатывает символические ссылки, с помощью ф-ии
+resolve-symlinks* (будут ли разрешаться символические ссылки, определяется специальной
+переменной <b>resolve-symlinks</b>, которая по умолчанию установлена в T). Ф-ия reset-system
+сбрасывает слоты следующим образом: сначала класс системы заменяется на некий прототип класса
+системы, содержащий слоты который сбрасывать не нужно, а затем изменяется на класс system:
+</p>
+
+<p>
+&lt;source&gt;
+        (defun* reset-system (system &amp;rest keys &amp;key &amp;allow-other-keys)
+           (change-class (change-class system 'proto-system) 'system)
+           (apply 'reinitialize-instance system keys))
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; класс proto-system на данный момент содержит лишь один слот - name.
+</p>
+
+<p>
+2.5 component-options - получает все опции системы, кроме :class (remove-keys '(:class)
+options). Это происходит из-за того, что обработка этой опции будет происходить здесь же, в
+ф-ии do-defsystem.
+</p>
+
+<ol class="org-ol">
+<li>В хэш-таблицу, в упомянутой выше динамической переменной <b>systems-being-defined</b> (которая
+определена в дин. контексте, вводимого макросом with-system-definitions), записывается
+полученный объект системы:
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+   (setf (gethash name <b>systems-being-defined</b>) system
+&lt;/source&gt;
+</p>
+
+<ol class="org-ol">
+<li>Подгузка систем указанных ключом defsystem-depends-on, то есть тех систем, которые
+необходимы не просто для работы определяемой системы, а для её непосредственного определения
+и регистрирования:
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+   (apply 'load-systems defsystem-depends-on)
+&lt;/source&gt;
+</p>
+
+<p>
+&#x2026; в этих системах следует размещать код, расширяющий функциональность ASDF. Например,
+классы-наследники от классов с предком component   и от классов с предком operation. А также
+свои методы для обобщённых ф-ий (например для perform) специализирующихся на своих классах
+и/или добавляющих функциональность с помощью стандартных комбинаторов :before, :after
+и :around.
+</p>
+
+<ol class="org-ol">
+<li>Изменяется класс системы, если в опциях системы указан ключ :class со значением отличным от
+'system :
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+   (let ((class (class-for-type nil class)))
+      (unless (eq (type-of system) class)
+        (change-class system class)))
+&lt;/source&gt;
+</p>
+
+
+<ol class="org-ol">
+<li>Теперь самое главное, обработка указанных опций-ключей. Осуществляется она функцией
+parse-component-form, которая вызывается с аргументом NIL в качестве parent (ведь
+определяемая система является корневым элементом создаваемой иерархии, для других
+компонентов parent будет устанавливаться в соответствии с глубиной вложенности) и списком
+необходимых опций. Этот список формируется с помощью component-options (помните определяли
+локальную переменную, выкидывая ключ :class ?), опции: ":module name" и вычисляемого пути к
+компоненту, который мог быть указан ключом :pathname (если он не был указан, путь
+вычисляется как директория в которой находится .asd файл). В простом случае сформированный
+список опций будет выглядеть подобно следующему:
+</li>
+</ol>
+
+<p>
+&lt;source&gt;
+   (:module "exp-system"
+</p>
+<p>
+:depends-on nil
+</p>
+<p>
+:components ((:module "src"
+</p>
+<p>
+:pathname ""
+</p>
+<p>
+                   :components ((:file "file1")
+                        (:static-file "static.txt")
+                        (:file "file2" :depends-on ("file1"))
+                        (:file "file3" :depends-on ("file1"))))))
+&lt;/source&gt;
+</p>
+</div>
+</heading>

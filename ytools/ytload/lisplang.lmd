@@ -1,0 +1,67 @@
+;-*- Mode: Common-lisp; Package: ytools; Readtable: ytools; -*-
+(in-package :ytools)
+;;; $Id: lisplang.lmd,v 1.18 2007/08/13 15:07:22 dvm Exp $
+
+;;; Copyright (C) 1976-2003 
+;;;     Drew McDermott and Yale University.  All rights reserved
+;;; This software is released under the terms of the Modified BSD
+;;; License.  See file COPYING for details.
+
+(declare-config-var lisplang-sup-dir*)
+(declare-config-var nity-dir*)
+(declare-config-var lisplang-dir*)
+(declare-config-var langutils-dir*)
+(declare-config-var lisplang-namespace-mode*)
+
+(declaim (special #+prechunk fload-compile-flag*))
+
+(defun install-lisplang (start-over)
+   (cond ((yt-load ':ytools :if-loaded nil :if-not-installed ':install)
+	  (set-config-var nity-dir* start-over
+	     (prompt-for-dir-name
+	        "Type the directory where 'nity' is located: "))
+	      ;;;;(dir-string-concat-sub lisplang-sup-dir* "nity/")
+	  (set-config-var lisplang-sup-dir* start-over
+		       (prompt-for-dir-name
+"It is necessary that 'langutils' and 'lisplang' be
+subdirectories of a single directory.
+Type the name of that directory: "))
+	  (set-config-var langutils-dir* start-over
+	     (dir-string-concat-sub lisplang-sup-dir* "langutils/"))
+	  (set-config-var lisplang-dir* start-over
+	     (dir-string-concat-sub lisplang-sup-dir* "lisplang/"))
+	  (set-config-var lisplang-namespace-mode* start-over
+	     (y-or-n-p "Should compilation be in namespace mode? "))
+;;; Not necessary because loaded by "nity.lsy" --
+;;;;	  (load (string-concat langutils-dir* "langutils.lsy"))
+	  (load (string-concat nity-dir* "nity.lsy"))
+	  (load (string-concat lisplang-dir* "lisplang.lsy"))
+	  (let ((*readtable* ytools-readtable*)
+                #+pre-chunk (fload-compile* ':compile)
+                #-pre-chunk (fload-compile-flag* ':compile)
+                )
+	     (cond ((with-fload-abort
+		      (intern-eval :lisplang
+			 (fload %module/ lisplang)
+			 :lisplang))
+		    (dump-yt-config-file)
+		    t)
+		   (t nil))))
+	 (t nil)))
+	
+(defun load-lisplang ()
+   (cond ((yt-load ':ytools :if-loaded nil :if-not-installed ':install)
+	  (load-yt-config-file)
+;;; Not necessary because loaded by "nity.lsy" --
+;;;;	  (load (string-concat langutils-dir* "langutils.lsy"))
+	  (load (string-concat nity-dir* "nity.lsy"))
+	  (load (string-concat lisplang-dir* "lisplang.lsy"))
+	  (cond ((with-fload-abort
+		    (ytools-module-load (intern (symbol-name :lisplang)
+						:lisplang)))
+		 (list (find-package :lisplang)
+		       ytools-readtable*))
+		(t nil)))
+	 (t nil)))
+
+

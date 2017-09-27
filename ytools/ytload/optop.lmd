@@ -1,0 +1,58 @@
+;-*- Mode: Common-lisp; Package: ytools; Readtable: ytools; -*-
+(in-package :ytools)
+;;;$Id: optop.lmd,v 1.15 2005/12/30 19:32:49 dvm Exp $
+
+;;; Copyright (C) 1976-2003 
+;;;     Drew McDermott and Yale University.  All rights reserved
+;;; This software is released under the terms of the Modified BSD
+;;; License.  See file COPYING for details.
+
+(declare-config-var optop-sup-dir*)
+
+(defun install-optop (start-over)
+   (cond ((and (yt-load :opt :if-loaded nil :if-not-installed ':install)
+	       (yt-load :ynisp :if-loaded nil :if-not-installed ':install))
+	  (set-config-var optop-sup-dir* start-over
+		       (prompt-for-dir-name
+"It is necessary that 'optop' and 'screamer' be
+subdirectories of a single directory.
+Type the name of that directory: "))
+	  (format t
+	     "~a~%~a~%"
+	     "Binary directories will appear under the 'bin' subdirectory"
+	     " of the optop superdirectory")
+;;;;	  (set-config-var optop-dir* start-over
+;;;;		       (prompt-for-dir-name
+;;;;			  "Type the directory Optop resides in: "))
+;;;;	  (set-config-var optop-bin-dir* start-over
+;;;;	     (prompt-for-dir-name
+;;;;		"Type the directory for Optop bin files (absolute or relative): "))
+	  (load (dir-string-concat-sub optop-sup-dir* "optop/optop.lsy"))
+	  (let ((*readtable* ytools-readtable*)
+                #+pre-chunk (fload-compile* ':compile)
+                #-pre-chunk (fload-compile-flag* ':compile))
+	     (intern-eval
+		       :optop
+		       (fload %module/ optop)
+		       :ytools)
+	     (dump-yt-config-file)
+	     (better-restart-message)
+	     t))
+	 (t nil)))
+	
+(defun load-optop ()
+   (cond ((and (yt-load :opt :if-loaded nil :if-not-installed ':install)
+	       (yt-load :ynisp :if-loaded nil :if-not-installed ':install))
+	  (load-yt-config-file)
+	  (load (dir-string-concat-sub optop-sup-dir* "optop/optop.lsy"))
+;;;;	  (do-fload `(,(dir-string-concat-sub optop-sup-dir* "optop/optop.lsy")))
+	  (let ((*readtable* ytools-readtable*))
+	     (intern-eval
+		       :optop
+		       (fload %module/ optop)
+		       :ytools)
+	     (list (find-package :optop)
+		   *readtable*)))
+	 (t nil)))
+
+
