@@ -686,10 +686,7 @@ org-файлов в корневой папке орг-содержимого. �
   (in-package :rigidus)
 
   (restas:define-route main ("/")
-    (base-page *head-title*
-               "Rigidus homepage"
-               ,*menu*
-               "Under construction"))
+    (alexandria:read-file-into-string (format nil "~A/index.html" *www-path*)))
 #+END_SRC
 
 ** 404 страница
@@ -1265,6 +1262,89 @@ org-файлов в корневой папке орг-содержимого. �
     (merge-pathnames relative *basedir*))
 
 
+  (in-package #:rigidus)
+
+  (defparameter *repo-folder* "repo")
+  (defparameter *prj-folder*  "rigidus.ru")
+
+  ;; Базовый путь, от которого будем все считать
+  (defparameter *base-path*
+    (format nil "~A~A"
+            (namestring (user-homedir-pathname))
+            (format nil "~A/~A" *repo-folder* *prj-folder*)))
+
+  ;; Путь к сгенерированному контенту
+  (defparameter *www-path*
+    (format nil "~A/www" *base-path*))
+
+  ;; Путь к скриптам
+  (defparameter *js-path*
+    (format nil '"~A/js" *www-path*))
+
+  ;; Путь к стилям
+  (defparameter *css-path*
+    (format nil "~A/css" *www-path*))
+
+  ;; Путь к картинкам
+  (defparameter *img-path*
+    (format nil "~A/img" *www-path*))
+  (defparameter *pic-path*
+    (format nil "~A/pic" *www-path*))
+
+  ;; Путь к данным
+  (defparameter *data-path*
+    (format nil "~A/data" *www-path*))
+
+  ;; Путь к аватаркам
+  (defparameter *ava-path*
+    (format nil "~A/ava" *www-path*))
+
+  ;; Путь к шрифтам
+  (defparameter *font-path*
+    (format nil "~A/font" *www-path*))
+
+
+  ;; ;; Компилируем шаблоны
+  ;; (closure-template:compile-template
+  ;;  :common-lisp-backend (pathname (concatenate 'string *base-path* "templates.htm")))
+
+  ;; submodules
+
+  (restas:mount-module -css- (#:restas.directory-publisher)
+    (:url "/css/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/css"))
+                      (user-homedir-pathname))))
+
+  (restas:mount-module -img- (#:restas.directory-publisher)
+    (:url "/img/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/img"))
+                      (user-homedir-pathname))))
+
+  ;; (restas:mount-module -pic- (#:restas.directory-publisher)
+  ;;   (:url "/pic/")
+  ;;   (restas.directory-publisher:*directory* *pic-path*))
+
+  ;; (restas:mount-module -ava- (#:restas.directory-publisher)
+  ;;   (:url "/ava/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/ava"))  (user-homedir-pathname))))
+
+  ;; (restas:mount-module -font- (#:restas.directory-publisher)
+  ;;   (:url "/font/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/font"))  (user-homedir-pathname))))
+
+  (restas:mount-module -js- (#:restas.directory-publisher)
+    (:url "/js/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/js"))
+                      (user-homedir-pathname))))
+
+  (restas:mount-module -resources- (#:restas.directory-publisher)
+    (:url "/resources/")
+    (restas.directory-publisher:*directory* "/resources/")
+    (restas.directory-publisher:*autoindex* t))
+
   #| POSTGRESQL
   вставить в /etc/postgresql/<version>/main/pg_hba.conf
   local all all trust
@@ -1517,28 +1597,29 @@ org-файлов в корневой папке орг-содержимого. �
   ;; ;;       (format stream "~A" rs))
   ;; ;;     (hunchentoot:redirect "/test")))
 
-  ;; ;; submodules
+  ;; submodules
 
-  ;; (restas:mount-module -css- (#:restas.directory-publisher)
-  ;;   (:url "/css/")
-  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/css")) (user-homedir-pathname))))
+  (restas:mount-module -css- (#:restas.directory-publisher)
+    (:url "/css/")
+    (restas.directory-publisher:*directory* (pathname *css-path*)))
 
   ;; (restas:mount-module -font- (#:restas.directory-publisher)
   ;;   (:url "/font/")
   ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/font")) (user-homedir-pathname))))
 
-  ;; (restas:mount-module -js- (#:restas.directory-publisher)
-  ;;   (:url "/js/")
-  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/js"))  (user-homedir-pathname))))
+  (restas:mount-module -js- (#:restas.directory-publisher)
+    (:url "/js/")
+    (restas.directory-publisher:*directory* (pathname *js-path*)))
 
-  ;; (restas:mount-module -img- (#:restas.directory-publisher)
-  ;;   (:url "/img/")
-  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/img")) (user-homedir-pathname))))
-  (require 'restas)
-   (restas:mount-module -resources- (#:restas.directory-publisher)
-     (:url "/resources/")
-     (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
-     (restas.directory-publisher:*autoindex* t))
+  (restas:mount-module -img- (#:restas.directory-publisher)
+    (:url "/img/")
+    (restas.directory-publisher:*directory* (pathname *img-path*)))
+
+  ;; (require 'restas)
+  ;;  (restas:mount-module -resources- (#:restas.directory-publisher)
+  ;;    (:url "/resources/")
+  ;;    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
+  ;;    (restas.directory-publisher:*autoindex* t))
 
 #+END_SRC
 
@@ -1898,104 +1979,4 @@ org-файлов в корневой папке орг-содержимого. �
 
   ;; (closure-template:compile-template :common-lisp-backend #P"templates.htm")
 
-  ;; (in-package #:rigidus)
-
-  ;; (defparameter *repo-folder* "repo")
-  ;; (defparameter *prj-folder* "rigidus")
-
-  ;; ;; Базовый путь, от которого будем все считать
-  ;; (defparameter *base-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/src/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-  ;; ;; Путь к данным
-  ;; (defparameter *data-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/data/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-  ;; ;; Путь к стилям
-  ;; (defparameter *css-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/css/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-  ;; ;; Путь к картинкам
-  ;; (defparameter *img-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/img/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-  ;; (defparameter *pic-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/pic/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-  ;; (defparameter *ava-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/ava/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-  ;; ;; Путь к шрифтам
-  ;; (defparameter *font-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil "~A/~A/fonts/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-  ;; ;; Путь к скриптам
-  ;; (defparameter *js-path*
-  ;;   (format nil "~A~A"
-  ;;           (namestring (user-homedir-pathname))
-  ;;           (format nil '"~A/~A/js/"
-  ;;                   *repo-folder*
-  ;;                   *prj-folder*)))
-
-
-  ;; ;; Компилируем шаблоны
-  ;; (closure-template:compile-template
-  ;;  :common-lisp-backend (pathname (concatenate 'string *base-path* "templates.htm")))
-
-  ;; ;; submodules
-
-  ;; ;; (restas:mount-module -css- (#:restas.directory-publisher)
-  ;; ;;   (:url "/css/")
-  ;; ;;   (restas.directory-publisher:*directory* *css-path*))
-
-  ;; ;; (restas:mount-module -img- (#:restas.directory-publisher)
-  ;; ;;   (:url "/img/")
-  ;; ;;   (restas.directory-publisher:*directory* *img-path*))
-
-  ;; ;; (restas:mount-module -pic- (#:restas.directory-publisher)
-  ;; ;;   (:url "/pic/")
-  ;; ;;   (restas.directory-publisher:*directory* *pic-path*))
-
-  ;; ;; (restas:mount-module -ava- (#:restas.directory-publisher)
-  ;; ;;   (:url "/ava/")
-  ;; ;;   (restas.directory-publisher:*directory* *ava-path*))
-
-  ;; ;; (restas:mount-module -font- (#:restas.directory-publisher)
-  ;; ;;   (:url "/font/")
-  ;; ;;   (restas.directory-publisher:*directory* *font-path*))
-
-  ;; ;; (restas:mount-module -js- (#:restas.directory-publisher)
-  ;; ;;   (:url "/js/")
-  ;; ;;   (restas.directory-publisher:*directory* *js-path*))
-
-  ;; ;; (restas:mount-module -resources- (#:restas.directory-publisher)
-  ;; ;;   (:url "/resources/")
-  ;; ;;   (restas.directory-publisher:*directory* "/resources/")
-  ;; ;;   (restas.directory-publisher:*autoindex* t))
 #+END_SRC

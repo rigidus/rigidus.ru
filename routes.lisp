@@ -62,10 +62,7 @@
 (in-package :rigidus)
 
 (restas:define-route main ("/")
-  (base-page *head-title*
-             "Rigidus homepage"
-             *menu*
-             "Under construction"))
+  (alexandria:read-file-into-string (format nil "~A/index.html" *www-path*)))
 (in-package #:rigidus)
 
 (defparameter *log-404* nil)

@@ -97,6 +97,84 @@
   (merge-pathnames relative *basedir*))
 
 
+(in-package #:rigidus)
+
+(defparameter *repo-folder* "repo")
+(defparameter *prj-folder*  "rigidus.ru")
+
+;; Базовый путь, от которого будем все считать
+(defparameter *base-path*
+  (format nil "~A~A"
+          (namestring (user-homedir-pathname))
+          (format nil "~A/~A" *repo-folder* *prj-folder*)))
+
+;; Путь к сгенерированному контенту
+(defparameter *www-path*
+  (format nil "~A/www" *base-path*))
+
+;; Путь к скриптам
+(defparameter *js-path*
+  (format nil '"~A/js" *www-path*))
+
+;; Путь к стилям
+(defparameter *css-path*
+  (format nil "~A/css" *www-path*))
+
+;; Путь к картинкам
+(defparameter *img-path*
+  (format nil "~A/img" *www-path*))
+(defparameter *pic-path*
+  (format nil "~A/pic" *www-path*))
+
+;; Путь к данным
+(defparameter *data-path*
+  (format nil "~A/data" *www-path*))
+
+;; Путь к аватаркам
+(defparameter *ava-path*
+  (format nil "~A/ava" *www-path*))
+
+;; Путь к шрифтам
+(defparameter *font-path*
+  (format nil "~A/font" *www-path*))
+
+
+;; ;; Компилируем шаблоны
+;; (closure-template:compile-template
+;;  :common-lisp-backend (pathname (concatenate 'string *base-path* "templates.htm")))
+
+;; submodules
+
+(restas:mount-module -css- (#:restas.directory-publisher)
+  (:url "/css/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/css"))  (user-homedir-pathname))))
+
+;; (restas:mount-module -img- (#:restas.directory-publisher)
+;;   (:url "/img/")
+;;   (restas.directory-publisher:*directory* *img-path*))
+
+;; (restas:mount-module -pic- (#:restas.directory-publisher)
+;;   (:url "/pic/")
+;;   (restas.directory-publisher:*directory* *pic-path*))
+
+;; (restas:mount-module -ava- (#:restas.directory-publisher)
+;;   (:url "/ava/")
+;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/ava"))  (user-homedir-pathname))))
+
+;; (restas:mount-module -font- (#:restas.directory-publisher)
+;;   (:url "/font/")
+;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/font"))  (user-homedir-pathname))))
+
+(restas:mount-module -js- (#:restas.directory-publisher)
+  (:url "/js/")
+  (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/js"))  (user-homedir-pathname))))
+
+(restas:mount-module -resources- (#:restas.directory-publisher)
+  (:url "/resources/")
+  (restas.directory-publisher:*directory* "/resources/")
+  (restas.directory-publisher:*autoindex* t))
+
+
 #| POSTGRESQL
 вставить в /etc/postgresql/<version>/main/pg_hba.conf
 local all all trust
