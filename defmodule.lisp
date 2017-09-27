@@ -30,6 +30,62 @@
          ,(cons (concatenate 'string (car param) "/") (cdr param))
        ,@body)))
 
+(define-condition pattern-not-found-error (error)
+  ((text :initarg :text :reader text)))
+
+(defun extract (cortege html)
+  (loop :for (begin end regexp) :in cortege :collect
+     (multiple-value-bind (start fin)
+         (ppcre:scan regexp html)
+       (when (null start)
+         (error 'pattern-not-found-error :text regexp))
+       (subseq html (+ start begin) (- fin end)))))
+
+(in-package #:rigidus)
+
+(defparameter *base-dir* (sb-posix:getcwd))
+
+(setf (logical-pathname-translations "org")
+      `(("source;*.*"
+         ,(concatenate 'string *base-dir* "/org/*.org"))
+        ("publish;*.*"
+         ,(concatenate 'string *base-dir* "/public_html/*.html"))
+        ("source;articles;*.*"
+         ,(concatenate 'string *base-dir* "/org/articles/**/*.org"))
+        ("source;articles;*;*.*"
+         ,(concatenate 'string *base-dir* "/org/articles/*/*.org"))
+        ("publish;articles;*.*"
+         ,(concatenate 'string *base-dir* "/public_html/articles/**/*.org"))
+        ("publish;articles;*;*.*"
+         ,(concatenate 'string *base-dir* "/public_html/articles/*/*.org"))
+        ))
+
+;; (translate-logical-pathname "org:source;articles;about.txt")
+;; (translate-logical-pathname "org:source;articles;emacs;about.txt")
+
+;; (translate-logical-pathname "org:publish;articles;about.txt")
+;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
+(in-package #:rigidus)
+
+(defparameter *menu*
+  (let* ((2th-level-org-files  (directory (translate-logical-pathname "org:source;*.org")))
+         (2th-level-html  (directory-namestring (translate-logical-pathname "org:publish;")))
+         (data (mapcar #'(lambda (pathname)
+                           (list (pathname-name pathname)
+                                 (extract '((4 5 "<h1>.*</h1>")
+                                            (7 7 "<order>.*</order"))
+                                          (alexandria:read-file-into-string
+                                           (merge-pathnames pathname 2th-level-html)))))
+                       2th-level-org-files))
+         (sorted (sort data #'(lambda (a b)
+                                (< (parse-integer (cadadr a))
+                                   (parse-integer (cadadr b)))))))
+    (mapcar #'(lambda (x)
+                (cons (car x) (caadr x)))
+            sorted)))
+
+
+
 (setf asdf:*central-registry*
       (remove-duplicates (append asdf:*central-registry*
                                  (list (make-pathname :directory (list :relative (sb-posix:getcwd)))))

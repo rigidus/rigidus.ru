@@ -11,7 +11,750 @@
 
 Это сайт http://rigidus.ru
 
-* Корневой шаблон
+* HTML-часть
+** DSL для построения HTML
+
+Чтобы удобно формировать HTML будем использовать DSL, который
+называется LHTML. Пример его применения выглядит так:
+
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *head-title* "Example of title")
+
+  (defun get-title-of (parameter)
+    (format nil "Title of ~A:" parameter))
+
+  (html 0
+        ((:html)
+         ((:head)
+          ((:title) *head-title*))
+         ((:body :bgcolor "black")
+          ((:h1)
+           (get-title-of "Articles")
+           "..."))))
+#+END_SRC
+
+и после выполнения возвращает вот такую строку:
+
+#+BEGIN_EXAMPLE
+  => "<HTML>
+    <HEAD>
+      <TITLE>
+        Example of title
+      </TITLE>
+    </HEAD>
+    <BODY BGCOLOR=\"black\">
+      <H1>
+        Title of Articles:
+        ...
+      </H1>
+    </BODY>
+  </HTML>
+  "
+#+END_EXAMPLE
+
+Реализация этого DSL взята из проекта PARENSCRIPT и слегка
+модифицирована для того, чтобы правильно формировать отступы. Вот она:
+
+#+NAME: html
+#+BEGIN_SRC lisp :tangle html.lisp :noweb tangle :exports code :padline no :comments link
+  <<process_html_forms_lhtml>>
+
+  (in-package #:rigidus)
+
+  (defmacro html (idx &rest html-forms)
+    `(stringify ,@(with-standard-io-syntax (process-html-forms-lhtml idx html-forms))))
+#+END_SRC
+
+В качестве первого параметра передается отступ, последующие формы
+разбираются парсером и превращаются в выполняемую после раскрытия
+макроса форму, которая возвращает сформированный HTML.
+
+=with-standard-io-syntax= является макросом, описанным в CLHS, чье
+назначение мне непонятно.
+
+Рассмотрим компоненты в порядке их вызова:
+- process-html-forms-lhtml
+- stringify
+
+*** process-html-forms-lhtml
+
+Это функция, которая принимает значения отступа и список форм. Все
+формы из этого списка обрабатываются внутренней функцией
+=process-form=, которая накапливает результат своей работы в
+аккумуляторе =r=.
+
+Входящая форма обрабатывается по разному в зависимости от ее
+типа. Встречая =атом=, функция отображает его, помещая в аккумулятор,
+вместе с формами, формирующими отступы и переводы строк. Эти формы
+будут исполнены, когда произойдет завершающая стадия
+макрораскрытия. Когда функция встречает вложенную форму, она проверяет
+у нее наличие атрибутов тега и отправляет на обработку второй
+внутренней функции =process-form%=, которая, в свою очередь,
+занимается отображением тегов вместе с отступами и переводами строк, а
+вложенное содержимое этих тегов рекурсивно передает в функцию
+=process-form=.
+
+Последняя вложенная функция =process-attrs= помещает в аккумулятор
+результат обработки атрибутов тега.
+
+После завершения рекурсивной обработки форм содержимое аккумулятора
+оптимизируется путем слияния рядом стоящих строк функцией
+=concat-constant-strings= и возвращается.
+
+#+NAME: process_html_forms_lhtml
+#+BEGIN_SRC lisp
+  <<stringify>>
+  <<idx_rn>>
+  <<empty_tag_p>>
+  <<concat_constant_strings>>
+  <<ps_html_mode>>
+
+  (in-package #:rigidus)
+
+  (defun process-html-forms-lhtml (idx forms)
+    (let ((r) (idx idx))
+      (labels ((process-attrs (attrs)
+                 (do (attr-test attr-name attr-val)
+                     ((not attrs))
+                   (setf attr-name (pop attrs)
+                         attr-test (when (not (keywordp attr-name))
+                                     (let ((test attr-name))
+                                       (setf attr-name (pop attrs))
+                                       test))
+                         attr-val (pop attrs))
+                   (if attr-test
+                       (push `(if ,attr-test
+                                  (stringify ,(format nil " ~A=\"" attr-name) ,attr-val "\"")
+                                  "")
+                             r)
+                       (progn
+                         (push (format nil " ~A=\"" attr-name) r)
+                         (push attr-val r)
+                         (push "\"" r)))))
+               (process-form% (tag attrs content)
+                 (push `(idx ,idx) r)
+                 (push (format nil "<~A" tag) r)
+                 (process-attrs attrs)
+                 (if (or content (not (empty-tag-p tag)))
+                     (progn (push ">" r)
+                            (push '(rn) r)
+                            (incf idx)
+                            (map nil #'process-form content)
+                            (decf idx)
+                            (push `(idx ,idx) r)
+                            (push (format nil "</~A>" tag) r)
+                            (push '(rn) r))
+                     (progn (when (eql *ps-html-mode* :xml)
+                              (push "/" r))
+                            (push ">" r)
+                            (push '(rn) r))))
+               (process-form (form)
+                 (cond ((keywordp form)
+                        (process-form (list form)))
+                       ((atom form)
+                        (progn
+                          (push `(idx ,idx) r)
+                          (push form r)
+                          (push '(rn) r)))
+                       ((and (consp form) (keywordp (car form)))
+                        (process-form% (car form) () (cdr form)))
+                       ((and (consp form) (consp (first form)) (keywordp (caar form)))
+                        (process-form% (caar form) (cdar form) (cdr form)))
+                       (t (progn
+                            (push `(idx ,idx) r)
+                            (push form r)
+                            (push '(rn) r)
+                            )))))
+        (map nil #'process-form forms)
+        (concat-constant-strings (reverse r)))))
+#+END_SRC
+
+Эта функция зависит от следующих функций и переменных, которые будут
+определены в подразделах ниже:
+- *ps-html-mode*
+- concat-constant-strings
+- empty-tag-p
+- idx и rn
+- stringify
+
+**** ps-html-mode
+
+Переменная *ps-html-mode* управляет правилом закрытия тегов, которым,
+согласно спецификации не требуется закрывающий тег. Их список хранится
+в переменной *html-empty-tags*.
+
+Если она *ps-html-mode* определена как :sgml закрывающий тег не
+создается, и открывающий тег сам становится и закрывающим тоже,
+например "<br/>". Иначе, тег будет выглядеть как "<br>".
+
+#+NAME: ps_html_mode
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defparameter *ps-html-mode* :sgml "One of :sgml or :xml")
+#+END_SRC
+
+**** concat-constant-strings
+
+Функция находит смежные строки в списке и объединяет их
+
+#+NAME: concat_constant_strings
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun concat-constant-strings (str-list)
+    (flet ((expand (expr)
+             ;; (setf expr (ps-macroexpand expr))
+             ;; (cond ((and (consp expr) (eq (car expr) 'quote) (symbolp (second expr)))
+             ;;        (symbol-to-js-string (second expr)))
+             ;;       ((keywordp expr) (string-downcase expr))
+             ;;       ((characterp expr) (string expr))
+             ;;       (t expr))
+             expr
+             ))
+      (reverse (reduce (lambda (optimized-list next-expr)
+                         (let ((next-obj (expand next-expr)))
+                           (if (and (or (numberp next-obj) (stringp next-obj))
+                                    (stringp (car optimized-list)))
+                               (cons (format nil "~a~a" (car optimized-list) next-obj) (cdr optimized-list))
+                               (cons next-obj optimized-list))))
+                       (cons () str-list)))))
+#+END_SRC
+
+**** empty-tag-p
+
+Предикат возвращает T если тег, переданный в параметре относится к
+набору тегов, которые, согласно спецификации, не обязательно должны
+иметь парный закрывающий тег
+
+#+NAME: empty_tag_p
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defvar *ps-html-empty-tag-aware-p* t)
+
+  (defvar *html-empty-tags* '(:area :atop :audioscope :base :basefont :br :choose :col :frame
+                              :hr :img :input :isindex :keygen :left :limittext :link :meta
+                              :nextid :of :over :param :range :right :spacer :spot :tab :wbr))
+
+  (defun empty-tag-p (tag)
+    (and *ps-html-empty-tag-aware-p*
+         (member tag *html-empty-tags*)))
+#+END_SRC
+
+**** idx и rn
+
+Вызовы этих функций добавляются в макрораскрытие
+=process-html-forms-lhtml= чтобы обеспечить правильные отступы и
+переводы строк
+
+#+NAME: idx_rn
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun rn ()
+    (string #\Newline))
+
+  (defun idx (idx)
+    (make-string (* 2 idx) :initial-element #\Space))
+#+END_SRC
+
+**** stringify
+
+Эта функция сворачивает все переданные ей параметры в одну строку
+
+#+NAME: stringify
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun stringify (&rest things)
+    "Like concatenate but prints all of its arguments."
+    (format nil "~{~A~}" things))
+#+END_SRC
+
+*** COMMENT Некоторый код, не вошедший в окончательную версию
+
+Этот код, взятый из PARENSCRIPT, занимается раскрытием макросов внутри
+нашего DSL. Я пока не использовал таких макросов, поэтому оставил этот
+код здесь, на случай если эта функциональность пригодится.
+
+#+NAME: dead_code
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defvar *enclosing-lexicals* ()
+    "All enclosing lexical variables (includes function names).")
+
+  (defun make-macro-dictionary ()
+    (make-hash-table :test 'eq))
+
+  (defvar *symbol-macro-toplevel* (make-macro-dictionary))
+
+  (defvar *macro-toplevel* (make-macro-dictionary)
+    "Toplevel macro environment dictionary.")
+
+  (defvar *macro-env* (list *macro-toplevel*)
+    "Current macro environment.")
+
+  (defun lookup-macro-def (name env)
+    (loop :for e :in env :thereis (gethash name e)))
+
+  (defun ps-macroexpand-1 (form)
+    (aif (or (and (symbolp form)
+                  (or (and (member form *enclosing-lexicals*)
+                           (lookup-macro-def form *symbol-macro-env*))
+                      (gethash form *symbol-macro-toplevel*))) ;; hack
+             (and (consp form) (lookup-macro-def (car form) *macro-env*)))
+         (values (ps-macroexpand (funcall it form)) t)
+         form))
+
+  (defun ps-macroexpand (form)
+    (multiple-value-bind (form1 expanded?) (ps-macroexpand-1 form)
+      (if expanded?
+          (values (ps-macroexpand form1) t)
+          form1)))
+#+END_SRC
+
+** Расширенные макросы для HTML-DSL
+
+#+NAME: ext_html
+#+BEGIN_SRC lisp :tangle ext-html.lisp :noweb tangle :exports code :padline no :comments link
+  (in-package #:rigidus)
+
+  <<repeat>>
+  <<base_page>>
+#+END_SRC
+
+*** Повторения внутри DSL-конструкций
+
+Задача вывести повторяющуюся конструкцию внутри HTML настолько частая,
+что полезно опредить для нее компактный макрос, который позволит
+выводит повторяющиеся конструкции таким образом:
+
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("contacts"  . "Контакты")))
+
+  (html 0
+        ((:div :id "main-menu" :class "navigation-menu")
+         ((:ul :class "menu-list")
+          (repeat ("the-comment" 2 menu-elt *menu*)
+            ((:li :class "menu-el")
+             ((:a :href (car menu-elt)) (cdr menu-elt))))
+          ))))
+#+END_SRC
+
+Этот пример возвращает следующий результат:
+
+#+BEGIN_EXAMPLE
+  "<DIV ID=\"main-menu\" CLASS=\"navigation-menu\">
+    <UL CLASS=\"menu-list\">
+      <!-- [the-comment] -->
+      <LI CLASS=\"menu-el\">
+        <A HREF=\"about\">
+          О проекте
+        </A>
+      </LI>
+      <LI CLASS=\"menu-el\">
+        <A HREF=\"contacts\">
+          Контакты
+        </A>
+      </LI>
+      <!-- [/the-comment]-->
+    </UL>
+  </DIV>
+  "
+#+END_EXAMPLE
+
+Вот реализация этого макроса:
+
+#+NAME: repeat
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defmacro repeat ((comment position varname maplist) &body body)
+    (let ((format-string
+           (concatenate 'string "<!-- [" comment "] -->~%~{~A~}~"
+                        (format nil "~D" (* 2 position))
+                        "T<!-- [/" comment "]-->")))
+      `(format nil ,format-string
+               (mapcar #'(lambda (,varname)
+                           (html ,position
+                                 ,@body))
+                       ,maplist))))
+
+  ;; (macroexpand-1 '(repeat ("the-comment" 4 menu-elt *menu*)
+  ;;                  ((:li :class "menu-el")
+  ;;                   ((:a :href (car menu-elt)) (cdr menu-elt)))))
+
+  ;; => (FORMAT NIL "<!-- [the-comment] -->~%~{~A~}~8T<!-- [/the-comment]-->"
+  ;;            (MAPCAR
+  ;;             #'(LAMBDA (MENU-ELT)
+  ;;                 (HTML 4
+  ;;                       ((:LI :CLASS "menu-el")
+  ;;                        ((:A :HREF (CAR MENU-ELT)) (CDR MENU-ELT)))))
+  ;;             *MENU*)), T
+#+END_SRC
+
+*** Базовая страница
+
+Базовая страница - это контейнер всего того, что мы поместим в
+страницу. Она представляет из себя функцию, в которую передается
+содержимое:
+
+#+NAME: base_page
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defun base-page (head-title title menu content)
+    (html 0
+          "<!doctype html>"
+          ((:html)
+           ((:head)
+            ((:title) head-title))
+           ((:body)
+            ((:h1) title)
+            ((:div :id "main-menu" :class "navigation-menu")
+             ((:ul :class "menu-list")
+              (repeat ("main-menu" 4 menu-elt menu)
+                ((:li :class "menu-el")
+                 ((:a :href (concatenate 'string "/" (car menu-elt))) (cdr menu-elt))))))
+            ((:div :id "page-content")
+             content)))))
+
+  ;; (print
+  ;;  (base-page "Программирование - как искусство"
+  ;;             "Rigidus homepage"
+  ;;             '(("about"     . "О проекте")
+  ;;               ("contacts"  . "Контакты"))
+  ;;             "Under construction"))
+
+  ;; "<!doctype html>
+  ;; <HTML>
+  ;;   <HEAD>
+  ;;     <TITLE>
+  ;;       Программирование - как искусство
+  ;;     </TITLE>
+  ;;   </HEAD>
+  ;;   <BODY>
+  ;;     <H1>
+  ;;       Rigidus homepage
+  ;;     </H1>
+  ;;     <DIV ID=\"main-menu\" CLASS=\"navigation-menu\">
+  ;;       <UL CLASS=\"menu-list\">
+  ;;         <!-- [main-menu] -->
+  ;;         <LI CLASS=\"menu-el\">
+  ;;           <A HREF=\"about\">
+  ;;             О проекте
+  ;;           </A>
+  ;;         </LI>
+  ;;         <LI CLASS=\"menu-el\">
+  ;;           <A HREF=\"contacts\">
+  ;;             Контакты
+  ;;           </A>
+  ;;         </LI>
+  ;;         <!-- [/main-menu]-->
+  ;;       </UL>
+  ;;     </DIV>
+  ;;     <DIV ID=\"page-content\">
+  ;;       Under construction
+  ;;     </DIV>
+  ;;   </BODY>
+  ;; </HTML>
+  ;; "
+#+END_SRC
+
+* Публикация и Routing
+
+Routing осуществляется средствами библиотеки =restas=, документация по
+которой доступна здесь: https://github.com/archimag/restas
+
+Для публикации страниц на этом сайте я использую довольно
+нетривиальную схему.
+
+Мне нравится работать в =emacs= и использовать =orgmode= для
+формирования структурированных документов, которые могут содержать
+разделы, списки, ссылки и множество других возможностей, подробно
+описанных в документации, которая доступна здесь:
+http://orgmode.org/#docs
+
+Orgmode включает в себя систему публикации
+(http://orgmode.org/manual/index.html#toc_Publishing), которая хорошо
+конфигурируется и обладает весьма понятным, "хакабельным" кодом, в
+изучении которого я провел несколько интересных вечеров. Тем не менее,
+мне всегда хотелось большей гибкости, поэтому я решил взять тот
+результат, который она производит, построить по нему DOM-дерево и
+применить все преобразования, которые мне могут понадобиться, и уже
+окончательный результат использовать для отображения на сайте.
+
+Если изучать этот проект в моем репозитории, то сгенерированные
+=org-publish= файлы можно найти в ./public_html, а их исходные
+org-файлы - в ./org
+
+Для того чтобы разбирать HTML-код в LHTML я использую библиотеку
+=cl-html-parse=. Переносимые пути обеспечиваются механизмом трансляции
+логических путей. Вот как это работает:
+
+#+NAME: org_html_lookup
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *base-dir* (sb-posix:getcwd))
+
+  (setf (logical-pathname-translations "org")
+        `(("source;*.*"
+           ,(concatenate 'string *base-dir* "/org/*.org"))
+          ("publish;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/*.html"))
+          ("source;articles;*.*"
+           ,(concatenate 'string *base-dir* "/org/articles/**/*.org"))
+          ("source;articles;*;*.*"
+           ,(concatenate 'string *base-dir* "/org/articles/*/*.org"))
+          ("publish;articles;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/articles/**/*.org"))
+          ("publish;articles;*;*.*"
+           ,(concatenate 'string *base-dir* "/public_html/articles/*/*.org"))
+          ))
+
+  ;; (translate-logical-pathname "org:source;articles;about.txt")
+  ;; (translate-logical-pathname "org:source;articles;emacs;about.txt")
+
+  ;; (translate-logical-pathname "org:publish;articles;about.txt")
+  ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
+#+END_SRC
+
+Для того, чтобы определить страницы второго уровня я выполняю поиск
+org-файлов в корневой папке орг-содержимого. Найденные имена файлов
+объединяются с путем к папке опубликованных файлов, и в их содержимом
+ищется заголовок =h1=, чтобы сформировать правильную ссылку.
+
+Необходимо, чтобы этот заголовок присутствовал в содержимом, иначе
+экстрактор сигнализирует ошибку. Аналогичным образом в содержимом
+ищется тег <order>, который нужен, чтобы обеспечить правильный порядок
+пунктов меню:
+
+#+NAME: make_menu
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *menu*
+    (let* ((2th-level-org-files  (directory (translate-logical-pathname "org:source;*.org")))
+           (2th-level-html  (directory-namestring (translate-logical-pathname "org:publish;")))
+           (data (mapcar #'(lambda (pathname)
+                             (list (pathname-name pathname)
+                                   (extract '((4 5 "<h1>.*</h1>")
+                                              (7 7 "<order>.*</order"))
+                                            (alexandria:read-file-into-string
+                                             (merge-pathnames pathname 2th-level-html)))))
+                         2th-level-org-files))
+           (sorted (sort data #'(lambda (a b)
+                                  (< (parse-integer (cadadr a))
+                                     (parse-integer (cadadr b)))))))
+      (mapcar #'(lambda (x)
+                  (cons (car x) (caadr x)))
+              sorted)))
+#+END_SRC
+
+Получив страницы второго уровня можно создать для них маршруты:
+
+#+NAME: routes_2th_level
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defmacro def/route/2th_level ()
+    `(progn
+       ,@(mapcar
+          #'(lambda (key)
+              (let ((key (car key)))
+                `(def/route ,(intern (string-upcase key)) (,key)
+                   (base-page *head-title* "Rigidus homepage" *menu*
+                              (alexandria:read-file-into-string
+                               ,(concatenate 'string
+                                             (directory-namestring
+                                              (translate-logical-pathname "org:publish;"))
+                                             key
+                                             ".html"))))))
+          ,*menu*)))
+
+  (def/route/2th_level)
+
+  ;; (print
+  ;;  (macroexpand-1
+  ;;   '(def/route/2th_level)))
+
+  ;; =>
+  ;; (PROGN
+  ;;   (DEF/ROUTE ABOUT
+  ;;       ("about")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/about.html")))
+  ;;   (DEF/ROUTE ARTICLES
+  ;;       ("articles")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/articles.html")))
+  ;;   (DEF/ROUTE BLOGS
+  ;;       ("blogs")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/blogs.html")))
+  ;;   (DEF/ROUTE ALIENS
+  ;;       ("aliens")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/aliens.html")))
+  ;;   (DEF/ROUTE RESOURCES
+  ;;       ("resources")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/resources.html")))
+  ;;   (DEF/ROUTE CONTACTS
+  ;;       ("contacts")
+  ;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
+  ;;                (READ-FILE-INTO-STRING
+  ;;                 "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))))
+
+
+#+END_SRC
+
+
+#+NAME: org_lookup
+#+BEGIN_SRC lisp
+
+  (ql:quickload "CL-HTML-PARSE")
+
+  (print
+   (html-parse:parse-html
+    (alexandria:read-file-into-string
+     (translate-logical-pathname "org:publish;about.org"))))
+
+  (print
+   (html 0
+         ((:body)
+          ((:DIV :ID "table-of-contents") (:H2 "Table of Contents")
+           ((:DIV :ID "text-table-of-contents")
+            (:UL
+             (:LI ((:A :HREF "#unnumbered-1") "О сайте")
+                  (:UL (:LI ((:A :HREF "#unnumbered-2") "Цель создания"))
+                       (:LI ((:A :HREF "#unnumbered-3") "Исходный код"))
+                       (:LI ((:A :HREF "#unnumbered-4") "Текущий статус"))))
+             (:LI ((:A :HREF "#unnumbered-5") "Обо мне")
+                  (:UL (:LI ((:A :HREF "#unnumbered-6") "Личная информация"))
+                       (:LI ((:A :HREF "#unnumbered-7") "Исследовательский опыт"))
+                       (:LI ((:A :HREF "#unnumbered-9") "Опыт работы"))
+                       (:LI
+                        ((:A :HREF "#unnumbered-12")
+                         "Членства в ассоциациях/организациях")))))))
+          ((:HEADING :ID "outline-container-unnumbered-1" :CLASS "outline-2")
+           ((:H2 :ID "unnumbered-1") "О сайте")
+           ((:DIV :CLASS "outline-text-2" :ID "text-unnumbered-1"))
+           ((:DIV :ID "outline-container-unnumbered-2" :CLASS "outline-3")
+            ((:H3 :ID "unnumbered-2") "Цель создания")
+            ((:DIV :CLASS "outline-text-3" :ID "text-unnumbered-2")
+             (:P "
+  Этот сайт был изначально создан для сбора редких и интересных
+  материалов о вычислительных моделях и языках
+  программирования. Позже он также превратился в занимательное
+  упражнение в реализации разнообразных программистких концепций.
+  ")))))))
+#+END_SRC
+
+
+
+
+#+NAME: routes
+#+BEGIN_SRC lisp :tangle routes.lisp :noweb tangle :exports code :padline no :comments link
+  (in-package #:rigidus)
+
+  <<routes_2th_level>>
+
+  <<main_page_route>>
+  <<route_404>>
+  <<route_robots>>
+#+END_SRC
+
+** Маршрут главной страницы
+
+#+NAME: main_page_route
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (restas:define-route main ("/")
+    (base-page *head-title*
+               "Rigidus homepage"
+               ,*menu*
+               "Under construction"))
+#+END_SRC
+
+** 404 страница
+
+#+NAME: route_404
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *log-404* nil)
+
+  (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
+    (let* ((title "404 Not Found"))
+      (base-page *head-title*
+                 title
+                 ,*menu*
+                 "Page not found")))
+
+  (restas:define-route not-found-route ("*any")
+    (push any *log-404*)
+    (restas:abort-route-handler
+     (page-404)
+     :return-code hunchentoot:+http-not-found+
+     :content-type "text/html"))
+#+END_SRC
+
+** Страница robots.txt
+
+#+NAME: route_robots
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (restas:define-route robots ("/robots.txt")
+    (format nil "User-agent: *~%Disallow: "))
+#+END_SRC
+
+** Страницы второго уровня
+
+
+#+NAME: level2-page
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defun render-public (filename)
+    (let ((truename (probe-file filename)))
+      (if (null truename)
+          (page-404)
+          (tpl:root
+           (list :headtitle "" ;; title
+                 :stat (tpl:stat)
+                 :navpoints (menu)
+                 :title "" ;; title
+                 :columns
+                 (tpl:orgfile
+                  (list :title ""
+                        :content (alexandria:read-file-into-string filename))))))))
+
+  (def/route about ("about")
+    (base-page *head-title*
+               "Rigidus homepage"
+               ,*menu*
+               (alexandria:read-file-into-string
+                "/home/rigidus/repo/rigidus.ru/public_html/about.html")))
+#+END_SRC
+
+* COMMENT Корневой шаблон
 
 Корневой шаблон - это кусок html-кода, который на всех страницах
 одинаковый.
@@ -76,7 +819,7 @@
   </html>{\n}
 #+END_SRC
 
-* Главная страница
+* COMMENT Главная страница
 
 #+NAME: tpl_main
 #+BEGIN_SRC html
@@ -373,35 +1116,39 @@
 #+BEGIN_SRC lisp
   (in-package #:rigidus)
 
-  (restas:define-route main ("/")
-    (flet ((title-maker (x)
-             (list :date ""
-                   :content
-                   (cl-ppcre:regex-replace
-                    "<h1 class=\"title\">(.+)</h1>" x
-                    #'(lambda (match &rest registers)
-                        (declare (ignore match))
-                        (format nil "<h2>~A</h2>" (car registers)))
-                    :simple-calls t))))
-      (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-             (line  (nth (random (length lines)) lines))
-             (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
-             (blogs-content   (mapcar #'alexandria:read-file-into-string
-                                      (get-directory-contents blogs-directory )))
-             (posts (mapcar #'title-maker blogs-content)))
-        (tpl:root (list :headtitle "Программирование - как искусство"
-                        :stat (tpl:stat)
-                        :navpoints (menu)
-                        :title line
-                        :columns
-                        ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
-                        ;;   (tpl:orgfile
-                        ;;    (list :title ""
-                        ;;          :content (alexandria:read-file-into-string filename))))
-                        (tpl:main
-                         (list
-                          :articles (tpl:mainposts (list :posts posts))))
-                        )))))
+  <<main_page_route>>
+
+  ;; (restas:define-route main ("/")
+  ;;   (base-page "Программирование - как искусство")
+  ;;   ;; (flet ((title-maker (x)
+  ;;   ;;          (list :date ""
+  ;;   ;;                :content
+  ;;   ;;                (cl-ppcre:regex-replace
+  ;;   ;;                 "<h1 class=\"title\">(.+)</h1>" x
+  ;;   ;;                 #'(lambda (match &rest registers)
+  ;;   ;;                     (declare (ignore match))
+  ;;   ;;                     (format nil "<h2>~A</h2>" (car registers)))
+  ;;   ;;                 :simple-calls t))))
+  ;;   ;;   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
+  ;;   ;;          (line  (nth (random (length lines)) lines))
+  ;;   ;;          (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
+  ;;   ;;          (blogs-content   (mapcar #'alexandria:read-file-into-string
+  ;;   ;;                                   (get-directory-contents blogs-directory )))
+  ;;   ;;          (posts (mapcar #'title-maker blogs-content)))
+  ;;   ;;     (tpl:root (list :headtitle "Программирование - как искусство"
+  ;;   ;;                     :stat (tpl:stat)
+  ;;   ;;                     :navpoints (menu)
+  ;;   ;;                     :title line
+  ;;   ;;                     :columns
+  ;;   ;;                     ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
+  ;;   ;;                     ;;   (tpl:orgfile
+  ;;   ;;                     ;;    (list :title ""
+  ;;   ;;                     ;;          :content (alexandria:read-file-into-string filename))))
+  ;;   ;;                     (tpl:main
+  ;;   ;;                      (list
+  ;;   ;;                       :articles (tpl:mainposts (list :posts posts))))
+  ;;   ;;                     ))))
+  ;;   )
 
 
   (defun maptree-transform (predicate-transformer tree)
@@ -461,7 +1208,7 @@
   </div>
 #+END_SRC
 
-* Шаблон для страниц ORG
+* COMMENT Шаблон для страниц ORG
 
 #+NAME: tpl_org_file
 #+BEGIN_SRC html
@@ -475,7 +1222,7 @@
   </div>{\n}
 #+END_SRC
 
-* Страница раздела
+* COMMENT Страница раздела
 
 #+NAME: get_directory_contents
 #+BEGIN_SRC lisp
@@ -573,7 +1320,7 @@
   ;;       (make-dao 'comment :key "TEST" :parent (id b) :msg "sub parent comment 2"))))
 #+END_SRC
 
-* Sape
+* COMMENT Sape
 
 #+NAME: sape
 #+BEGIN_SRC lisp :tangle sape.lisp :noweb tangle :exports code :padline no :comments link
@@ -643,208 +1390,155 @@
       (format nil "~a" (recode (base64:base64-string-to-string rs) :ISO8859-1 :utf-8))))
 #+END_SRC
 
-* Маршруты
-** Страница 404
-
-#+NAME: route_404
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
-    (let* ((title "404 Not Found"))
-      (tpl:root (list :headtitle title
-                      :stat (tpl:stat)
-                      :navpoints (menu)
-                      :title title
-                      :columns "<br/><br /><br/><br /><h2>404 Not Found</h2><br/><br />(*(+(*)(*(+(*)(*)(*)(*)(*))(+(*)(*)(*)(*)(*))(+(*)(*)(*)(*))))(+(*)(*)(*)(*)))<br/><br />"))))
-
-  (defparameter *log-404* nil)
-
-  (restas:define-route not-found-route ("*any")
-    (push any *log-404*)
-    (restas:abort-route-handler
-     (page-404)
-     :return-code hunchentoot:+http-not-found+
-     :content-type "text/html"))
-#+END_SRC
-
-** Страница robots.txt
-
-#+NAME: route_robots
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  (restas:define-route robots ("/robots.txt")
-    (format nil "User-agent: *~%Disallow: "))
-#+END_SRC
+* COMMENT Маршруты
 
 ** Страница второго уровня
 
 #+NAME: routes
 #+BEGIN_SRC lisp :tangle routes.lisp :noweb tangle :exports code :padline no :comments link
-  (in-package #:rigidus)
 
-  (defclass rigidus-render () ())
+  ;; (defclass rigidus-render () ())
 
-  <<route_robots>>
+  ;; <<route_article>>
 
-  <<route_404>>
+  ;; ;; TODO: blog
 
-  <<route_main>>
+  ;; ;; plan file pages
 
-  <<route_article>>
 
-  ;; TODO: blog
+  ;; (def/route about ("about")
+  ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
 
-  ;; plan file pages
+  ;; (def/route articles ("articles")
+  ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/articles.html"))
 
-  (defun render-public (filename)
-    (let ((truename (probe-file filename)))
-      (if (null truename)
-          (page-404)
-          (tpl:root
-           (list :headtitle "" ;; title
-                 :stat (tpl:stat)
-                 :navpoints (menu)
-                 :title "" ;; title
-                 :columns
-                 (tpl:orgfile
-                  (list :title ""
-                        :content (alexandria:read-file-into-string filename))))))))
+  ;; (def/route aliens ("aliens")
+  ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/aliens.html"))
 
-  (def/route about ("about")
-    (render-public "/home/rigidus/repo/rigidus.ru/public_html/about.html"))
-
-  (def/route articles ("articles")
-    (render-public "/home/rigidus/repo/rigidus.ru/public_html/articles.html"))
-
-  (def/route aliens ("aliens")
-    (render-public "/home/rigidus/repo/rigidus.ru/public_html/aliens.html"))
-
-  (def/route resources ("resources")
-    (render-public "/home/rigidus/repo/rigidus.ru/public_html/resources.html"))
-
-  (def/route contacts ("contacts")
-    (render-public "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))
+  ;; (def/route resources ("resources")
+  ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/resources.html"))
 
   ;; (def/route contacts ("contacts")
-  ;;   (render #P"org/contacts.org"))
+  ;;   (render-public "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))
 
-  ;; (def/route radio ("radio")
-  ;;   (render #P"org/radio.org"))
+  ;; ;; (def/route contacts ("contacts")
+  ;; ;;   (render #P"org/contacts.org"))
 
-  (def/route radio ("investigation")
-    (tpl:root
-     (list :headtitle "" ;; title
-           :stat (tpl:stat)
-           :navpoints (menu)
-           :title "" ;; title
-           :columns
-           (tpl:orgfile
-            (list
-             :title ""
-             :content
-             (alexandria:read-file-into-string
-              "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
+  ;; ;; (def/route radio ("radio")
+  ;; ;;   (render #P"org/radio.org"))
 
-
-  ;; TODO
-  ;; (restas:define-route onlisp ("onlisp/doku.php")
-  ;;   (let* ((content (tpl:onlisp))
-  ;;          (title "Перевод книги Пола Грэма \"On Lisp\"")
-  ;;          (menu-memo (menu)))
-  ;;     (render
-  ;;      (list title
-  ;;            menu-memo
-  ;;            (tpl:default
-  ;;                (list :title title
-  ;;                      :navpoints menu-memo
-  ;;                      :sections ""
-  ;;                      :links ""
-  ;;                      :content content))))))
-
-  (require 'bordeaux-threads)
-
-  ;; (defparameter *serial-status* nil)
-  ;; (defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
-
-  ;; (defun serial-getter ()
-  ;;   (tagbody
-  ;;    re
-  ;;      (bordeaux-threads:acquire-lock *serial-lock* t)
-  ;;      (with-open-file (stream "/dev/ttyACM0"
-  ;;                              :direction :io
-  ;;                              :if-exists :overwrite
-  ;;                              :external-format :ascii)
-  ;;        (setf *serial-status* (format nil "~C" (read-char stream))))
-  ;;      (bordeaux-threads:release-lock *serial-lock*)
-  ;;      (go re)))
+  ;; (def/route radio ("investigation")
+  ;;   (tpl:root
+  ;;    (list :headtitle "" ;; title
+  ;;          :stat (tpl:stat)
+  ;;          :navpoints (menu)
+  ;;          :title "" ;; title
+  ;;          :columns
+  ;;          (tpl:orgfile
+  ;;           (list
+  ;;            :title ""
+  ;;            :content
+  ;;            (alexandria:read-file-into-string
+  ;;             "/home/rigidus/repo/rigidus.ru/public_html/investigation.html"))))))
 
 
-  ;; (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
+  ;; ;; TODO
+  ;; ;; (restas:define-route onlisp ("onlisp/doku.php")
+  ;; ;;   (let* ((content (tpl:onlisp))
+  ;; ;;          (title "Перевод книги Пола Грэма \"On Lisp\"")
+  ;; ;;          (menu-memo (menu)))
+  ;; ;;     (render
+  ;; ;;      (list title
+  ;; ;;            menu-memo
+  ;; ;;            (tpl:default
+  ;; ;;                (list :title title
+  ;; ;;                      :navpoints menu-memo
+  ;; ;;                      :sections ""
+  ;; ;;                      :links ""
+  ;; ;;                      :content content))))))
 
-  ;; ;; stty -F /dev/ttyACM0 cs8 9600 ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts raw
+  ;; (require 'bordeaux-threads)
 
-  ;; (restas:define-route test ("test")
-  ;;   (with-open-file (stream "/dev/ttyACM0"
-  ;;                           :direction :io
-  ;;                           :if-exists :overwrite
-  ;;                           :external-format :ascii)
-  ;;     (format stream "9"))
-  ;;   (sleep 1)
-  ;;   (let ((tmp (parse-integer *serial-status*))
-  ;;         (rs  nil))
-  ;;     (if (equal 2 (logand tmp 2))
-  ;;         (setf rs (append rs (list :red "checked")))
-  ;;         (setf rs (append rs (list :darkred "checked"))))
-  ;;     (if (equal 1 (logand tmp 1))
-  ;;         (setf rs (append rs (list :lightgreen "checked")))
-  ;;         (setf rs (append rs (list :green "checked"))))
-  ;;     (let* ((content (tpl:controltbl rs))
-  ;;            (title "Control Service")
-  ;;            (menu-memo (menu)))
-  ;;       (render (list title
-  ;;                     menu-memo
-  ;;                     (tpl:default
-  ;;                         (list :title title
-  ;;                               :navpoints menu-memo
-  ;;                               :content content)))))))
+  ;; ;; (defparameter *serial-status* nil)
+  ;; ;; (defparameter *serial-lock*   (bordeaux-threads:make-lock "serial-lock"))
 
-  ;; (restas:define-route test-post ("test" :method :post)
-  ;;   (let ((rs 0))
-  ;;     (when (string= (hunchentoot:post-parameter "red") "on")
-  ;;       (setf rs (logior rs 2)))
-  ;;     (when (string= (hunchentoot:post-parameter "green") "on")
-  ;;       (setf rs (logior rs 1)))
-  ;;     (with-open-file (stream "/dev/ttyACM0"
-  ;;                             :direction :io
-  ;;                             :if-exists :overwrite
-  ;;                             :external-format :ascii)
-  ;;       (format stream "~A" rs))
-  ;;     (hunchentoot:redirect "/test")))
+  ;; ;; (defun serial-getter ()
+  ;; ;;   (tagbody
+  ;; ;;    re
+  ;; ;;      (bordeaux-threads:acquire-lock *serial-lock* t)
+  ;; ;;      (with-open-file (stream "/dev/ttyACM0"
+  ;; ;;                              :direction :io
+  ;; ;;                              :if-exists :overwrite
+  ;; ;;                              :external-format :ascii)
+  ;; ;;        (setf *serial-status* (format nil "~C" (read-char stream))))
+  ;; ;;      (bordeaux-threads:release-lock *serial-lock*)
+  ;; ;;      (go re)))
 
-  ;; submodules
 
-  (restas:mount-module -css- (#:restas.directory-publisher)
-    (:url "/css/")
-    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/css")) (user-homedir-pathname))))
+  ;; ;; (defparameter *serial-thread* (bordeaux-threads:make-thread #'serial-getter :name "serial-getter"))
 
-  (restas:mount-module -font- (#:restas.directory-publisher)
-    (:url "/font/")
-    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/font")) (user-homedir-pathname))))
+  ;; ;; ;; stty -F /dev/ttyACM0 cs8 9600 ignbrk -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke noflsh -ixon -crtscts raw
 
-  (restas:mount-module -js- (#:restas.directory-publisher)
-    (:url "/js/")
-    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/js"))  (user-homedir-pathname))))
+  ;; ;; (restas:define-route test ("test")
+  ;; ;;   (with-open-file (stream "/dev/ttyACM0"
+  ;; ;;                           :direction :io
+  ;; ;;                           :if-exists :overwrite
+  ;; ;;                           :external-format :ascii)
+  ;; ;;     (format stream "9"))
+  ;; ;;   (sleep 1)
+  ;; ;;   (let ((tmp (parse-integer *serial-status*))
+  ;; ;;         (rs  nil))
+  ;; ;;     (if (equal 2 (logand tmp 2))
+  ;; ;;         (setf rs (append rs (list :red "checked")))
+  ;; ;;         (setf rs (append rs (list :darkred "checked"))))
+  ;; ;;     (if (equal 1 (logand tmp 1))
+  ;; ;;         (setf rs (append rs (list :lightgreen "checked")))
+  ;; ;;         (setf rs (append rs (list :green "checked"))))
+  ;; ;;     (let* ((content (tpl:controltbl rs))
+  ;; ;;            (title "Control Service")
+  ;; ;;            (menu-memo (menu)))
+  ;; ;;       (render (list title
+  ;; ;;                     menu-memo
+  ;; ;;                     (tpl:default
+  ;; ;;                         (list :title title
+  ;; ;;                               :navpoints menu-memo
+  ;; ;;                               :content content)))))))
 
-  (restas:mount-module -img- (#:restas.directory-publisher)
-    (:url "/img/")
-    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/img")) (user-homedir-pathname))))
+  ;; ;; (restas:define-route test-post ("test" :method :post)
+  ;; ;;   (let ((rs 0))
+  ;; ;;     (when (string= (hunchentoot:post-parameter "red") "on")
+  ;; ;;       (setf rs (logior rs 2)))
+  ;; ;;     (when (string= (hunchentoot:post-parameter "green") "on")
+  ;; ;;       (setf rs (logior rs 1)))
+  ;; ;;     (with-open-file (stream "/dev/ttyACM0"
+  ;; ;;                             :direction :io
+  ;; ;;                             :if-exists :overwrite
+  ;; ;;                             :external-format :ascii)
+  ;; ;;       (format stream "~A" rs))
+  ;; ;;     (hunchentoot:redirect "/test")))
 
-  (restas:mount-module -resources- (#:restas.directory-publisher)
-    (:url "/resources/")
-    (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
-    (restas.directory-publisher:*autoindex* t))
+  ;; ;; submodules
+
+  ;; (restas:mount-module -css- (#:restas.directory-publisher)
+  ;;   (:url "/css/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/css")) (user-homedir-pathname))))
+
+  ;; (restas:mount-module -font- (#:restas.directory-publisher)
+  ;;   (:url "/font/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/font")) (user-homedir-pathname))))
+
+  ;; (restas:mount-module -js- (#:restas.directory-publisher)
+  ;;   (:url "/js/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/js"))  (user-homedir-pathname))))
+
+  ;; (restas:mount-module -img- (#:restas.directory-publisher)
+  ;;   (:url "/img/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/img")) (user-homedir-pathname))))
+
+  ;; (restas:mount-module -resources- (#:restas.directory-publisher)
+  ;;   (:url "/resources/")
+  ;;   (restas.directory-publisher:*directory* (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/resources")) (user-homedir-pathname)))
+  ;;   (restas.directory-publisher:*autoindex* t))
 
 #+END_SRC
 
@@ -871,16 +1565,25 @@
 #+BEGIN_SRC lisp :tangle init.lisp :noweb tangle :exports code :padline no :comments link
   (in-package #:rigidus)
 
-  (defun menu ()
-    (list (list :link "/" :title "Главная")
-          ;; Тут надо резюме
-          (list :link "/about/" :title "О проекте")
-          (list :link "/articles/" :title "Статьи")
-          (list :link "/aliens/" :title "Материалы")
-          (list :link "/resources/" :title "Ресурсы")
-          (list :link "/contacts" :title "Контакты")))
+  (defparameter *head-title* "Программирование - как искусство")
 
-  <<get_directory_contents>>
+  (defparameter *menu*
+    '(("about"     . "О проекте")
+      ("articles"  . "Статьи")
+      ("aliens"    . "Материалы")
+      ("resources" . "Ресурсы")
+      ("contacts"  . "Контакты")))
+
+  ;; (defun menu ()
+  ;;   (list (list :link "/" :title "Главная")
+  ;;         ;; Тут надо резюме
+  ;;         (list :link "/about/" :title "О проекте")
+  ;;         (list :link "/articles/" :title "Статьи")
+  ;;         (list :link "/aliens/" :title "Материалы")
+  ;;         (list :link "/resources/" :title "Ресурсы")
+  ;;         (list :link "/contacts" :title "Контакты")))
+
+  ;; <<get_directory_contents>>
 
   ;; start
   (restas:start '#:rigidus :port 9993)
@@ -889,7 +1592,7 @@
   (setf hunchentoot:*catch-errors-p* t)
 #+END_SRC
 
-* Демонизация
+* COMMENT Демонизация
 
 #+NAME: daemon_conf
 #+BEGIN_SRC lisp :tangle daemon.conf :noweb tangle :exports code :padline no :comments link
@@ -928,9 +1631,9 @@
   $(pwd)/../daemonization/scripts/daemon.sh $(pwd)/daemon.conf $1
 #+END_SRC
 
-* Шаблон статистики
+* Статистика
 
-Это статистика от яндекса
+Это статистика от яндекса, гугла и liveinternet counter
 
 #+NAME: tpl_stat
 #+BEGIN_SRC html
@@ -1025,9 +1728,25 @@
            ,(intern (concatenate 'string (symbol-name name) "/"))
            ,(cons (concatenate 'string (car param) "/") (cdr param))
          ,@body)))
+
+  (define-condition pattern-not-found-error (error)
+    ((text :initarg :text :reader text)))
+
+  (defun extract (cortege html)
+    (loop :for (begin end regexp) :in cortege :collect
+       (multiple-value-bind (start fin)
+           (ppcre:scan regexp html)
+         (when (null start)
+           (error 'pattern-not-found-error :text regexp))
+         (subseq html (+ start begin) (- fin end)))))
+
+  <<org_html_lookup>>
+  <<make_menu>>
+
+
 #+END_SRC
 
-** Шаблоны
+** COMMENT Шаблоны
 
 #+NAME: tpl
 #+BEGIN_SRC html :tangle templates.htm :noweb tangle :exports code :padline no :comments none
@@ -1120,25 +1839,34 @@
 #+BEGIN_SRC lisp :tangle rigidus.asd :noweb tangle :exports code :padline no :comments link
   ;;;; <<copyright>>
   (asdf:defsystem #:rigidus
-    :version      "0.0.2"
+    :version      "0.0.3"
     :author       "rigidus <i.am.rigidus@gmail.com>"
     :licence      "GPLv3"
     :description  "site http://rigidus.ru"
     :depends-on   (#:anaphora
                    #:closer-mop
                    #:cl-ppcre
-                   #:restas-directory-publisher
                    #:cl-base64
-                   #:postmodern
-                   #:restas
+                   #:cl-json
+                   #:cl-html5-parser
+                   #:cl-who
+                   #:cl-fad
+                   #:optima
                    #:closure-template
                    #:drakma
+                   #:restas
+                   #:restas-directory-publisher
                    #:split-sequence
-                   #:cl-json)
+                   #:postmodern
+                   #:restas
+                   #:fare-quasiquote-extras
+                   #:fare-quasiquote-optima)
     :serial       t
     :components   ((:static-file "templates.htm")
                    (:file "prepare")
                    (:file "defmodule")
+                   (:file "html")
+                   (:file "ext-html")
                    (:file "orgmode")
                    (:file "sape")
                    (:file "routes")
@@ -1150,9 +1878,12 @@
 
 ** Copyright
 
+Копирайт вставляется в каждый сгенерированный файл только для того
+чтобы соблюсти требования лицензии GPL
+
 #+NAME: copyright
 #+BEGIN_SRC lisp
-  Copyright © 2014-2016 Glukhov Mikhail. All rights reserved.
+  Copyright © 2014-2017 Glukhov Mikhail. All rights reserved.
   Licensed under the GNU AGPLv3
 #+END_SRC
 
@@ -1165,7 +1896,7 @@
 #+BEGIN_SRC lisp :tangle prepare.lisp :noweb tangle :exports code :exports none :padline no :comments link
   ;;;; <<copyright>>
 
-  (closure-template:compile-template :common-lisp-backend #P"templates.htm")
+  ;; (closure-template:compile-template :common-lisp-backend #P"templates.htm")
 
   ;; (in-package #:rigidus)
 

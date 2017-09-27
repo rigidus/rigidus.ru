@@ -1,22 +1,31 @@
 ;; [[file:doc.org::*Инициализация][init]]
 (in-package #:rigidus)
 
-(defun menu ()
-  (list (list :link "/" :title "Главная")
-        ;; Тут надо резюме
-        (list :link "/about/" :title "О проекте")
-        (list :link "/articles/" :title "Статьи")
-        (list :link "/aliens/" :title "Материалы")
-        (list :link "/resources/" :title "Ресурсы")
-        (list :link "/contacts" :title "Контакты")))
+(defparameter *head-title* "Программирование - как искусство")
 
-(in-package #:rigidus)
+(defparameter *menu*
+  '(("about"     . "О проекте")
+    ("articles"  . "Статьи")
+    ("aliens"    . "Материалы")
+    ("resources" . "Ресурсы")
+    ("contacts"  . "Контакты")))
 
-(defun get-directory-contents (path)
-  "Функция возвращает содержимое каталога"
-  (when (not (equal "/" (coerce (last (coerce path 'list)) 'string)))
-    (setf path (format nil "~A/" path)))
-  (directory (format nil "~A*.*" path)))
+;; (defun menu ()
+;;   (list (list :link "/" :title "Главная")
+;;         ;; Тут надо резюме
+;;         (list :link "/about/" :title "О проекте")
+;;         (list :link "/articles/" :title "Статьи")
+;;         (list :link "/aliens/" :title "Материалы")
+;;         (list :link "/resources/" :title "Ресурсы")
+;;         (list :link "/contacts" :title "Контакты")))
+
+;; (in-package #:rigidus)
+;; 
+;; (defun get-directory-contents (path)
+;;   "Функция возвращает содержимое каталога"
+;;   (when (not (equal "/" (coerce (last (coerce path 'list)) 'string)))
+;;     (setf path (format nil "~A/" path)))
+;;   (directory (format nil "~A*.*" path)))
 
 ;; start
 (restas:start '#:rigidus :port 9993)
