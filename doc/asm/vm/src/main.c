@@ -7,9 +7,13 @@
 #include <SDL2/SDL.h>
 
 #include "sdlwrap.h"
+#include "asm.h"
 
 int main(void)
 {
+    /* call the asm function */
+    asm_mod_array();
+
     int delay = 16;
     init();
     render();
