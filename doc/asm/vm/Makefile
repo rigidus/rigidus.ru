@@ -1,18 +1,18 @@
 SHELL = /bin/sh
 
 CC = gcc
-CDEBUG = -g
-CFLAGS = $(CDEBUG)
-LDFLAGS = -g
+CFLAGS  += -g
+LDFLAGS += -g
 
 TARGET = oldgamevm
 
-SRCS = main.c sdlwrap.c
-ASMS = asm.o
-TOASMS = $(SRCS:.c=.s)
-OBJS = $(SRCS:.c=.o) $(ASMS:.s=.o)
-
 INC = inc
+
+CSRC = main.c sdlwrap.c
+ASMO = asm.o
+TOASMS = $(CSRC:.c=.s)
+OBJS = $(CSRC:.c=.o) $(ASMS:.s=.o)
+
 
 .SUFFIXES:
 .SUFFIXES: .c .o .s
@@ -21,20 +21,23 @@ INC = inc
 
 VPATH = src:inc
 
+CFLAGS  += $(shell pkg-config --cflags  sdl2)
+LDFLAGS += $(shell pkg-config --libs    sdl2)
+
 all: sdlwrap.o asm.o main.o
-	$(CC) $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)  -o $(TARGET)
+	$(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
 
 sdlwrap.o: sdlwrap.c
-	$(CC) -c $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC) $^ -o $@
+	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
 main.o: main.c
-	$(CC) -c $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC) $^ -o $@
+	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
 asm.o: asm.s
-	$(CC) -c $(CFLAGS) `pkg-config --cflags --libs sdl2` $^ -o $@
+	$(CC) -c $(CFLAGS) $^ -o $@
 
-toasm: $(SRCS)
+toasm: $(CSRC)
 	$(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)
 
 clean:
-	rm -Rf $(TARGET) $(OBJS) $(ASMS) $(TOASMS)
+	rm -Rf $(TARGET) $(OBJS) $(ASMO) $(TOASMS)

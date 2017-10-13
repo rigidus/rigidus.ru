@@ -62,10 +62,10 @@ void init(void)
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
-    fruit_surface = SDL_LoadBMP("../assets/apple.bmp");
-    shead_surface = SDL_LoadBMP("../assets/head.bmp");
-    snake_surface = SDL_LoadBMP("../assets/snake.bmp");
-    field_surface = SDL_LoadBMP("../assets/field.bmp");
+    fruit_surface = SDL_LoadBMP("assets/apple.bmp");
+    shead_surface = SDL_LoadBMP("assets/head.bmp");
+    snake_surface = SDL_LoadBMP("assets/snake.bmp");
+    field_surface = SDL_LoadBMP("assets/field.bmp");
     fruit_texture = SDL_CreateTextureFromSurface(renderer, fruit_surface);
     shead_texture = SDL_CreateTextureFromSurface(renderer, shead_surface);
     snake_texture = SDL_CreateTextureFromSurface(renderer, snake_surface);
