@@ -5,6 +5,7 @@
 #include <time.h>
 #include <SDL2/SDL.h>
 
+#include "asm.h"
 #include "sdlwrap.h"
 
 #define QUEUE_SIZE 400
@@ -41,14 +42,16 @@ typedef struct tag_queue {
 queue snake;
 
 SDL_Renderer* renderer = NULL;
-SDL_Surface*  field_surface = NULL;
-SDL_Surface*  fruit_surface = NULL;
-SDL_Surface*  shead_surface = NULL;
-SDL_Surface*  snake_surface = NULL;
-SDL_Texture*  field_texture = NULL;
-SDL_Texture*  fruit_texture = NULL;
-SDL_Texture*  shead_texture = NULL;
-SDL_Texture*  snake_texture = NULL;
+extern SDL_Texture*  fruit_texture;
+extern SDL_Texture*  shead_texture;
+extern SDL_Texture*  snake_texture;
+extern SDL_Texture*  field_texture;
+
+
+SDL_Texture* load_sprite(char* pathname) {
+    return SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(pathname));
+}
+
 
 void init(void)
 {
@@ -62,21 +65,14 @@ void init(void)
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
-    fruit_surface = SDL_LoadBMP("assets/apple.bmp");
-    shead_surface = SDL_LoadBMP("assets/head.bmp");
-    snake_surface = SDL_LoadBMP("assets/snake.bmp");
-    field_surface = SDL_LoadBMP("assets/field.bmp");
-    fruit_texture = SDL_CreateTextureFromSurface(renderer, fruit_surface);
-    shead_texture = SDL_CreateTextureFromSurface(renderer, shead_surface);
-    snake_texture = SDL_CreateTextureFromSurface(renderer, snake_surface);
-    field_texture = SDL_CreateTextureFromSurface(renderer, field_surface);
-    for (i = 0; i <= MAX_X; i++) {
-        for (j = 0; j <= MAX_Y; j++) {
-            tail.x = i;
-            tail.y = j;
-            clear_tail();
-        }
-    }
+
+    asmo_init();
+
+    /* for (i = 0; i <= MAX_X; i++) { */
+    /*     for (j = 0; j <= MAX_Y; j++) { */
+    /*         show_sprite(i, j, field_texture); */
+    /*     } */
+    /* } */
     snake.first = 0;
     snake.last = 0;
     snake.len = 0;
@@ -174,14 +170,14 @@ int update(void)
 void render(void)
 {
     if (snake.len > 1) {
-        draw_body();
+        show_sprite(body.x, body.y, snake_texture);
     }
     if (eaten) {
-        draw_fruit();
+        show_sprite(fruit.x, fruit.y, fruit_texture);
     } else {
-        clear_tail();
+        show_sprite(tail.x, tail.y, field_texture);
     }
-    draw_head();
+    show_sprite(head.x, head.y, shead_texture);
     SDL_RenderPresent(renderer);
 }
 
@@ -208,46 +204,14 @@ void gameover(void)
     exit(0);
 }
 
-void draw_body(void)
-{
-    SDL_Rect rect;
-    rect.h = TILE_SIZE;
-    rect.w = TILE_SIZE;
-    rect.x = body.x * TILE_SIZE;
-    rect.y = body.y * TILE_SIZE;
-    SDL_RenderCopy(renderer, snake_texture, NULL, &rect);
-}
 
-void draw_head(void)
-{
+void show_sprite (int x, int y, SDL_Texture* texture) {
     SDL_Rect rect;
     rect.h = TILE_SIZE;
     rect.w = TILE_SIZE;
-    rect.x = head.x * TILE_SIZE;
-    rect.y = head.y * TILE_SIZE;
-    SDL_RenderCopy(renderer, shead_texture, NULL, &rect);
-}
-
-void draw_fruit(void)
-{
-    SDL_Rect rect;
-    rect.h = TILE_SIZE;
-    rect.w = TILE_SIZE;
-    rect.x = fruit.x * TILE_SIZE;
-    rect.y = fruit.y * TILE_SIZE;
-    SDL_RenderCopy(renderer, fruit_texture, NULL, &rect);
-}
-
-void clear_tail(void)
-{
-    SDL_Rect rect;
-    rect.h = TILE_SIZE;
-    rect.w = TILE_SIZE;
-    rect.x = tail.x * TILE_SIZE;
-    rect.y = tail.y * TILE_SIZE;
-    SDL_RenderCopy(renderer, field_texture, NULL, &rect);
-    /* SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-       SDL_RenderFillRect(renderer, &rect); */
+    rect.x = x * TILE_SIZE;
+    rect.y = y * TILE_SIZE;
+    SDL_RenderCopy(renderer, texture, NULL, &rect);
 }
 
 void next_fruit(void)

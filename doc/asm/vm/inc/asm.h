@@ -1,2 +1,2 @@
 /* prototype for asm function */
-void asm_mod_array();
+void asmo_init();

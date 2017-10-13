@@ -9,11 +9,13 @@
 #include "sdlwrap.h"
 #include "asm.h"
 
+SDL_Texture*  fruit_texture = NULL;
+SDL_Texture*  shead_texture = NULL;
+SDL_Texture*  snake_texture = NULL;
+SDL_Texture*  field_texture = NULL;
+
 int main(void)
 {
-    /* call the asm function */
-    asm_mod_array();
-
     int delay = 16;
     init();
     render();
