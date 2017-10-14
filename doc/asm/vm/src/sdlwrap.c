@@ -68,23 +68,6 @@ void init(void)
 
     asmo_init();
 
-    /* for (i = 0; i <= MAX_X; i++) { */
-    /*     for (j = 0; j <= MAX_Y; j++) { */
-    /*         show_sprite(i, j, field_texture); */
-    /*     } */
-    /* } */
-    snake.first = 0;
-    snake.last = 0;
-    snake.len = 0;
-    // srand((unsigned) (NULL));
-    fruit.x = /*rand() % 16 +*/ 5;
-    fruit.y = /*rand() % 6 +*/ 5;
-    head = fruit;
-    if (head.x < (MAX_X / 2)) {
-        dir = RIGHT;
-    } else {
-        dir = LEFT;
-    }
     push_head();
     next_fruit();
     eaten = 1;

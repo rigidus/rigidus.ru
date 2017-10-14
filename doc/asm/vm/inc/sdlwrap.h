@@ -7,7 +7,6 @@ void pop_tail(void);
 void push_head(void);
 void gameover(void);
 
-void clear_tail(void);
 void show_sprite (int x, int y, SDL_Texture* texture);
 void next_fruit(void);
 
