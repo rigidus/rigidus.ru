@@ -6,9 +6,9 @@
     .set UP,    2
     .set DOWN,  3
     .set RIGHT, 4
-	.set snake.first,   snake
-	.set snake.last,    1+snake
-	.set snake.len,     2+snake
+    .set snake.first,   snake
+    .set snake.last,    1+snake
+    .set snake.len,     2+snake
     .set snake.elems,   3+snake
     .set head.x,        head
     .set head.y,        1+head
@@ -17,9 +17,9 @@
 
     // macro for load sprite
     .macro load_sprite pathname, variable
-   	leaq	\pathname(%rip), %rdi
-	call	load_sprite
-	movq	%rax, \variable(%rip)
+    leaq    \pathname(%rip), %rdi
+    call    load_sprite
+    movq    %rax, \variable(%rip)
     .endm
 
     // macro for save registers
@@ -40,19 +40,19 @@
     // TEXT SECTION
     .section .text
 apple_sprte_file:
-	.string	"assets/apple.bmp"
+    .string "assets/apple.bmp"
 shead_sprte_file:
-	.string "assets/head.bmp"
+    .string "assets/head.bmp"
 snake_sprte_file:
-	.string "assets/snake.bmp"
+    .string "assets/snake.bmp"
 field_sprte_file:
-	.string "assets/field.bmp"
+    .string "assets/field.bmp"
 
-	.globl  asmo_init
-	.type   asmo_init, @function
+    .globl  asmo_init
+    .type   asmo_init, @function
 asmo_init:
-    pushq	%rbp
-	movq	%rsp, %rbp
+    pushq   %rbp
+    movq    %rsp, %rbp
 
     // load sprites
     load_sprite apple_sprte_file, fruit_texture
@@ -68,8 +68,8 @@ loop_y:
 loop_x:
     decq    %rdi
     push_regs %rdi, %rsi
-	movq	field_texture(%rip), %rdx
-	call	show_sprite
+    movq    field_texture(%rip), %rdx
+    call    show_sprite
     pop_regs %rsi, %rdi
     test    %rdi, %rdi
     jne     loop_x
@@ -77,7 +77,7 @@ loop_x:
     jne     loop_y
 
     // set apple position
-	movw	$0x0505, fruit(%rip)
+    movw    $0x0505, fruit(%rip)
 
     // set direction
     movb    $RIGHT, dir(%rip)
@@ -87,9 +87,9 @@ loop_x:
     movw    %ax, head(%rip)
 
     // queue init
-	movl	$0, snake.first(%rip)
-	movl	$0, snake.last(%rip)
-	movl	$0, snake.len(%rip)
+    movl    $0, snake.first(%rip)
+    movl    $0, snake.last(%rip)
+    movl    $0, snake.len(%rip)
 
     call    enqueue
 
@@ -98,48 +98,29 @@ loop_x:
     popq    %rbp
     ret
 
-	.globl  enqueue
-	.type   enqueue, @function
+    .globl  enqueue
+    .type   enqueue, @function
 enqueue:
-	pushq	%rbp
-	movq	%rsp, %rbp
+    pushq   %rbp
+    movq    %rsp, %rbp
     // snake.elems[snake.last] = head;
-    xor     %rcx, %rcx                  /* clear C */
-	movb	snake.last(%rip), %cl       /* C = snake.last */
-	leaq	snake.elems(%rip), %rax     /* А = база snake.elems */
-	movw	head(%rip), %dx             /* D = [head] (читаем два байта) */
-	movw	%dx, (%rax, %rcx, 2)        /* [A + C*2] = D (пишем два байта) */
+    xor     %rcx, %rcx                  # clear C
+    movb    snake.last(%rip), %cl       # C = snake.last
+    leaq    snake.elems(%rip), %rax     # А = база snake.elems
+    movw    head(%rip), %dx             # D = [head] (читаем два байта)
+    movw    %dx, (%rax, %rcx, 2)        # [A + C*2] = D (пишем два байта)
     // snake.last = (snake.last + 1) % 255;
-	incb	snake.last(%rip)
-	// snake.len++;
-    incb	snake.len(%rip)
-	// mat[head.x][head.y] = 1
-
-
-    xorq    %rax, %rax
-    movb    $max.x+1, %ah
-    movb    head.y(%rip), %al
-    mulb    %ah
-    movzbw  head.x-1(%rip), %dx
-    addw    %dx, %ax
-    addq    mat(%rip), %rax
-    movb    $1, (%rax)
-
-
+    incb    snake.last(%rip)
+    // snake.len++;
+    incb    snake.len(%rip)
+    // mat[head.x][head.y] = 1
+    movzbq  head.x(%rip), %rax          # RAX = head.x
+    movw    $max.y+1, %dx               # DX  = max.y + 1
+    mul     %dx                         # RAX = (max.y + 1) * head.x
+    movzbq  head.y(%rip), %rcx          # RCX = head.y
+    add     %rcx, %rax                  # RAX = (max.y + 1) * head.x) + head.y
+    leaq    mat(%rip), %rdx             # RDX = mat
+    movb    $1, (%rax, %rdx)
+    // leave
     popq    %rbp
     ret
-
-    xor     %rdx, %rdx
-    xor     %rcx, %rcx
-	movzbl	head.x(%rip), %edx          /* D = x             */
-	movzbl	head.y(%rip), %ecx          /* C = y             */
-	movq	%rdx, %rax                  /* A = x = D         */
-	salq	$4, %rax                    /* A = x*16          */
-	subq	%rdx, %rax                  /* A = x*16-x = x*15 */
-	leaq	(%rax,%rcx), %rdx           /* D = x*15+y        */
-	leaq	mat(%rip), %rax             /* A = mat           */
-	addq	%rdx, %rax                  /* A += mat+x*16-x+y */
-	movb	$1, (%rax)                  /* [A] = 1           */
-    // leave
-	popq	%rbp
-	ret
