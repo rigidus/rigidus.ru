@@ -8,7 +8,7 @@
 #include "asm.h"
 #include "sdlwrap.h"
 
-#define QUEUE_SIZE 400
+#define QUEUE_SIZE 256
 #define LEFT  1
 #define UP    2
 #define DOWN  3
@@ -33,9 +33,9 @@ node tail;
 node fruit;
 
 typedef struct tag_queue {
-    int first;
-    int last;
-    int len;
+    unsigned char first;
+    unsigned char last;
+    unsigned char len;
     node elems[QUEUE_SIZE];
 } queue;
 
@@ -68,7 +68,7 @@ void init(void)
 
     asmo_init();
 
-    push_head();
+    /* push_head(); */
     next_fruit();
     eaten = 1;
     old_dir = 0;
@@ -146,7 +146,8 @@ int update(void)
         pop_tail();
         eaten = 0;
     }
-    push_head();
+    __asm ("call enqueue");
+    /* push_head(); */
     return 0;
 }
 

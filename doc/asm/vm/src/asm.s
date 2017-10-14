@@ -6,6 +6,14 @@
     .set UP,    2
     .set DOWN,  3
     .set RIGHT, 4
+	.set snake.first,   snake
+	.set snake.last,    1+snake
+	.set snake.len,     2+snake
+    .set snake.elems,   3+snake
+    .set head.x,        head
+    .set head.y,        1+head
+    .set max.x,         24
+    .set max.y,         14
 
     // macro for load sprite
     .macro load_sprite pathname, variable
@@ -40,8 +48,8 @@ snake_sprte_file:
 field_sprte_file:
 	.string "assets/field.bmp"
 
-	.globl asmo_init
-	.type asmo_init, @function
+	.globl  asmo_init
+	.type   asmo_init, @function
 asmo_init:
     pushq	%rbp
 	movq	%rsp, %rbp
@@ -78,12 +86,60 @@ loop_x:
     movw    fruit(%rip), %ax
     movw    %ax, head(%rip)
 
-	movl	$0, snake(%rip)     ; snake.first = 0
-	movl	$0, 4+snake(%rip)   ; snake.last = 0
-	movl	$0, 8+snake(%rip)   ; snake.len = 0
+    // queue init
+	movl	$0, snake.first(%rip)
+	movl	$0, snake.last(%rip)
+	movl	$0, snake.len(%rip)
 
+    call    enqueue
 
     // leave
     movq    %rbp, %rsp
     popq    %rbp
     ret
+
+	.globl  enqueue
+	.type   enqueue, @function
+enqueue:
+	pushq	%rbp
+	movq	%rsp, %rbp
+    // snake.elems[snake.last] = head;
+    xor     %rcx, %rcx                  /* clear C */
+	movb	snake.last(%rip), %cl       /* C = snake.last */
+	leaq	snake.elems(%rip), %rax     /* А = база snake.elems */
+	movw	head(%rip), %dx             /* D = [head] (читаем два байта) */
+	movw	%dx, (%rax, %rcx, 2)        /* [A + C*2] = D (пишем два байта) */
+    // snake.last = (snake.last + 1) % 255;
+	incb	snake.last(%rip)
+	// snake.len++;
+    incb	snake.len(%rip)
+	// mat[head.x][head.y] = 1
+
+
+    xorq    %rax, %rax
+    movb    $max.x+1, %ah
+    movb    head.y(%rip), %al
+    mulb    %ah
+    movzbw  head.x-1(%rip), %dx
+    addw    %dx, %ax
+    addq    mat(%rip), %rax
+    movb    $1, (%rax)
+
+
+    popq    %rbp
+    ret
+
+    xor     %rdx, %rdx
+    xor     %rcx, %rcx
+	movzbl	head.x(%rip), %edx          /* D = x             */
+	movzbl	head.y(%rip), %ecx          /* C = y             */
+	movq	%rdx, %rax                  /* A = x = D         */
+	salq	$4, %rax                    /* A = x*16          */
+	subq	%rdx, %rax                  /* A = x*16-x = x*15 */
+	leaq	(%rax,%rcx), %rdx           /* D = x*15+y        */
+	leaq	mat(%rip), %rax             /* A = mat           */
+	addq	%rdx, %rax                  /* A += mat+x*16-x+y */
+	movb	$1, (%rax)                  /* [A] = 1           */
+    // leave
+	popq	%rbp
+	ret
