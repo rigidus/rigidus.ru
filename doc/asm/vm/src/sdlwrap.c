@@ -143,7 +143,8 @@ int update(void)
             break;
         }
     } else {
-        pop_tail();
+        /* pop_tail(); */
+        __asm ("call dequeue");
         eaten = 0;
     }
     __asm ("call enqueue");
@@ -165,6 +166,7 @@ void render(void)
     SDL_RenderPresent(renderer);
 }
 
+/*
 void pop_tail(void)
 {
     tail = snake.elems[snake.first];
@@ -172,6 +174,7 @@ void pop_tail(void)
     snake.len--;
     mat[tail.x][tail.y] = 0;
 }
+*/
 
 void push_head(void)
 {

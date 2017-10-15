@@ -100,6 +100,7 @@ loop_x:
 
     .globl  enqueue
     .type   enqueue, @function
+    .align 8
 enqueue:
     pushq   %rbp
     movq    %rsp, %rbp
@@ -124,3 +125,51 @@ enqueue:
     // leave
     popq    %rbp
     ret
+
+    .globl  dequeue
+    .type   dequeue, @function
+    .align 8
+dequeue:
+	pushq	%rbp
+	movq	%rsp, %rbp
+	// tail = snake.elems[snake.first];
+	movzbl	snake(%rip), %eax
+	movzbl	%al, %eax
+	cltq
+	leaq	(%rax,%rax), %rdx
+	leaq	snake(%rip), %rax
+	movzwl	3(%rdx,%rax), %eax
+	movw	%ax, tail(%rip)
+    // snake.first = (snake.first + 1) % 255;
+	movzbl	snake(%rip), %eax
+	movzbl	%al, %eax
+	leal	1(%rax), %edx
+	movl	%edx, %eax
+	sarl	$31, %eax
+	shrl	$24, %eax
+	addl	%eax, %edx
+	movzbl	%dl, %edx
+	subl	%eax, %edx
+	movl	%edx, %eax
+	movb	%al, snake(%rip)
+	// snake.len--;
+	movzbl	2+snake(%rip), %eax
+	subl	$1, %eax
+	movb	%al, 2+snake(%rip)
+    // mat[tail.x][tail.y] = 0;
+	movzbl	tail(%rip), %eax
+	movsbl	%al, %eax
+	movzbl	1+tail(%rip), %edx
+	movsbl	%dl, %edx
+	movslq	%edx, %rcx
+	movslq	%eax, %rdx
+	movq	%rdx, %rax
+	salq	$4, %rax
+	subq	%rdx, %rax
+	leaq	(%rax,%rcx), %rdx
+	leaq	mat(%rip), %rax
+	addq	%rdx, %rax
+	movb	$0, (%rax)
+    // leave
+	popq	%rbp
+	ret
