@@ -12,6 +12,8 @@
     .set snake.elems,   3+snake
     .set head.x,        head
     .set head.y,        1+head
+    .set tail.x,        tail
+    .set tail.y,        1+tail
     .set max.x,         24
     .set max.y,         14
 
@@ -93,17 +95,24 @@ loop_x:
 
     call    enqueue
 
+    // TODO:
+    // next_fruit();
+    // eaten = 1;
+    // old_dir = 0;
+    // printf("Level 1\n");
+
+
     // leave
     movq    %rbp, %rsp
     popq    %rbp
     ret
 
+
+
     .globl  enqueue
     .type   enqueue, @function
     .align 8
 enqueue:
-    pushq   %rbp
-    movq    %rsp, %rbp
     // snake.elems[snake.last] = head;
     xor     %rcx, %rcx                  # clear C
     movb    snake.last(%rip), %cl       # C = snake.last
@@ -115,61 +124,46 @@ enqueue:
     // snake.len++;
     incb    snake.len(%rip)
     // mat[head.x][head.y] = 1
-    movzbq  head.x(%rip), %rax          # RAX = head.x
-    movw    $max.y+1, %dx               # DX  = max.y + 1
-    mul     %dx                         # RAX = (max.y + 1) * head.x
-    movzbq  head.y(%rip), %rcx          # RCX = head.y
-    add     %rcx, %rax                  # RAX = (max.y + 1) * head.x) + head.y
-    leaq    mat(%rip), %rdx             # RDX = mat
-    movb    $1, (%rax, %rdx)
-    // leave
-    popq    %rbp
-    ret
+    movb    head.x(%rip), %al
+    movb    head.y(%rip), %cl
+    movb    $1, %bl
+    jmp     set_fld
 
     .globl  dequeue
     .type   dequeue, @function
     .align 8
 dequeue:
-    pushq   %rbp
-    movq    %rsp, %rbp
     // tail = snake.elems[snake.first];
-    movzbl  snake(%rip), %eax
-    movzbl  %al, %eax
-    cltq
-    leaq    (%rax,%rax), %rdx
-    leaq    snake(%rip), %rax
-    movzwl  3(%rdx,%rax), %eax
-    movw    %ax, tail(%rip)
+    xor     %rcx, %rcx                  # clear C
+    movb    snake.first(%rip), %cl      # C = snake.first
+    leaq    snake.elems(%rip), %rax     # А = база snake.elems
+    movw    (%rax, %rcx, 2), %dx        # D = [A + C*2] (читаем два байта)
+    movw    %dx, tail(%rip)             # [tail] = D (пишем два байта)
     // snake.first = (snake.first + 1) % 255;
-    movzbl  snake(%rip), %eax
-    movzbl  %al, %eax
-    leal    1(%rax), %edx
-    movl    %edx, %eax
-    sarl    $31, %eax
-    shrl    $24, %eax
-    addl    %eax, %edx
-    movzbl  %dl, %edx
-    subl    %eax, %edx
-    movl    %edx, %eax
-    movb    %al, snake(%rip)
+    incb    snake.first(%rip)
     // snake.len--;
-    movzbl  2+snake(%rip), %eax
-    subl    $1, %eax
-    movb    %al, 2+snake(%rip)
+    incb    snake.len(%rip)
     // mat[tail.x][tail.y] = 0;
-    movzbl  tail(%rip), %eax
-    movsbl  %al, %eax
-    movzbl  1+tail(%rip), %edx
-    movsbl  %dl, %edx
-    movslq  %edx, %rcx
-    movslq  %eax, %rdx
-    movq    %rdx, %rax
-    salq    $4, %rax
-    subq    %rdx, %rax
-    leaq    (%rax,%rcx), %rdx
-    leaq    mat(%rip), %rax
-    addq    %rdx, %rax
-    movb    $0, (%rax)
-    // leave
-    popq    %rbp
+    movb    tail.x(%rip), %al
+    movb    tail.y(%rip), %cl
+    movb    $0, %bl
+    jmp     set_fld
+
+    // in:
+    //   al = x
+    //   cl = y
+    //   bl = set value
+    // use : rax, rcx, rdx
+    .globl  set_fld
+    .type   set_fld, @function
+    .align 8
+set_fld:
+    // mat[tail.x][tail.y] = 0;
+    movzbq  %al, %rax                   # RAX = x
+    movw    $max.y+1, %dx               # DX  = max.y + 1
+    mul     %dx                         # RAX = (max.y + 1) * x
+    movzbq  %cl, %rcx                   # RCX = y
+    add     %rcx, %rax                  # RAX = (max.y + 1) * x) + y
+    leaq    mat(%rip), %rdx             # RDX = mat
+    movb    %bl, (%rax, %rdx)           # [RAX+RDX] = bl
     ret
