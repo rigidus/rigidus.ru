@@ -1,16 +1,15 @@
 
 void init(void);
 void input(void);
-int  update(void);
+void update(void);
 void render(void);
-void pop_tail(void);
-void push_head(void);
 void gameover(void);
 
 void show_sprite (int x, int y, SDL_Texture* texture);
-void next_fruit(void);
+void part(void);
 
 int delay;
+int gameover_flag;
 
 extern SDL_Texture*  field_texture;
 extern SDL_Texture*  fruit_texture;

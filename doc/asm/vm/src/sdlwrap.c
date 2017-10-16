@@ -9,10 +9,17 @@
 #include "sdlwrap.h"
 
 #define QUEUE_SIZE 256
+/*
+#define UP    0b0001
+#define DOWN  0b0010
+#define LEFT  0b0100
+#define RIGHT 0b1000
+*/
 #define LEFT  1
 #define UP    2
 #define DOWN  3
 #define RIGHT 4
+
 #define MAX_X 24
 #define MAX_Y 14
 #define TILE_SIZE 32
@@ -65,14 +72,8 @@ void init(void)
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
-
+    srand(time(NULL));
     asmo_init();
-
-    /* push_head(); */
-    next_fruit();
-    eaten = 1;
-    old_dir = 0;
-    printf("Level 1\n");
 }
 
 void input(void)
@@ -91,38 +92,30 @@ void input(void)
         exit(0);
     }
     /* Ignore opposite direction */
-    if (dir + old_dir != 5 || snake.len == 1) {
+    if ((snake.len == 1) || (dir + old_dir != 5 )
+    ) {
         old_dir = dir;
     } else {
         dir = old_dir;
     }
 }
 
-int update(void)
+void update(void)
 {
-    body = head;
-    switch (dir) {
-    case UP:
-        head.y = head.y - 1;
-        break;
-    case DOWN:
-        head.y = head.y + 1;
-        break;
-    case LEFT:
-        head.x = head.x - 1;
-        break;
-    case RIGHT:
-        head.x = head.x + 1;
-        break;
-    }
-    if (head.x < 0 || head.x > MAX_X || head.y < 0 || head.y > MAX_Y) {
-        return 1;
-    }
+    __asm ("call update2");
+    part();
+}
+
+void part () {
+
     if (mat[head.x][head.y]) {
-        return 1;
+        gameover_flag = 1;
     }
+
+    printf("%d\n", gameover_flag);
+
     if (head.x == fruit.x && head.y == fruit.y) {
-        next_fruit();
+        __asm ("call next_fruit");
         eaten = 1;
         switch (snake.len) {
         case 10:
@@ -143,13 +136,11 @@ int update(void)
             break;
         }
     } else {
-        /* pop_tail(); */
         __asm ("call dequeue");
         eaten = 0;
     }
     __asm ("call enqueue");
-    /* push_head(); */
-    return 0;
+    /* return 0; */
 }
 
 void render(void)
@@ -166,32 +157,6 @@ void render(void)
     SDL_RenderPresent(renderer);
 }
 
-/*
-void pop_tail(void)
-{
-    tail = snake.elems[snake.first];
-    snake.first = (snake.first + 1) % QUEUE_SIZE;
-    snake.len--;
-    mat[tail.x][tail.y] = 0;
-}
-*/
-
-void push_head(void)
-{
-    snake.elems[snake.last] = head;
-    snake.last = (snake.last + 1) % QUEUE_SIZE;
-    snake.len++;
-    mat[head.x][head.y] = 1;
-}
-
-void gameover(void)
-{
-    printf("Snake Length: %d\n", snake.len);
-    printf("Game Over\n");
-    exit(0);
-}
-
-
 void show_sprite (int x, int y, SDL_Texture* texture) {
     SDL_Rect rect;
     rect.h = TILE_SIZE;
@@ -201,10 +166,10 @@ void show_sprite (int x, int y, SDL_Texture* texture) {
     SDL_RenderCopy(renderer, texture, NULL, &rect);
 }
 
-void next_fruit(void)
+void gameover(void)
 {
-    do {
-        fruit.x = (fruit.x * 6 + 1) % (MAX_X + 1);
-        fruit.y = (fruit.y * 16 + 1) % (MAX_Y + 1);
-    } while (mat[fruit.x][fruit.y]);
+    printf("Snake Length: %d\n", snake.len);
+    printf("dir: %d, old: %d\n", dir, old_dir);
+    printf("Game Over\n");
+    exit(0);
 }

@@ -16,12 +16,14 @@ SDL_Texture*  field_texture = NULL;
 
 int main(void)
 {
+    gameover_flag = 0;
     int delay = 16;
     init();
     render();
     for (;;) {
         input();
-        if (update()) {
+        update();
+        if (gameover_flag) {
             gameover();
         }
         render();

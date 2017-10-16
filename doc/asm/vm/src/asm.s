@@ -38,9 +38,9 @@
     .endr
     .endm
 
+    // READ ONLY DATA SECTION
+    .section	.rodata
 
-    // TEXT SECTION
-    .section .text
 apple_sprte_file:
     .string "assets/apple.bmp"
 shead_sprte_file:
@@ -49,6 +49,11 @@ snake_sprte_file:
     .string "assets/snake.bmp"
 field_sprte_file:
     .string "assets/field.bmp"
+level_one_string:
+	.string	"Level 1"
+
+    // TEXT SECTION
+    .section .text
 
     .globl  asmo_init
     .type   asmo_init, @function
@@ -94,21 +99,20 @@ loop_x:
     movl    $0, snake.len(%rip)
 
     call    enqueue
+    call    next_fruit
 
-    // TODO:
-    // next_fruit();
-    // eaten = 1;
-    // old_dir = 0;
-    // printf("Level 1\n");
-
+	movb	$1, eaten(%rip)
+	movb	$0, old_dir(%rip)
+	leaq	level_one_string(%rip), %rdi
+	call	puts@PLT
 
     // leave
     movq    %rbp, %rsp
     popq    %rbp
     ret
 
-
-
+    // in  : -
+    // use : rax rbx rcx rdx
     .globl  enqueue
     .type   enqueue, @function
     .align 8
@@ -129,6 +133,8 @@ enqueue:
     movb    $1, %bl
     jmp     set_fld
 
+    // in  : -
+    // use : rax rbx rcx rdx
     .globl  dequeue
     .type   dequeue, @function
     .align 8
@@ -142,18 +148,15 @@ dequeue:
     // snake.first = (snake.first + 1) % 255;
     incb    snake.first(%rip)
     // snake.len--;
-    incb    snake.len(%rip)
+    decb    snake.len(%rip)
     // mat[tail.x][tail.y] = 0;
     movb    tail.x(%rip), %al
     movb    tail.y(%rip), %cl
     movb    $0, %bl
     jmp     set_fld
 
-    // in:
-    //   al = x
-    //   cl = y
-    //   bl = set value
-    // use : rax, rcx, rdx
+    // in  : al=x cl=y bl=setval
+    // use : rax  rcx  rdx
     .globl  set_fld
     .type   set_fld, @function
     .align 8
@@ -167,3 +170,67 @@ set_fld:
     leaq    mat(%rip), %rdx             # RDX = mat
     movb    %bl, (%rax, %rdx)           # [RAX+RDX] = bl
     ret
+
+    // in  : -
+    // use : rax
+    .globl	next_fruit
+	.type	next_fruit, @function
+next_fruit:
+rpt_rnd_x:
+	call	rand@PLT
+    cmpb	$max.x, %al
+	ja	    rpt_rnd_x
+    movb	%al, fruit(%rip)
+rpt_rnd_y:
+	call	rand@PLT
+    cmpb	$max.y, %al
+	ja	    rpt_rnd_y
+    movb	%al, 1+fruit(%rip)
+	ret
+
+
+    .globl	update2
+	.type	update2, @function
+update2:
+	pushq	%rbp
+	movq	%rsp, %rbp
+    // body = head;
+	movzwl	head(%rip), %eax
+	movw	%ax, body(%rip)
+
+    // switch by dir
+	movzbl	dir(%rip), %eax
+    cmpl	$UP, %eax
+	je	upd_up
+	cmpl	$DOWN, %eax
+	je	upd_down
+    cmpl	$LEFT, %eax
+	je	upd_left
+    cmpl	$RIGHT, %eax
+	je	upd_right
+upd_fail:
+    leaq	shead_sprte_file(%rip), %rdi # dbg
+	call	puts@PLT
+    movb    $1, gameover_flag(%rip)
+upd_leave:
+    //	call	part
+	popq	%rbp
+	ret
+upd_up:
+    decb    head.y(%rip)
+    js  upd_fail
+	jmp	upd_leave
+upd_down:
+    incb    head.y(%rip)
+    cmpb    $max.y, head.y(%rip)
+    ja upd_fail
+	jmp	upd_leave
+upd_left:
+    decb    head.x(%rip)
+    js  upd_fail
+	jmp	upd_leave
+upd_right:
+    incb    head.x(%rip)
+    cmpb    $max.x, head.x(%rip)
+    ja upd_fail
+    jmp	upd_leave
