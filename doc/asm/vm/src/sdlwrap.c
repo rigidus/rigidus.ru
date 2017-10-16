@@ -54,6 +54,7 @@ extern SDL_Texture*  shead_texture;
 extern SDL_Texture*  snake_texture;
 extern SDL_Texture*  field_texture;
 
+SDL_Rect rect;
 
 SDL_Texture* load_sprite(char* pathname) {
     return SDL_CreateTextureFromSurface(renderer, SDL_LoadBMP(pathname));
@@ -75,16 +76,15 @@ void init(void)
     srand(time(NULL));
     asmo_init();
 }
-
+/*
 void show_sprite (int x, int y, SDL_Texture* texture) {
-    SDL_Rect rect;
     rect.h = TILE_SIZE;
     rect.w = TILE_SIZE;
     rect.x = x * TILE_SIZE;
     rect.y = y * TILE_SIZE;
     SDL_RenderCopy(renderer, texture, NULL, &rect);
 }
-
+*/
 void gameover(void)
 {
     printf("Snake Length: %d\n", snake.len);

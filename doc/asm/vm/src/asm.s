@@ -47,6 +47,16 @@
     .endr
     .endm
 
+    // macro for call show_sprite
+    .macro call_show_sprite x y texture
+    movq	\texture, %rdx
+	movzbl	\y, %esi
+	movzbl	\x, %edi
+	call	show_sprite
+    .endm
+
+
+
     // READ ONLY DATA SECTION
     .section	.rodata
 
@@ -58,8 +68,6 @@ snake_sprte_file:
     .string "assets/snake.bmp"
 field_sprte_file:
     .string "assets/field.bmp"
-level_one_string:
-	.string	"Level 1"
 
     // TEXT SECTION
     .section .text
@@ -104,8 +112,6 @@ loop_x:
     // let him eat
 	movb	$1, eaten(%rip)
 	movb	$0, old_dir(%rip)
-	leaq	level_one_string(%rip), %rdi
-	call	puts@PLT
     // leave
     ret
 
@@ -294,30 +300,17 @@ render:
 	//  if (snake.len > 1) show snake_texture
 	cmpb	$1, snake.len(%rip)
 	jbe	over_show_sprite_body
-	movq	snake_texture(%rip), %rdx
-	movzbl	body.y(%rip), %esi
-	movzbl	body.x(%rip), %edi
-	call	show_sprite
+	call_show_sprite body.x(%rip), body.y(%rip), snake_texture(%rip)
 over_show_sprite_body:
     // if (eaten) show fruit_texture
 	testb	$1, eaten(%rip)
-	je	show_fruit
-	movq	fruit_texture(%rip), %rdx
-	movzbl	fruit.y(%rip), %esi
-	movzbl	fruit.x(%rip), %edi
-	call	show_sprite
+	je	show_field
+	call_show_sprite fruit.x(%rip), fruit.y(%rip), fruit_texture(%rip)
 	jmp	show_head
-show_fruit:
-	movq	field_texture(%rip), %rdx
-	movzbl	tail.y(%rip), %esi
-	movzbl	tail.x(%rip), %edi
-	call	show_sprite
+show_field:
+	call_show_sprite tail.x(%rip), tail.y(%rip), field_texture(%rip)
 show_head:
-	.loc 1 113 0
-	movq	shead_texture(%rip), %rdx
-	movzbl	head.y(%rip), %esi
-	movzbl	head.x(%rip), %edi
-	call	show_sprite
+    call_show_sprite head.x(%rip), head.y(%rip), shead_texture(%rip)
 render_finish:
 	movq	renderer(%rip), %rdi
 	call	SDL_RenderPresent@PLT
@@ -389,4 +382,36 @@ input_opposite_direction:
 	movzbl	old_dir(%rip), %eax
 	movb	%al, dir(%rip)
 input_leave:
+	ret
+
+
+    .globl	show_sprite
+	.type	show_sprite, @function
+show_sprite:
+	pushq	%rbp
+	movq	%rsp, %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)      # RSI -> RDX
+	movq	%rdx, -16(%rbp)     #
+	// rect.h = TILE_SIZE;
+	movl	$32, 12+rect(%rip)
+    // rect.w = TILE_SIZE;
+	movl	$32, 8+rect(%rip)
+	// rect.x = x * TILE_SIZE;
+	movl	-4(%rbp), %eax
+	sall	$5, %eax
+	movl	%eax, rect(%rip)
+	// rect.y = y * TILE_SIZE;
+	movl	-8(%rbp), %eax       #
+	sall	$5, %eax
+	movl	%eax, 4+rect(%rip)
+	// SDL_RenderCopy(renderer, texture, NULL, &rect);
+    //                  RDI       RSI    EDX    RCX
+	movq	renderer(%rip), %rdi
+	movq	-16(%rbp), %rsi      # RDX -> RSI
+	leaq	rect(%rip), %rcx
+	xor 	%edx, %edx
+	call	SDL_RenderCopy@PLT
+	leave
 	ret
