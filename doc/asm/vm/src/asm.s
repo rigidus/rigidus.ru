@@ -334,7 +334,6 @@ input:
 	movb	$UP, dir(%rip)
 	jmp	input_fin_scan
 input_dir_not_up:
-	.loc 1 85 0
 	movq	$scan.down, %rax
 	movb	(%rax, %rbx), %al
 	testb	%al, %al

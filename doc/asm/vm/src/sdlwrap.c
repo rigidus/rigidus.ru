@@ -1,4 +1,3 @@
-/* https://github.com/mahiuchun/Snake-SDL */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,12 +8,7 @@
 #include "sdlwrap.h"
 
 #define QUEUE_SIZE 256
-/*
-#define UP    0b0001
-#define DOWN  0b0010
-#define LEFT  0b0100
-#define RIGHT 0b1000
-*/
+
 #define LEFT  1
 #define UP    2
 #define DOWN  3
@@ -76,15 +70,7 @@ void init(void)
     srand(time(NULL));
     asmo_init();
 }
-/*
-void show_sprite (int x, int y, SDL_Texture* texture) {
-    rect.h = TILE_SIZE;
-    rect.w = TILE_SIZE;
-    rect.x = x * TILE_SIZE;
-    rect.y = y * TILE_SIZE;
-    SDL_RenderCopy(renderer, texture, NULL, &rect);
-}
-*/
+
 void gameover(void)
 {
     printf("Snake Length: %d\n", snake.len);
