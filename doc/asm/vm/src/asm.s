@@ -20,6 +20,11 @@
     .set body.y,        1+body
     .set fruit.x,       fruit
     .set fruit.y,       1+fruit
+    .set scan.up,       82
+    .set scan.down,     81
+    .set scan.left,     80
+    .set scan.right,    79
+    .set scan.escape,   41
 
     // macro for load sprite
     .macro load_sprite pathname, variable
@@ -317,4 +322,71 @@ render_finish:
 	movq	renderer(%rip), %rdi
 	call	SDL_RenderPresent@PLT
 render_leave:
+	ret
+
+
+    .globl	input
+	.type	input, @function
+input:
+	// RBX = SDL_GetKeyboardState(NULL);
+	xorl	%edi, %edi
+	call	SDL_GetKeyboardState@PLT
+	movq	%rax, %rbx # RBX - pointer of state
+	// SDL_PumpEvents();
+	call	SDL_PumpEvents@PLT
+    movq    $scan.up, %rax
+	movb	(%rax, %rbx), %al
+	testb	%al, %al
+	je	input_dir_not_up
+	movb	$UP, dir(%rip)
+	jmp	input_fin_scan
+input_dir_not_up:
+	.loc 1 85 0
+	movq	$scan.down, %rax
+	movb	(%rax, %rbx), %al
+	testb	%al, %al
+	je	input_dir_not_down
+	movb	$DOWN, dir(%rip)
+	jmp	input_fin_scan
+input_dir_not_down:
+	movq	$scan.left, %rax
+	movb	(%rax, %rbx), %al
+	testb	%al, %al
+	je	input_dir_not_left
+	movb	$LEFT, dir(%rip)
+	jmp	input_fin_scan
+input_dir_not_left:
+	movq	$scan.right, %rax
+	movb	(%rax, %rbx), %al
+	testb	%al, %al
+	je	input_dir_not_right
+	movb	$RIGHT, dir(%rip)
+	jmp	input_fin_scan
+input_dir_not_right:
+	movq	$scan.escape, %rax
+	movb	(%rax, %rbx), %al
+	testb	%al, %al
+	je	input_fin_scan
+	movl	$0, %edi
+	call	exit@PLT
+input_fin_scan:
+	movb	snake.len(%rip), %al
+	cmpb	$1, %al
+	je	input_len_is_one
+    // else
+	movzbl	dir(%rip), %edx
+	movzbl	old_dir(%rip), %eax
+	addl	%edx, %eax
+	cmpl	$5, %eax
+	je	input_opposite_direction
+input_len_is_one:
+    // old_dir = dir (ignore)
+	movzbl	dir(%rip), %eax
+	movb	%al, old_dir(%rip)
+	jmp	input_leave
+input_opposite_direction:
+	// dir = old_dir (new_dir)
+	movzbl	old_dir(%rip), %eax
+	movb	%al, dir(%rip)
+input_leave:
 	ret

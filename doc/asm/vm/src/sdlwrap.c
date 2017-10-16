@@ -76,30 +76,6 @@ void init(void)
     asmo_init();
 }
 
-void input(void)
-{
-    const Uint8 *state = SDL_GetKeyboardState(NULL);
-    SDL_PumpEvents();
-    if (state[SDL_SCANCODE_UP]) {
-        dir = UP;
-    } else if (state[SDL_SCANCODE_DOWN]) {
-        dir = DOWN;
-    } else if (state[SDL_SCANCODE_LEFT]) {
-        dir = LEFT;
-    } else if (state[SDL_SCANCODE_RIGHT]) {
-        dir = RIGHT;
-    } else if (state[SDL_SCANCODE_ESCAPE]) {
-        exit(0);
-    }
-    /* Ignore opposite direction */
-    if ((snake.len == 1) || (dir + old_dir != 5 )
-    ) {
-        old_dir = dir;
-    } else {
-        dir = old_dir;
-    }
-}
-
 void show_sprite (int x, int y, SDL_Texture* texture) {
     SDL_Rect rect;
     rect.h = TILE_SIZE;
