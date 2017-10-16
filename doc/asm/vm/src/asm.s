@@ -16,6 +16,10 @@
     .set tail.y,        1+tail
     .set max.x,         24
     .set max.y,         14
+    .set body.x,        body
+    .set body.y,        1+body
+    .set fruit.x,       fruit
+    .set fruit.y,       1+fruit
 
     // macro for load sprite
     .macro load_sprite pathname, variable
@@ -58,18 +62,16 @@ level_one_string:
     .globl  asmo_init
     .type   asmo_init, @function
 asmo_init:
-
     // load sprites
     load_sprite apple_sprte_file, fruit_texture
     load_sprite shead_sprte_file, shead_texture
     load_sprite snake_sprte_file, snake_texture
     load_sprite field_sprte_file, field_texture
-
     // clear field
-    movq    $MAX_Y+1, %rsi
+    movq    $max.y+1, %rsi
 loop_y:
     decq    %rsi
-    movq    $MAX_X+1, %rdi
+    movq    $max.x+1, %rdi
 loop_x:
     decq    %rdi
     push_regs %rdi, %rsi
@@ -80,32 +82,28 @@ loop_x:
     jne     loop_x
     test    %rsi, %rsi
     jne     loop_y
-
     // set apple position
     movw    $0x0505, fruit(%rip)
-
     // set direction
     movb    $RIGHT, dir(%rip)
-
     // let him eat
     movw    fruit(%rip), %ax
     movw    %ax, head(%rip)
-
     // queue init
     movl    $0, snake.first(%rip)
     movl    $0, snake.last(%rip)
     movl    $0, snake.len(%rip)
-
+    // add elt to queue
     call    enqueue
     call    next_fruit
-
+    // let him eat
 	movb	$1, eaten(%rip)
 	movb	$0, old_dir(%rip)
 	leaq	level_one_string(%rip), %rdi
 	call	puts@PLT
-
     // leave
     ret
+
 
     // in  : -
     // use : rax rbx rcx rdx
@@ -128,6 +126,7 @@ enqueue:
     movb    $1, %bl
     jmp     set_fld
 
+
     // in  : -
     // use : rax rbx rcx rdx
     .globl  dequeue
@@ -149,6 +148,7 @@ dequeue:
     movb    $0, %bl
     jmp     set_fld
 
+
     // in  : al=x cl=y bl=setval
     // use : rax  rcx  rdx
     .globl  set_fld
@@ -158,6 +158,7 @@ set_fld:
     call    get_mat_addr
     movb    %bl, (%rax)                # [RAX+RDX] = bl
     ret
+
 
     // in  : al=x cl=y
     // use : rax  rcx  rdx
@@ -173,7 +174,6 @@ get_mat_addr:
     leaq    mat(%rip), %rdx             # RDX = mat
     add     %rdx, %rax                  # RAX = mat + (max.y + 1) * x) + y
     ret
-
 
 
     // in  : -
@@ -192,6 +192,7 @@ rpt_rnd_y:
 	ja	    rpt_rnd_y
     movb	%al, 1+fruit(%rip)
 	ret
+
 
     // in  : -
     // use :
@@ -282,67 +283,38 @@ upd_que:
     ret
 
 
-
-/*
-    .globl	render
+	.globl	render
 	.type	render, @function
 render:
-.LFB511:
-	pushq	%rbp
-	movq	%rsp, %rbp
-	movzbl	2+snake(%rip), %eax
-	cmpb	$1, %al
-	jbe	.L16
-	.loc 1 106 0
+	//  if (snake.len > 1) show snake_texture
+	cmpb	$1, snake.len(%rip)
+	jbe	over_show_sprite_body
 	movq	snake_texture(%rip), %rdx
-	movzbl	1+body(%rip), %eax
-	movsbl	%al, %ecx
-	movzbl	body(%rip), %eax
-	movsbl	%al, %eax
-	movl	%ecx, %esi
-	movl	%eax, %edi
+	movzbl	body.y(%rip), %esi
+	movzbl	body.x(%rip), %edi
 	call	show_sprite
-.L16:
-	.loc 1 108 0
-	movzbl	eaten(%rip), %eax
-	testb	%al, %al
-	je	.L17
-	.loc 1 109 0
+over_show_sprite_body:
+    // if (eaten) show fruit_texture
+	testb	$1, eaten(%rip)
+	je	show_fruit
 	movq	fruit_texture(%rip), %rdx
-	movzbl	1+fruit(%rip), %eax
-	movsbl	%al, %ecx
-	movzbl	fruit(%rip), %eax
-	movsbl	%al, %eax
-	movl	%ecx, %esi
-	movl	%eax, %edi
+	movzbl	fruit.y(%rip), %esi
+	movzbl	fruit.x(%rip), %edi
 	call	show_sprite
-	jmp	.L18
-.L17:
-	.loc 1 111 0
+	jmp	show_head
+show_fruit:
 	movq	field_texture(%rip), %rdx
-	movzbl	1+tail(%rip), %eax
-	movsbl	%al, %ecx
-	movzbl	tail(%rip), %eax
-	movsbl	%al, %eax
-	movl	%ecx, %esi
-	movl	%eax, %edi
+	movzbl	tail.y(%rip), %esi
+	movzbl	tail.x(%rip), %edi
 	call	show_sprite
-.L18:
+show_head:
 	.loc 1 113 0
 	movq	shead_texture(%rip), %rdx
-	movzbl	1+head(%rip), %eax
-	movsbl	%al, %ecx
-	movzbl	head(%rip), %eax
-	movsbl	%al, %eax
-	movl	%ecx, %esi
-	movl	%eax, %edi
+	movzbl	head.y(%rip), %esi
+	movzbl	head.x(%rip), %edi
 	call	show_sprite
-	.loc 1 114 0
-	movq	renderer(%rip), %rax
-	movq	%rax, %rdi
+render_finish:
+	movq	renderer(%rip), %rdi
 	call	SDL_RenderPresent@PLT
-	.loc 1 115 0
-	nop
-	popq	%rbp
+render_leave:
 	ret
-*/

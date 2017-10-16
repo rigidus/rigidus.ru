@@ -27,7 +27,8 @@ int main(void)
         if (gameover_flag) {
             gameover();
         }
-        render();
+        __asm("call render");
+        /* render(); */
         SDL_Delay(delay * 10);
     }
     return 0;

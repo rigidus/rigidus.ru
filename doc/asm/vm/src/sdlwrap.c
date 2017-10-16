@@ -100,20 +100,6 @@ void input(void)
     }
 }
 
-void render(void)
-{
-    if (snake.len > 1) {
-        show_sprite(body.x, body.y, snake_texture);
-    }
-    if (eaten) {
-        show_sprite(fruit.x, fruit.y, fruit_texture);
-    } else {
-        show_sprite(tail.x, tail.y, field_texture);
-    }
-    show_sprite(head.x, head.y, shead_texture);
-    SDL_RenderPresent(renderer);
-}
-
 void show_sprite (int x, int y, SDL_Texture* texture) {
     SDL_Rect rect;
     rect.h = TILE_SIZE;
