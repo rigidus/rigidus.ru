@@ -22,7 +22,8 @@ int main(void)
     render();
     for (;;) {
         input();
-        update();
+        __asm("call update2");
+        /* update(); */
         if (gameover_flag) {
             gameover();
         }

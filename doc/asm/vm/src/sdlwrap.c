@@ -100,49 +100,6 @@ void input(void)
     }
 }
 
-void update(void)
-{
-    __asm ("call update2");
-    part();
-}
-
-void part () {
-
-    if (mat[head.x][head.y]) {
-        gameover_flag = 1;
-    }
-
-    printf("%d\n", gameover_flag);
-
-    if (head.x == fruit.x && head.y == fruit.y) {
-        __asm ("call next_fruit");
-        eaten = 1;
-        switch (snake.len) {
-        case 10:
-            delay -= 4;
-            printf("Level 2\n");
-            break;
-        case 20:
-            delay -= 4;
-            printf("Level 3\n");
-            break;
-        case 30:
-            delay /= 2;
-            printf("Level 4\n");
-            break;
-        case 40:
-            delay /= 2;
-            printf("Level 5\n");
-            break;
-        }
-    } else {
-        __asm ("call dequeue");
-        eaten = 0;
-    }
-    __asm ("call enqueue");
-    /* return 0; */
-}
-
 void render(void)
 {
     if (snake.len > 1) {

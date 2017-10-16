@@ -58,8 +58,6 @@ level_one_string:
     .globl  asmo_init
     .type   asmo_init, @function
 asmo_init:
-    pushq   %rbp
-    movq    %rsp, %rbp
 
     // load sprites
     load_sprite apple_sprte_file, fruit_texture
@@ -107,15 +105,12 @@ loop_x:
 	call	puts@PLT
 
     // leave
-    movq    %rbp, %rsp
-    popq    %rbp
     ret
 
     // in  : -
     // use : rax rbx rcx rdx
     .globl  enqueue
     .type   enqueue, @function
-    .align 8
 enqueue:
     // snake.elems[snake.last] = head;
     xor     %rcx, %rcx                  # clear C
@@ -137,7 +132,6 @@ enqueue:
     // use : rax rbx rcx rdx
     .globl  dequeue
     .type   dequeue, @function
-    .align 8
 dequeue:
     // tail = snake.elems[snake.first];
     xor     %rcx, %rcx                  # clear C
@@ -159,17 +153,28 @@ dequeue:
     // use : rax  rcx  rdx
     .globl  set_fld
     .type   set_fld, @function
-    .align 8
 set_fld:
-    // mat[tail.x][tail.y] = 0;
+    // mat[x][y] = 0;
+    call    get_mat_addr
+    movb    %bl, (%rax)                # [RAX+RDX] = bl
+    ret
+
+    // in  : al=x cl=y
+    // use : rax  rcx  rdx
+    // ret : rax
+    .globl  get_mat_addr
+    .type   get_mat_addr, @function
+get_mat_addr:
     movzbq  %al, %rax                   # RAX = x
     movw    $max.y+1, %dx               # DX  = max.y + 1
     mul     %dx                         # RAX = (max.y + 1) * x
     movzbq  %cl, %rcx                   # RCX = y
     add     %rcx, %rax                  # RAX = (max.y + 1) * x) + y
     leaq    mat(%rip), %rdx             # RDX = mat
-    movb    %bl, (%rax, %rdx)           # [RAX+RDX] = bl
+    add     %rdx, %rax                  # RAX = mat + (max.y + 1) * x) + y
     ret
+
+
 
     // in  : -
     // use : rax
@@ -188,49 +193,156 @@ rpt_rnd_y:
     movb	%al, 1+fruit(%rip)
 	ret
 
+    // in  : -
+    // use :
+    // side-effects : gameover_flag
+    // ret : -
+    .globl	check_borders
+	.type	check_borders, @function
+check_borders:
+    // body = head;
+	movzwl	head(%rip), %eax
+	movw	%ax, body(%rip)
+    // switch by dir
+	movzbl	dir(%rip), %eax
+    cmpl	$UP, %eax
+	je	check_borders_up
+	cmpl	$DOWN, %eax
+	je	check_borders_down
+    cmpl	$LEFT, %eax
+	je	check_borders_left
+    cmpl	$RIGHT, %eax
+	je	check_borders_right
+check_borders_fail:
+    movb    $1, gameover_flag(%rip)
+check_borders_leave:
+	ret
+check_borders_up:
+    decb    head.y(%rip)
+    js  check_borders_fail
+	jmp	check_borders_leave
+check_borders_down:
+    incb    head.y(%rip)
+    cmpb    $max.y, head.y(%rip)
+    ja check_borders_fail
+	jmp	check_borders_leave
+check_borders_left:
+    decb    head.x(%rip)
+    js  check_borders_fail
+	jmp	check_borders_leave
+check_borders_right:
+    incb    head.x(%rip)
+    cmpb    $max.x, head.x(%rip)
+    ja  check_borders_fail
+    jmp	check_borders_leave
+
+
+    // in  : -
+    // use :
+    // side-effects : gameover_flag
+    // ret : -
+    .globl	check_matrix
+	.type	check_matrix, @function
+check_matrix:
+    movb    head.x(%rip), %al
+    movb    head.y(%rip), %cl
+    call    get_mat_addr
+    testb   $1, (%rax)
+    je      check_matrix_leave
+    movb    $1, gameover_flag(%rip)
+check_matrix_leave:
+    ret
+
 
     .globl	update2
 	.type	update2, @function
 update2:
+	call  check_borders
+	call  check_matrix
+    // head.x == fruit
+	movzbl	head(%rip), %edx
+	movzbl	fruit(%rip), %eax
+	cmpb	%al, %dl
+	jne upd_else
+    // head.y == fruit.y
+	movzbl	1+head(%rip), %edx
+	movzbl	1+fruit(%rip), %eax
+	cmpb	%al, %dl
+	jne	upd_else
+    // && then
+upd_then:
+	call next_fruit
+	movb	$1, eaten(%rip)
+	jmp	 upd_que
+upd_else:
+	call dequeue
+	movb	$0, eaten(%rip)
+upd_que:
+	call enqueue
+    ret
+
+
+
+/*
+    .globl	render
+	.type	render, @function
+render:
+.LFB511:
 	pushq	%rbp
 	movq	%rsp, %rbp
-    // body = head;
-	movzwl	head(%rip), %eax
-	movw	%ax, body(%rip)
-
-    // switch by dir
-	movzbl	dir(%rip), %eax
-    cmpl	$UP, %eax
-	je	upd_up
-	cmpl	$DOWN, %eax
-	je	upd_down
-    cmpl	$LEFT, %eax
-	je	upd_left
-    cmpl	$RIGHT, %eax
-	je	upd_right
-upd_fail:
-    leaq	shead_sprte_file(%rip), %rdi # dbg
-	call	puts@PLT
-    movb    $1, gameover_flag(%rip)
-upd_leave:
-    //	call	part
+	movzbl	2+snake(%rip), %eax
+	cmpb	$1, %al
+	jbe	.L16
+	.loc 1 106 0
+	movq	snake_texture(%rip), %rdx
+	movzbl	1+body(%rip), %eax
+	movsbl	%al, %ecx
+	movzbl	body(%rip), %eax
+	movsbl	%al, %eax
+	movl	%ecx, %esi
+	movl	%eax, %edi
+	call	show_sprite
+.L16:
+	.loc 1 108 0
+	movzbl	eaten(%rip), %eax
+	testb	%al, %al
+	je	.L17
+	.loc 1 109 0
+	movq	fruit_texture(%rip), %rdx
+	movzbl	1+fruit(%rip), %eax
+	movsbl	%al, %ecx
+	movzbl	fruit(%rip), %eax
+	movsbl	%al, %eax
+	movl	%ecx, %esi
+	movl	%eax, %edi
+	call	show_sprite
+	jmp	.L18
+.L17:
+	.loc 1 111 0
+	movq	field_texture(%rip), %rdx
+	movzbl	1+tail(%rip), %eax
+	movsbl	%al, %ecx
+	movzbl	tail(%rip), %eax
+	movsbl	%al, %eax
+	movl	%ecx, %esi
+	movl	%eax, %edi
+	call	show_sprite
+.L18:
+	.loc 1 113 0
+	movq	shead_texture(%rip), %rdx
+	movzbl	1+head(%rip), %eax
+	movsbl	%al, %ecx
+	movzbl	head(%rip), %eax
+	movsbl	%al, %eax
+	movl	%ecx, %esi
+	movl	%eax, %edi
+	call	show_sprite
+	.loc 1 114 0
+	movq	renderer(%rip), %rax
+	movq	%rax, %rdi
+	call	SDL_RenderPresent@PLT
+	.loc 1 115 0
+	nop
 	popq	%rbp
 	ret
-upd_up:
-    decb    head.y(%rip)
-    js  upd_fail
-	jmp	upd_leave
-upd_down:
-    incb    head.y(%rip)
-    cmpb    $max.y, head.y(%rip)
-    ja upd_fail
-	jmp	upd_leave
-upd_left:
-    decb    head.x(%rip)
-    js  upd_fail
-	jmp	upd_leave
-upd_right:
-    incb    head.x(%rip)
-    cmpb    $max.x, head.x(%rip)
-    ja upd_fail
-    jmp	upd_leave
+*/
