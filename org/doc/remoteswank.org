@@ -1,0 +1,94 @@
+#+STARTUP: showall indent hidestars
+#+HTML_HEAD: <!-- -*- mode: org; fill-column: 87 -*-  -->
+
+#+HTML_DOCTYPE: <!DOCTYPE html>
+#+HTML_HEAD: <link href="../css/style.css" rel="stylesheet" type="text/css" />
+
+#+OPTIONS: toc:nil num:nil h:4 html-postamble:nil html-preamble:t tex:t f:t
+
+#+TOC: headlines 3
+
+#+HTML: <div class="outline-2" id="meta"><a href="../index.html">На главную</a></div>
+
+#+TITLE: Удаленное использование swank
+
+* Интро
+
+Начнем с цитаты:
+
+#+HTML: <blockquote><i>
+И даже более впечатляющий пример удаленной отладки произошел в миссии NASA «Deep Space 1» в
+1998 году. Через полгода после запуска космического корабля, небольшой код на Lisp должен был
+управлять космическим кораблем в течении двух дней для проведения серии экспериментов. Однако,
+неуловимое состояние гонки (race condition) в коде не было выявлено при тестировании на земле и
+было обнаружено уже в космосе. Когда ошибка была выявлена в космосе (100 миллионов миль от
+Земли) команда смогла произвести диагностику и исправление работающего кода, что позволило
+завершить эксперимент. Один из программистов сказал об этом следующее:
+
+— Отладка программы, работающей на оборудовании стоимостью 100 миллионов долларов, которая
+находится в 100 миллионах миль от вас, является интересным опытом. REPL, работающий на
+космическом корабле, предоставляет бесценные возможности в нахождении и устранении проблем.
+#+HTML: </i></blockquote>
+
+* Шаг за шагом
+** SSH-коннект и запуск lisp
+
+Я использую ~screen~ для того чтобы отвязать процесс от терминальной сессии
+
+#+BEGIN_SRC sh
+  ssh user@host.ru
+  screen
+  sbcl
+#+END_SRC
+
+** Запуск swank-server
+
+Вместо asdf можно использовать quicklisp. Версия swank должна быть той
+же как на удаленной машине, так и на локальной.
+
+#+BEGIN_SRC lisp
+  (require 'asdf)
+  (asdf:oos 'asdf:load-op 'swank)
+  (setq swank:*use-dedicated-output-stream* nil)
+  (swank:create-server :coding-system "utf-8-unix" :dont-close t :port 4005)
+#+END_SRC
+
+Этот код запустит swank внутри sbcl и он (swank) начнет слушать 4005
+порт. Но, разумеется, он будет делать это на на удаленной
+машине. Теперь мы можем выйти, оставив сессию ~screen~ запущенной, для
+этого нажимаем ~Ctrl+a d~.
+
+** SSH-туннелирование
+
+Открываем ssh-туннель со своей машины на удаленную:
+
+#+BEGIN_SRC sh
+  ssh -2 -N -f -L 4005:localhost:4005 user@host.ru
+#+END_SRC
+
+Теперь все обращения к нашему 4005 порту будут уходить на удаленную
+машину и обращаться там по 4005 порту - а нам это и надо.
+
+* Полезные вещи
+
+** Тайм-аут SSH
+
+Если туннель обрывается по тайм-ауту, можно попробовать прописать в ~/etc/ssh/ssh_config~
+директиву ~ServerAliveInterval 5~
+
+** Конфигурация emacs
+
+#+BEGIN_SRC elisp
+  ;; Lisp (SLIME) interaction
+  (setq inferior-lisp-program "sbcl"
+  lisp-indent-function 'common-lisp-indent-function
+  slime-complete-symbol-function 'slime-fuzzy-complete-symbol
+  ; common-lisp-hyperspec-root "file:///Users/lisp/HyperSpec"
+  slime-startup-animation nil)
+  ;; SLIME
+  (add-to-list 'load-path "~/.emacs.d/slime")
+  (require 'slime)
+  ;(set-language-environment "utf-8")
+  (setq slime-net-coding-system 'utf-8-unix)
+  (slime-setup '(slime-fancy))
+#+END_SRC

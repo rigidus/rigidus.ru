@@ -1,0 +1,841 @@
+#+STARTUP: showall indent hidestars
+#+HTML_HEAD: <!-- -*- mode: org; fill-column: 87 -*-  -->
+
+#+HTML_DOCTYPE: <!DOCTYPE html>
+#+HTML_HEAD: <link href="../css/style.css" rel="stylesheet" type="text/css" />
+
+#+OPTIONS: toc:nil num:nil h:4 html-postamble:nil html-preamble:t tex:t f:t
+
+#+TOC: headlines 3
+
+#+HTML: <div class="outline-2" id="meta"><a href="../index.html">На главную</a></div>
+
+#+TITLE: Руководство по кастомизации Emacs
+
+* Интро
+
+Сегодня мы установим в наш ~emacs~ все необходимое, начиная с
+настоящего комбайна, который называтся ~Cedet~.
+
+* Cedet
+
+Пакет ~Cedet~ объединяет
+в своем составе несколько пакетов, реализующих различную
+функциональность, но объединенных вокруг одной задачи по работе с
+исходным кодом на различных языках программирования.
+
+** Инсталляция
+
+Берем тарбол с официального репозитория
+http://cedet.cvs.sourceforge.net/viewvc/cedet/ и распаковываем его в
+~/.emacs.d/cedet
+
+** Компиляция в Emacs-e
+
+После этого заходим туда и отдаем команду
+
+#+BEGIN_SRC sh
+  emacs -Q -l cedet-build.el -f cedet-build
+#+END_SRC
+
+Таким нетривиальным образом, через emacs, оказывается можно собрать и
+скомпилить cedet.
+
+** Настройка
+
+После завершения компиляции добавляем в init.el
+следующие строки:
+
+#+BEGIN_SRC lisp
+;; Load CEDET.
+;; See cedet/common/cedet.info for configuration details.
+(load-file "~/.emacs.d/cedet/common/cedet.el")
+
+;; Enable EDE (Project Management) features
+(global-ede-mode 1)
+
+;; Enable EDE for a pre-existing C++ project
+;; (ede-cpp-root-project "NAME" :file "~/myproject/Makefile")
+
+;; Enabling Semantic (code-parsing, smart completion) features
+;; Select one of the following:
+
+;; * This enables the database and idle reparse engines
+(semantic-load-enable-minimum-features)
+
+;; * This enables some tools useful for coding, such as summary mode
+;;   imenu support, and the semantic navigator
+(semantic-load-enable-code-helpers)
+
+;; * This enables even more coding tools such as intellisense mode
+;;   decoration mode, and stickyfunc mode (plus regular code helpers)
+;; (semantic-load-enable-gaudy-code-helpers)
+
+;; * This enables the use of Exuberent ctags if you have it installed.
+;;   If you use C++ templates or boost, you should NOT enable it.
+;; (semantic-load-enable-all-exuberent-ctags-support)
+;;   Or, use one of these two types of support.
+;;   Add support for new languges only via ctags.
+;; (semantic-load-enable-primary-exuberent-ctags-support)
+;;   Add support for using ctags as a backup parser.
+;; (semantic-load-enable-secondary-exuberent-ctags-support)
+
+;; Enable SRecode (Template management) minor-mode.
+;; (global-srecode-minor-mode 1)
+
+;; from yakor_spb@emacs.conference.jabber.ru
+(semantic-load-enable-excessive-code-helpers)
+
+;; Code Folding ; http://alexott-ru.blogspot.com/2009/01/blog-post.html
+(defun my-semantic-hook ()
+  (semantic-tag-folding-mode 1))
+(add-hook 'semantic-init-hooks 'my-semantic-hook)
+#+END_SRC
+
+Теперь можно получить настоящее удовольствие при программировании!
+
+* Emacs Code Browser
+
+Добавляем в CEDET EmacsCodeBrowser, который превращает emacs в
+многоязыковую IDE.
+
+** Инсталляция
+
+
+Берем снапшот из <a href="http://ecb.sourceforge.net/cvs_snapshots/ecb.tar.gz">официального
+репозитория</a> и распаковываем в <code>~/.emacs.d/ecb</code>
+
+** Конфигурирование
+
+Добавляем в конфиграционный файл Емакса следующие строчки:
+
+#+BEGIN_SRC sh
+;; Load ECB
+(add-to-list 'load-path "~/.emacs.d/ecb")
+(require 'ecb-autoloads)
+(global-set-key (kbd "C-x p") 'ecb-activate)
+(global-set-key (kbd "C-x j") 'ecb-deactivate)
+(global-set-key (kbd "C-x ,") 'ecb-toggle-ecb-windows)
+(global-set-key (kbd "\e\eg") 'goto-line)
+(global-set-key [?\M-g] 'goto-line)
+(define-key global-map (kbd "C-<tab>") 'workspace-controller)
+(setq ecb-tip-of-the-day nil)
+(setq ecb-prescan-directories-for-emptyness nil)
+#+END_SRC
+
+После этого перезапускаем Емакс и даем команду <code>M-x ecb-byte-compile</code>,
+которая ускорит загрузку нашей среды программирования.
+
+Теперь, чтобы запустить ECB можно нажать <code>C-x p</code> А чтобы скрыть <code>C-x</code> ,
+Ну а если вы хотите вообще выключить ECB - <code>C-x j</code> При желании вы можете настроить свои
+комбинации клавиш.
+
+Продуктивной работы!
+
+* Color-theme
+
+
+Время раскрасить наш emacs! Берем архив с темами и плагином (файл
+color-theme.el.gz) тут: http://download.gna.org/color-theme/
+
+Потом распаковываем в папку <code>~/.emacs.d/</ode>
+
+В файл ~~/.emacs.d/init.el~ добавляем следующий код:
+
+#+BEGIN_SRC lisp
+  (add-to-list 'load-path "~/.emacs.d/") ; добавляем путь к файлам расширений
+  ;; http://habrahabr.ru/blogs/emacs/25854/
+  ;; http://download.gna.org/color-theme/
+  (require 'color-theme) ; подгружаем "модуль раскраски"
+  (color-theme-robin-hood) ; выбрать конкретную схему
+#+END_SRC
+
+Последнюю строчку можно заменить на любую из тем, которая вам
+понравится, их там очень много. Чтобы просмотреть некоторые из них
+выполните M-x color-theme-[TAB] и автодополнение вам поможет!
+
+Здесь нужны некоторые пояснения. В емаксе есть переменная ~load-path~,
+которая хранит список путей, где будут искаться расширения, при
+попытке их загрузить с помощью (require 'расширение) когда вы
+вызываете add-to-list вы добавляете к этому списку свой путь. После
+этого require найдет нужно расширение в файле "расширение.el" и
+выполнит его так же, как если бы оно было включено в
+init.el. Соответственно все определенные в этом расширении функции
+станут доступны.
+
+Кстати, вы всегда можете посмотрель любую переменную, выполнив C-h v
+
+* Комментирование и поиск
+
+Перед тем, как добавить следующее расширение улучшим наш Emacs еще
+двумя маленькими функциями. Первая из них позволяет удобно работать с
+комменариями - нужно просто нажать C-\ а вторая помогает искать
+текст. Испробуйте эти небольшие расширения самостоятельно (код лучше
+вставить до блока EXTENSIONS
+
+#+BEGIN_SRC lisp
+;; Comment function
+(defun comment-or-uncomment-this (&optional lines)
+  (interactive "P")
+  (if mark-active
+      (if (< (mark) (point))
+          (comment-or-uncomment-region (mark) (point))
+          (comment-or-uncomment-region (point) (mark)))
+      (comment-or-uncomment-region
+       (line-beginning-position)
+       (line-end-position lines))))
+
+(global-set-key (kbd "C-;") 'comment-or-uncomment-this)
+
+
+;; Поиск от kostafey C-f|C-r C-v
+(global-unset-key "\C-f")
+(global-set-key "\C-f" 'isearch-forward)
+(global-set-key "\C-r" 'isearch-backward)
+(add-hook 'isearch-mode-hook
+		  '(lambda ()
+			 (define-key isearch-mode-map "\C-f"
+			   'isearch-repeat-forward)
+			 (define-key isearch-mode-map "\C-r"
+			   'isearch-repeat-backward)
+			 (define-key isearch-mode-map "\C-v"
+			   'isearch-yank-kill)))
+#+END_SRC
+
+* Cua-mode
+
+Когда вы запускаете Емакс вы видите перед собой окно текущего рабочего
+буфера, которое занимает почти весь экран и так называемый
+"минибуфер", в котором можно вводить разнообразные команды. Они
+разделены строкой состояния, в которой показана информация о текущих
+режимах работы Емакс.
+
+Чтобы выйти в минибуфер и попробовать набрать так команду shell
+нажмите M-x shell. По историческим причинам М - значит Alt, то есть вы
+должны удерживая Alt нажать "x" и курсор переместиться в минибуффер,
+где вы сможете набрать shell и завершить набор нажатием Enter. После
+этого в рабочем буфере появится shell
+
+Сейчас мы приступим к конфигурированию Емакса из самого
+Емакса. Используя shell создайте каталог "~/.emacs.d" а в нем файл
+"init.el" - это основной конфигурационный файл Емакса по умолчанию:
+
+#+BEGIN_SRC sh
+  mkdir .e.d
+  cd e.d
+  touch init.el
+#+END_SRC
+
+Теперь время открыть этот файл в Емаксе. Наберите C-x C-f и введите
+путь к файлу. Автодополнение работает при нажатии клавиши TAB
+
+Начнем конфигурировать Емакс. Первое, что имеет смысл сделать
+человеку, привыкшему к стандартным комбинациям клавиш для копипастинга
+- это настроить их. Запишем в наш init.el следующее:
+
+#+BEGIN_SRC sh
+;; Установка режима CUA поддержка Ctr-c,v,x,d как в windows
+;; CUA mode: C-x, C-c, C-v for copying, pasting, C-z for undo
+(cua-mode t)
+(transient-mark-mode 1) ;; No region when it is not highlighted
+(setq cua-keep-region-after-copy t) ;; Standard Windows behaviour
+;; Настройка поведения редактора "как в Windows"
+;; настройка клавиатуры как в Windows
+;; Delete (and its variants) delete forward instead of backward.
+;; C-Backspace kills backward a word (as C-Delete normally would).
+;; M-Backspace does undo.
+;; Home and End move to beginning and end of line
+;; C-Home and C-End move to beginning and end of buffer.
+;; C-Escape does list-buffers."
+(pc-bindings-mode)
+;; Настройка выделения "как в Windows"
+(pc-selection-mode)
+(delete-selection-mode nil)
+
+;; Makes clipboard work
+(setq x-select-enable-clipboard t)
+(setq interprogram-paste-function 'x-cut-buffer-or-selection-value)
+(setq x-select-request-type '(UTF8_STRING COMPOUND_TEXT TEXT STRING))
+#+END_SRC
+
+
+Родные комбинации Емакса ничуть не менее удобны, и постепенно вы
+откажетесь от cua-mode, но на первых порах проще работать так. Теперь
+после перезагрузки Емакса видновая копипаста будет работать. Впрочем,
+даже перезагрузка не требуется - поставьте курсор в конце каждой
+строки и нажмите C-x C-e и изменения будут применены сразу же!
+
+Для тех же, кто готов вместе со мной идти до конца - расскажу о родной
+копипасте Емакса:
+
+| Копировать                                 | M-w     |
+| Вырезать                                   | C-w     |
+| Вставить                                   | C-y     |
+| Удалить от позиции курсора до конца строки | C-k     |
+| Отменить последнее действие (Undo)         | C-_     |
+| Установить снять выделение                 | C-Space |
+* Emacs-Jabber
+
+Емакс - это не только редактор. Сейчас мы добавим к нему jabber -
+систему мгновенных сообщений, которую все прогрессивное человечество
+использует вместо попсовых мессенджеров
+
+** Инсталляция
+
+Самый простой способ установить jabber - из репозиториев:
+
+#+BEGIN_SRC sh
+  sudo apt-get install emacs-jabber
+#+END_SRC
+
+Но я решил взять более свежий пакет из официального git`a и следовать
+приведенным в файле README инструкциям
+
+#+BEGIN_SRC sh
+  git clone git://emacs-jabber.git.sourceforge.net/gitroot/emacs-jabber/emacs-jabber
+  cd emacs-jabber
+  autoreconf -a
+  sudo apt-get install texinfo # если надо :)
+  make
+  sudo make install
+#+END_SRC
+
+** Настройка
+
+В результате этих манипуляций у нас будет установленный свежий
+emacs-jabber и нам останется только прописать в наш конфиг следующие
+строки:
+
+#+BEGIN_SRC lisp
+  ;; JABBER
+  (require 'jabber)
+  (setq jabber-auto-reconnect t)
+  (setq jabber-chat-buffer-format "*---%n-*")
+  (setq jabber-groupchat-buffer-format "*===%n-*")
+  (setq jabber-history-dir "~/.jabber-chatlogs")
+  (setq jabber-history-enabled t)
+  (setq jabber-history-muc-enabled t)
+  (setq jabber-history-size-limit 1024000000)
+  ;; M-x jabber-edit-bookmarks - для редактирвания закладок
+#+END_SRC
+
+Теперь после загрузки обновленного конфига достаточно нажать <code>C-x C-j
+C-c</code> и ваш jabber внутри емакса будет запущен. В списке буферов
+появится jabber-roster с понятной инструкцией по добавлению и удалению
+контактов, а для чего-то более сложного всегда есть M-x jabber-[TAB]
+
+Приятного общения! (мой jid - rigidus@jabber.ru)
+
+* Wanderlust.
+
+Теперь, когда у нас есть в Емаксе мессенджер, никто не мешает
+подключить туда же и почту. Для Емакса написано несколько хороших
+клиентов, но я пока попробовал только WanderLust. Он оказался очень
+удобным и у меня пока нет желания переходить куда-то еще. Итак, начнем
+с установки:
+
+** Установка
+
+#+BEGIN_SRC sh
+ sudo apt-get install wl
+#+END_SRC
+
+У wanderlust-a неслабых размеров конфиг, причем начинать надо с
+конфигурирования почтовых ящиков в специальном файле ~/.folder. Вот
+его содержимое (имена ящиков я заменил, чтобы спаммеры не пронюхали :):
+
+#+BEGIN_SRC lisp
+rigidus@gmail.com {
+	%inbox:rigidus@imap.gmail.com:993!         "inbox"
+}
+avenger@yandex.ru {
+    %inbox:avenger@imap.yandex.ru:993!            "inbox"
+    %alfa:avenger@imap.yandex.ru:993!             "alfa"
+    %alfa-order:avenger@imap.yandex.ru:993!       "alfa-order"
+    %ashmanov:avenger@imap.yandex.ru:993!         "ashmanov"
+    %errors:avenger@imap.yandex.ru:993!           "errors"
+    %job-list:avenger@imap.yandex.ru:993!         "job-list"
+    %lj:avenger@imap.yandex.ru:993!               "lj"
+    %self:avenger@imap.yandex.ru:993!             "self"
+    %vkontakte:avenger@imap.yandex.ru:993!        "vkontakte"
+    %work:avenger@imap.yandex.ru:993!             "work"
+}
+#+END_SRC
+
+Как видите все imap папки указываются в специальном
+формате. wanderlist так-же поддерживает и pop3, так что если у кого
+есть конфиг - welcome в комментарии. А теперь посмотрим, как
+конфигурируется все это добро в init.el
+
+** Конфигурирование
+
+#+BEGIN_SRC lisp
+;; http://www.gohome.org/wl/doc/wl_95.html#SEC95
+;; http://box.matto.nl/emacsgmail.html
+;; http://www.emacswiki.org/emacs/hgw-init-wl.el
+(autoload 'wl "wl" "Wanderlust" t)
+(autoload 'wl-other-frame "wl" "Wanderlust on new frame." t)
+(autoload 'wl-draft "wl-draft" "Write draft with Wanderlust." t)
+
+(setq mime-edit-split-message nil)
+
+(setq wl-from "rigidus ")
+(setq elmo-imap4-default-user "rigidus"
+      elmo-imap4-default-server "imap.gmail.com"
+      elmo-imap4-default-port 993
+      elmo-imap4-default-authenticate-type 'clear
+      elmo-imap4-default-stream-type 'ssl
+      elmo-imap4-use-modified-utf7 t
+
+      wl-message-id-domain "rigidus@gmail.com"
+      wl-from "rigidus "
+      wl-smtp-posting-server "smtp.gmail.com"
+      wl-smtp-connection-type 'starttls
+      wl-smtp-posting-port 587
+      wl-smtp-authenticate-type "plain"
+      wl-smtp-posting-user "rigidus"
+      wl-local-domain "gmail.com"
+
+      elmo-pop3-debug t
+      ssl-certificate-verification-policy 1
+      wl-default-folder "%inbox"
+      wl-default-spec "%"
+      wl-folder-check-async t
+      wl-thread-indent-level 4
+      wl-thread-have-younger-brother-str "+"
+      wl-thread-youngest-child-str       "+"
+      wl-thread-vertical-str             "|"
+      wl-thread-horizontal-str           "-"
+      wl-thread-space-str                " "
+      wl-summary-width	nil
+      wl-summary-line-format "%n%T%P %W %D-%M-%Y %h:%m %t%[%c %f% %] %s"
+      wl-message-buffer-prefetch-folder-type-list nil
+      mime-transfer-level 8
+      mime-edit-split-message nil
+      mime-edit-message-max-length 32768
+      mime-header-accept-quoted-encoded-words t
+      mime-browse-url-function 'browse-url-conkeror
+      pgg-passphrase-cache-expiry 300
+      pgg-decrypt-automatically t
+      wl-message-ignored-field-list '("^.*")
+      wl-message-visible-field-list '("^From:" "^To:" "^Cc:"
+         "^Date:" "^Subject:" "^User-Agent:" "^X-Mailer:")
+      wl-message-sort-field-list    wl-message-visible-field-list
+      wl-message-window-size '(1 . 3)
+      wl-folder-window-width 40
+      wl-draft-preview-attributes-buffer-lines 7
+      wl-draft-config-alist
+      '(
+        ((string-match "avenger" wl-draft-parent-folder)
+         (wl-message-id-domain . "avenger@yandex.ru")
+         (wl-from . "rigidus ")
+         ("From" . "avenger@yandex.ru")
+         ;; ("Fcc" . "%Sent:avenger@yandex.ru:993")
+         (wl-smtp-posting-server . "smtp.yandex.ru")
+         ;; (wl-smtp-connection-type . nil)
+         (wl-smtp-connection-type . 'starttls)
+         ;; (wl-smtp-connection-type . 'ssl)
+         ;; (wl-smtp-posting-port . 25)
+         ;; (wl-smtp-posting-port . 465)
+         (wl-smtp-posting-port . 587)
+         (wl-smtp-authenticate-type . "plain")
+         (wl-smtp-posting-user . "avenger")
+         (wl-local-domain . "yandex.ru")
+         )
+        ((string-match "rigidus" wl-draft-parent-folder)
+         (wl-message-id-domain . "rigidus@gmail.com")
+         (wl-from . "rigidus ")
+         ("From" . "rigidus@gmail.com")
+         ;; ("Fcc" . "%Sent:rigidus@imap.gmail.com:993")
+         (wl-smtp-posting-server . "smtp.gmail.com")
+         (wl-smtp-connection-type . 'starttls)
+         (wl-smtp-posting-port . 587)
+         (wl-smtp-authenticate-type . "plain")
+         (wl-smtp-posting-user . "rigidus")
+         (wl-local-domain . "gmail.com")
+         )
+        )
+      )
+
+(autoload 'wl-user-agent-compose "wl-draft" nil t)
+(if (boundp 'mail-user-agent)
+    (setq mail-user-agent 'wl-user-agent))
+(if (fboundp 'define-mail-user-agent)
+    (define-mail-user-agent
+      'wl-user-agent
+      'wl-user-agent-compose
+      'wl-draft-send
+      'wl-draft-kill
+      'mail-send-hook))
+#+END_SRC
+
+Как видите конфиг выглядит внушительно :) За рассшифровкой отдельных
+полей обращайтесь к документации. Если же у кого-нибудь из читателей
+есть конфиг подключения к какой-нибудь другой почте, кроме yandex-a и
+gmail-ла - пожалуйста поделитесь настройками со мной!
+
+После конфигурирования почтовый клиент можно запускать командой M-x wl
+После того, как все пароли введены используйте команду
+M-x elmo-passwd-alist-save чтобы сохранить их.
+
+Основные клавиатурные комбинации можно узнать здесь: <a
+href="http://www.gohome.org/wl/doc/wl_82.html">http://www.gohome.org/wl/doc/wl_82.html</a>
+
+* MailCrypt
+
+ Почта, это конечно хорошо, но кто же в двадцать первом веке посылает
+ сообщения открытым текстом?! Поэтому поддержка шифрования в почте вещь
+ совершенно необходимая. Вот и wanderlust можно настроить для работы с
+ gnu-gpg. Базовыя статья по установке, на которую я опирался:
+ <a href="http://box.matto.nl/wanderlustgpg.html">http://box.matto.nl/wanderlustgpg.html</a>
+
+** Инсталляция
+
+ Первым делом скачиваем библиотеку mailcrypt c <a href="http://sourceforge.net/projects/mailcrypt/files/mailcrypt/3.5.8/mailcrypt-3.5.8.tar.gz/download">http://sourceforge.net/projects/mailcrypt/files/mailcrypt/3.5.8/mailcrypt-3.5.8.tar.gz/download</a>
+
+ Распаковываем ее в рабочую директорию, делаем
+
+#+BEGIN_SRC sh
+  ./configure
+  make
+  sudo make install
+#+END_SRC
+
+ Прописываем в <code>~/.emacs.d/init.el</code>
+
+#+BEGIN_SRC lisp
+  ;; MAILCRYPT
+  ;; Commands:
+  ;;   M-x mc-encrypt.
+  ;;   M-x mc-wl-decrypt-message
+  ;; http://box.matto.nl/wanderlustgpg.html
+  (load-library "mailcrypt") ; provides "mc-setversion"
+  (mc-setversion "gpg")    ; for PGP 2.6 (default); also "5.0" and "gpg"
+
+  (autoload 'mc-install-write-mode "mailcrypt" nil t)
+  (autoload 'mc-install-read-mode "mailcrypt" nil t)
+  (add-hook 'mail-mode-hook 'mc-install-write-mode)
+
+  (require 'mailcrypt)
+  (add-hook 'wl-summary-mode-hook 'mc-install-read-mode)
+  (add-hook 'wl-mail-setup-hook 'mc-install-write-mode)
+
+  (defun mc-wl-verify-signature ()
+    (interactive)
+    (save-window-excursion
+      (wl-summary-jump-to-current-message)
+      (mc-verify)))
+
+  (defun mc-wl-decrypt-message ()
+    (interactive)
+    (save-window-excursion
+      (wl-summary-jump-to-current-message)
+      (let ((inhibit-read-only t))
+        (mc-decrypt))))
+
+  (eval-after-load "mailcrypt"
+    '(setq mc-modes-alist
+         (append
+          (quote
+           ((wl-draft-mode (encrypt . mc-encrypt-message)
+              (sign . mc-sign-message))
+            (wl-summary-mode (decrypt . mc-wl-decrypt-message)
+              (verify . mc-wl-verify-signature))))
+          mc-modes-alist)))
+#+END_SRC
+
+** Использование
+
+Теперь можно использовать команды <code>M-x mc-encrypt</code> и
+<code>M-x mc-wl-decrypt-message</code> внутри буфера сообщения, для
+шифрования и расшифровывания сообщений.
+
+И, на всякий пожарный, инструкция по использованию шифрования в gpg на
+русском: https://nordrus.org/security/gnupg_manual_linux_w_sendkey.pdf
+
+* lj-update
+
+Как нам обновлять свой ЖЖ прямо из Емакса? Первое, что
+нужно скачать - это последний снапшот LJ-UPDATE, который находится здесь:
+http://edward.oconnor.cx/ljupdate/ljupdate.tar.gz.
+
+Распакуйте его в папку ~/.emacs.d/ljupdate. Еще понадобится ряд файлов, о которых сказано в
+README. Это файлы http-cookies.el, http-get.el и http-post.el, их последние версии нужно взять
+из http://cvs.savannah.gnu.org/viewvc/http-emacs/http-emacs/ и положить в тот-же или любой
+другой каталог, который входит в load-path. После этого в init.el можно прописать следующее:
+
+#+BEGIN_SRC lisp
+;; LJ-UPDATE
+(add-to-list 'load-path "~/.emacs.d/ljupdate")
+(require 'ljupdate)
+#+END_SRC
+
+Теперь, чтобы создавать посты в ЖЖ, используйте M-x lj-compose и M-x lj-compose-submit. Также
+могут призодиться команды lj-login и lj-password. Чтобы посмотреть (а потом можно и
+отредактировать) свои последние записи используйте M-x lj-browse-entries. Удобно!
+
+* MetaJump
+
+Довольно часто, редактируя тексты я переношу куски из одного файла в
+другой, или даже делаю это внутри одного файла. И здесь мне всегда
+пригождается возможность прыгать туда и обратно, которую я тоже подсмотрел
+в <a href="http://kulchitsky.org/rus/linux/dotemacs.html#language">точках Емакс</a>.
+Вот как это реализовано (Meta в данном случае можно понимать как ESC),
+более подробно смотрите у автора.
+
+#+BEGIN_SRC lisp
+;; Итак, я предлагаю команду 'Meta-Meta-Shift-/' для того, чтобы запомнить текущую позицию
+;; и команду 'Meta-Meta-/' для того, чтобы перейти
+;; на запомненную позицию, прежде запомнив текущую.
+;;Toggle between saved positions as in MIM editor
+(defun save-point-and-switch ()
+  "Save current point to register 0 and go
+to the previously saved position"
+ (interactive)
+ (let (temp)
+   (setq temp (point-marker))
+   (when (not (equal (get-register 0) nil))
+     (jump-to-register 0))
+   (set-register 0 temp)))
+
+;;Save current position to register 0
+(defun save-point-only ()
+ "Save current point to register 0"
+ (interactive)
+ (set-register 0 (point-marker)))
+
+(global-set-key (kbd "\e\e/") 'save-point-and-switch)
+(global-set-key (kbd "\e\e?") 'save-point-only)
+#+END_SRC
+
+* Мои мinor-режимы
+
+Теперь мы поставим еще парочку расширений. Ставятся они тривиально, поэтому привожу только
+код. highlight-parentheses раскрашивает скобки в разные цвета для удобного ориенитрования в
+elist и lisp коде, а closure-template-html-mode - это специальный режим для редактирование
+html-шаблонов. iswitchb дополняет ido-mode, о чем подробно можно прочесть в emacswiki (ссылка
+приведена в комментариях)
+
+** Настройка
+
+#+BEGIN_SRC lisp
+HIGHLIHT-PARENTHESES
+;; http://nschum.de/src/emacs/highlight-parentheses/highlight-parentheses.el
+(require 'highlight-parentheses)
+;; (add-hook 'lisp-mode-hook (highlight-parentheses-mode))
+(define-globalized-minor-mode global-highlight-parentheses-mode
+	highlight-parentheses-mode highlight-parentheses-mode)
+(setq hl-paren-colors
+'("#FF0000" "#FFBF00" "#1FFF00" "#009EFF" "#2100FF" "gray10" "gray70" "gray90"))
+(global-highlight-parentheses-mode)
+
+
+;; CLOSURE-TEMPLATE-HTML-MODE
+;; http://github.com/archimag/cl-closure-template/raw/master/closure-template-html-mode.el
+(require 'closure-template-html-mode)
+
+
+;; ISWITCHB http://www.emacswiki.org/emacs/IswitchBuffers
+(require 'iswitchb)
+(defun iswitchb-local-keys ()
+  (mapc (lambda (K)
+	      (let* ((key (car K)) (fun (cdr K)))
+            (define-key iswitchb-mode-map (edmacro-parse-keys key) fun)))
+	    '(("<right>" . iswitchb-next-match)
+	      ("<left>"  . iswitchb-prev-match)
+	      ("<up>"    . ignore             )
+	      ("<down>"  . ignore             ))))
+(add-hook 'iswitchb-define-mode-map-hook 'iswitchb-local-keys)
+;; http://www.emacswiki.org/emacs/IswitchBuffers
+(defadvice iswitchb-kill-buffer (after rescan-after-kill activate)
+  "*Regenerate the list of matching buffer names after a kill.
+    Necessary if using `uniquify' with `uniquify-after-kill-buffer-p'
+    set to non-nil."
+  (setq iswitchb-buflist iswitchb-matches)
+  (iswitchb-rescan))
+;; http://www.emacswiki.org/emacs/IswitchBuffers
+(defun iswitchb-rescan ()
+  "*Regenerate the list of matching buffer names."
+  (interactive)
+  (iswitchb-make-buflist iswitchb-default)
+  (setq iswitchb-rescan t))
+#+END_SRC
+* Русификация Емакса
+
+Емакс имеет встроенную и независящую от операционной системы
+переключалку режимов ввода, и если ее правильно сконфигурировать - вы,
+с вашим Емаксом, принесенным на флешке, сможете работать даже там, где
+отсутствует поддержка национальных алфавитов.
+
+Раскладку клавиатуры мы будем переключать по нажатию C-\, что
+используется и по умолчанию и очень удобно на ноутбучных клавиатурах
+hp, ну а если вам это не нравится - просто поменяйте клавишу на
+удобную для вас. Привожу кусок конфига:
+
+#+BEGIN_SRC elisp
+;; http://kulchitsky.org/rus/linux/dotemacs.html
+;; Установка раскладки как в виндовс при переключении по С-\
+(global-set-key (kbd "\C-\\") 'user-toggle-input-method)
+;(global-set-key (kbd "\e(") 'user-to-cyr) ; Alt+Shift+9
+;(global-set-key (kbd "\e)") 'user-to-nil) ; Alt+Shift+0
+
+(defun user-cyrillic-redefinitions ()
+  "Set of global keys binding for cyrillic.
+   This function is to be called from user-toggle-input-method"
+  (global-set-key (kbd "?") (lambda()(interactive)(insert ",")))
+  (global-set-key (kbd "/") (lambda()(interactive)(insert ".")))
+  (global-set-key (kbd ",") (lambda()(interactive)(insert ":")))
+  (global-set-key (kbd ":") (lambda()(interactive)(insert "%")))
+  (global-set-key (kbd "*") (lambda()(interactive)(insert ";")))
+  (global-set-key (kbd ";") (lambda()(interactive)(insert "*")))
+  (global-set-key (kbd ".") (lambda()(interactive)(insert "?"))))
+
+(defun user-nil-redefinitions ()
+ "Restoring global keys binding after user-cyrillic-redefinitions.
+  This function is to be called from user-toggle-input-method"
+  (global-set-key (kbd "?") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "/") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "$") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ",") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ":") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd "*") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ";") (lambda()(interactive)(self-insert-command 1)))
+  (global-set-key (kbd ".") (lambda()(interactive)(self-insert-command 1))))
+
+(defun user-toggle-input-method ()
+  "Change the stadart function tuggle-input-method
+   to redefine keys for cyrillic input from UNIX type to win type"
+  (interactive)
+  (toggle-input-method)
+  (if (string= current-input-method "cyrillic-jcuken")
+      (user-cyrillic-redefinitions)
+    (user-nil-redefinitions))
+  (message "keybord changed to %s" current-input-method))
+
+(defun user-to-cyr ()
+  "Change input method to Cyrillic,
+   I bound this function with Alt-Shift-9, that is M-("
+  (interactive)
+  (when (string= current-input-method nil)
+      (user-toggle-input-method)))
+
+(defun user-to-nil ()
+  "Change input method to nil (generally to English),
+   I bound this function with Alt-Sfift-0 that is M-)"
+  (interactive)
+  (when (string= current-input-method "cyrillic-jcuken")
+      (user-toggle-input-method)))
+#+END_SRC
+
+* Полезные мелочи
+
+Сейчас мы продолжим конфигурирование нашего Емакса, чтобы сделать его
+максимально удобным для жизни. Так например, при выполнении команды
+ls в shell Емакс не преобразовывает escape-последовательности в
+правильные цвета, на что жалуются новички. Не проблема - сейчас мы это
+поправим! Добавляем в наш ~/.emacs.d/init.el :
+
+;; для корректного выведения escape-последовательностей shell`a
+
+#+BEGIN_SRC lisp
+  (add-hook 'shell-mode-hook 'ansi-color-for-comint-mode-on)
+#+END_SRC
+
+Еще одна головная боль - автоопределение кодировок. Иногда не
+срабатывает на коротких текстах :) Поэтому важно расставить
+приоритеты:
+
+#+BEGIN_SRC lisp
+  ;; Установки автоопределения кодировок. Первой будет определяться utf-8-unix
+  (prefer-coding-system 'cp866)
+  (prefer-coding-system 'koi8-r-unix)
+  (prefer-coding-system 'windows-1251-dos)
+  (prefer-coding-system 'utf-8-unix)
+#+END_SRC
+
+Теперь сделаем режим по умолчанию более удобным для использования. Я
+хочу, чтобы в нем набираемая строка автоматически переносилась по
+словам когда ее размер приближается к 80 символам:
+
+#+BEGIN_SRC lisp
+  ;; Режим по умолчанию c переносом строк по ширине 80
+  (setq default-major-mode 'text-mode)
+  (add-hook 'text-mode-hook 'turn-on-auto-fill)
+  (setq auto-fill-mode t)
+  (setq fill-column 80)
+#+END_SRC
+
+Важная задача - сохранение файлов. По умолчанию все текстовые
+редакторы стараются создавать бэкап-файлы в каталоге, где лежит
+редактируемый файл и из-за этого бэкап-файлы часто попадают в
+репозиторий, что само по себе неаккуратно. Настроим себе более умный
+бэкап:
+
+#+BEGIN_SRC lisp
+  ;; Удаляем оконечные пробелы перед сохранением файлов
+  (add-hook 'before-save-hook '(lambda ()
+  (delete-trailing-whitespace)))
+  ;; Создание резервных копий редактируемых файлов (Backup)
+  ;; нумерованный бэкап - 2 первых и 2 последних
+  (setq  backup-by-copying t      ; don't clobber symlinks
+         backup-directory-alist  '(("." . "~/backup"))    ; don't litter my fs tree
+         delete-old-versions t            ;; удаление промежуточных бэкапов
+         kept-new-versions 6
+         kept-old-versions 2
+         version-control t)       ; use versioned backups
+#+END_SRC
+
+И наконец, слегда адаптируем под свои нужны интерфейс - следите за
+комментариями:
+
+#+BEGIN_SRC lisp
+  ;; Интерфейс
+  (setq transient-mark-mode '1)           ;; Show marked text
+  (setq font-lock-maximum-decoration t)   ;;
+  (set-scroll-bar-mode 'right)            ;; Полоса прокрутки справа
+  (setq inhibit-startup-message t)        ;; Не показываем сообщение при старте
+  (fset 'yes-or-no-p 'y-or-n-p)       ;; не заставляйте меня печать "yes" целиком
+  (setq default-tab-width 4)              ;; размер табуляции
+  (setq-default indent-tabs-mode nil)     ;; отступ только пробелами
+  (setq initial-scratch-message nil)      ;; Scratch buffer settings. Очищаем его.
+  (setq scroll-conservatively 50)         ;; гладкий скроллинг с полями
+  (setq scroll-preserve-screen-position 't)
+  (setq scroll-margin 10)
+  (setq column-number-mode t)             ;; show column & line numbers in status bar
+  (setq line-number-mode t)
+  (setq my-author-name (getenv "USER"))
+  (setq user-full-name (getenv "USER"))
+  (recentf-mode 1)                        ;; Recent files in menu
+  ;; мышка...
+  (global-set-key [vertical-scroll-bar down-mouse-1] 'scroll-bar-drag)
+                                      ;; Scroll Bar gets dragged by mouse butn 1
+  (setq mouse-yank-at-point 't)       ;; Paste at point NOT at cursor
+  (mouse-wheel-mode 1)            ;; колесо мышки
+#+END_SRC
+
+* uniquify
+
+Я выбрал uniquify - маленькую библитечку, распространяемую вместе с
+Емаксом (то есть качать ничего не надо), которая улучшает способ
+работы Емакса с буферами, которые отображают файлы с одинаковыми
+именами. Более подробную информацию о ней можно посмотреть на
+emacswiki.org: http://emacswiki.org/emacs/uniquify
+
+По умолчанию, Емакс отображает (в списке буферов) такие буферы как
+filename, filename<2>, filename<3> и так далее. А uniquify отображает
+в имени буфера кусок различающегося пути: filename/folger1,
+filename/folger2 etc, что несомненно удобнее.
+
+Итак чтобы подключить uniquify вы должны вставить в свой
+~/.emacs.d/init.el следующий код:
+
+#+BEGIN_SRC lisp
+;; http://emacswiki.org/emacs/uniquify
+(require 'uniquify)
+;; (setq uniquify-buffer-name-style t)
+(setq uniquify-buffer-name-style 'reverse)
+(setq uniquify-separator "/")
+(setq uniquify-after-kill-buffer-p t)
+(setq uniquify-ignore-buffers-re "^\\*")
+(setq post-forward-angle-brackets 'post-forward-angle-brackets)
+#+END_SRC
