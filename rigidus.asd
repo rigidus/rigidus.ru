@@ -1,4 +1,4 @@
-;; [[file:doc.org::*Каркас проекта][defsystem]]
+;; [[file:doc.org::*Файл определения системы][defsystem]]
 ;;;; Copyright © 2014-2017 Glukhov Mikhail. All rights reserved.
 ;;;; Licensed under the GNU AGPLv3
 (asdf:defsystem #:rigidus
@@ -22,19 +22,22 @@
                  #:split-sequence
                  #:postmodern
                  #:restas
+                 #:optima
                  #:fare-quasiquote-extras
                  #:fare-quasiquote-optima)
   :serial       t
-  :components   ((:static-file "templates.htm")
-                 (:file "prepare")
-                 (:file "defmodule")
-                 (:file "html")
-                 (:file "ext-html")
-                 (:file "orgmode")
-                 (:file "sape")
-                 (:file "routes")
-                 (:file "init")
-                 (:static-file "daemon.conf")
-                 (:static-file "daemon.lisp")
-                 (:static-file "daemon.sh")))
+  :components   ((:module "src"
+                          :serial t
+                          :pathname "src"
+                          :components ((:static-file "templates.htm")
+                                       (:file "prepare")
+                                       (:file "defmodule")
+                                       (:file "html")
+                                       (:file "ext-html")
+                                       (:file "orgmode")
+                                       (:file "routes")
+                                       (:file "init")
+                                       (:static-file "daemon.conf")
+                                       (:static-file "daemon.lisp")
+                                       (:static-file "daemon.sh")))))
 ;; defsystem ends here

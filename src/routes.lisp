@@ -1,78 +1,47 @@
-;; [[file:doc.org::*Публикация и Routing][routes]]
+;; [[file:doc.org::*Маршрутизация][routes]]
 (in-package #:rigidus)
-
-(in-package #:rigidus)
-
-(defmacro def/route/2th_level ()
-  `(progn
-     ,@(mapcar
-        #'(lambda (key)
-            (let ((key (car key)))
-              `(def/route ,(intern (string-upcase key)) (,key)
-                 (base-page *head-title* "Rigidus homepage" *menu*
-                            (alexandria:read-file-into-string
-                             ,(concatenate 'string
-                                           (directory-namestring
-                                            (translate-logical-pathname "org:publish;"))
-                                           key
-                                           ".html"))))))
-        *menu*)))
-
-(def/route/2th_level)
-
-;; (print
-;;  (macroexpand-1
-;;   '(def/route/2th_level)))
-
-;; =>
-;; (PROGN
-;;   (DEF/ROUTE ABOUT
-;;       ("about")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/about.html")))
-;;   (DEF/ROUTE ARTICLES
-;;       ("articles")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/articles.html")))
-;;   (DEF/ROUTE BLOGS
-;;       ("blogs")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/blogs.html")))
-;;   (DEF/ROUTE ALIENS
-;;       ("aliens")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/aliens.html")))
-;;   (DEF/ROUTE RESOURCES
-;;       ("resources")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/resources.html")))
-;;   (DEF/ROUTE CONTACTS
-;;       ("contacts")
-;;     (BASE-PAGE *HEAD-TITLE* "Rigidus homepage" *MENU*
-;;                (READ-FILE-INTO-STRING
-;;                 "/home/rigidus/repo/rigidus.ru/public_html/contacts.html"))))
-
-
 
 (in-package :rigidus)
 
-(restas:define-route main ("/")
-  (alexandria:read-file-into-string (format nil "~A/index.html" *www-path*)))
+(restas:define-route index ("/")
+  (ennobler (translate-logical-pathname "org:publish;index")))
+
+(restas:define-route index.html ("/index.html")
+  (ennobler (translate-logical-pathname "org:publish;index")))
+
+(defmacro def/route (name param &body body)
+  `(progn
+     (restas:define-route ,name ,param
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) "/"))
+         ,(cons (concatenate 'string (car param) "/") (cdr param))
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) ".html"))
+         ,(cons (concatenate 'string (car param) ".html") (cdr param))
+       ,@body)))
+
+(def/route about ("about")
+  (ennobler (translate-logical-pathname "org:publish;about")))
+
+(restas:mount-module -doc- (#:restas.directory-publisher)
+  (:url "/doc")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/doc"))
+                    (user-homedir-pathname))))
+
+(restas:mount-module -prj- (#:restas.directory-publisher)
+  (:url "/prj")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/prj"))
+                    (user-homedir-pathname))))
 (in-package #:rigidus)
 
 (defparameter *log-404* nil)
 
 (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
-  (let* ((title "404 Not Found"))
-    (base-page *head-title*
-               title
-               *menu*
-               "Page not found")))
+  "404 Not Found")
 
 (restas:define-route not-found-route ("*any")
   (push any *log-404*)
@@ -84,4 +53,22 @@
 
 (restas:define-route robots ("/robots.txt")
   (format nil "User-agent: *~%Disallow: "))
+
+(restas:mount-module -css- (#:restas.directory-publisher)
+  (:url "/css/")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "css"))
+                    *base-dir*)))
+
+(restas:mount-module -img- (#:restas.directory-publisher)
+  (:url "/img/")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "img"))
+                    *base-dir*)))
+
+(restas:mount-module -js- (#:restas.directory-publisher)
+  (:url "/js/")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "js"))
+                    *base-dir*)))
 ;; routes ends here
