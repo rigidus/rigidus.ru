@@ -36,6 +36,12 @@
   (restas.directory-publisher:*directory*
    (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/prj"))
                     (user-homedir-pathname))))
+
+(restas:mount-module -lrn/asm- (#:restas.directory-publisher)
+  (:url "/lrn/asm")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/lrn/asm"))
+                    (user-homedir-pathname))))
 (in-package #:rigidus)
 
 (defparameter *log-404* nil)
