@@ -43,6 +43,12 @@
    (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
                     *base-dir*)))
 
+(restas:mount-module -lrn/java- (#:restas.directory-publisher)
+  (:url "/lrn/java")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
+                    *base-dir*)))
+
 (restas:mount-module -resources- (#:restas.directory-publisher)
   (:url "/resources")
   (restas.directory-publisher:*directory*
