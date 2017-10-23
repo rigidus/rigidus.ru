@@ -28,20 +28,26 @@
 (restas:mount-module -doc- (#:restas.directory-publisher)
   (:url "/doc")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/doc"))
-                    (user-homedir-pathname))))
+   (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
+                    *base-dir*)))
 
 (restas:mount-module -prj- (#:restas.directory-publisher)
   (:url "/prj")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/prj"))
-                    (user-homedir-pathname))))
+   (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
+                    *base-dir*)))
 
 (restas:mount-module -lrn/asm- (#:restas.directory-publisher)
   (:url "/lrn/asm")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "repo/rigidus.ru/www/lrn/asm"))
-                    (user-homedir-pathname))))
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
+                    *base-dir*)))
+
+(restas:mount-module -resources- (#:restas.directory-publisher)
+  (:url "/resources")
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "resources"))
+                    *base-dir*)))
 (in-package #:rigidus)
 
 (defparameter *log-404* nil)
