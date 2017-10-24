@@ -205,7 +205,7 @@ http://rigidus.ru.
 
 * Как это работает
 
-Мне нравится работать в =emacs= и использовать =orgmode= для
+Мне нравится работать в =emacs= и использовать ~orgmode~ для
 формирования структурированных документов,
 
 Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_Publishing][систему публикации]], которая хорошо
@@ -272,7 +272,6 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
                             :serial t
                             :pathname "src"
                             :components ((:static-file "templates.htm")
-                                         (:file "prepare")
                                          (:file "defmodule")
                                          (:file "html")
                                          (:file "ext-html")
@@ -362,22 +361,6 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   Licensed under the GNU AGPLv3
 #+END_SRC
 
-** Подготовка к старту
-
-Подготовка включает в себя загрузку всех необходимых библиотек,
-компиляцию шаблонов, и, возможно, инициализацию окружения. Но так как
-на этом проекте для простоты я отказался от шаблонизации, а библиотеки
-загружаются с использованием файла определения системы, то подготовка
-к старту содержит в себе лишь закомментированную строчку компиляции
-шаблонов. Возможно в будущем она понадобится.
-
-#+NAME: prepare
-#+BEGIN_SRC lisp :tangle src/prepare.lisp :noweb tangle :exports code :exports none :padline no :comments link
-  ;;;; <<copyright>>
-
-  ;; (closure-template:compile-template :common-lisp-backend #P"templates.htm")
-#+END_SRC
-
 ** Определение модуля
 
 Файл определения модуля экспортируется в каталог src. Во время
@@ -407,6 +390,13 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
 
   ;; Механизм трансляции путей
   <<pathname-translations>>
+
+  (closure-template:compile-template
+   :common-lisp-backend (merge-pathnames
+                         (make-pathname :name "templates" :type "htm")
+                         (merge-pathnames
+                          (make-pathname :directory '(:relative "src"))
+                          ,*base-dir*)))
 
   ;; Механизм преобразования страниц
   <<enobler>>
@@ -466,13 +456,9 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
 
 * Преобразование через дерево
 
-Здесь был механизм, который разбирал файлы, строил из них дерево
-s-выражений и осуществлял его трансформацию. Однако покопавшись в
-документации экспорта из org-mode, я смог настроить все, чтоб было мне
-необходимо прямо в конфигурации экспорта.
-
-В любом случае, это может понадобиться в будущем, поэтому пока я
-просто закомменировал этот код.
+Здесь механизм, который разбирает файлы, строит из них дерево s-выражений и
+осуществляет его трансформацию. В данный момент трансформация заключается просто в
+присоединении шаблона, содержащего трекеры статистики.
 
 #+NAME: enobler
 #+BEGIN_SRC lisp
@@ -528,8 +514,8 @@ s-выражений и осуществлял его трансформацию
 
   (defun ennobler (pathname &optional dbg)
     (let* ((file-contents (alexandria:read-file-into-string pathname))
-           ;; (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
-           ;; (tree (html-to-tree onestring))
+           (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
+           (tree (html-to-tree onestring))
            ;; (inject-css '("link" (("href" "/css/style.css") ("rel" "stylesheet") ("type" "text/css"))))
            ;; (replace-css #'(lambda (in)
            ;;                  (optima:match in
@@ -540,15 +526,12 @@ s-выражений и осуществлял его трансформацию
            ;;                  (optima:match in
            ;;                    (`("script" (("type" "text/javascript")) ,_) inject-js))))
            ;; (remove-js (maptree-transform replace-js remove-css))
-           )
-      ;; (if dbg
-      ;;     remove-js
-      ;;     (format nil "<!DOCTYPE html>~%~A"
-      ;;             (tree-to-html remove-js)))
-      file-contents))
-
-  ;; (print
-  ;;  (ennobler (translate-logical-pathname "org:publish;about") 1))
+           (result tree))
+      (if dbg
+          result
+          (format nil "<!DOCTYPE html>~%~A~%~A"
+                  (tree-to-html result)
+                  (tpl:stat)))))
 #+END_SRC
 
 * Маршрутизация
@@ -673,524 +656,91 @@ s-выражений и осуществлял его трансформацию
     (format nil "User-agent: *~%Disallow: "))
 #+END_SRC
 
-* COMMENT Шаблонизатор
-
-Шаблонизация показана как пример, в данный момент она не используется
-в проекте
-
-** Корневой шаблон
-
-Корневой шаблон - это кусок html-кода, который на всех страницах
-одинаковый.
-
-#+NAME: tpl_root
-#+BEGIN_SRC html
-  <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">{\n}
-  <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">{\n}
-      <head>{\n}
-          <title>{$headtitle}</title>{\n}
-          <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />{\n}
-          <link rel="Shortcut Icon" type="image/x-icon" href="/img/favicon.ico" />{\n}
-
-          <link rel="stylesheet" type="text/css" href="/css/style.css"/>
-          <link rel="stylesheet" type="text/css" href="/css/htmlize.css"/>
-          <link rel="stylesheet" type="text/css" href="/css/readtheorg.css"/>
-          <link rel="stylesheet" type="text/css" href="/css/inline.css"/>
-
-          <script src="/js/jquery-2.1.3.min.js"></script>
-          <script src="/js/bootstrap-3.3.4.min.js"></script>
-
-          <script type="text/javascript" src="/js/jquery.stickytableheaders.min.js"></script>
-          <script type="text/javascript" src="/js/readtheorg.js"></script>
-          <script type="text/javascript" src="/js/inline.js"></script>
-      </head>{\n}
-      <body id="top">{\n}
-
-          <div id="header">{\n}
-              <div id="avatar">{\n}
-                  <a id="logo" href="/">{\n}
-                      <img src="http://www.gravatar.com/avatar/d8a986606b9d5e4769ba062779e95d9f?s=45"{\n}
-                           style="border: 1px solid #7F7F7F"/>{\n}
-                  </a>{\n}
-              </div>{\n}
-              <div id="afor">{\n}
-                  <h1>{$title}</h1>{\n}
-              </div>{\n}
-          </div>{\n}
-
-          <div id="navigation">{\n}
-              <ul>{\n}
-                  {foreach $elt in $navpoints}{\n}
-                  {call navelt data="$elt" /}{\n}
-                  {/foreach}{\n}
-              </ul>{\n}
-          </div>{\n}
-
-          <div id="container">{\n}
-              {$columns | noAutoescape}{\n}
-          </div>{\n}
-
-          <div id="footer-container">{\n}
-              <div id="footer">{\n}
-                  <p>{\n}
-                      {$stat |noAutoescape}{\n}
-                  </p>{\n}
-                  <p id="back-top"><a href="#">Back to top</a></p>{\n}
-              </div>{\n}
-          </div>{\n}
-
-      </body>{\n}
-  </html>{\n}
-#+END_SRC
-
-** Шаблон главной страницы
-
-#+NAME: tpl_main
-#+BEGIN_SRC html
-  <main>
-      <div id="blogcontent">
-          <<tpl_blog>>
-      </div>
-
-      <fragment>
-          <section>
-              <h3>About me</h3>
-              <p>
-                  Меня зовут Михаил Rigidus Глухов, я программист и системный
-                  архитектор. На этом сайте я собираю материалы по интересующим
-                  меня темам.
-              </p>
-              <p>
-                  Мне интересна теория языков программирования, алгоритмика,
-                  робототехника и все что связано с интернетом вещей.
-              </p>
-              <p>
-                  <a href="#" class="bio">&laquo; Биография</a>
-                  <a href="#" class="contacts">Контакты &raquo;</a>
-              </p>
-          </section>
-          <!-- img align="center" src="/img/john-mccarthy.jpg" / -->
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Автоматический поиск работы</h3>
-              <p>
-                  Все программисты
-                  ищут (или искали) работу на профильных сайтах и каждый из них
-                  хоть раз задумывался об автоматизации рутинных операций.
-              </p>
-              <p>
-                  Я решил
-                  пойти дальше и разработал экспертную систему с элементами
-                  искусственного интеллекта, которая ищет работу за меня в полностью
-                  автоматическом режиме - от подбора вакансий до автоматической
-                  адаптации резюме.
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Система автоматизации тестирования</h3>
-              <p>
-                  Однажды мне захотелось тестировать не только web но и
-                  gui-приложения и я решил написать маленький скрипт,
-                  способный действовать от имени пользователя, как если бы
-                  он сам манипулировал мышью и клавиатурой, считывая
-                  картинку на экране.
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Моделирование электронных схем</h3>
-              <p>
-                  Распространение сигнала внутри схемы дает возможность
-                  иначе взглянуть на процесс программирования и отладки и
-                  применить очень необычные и мощные идеи.
-              </p>
-              <p>
-                  Я написал язык предметной области (DSL) для построения
-                  схем и виртуальную машину в которой он исполняется, чтобы
-                  получать результаты распространения сигнала в моделируемой
-                  схеме.
-              </p>
-              <p>
-                  Однако этого оказалось недостаточно для обеспечения
-                  наглядности, поэтому я изучил Tcl/Tk и запрограммировал
-                  визуализатор распространения сигнала, чтобы прямо на
-                  экране видеть, как высокие и низкие уровни двигаются от
-                  одного элемента к другому.
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Умный гараж с нуля</h3>
-              <p>
-                  Не первый опыт в автоматике и робототехнике, но пожалуй
-                  первый настолько масштабный проект.
-              </p>
-              <p>
-                  Ядром системы является платформа BeagleBoneBlack, остальная
-                  часть большей частью самодельная, с помощью ЛУТ и гремучей смеси
-                  современных микроконтроллеров и старых советских комплектующих,
-                  найденных непонятно где.
-              </p>
-              <p>
-                  Содержит систему автономного питания, вентиляции, освещения
-                  электронный замок и видеоконтроль периметра с элементами
-                  машинного зрения. Планируется добавить систему сопротивления
-                  вторжению в виде пейнтбольного маркера с наведением на движуюся
-                  цель.
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section id="books">
-              <h3>Структура и интерпретация компьютерных программ (SICP)</h3>
-              <p>
-                  Материал этой книги был основой вводного курса по информатике в MIT начиная с
-                  1980 года. К тому времени, как было выпущено первое издание, этот материал
-                  преподавался в течение четырех лет, и прошло еще двенадцать лет до появления второго
-                  издания.
-              </p>
-              <p>
-                  <a href="http://rigidus.ru/resources/sicp.pdf">Структура и интерпретация
-                      компьютерных программ. Абельсон, Сассман (перевод: Ю. Бронников)</a>
-              </p>
-              <p>
-                  <a href="#" class="more">Впечатления &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Типы в языках программирования (TAPL)</h3>
-              <p>
-                  Книга о теории типов. Рассматриваются вопросы
-                  проверки и автоматического вывода типов в языках
-                  программирования со статической типизацией. Для каждой темы
-                  сначала дается теория, а затем приводится реализация на OCaml.
-              </p>
-              <p>
-                  TAPL — это, бесспорно, настоящий кладезь знаний для
-                  разработчиков языков программирования со статической
-                  типизацией.
-              </p>
-              <p>
-                  <a href="http://rigidus.ru/resources/tapl.pdf">Типы в языках программирования. Бенджамин Пирс</a>
-              </p>
-              <p>
-                  <a href="#" class="more"></a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section id="lecture">
-              <h3>Литературное программирование</h3>
-              <p>
-                  Слайды с лекции "Грамотное  программирование" (literate programming),
-                  которую я читал 22 января 2015 доступны
-                  здесь: <a href="http://slides.com/rigidusrigidus/deck#/">http://slides.com/rigidusrigidus/deck/</a>
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Макросы в Lisp</h3>
-              <p>
-                  Видео, с доклада на ноябрьском FProg Meetup "Макросы в лиспе" опубликовано на youtube:
-                  <a href="https://www.youtube.com/watch?v=i1lD2J7qLLM">https://www.youtube.com/watch?v=i1lD2J7qLLM</a>
-              </p>
-              <p>
-                  <a href="#" class="more">Подробнее &raquo;</a>
-              </p>
-          </section>
-      </fragment>
-
-      <fragment>
-          <section>
-              <h3>Как проектируются IP-блоки и системы на кристалле</h3>
-              <p>
-                  Юрий Панчул прочитал эту лекцию в Алма-Ате и я подготовил
-                  небольшой конспект. Осталось немного довести его до ума
-                  и я выложу его на сайт, а пока доступно
-                  <a href="https://www.youtube.com/watch?v=sPaMiEunT_M">видео</a>,
-                  <a href="http://www.silicon-russia.com/public_materials/2016_09_01_kazakhstan/day_1_industry/03_slides/03_extra_eda_flow_2015_10_25.pdf">слайды</a> и его
-                  <a href="https://habrahabr.ru/post/309570/">отчетный пост</a>
-                  на хабре.
-              </p>
-          </section>
-      </fragment>
-
-  </main>
-#+END_SRC
-
-#+BEGIN_SRC lisp
-  (defparameter *t*
-    "
-    <fragment>
-        <section>
-            <h3>Как проектируются IP-блоки и системы на кристалле</h3>
-            <p>
-                Юрий Панчул прочитал эту лекцию в Алма-Ате и я подготовил
-                небольшой конспект. Осталось немного довести его до ума
-                и я выложу его на сайт, а пока доступно
-                <a href=\"https://www.youtube.com/watch?v=sPaMiEunT_M\">видео</a>,
-                <a href=\"http://www.silicon-russia.com/public_materials/2016_09_01_kazakhstan/day_1_industry/03_slides/03_extra_eda_flow_2015_10_25.pdf\">слайды</a> и его
-                <a href=\"https://habrahabr.ru/post/309570/\">отчетный пост</a>
-                на хабре.
-            </p>
-        </section>
-    </fragment>
-  ")
-
-  (print (html5-parser:parse-html5-fragment *t* :dom :xmls))
-
-  (defparameter *t*
-    '(("fragment" (("b" "1") ("c" "2"))
-       ("section" ()
-        ("h3" () "Как проектируюттся IP-блоки и системы на кристалле")
-        ("p"  () "Юрий Панчул прочитал эту лекцию в Алма-Ате, а пока доступно"
-                 ("a" (("href" "https://www.youtube.com/watch?v=sPaMiEunT_M"))
-                      "видео")
-                 ", а также его"
-                 ("a" (("href" "https://habrahabr.ru/post/309570/"))
-                      "отчетный пост")
-                 "на хабре.")))))
-
-  (defmacro indent ()
-    `(make-string (* 3 step) :initial-element #\Space))
-
-  (defun assembly (tree &optional (step 0))
-    (cond ((stringp tree) (format nil "~A~A~%" (indent) tree))
-          ((listp   tree) (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
-                                  (indent)
-                                  (car tree)
-                                  (format nil "~:[~; ~1:*~{~A~^ ~}~]"
-                                          (mapcar #'(lambda (attr)
-                                                      (let ((key (car attr))
-                                                            (val (cadr attr)))
-                                                        (format nil "~A=\"~A\"" key val)))
-                                                  (cadr tree)))
-                                  (format nil "~{~A~}"
-                                          (progn
-                                            (incf step)
-                                            (let ((ret (mapcar #'(lambda (x)
-                                                                   (assembly x step))
-                                                               (cddr tree))))
-                                              (decf step)
-                                              ret)))))
-          (t              "[:err:]")))
-
-  ;; (print
-  ;;  (format nil "~{~A~}"
-  ;;          (mapcar #'assembly
-  ;;                  *t*)))
-
-  ;; =>
-  ;; "
-  ;; <fragment b=\"1\" c=\"2\">
-  ;;    <section>
-  ;;       <h3>
-  ;;          Как проектируюттся IP-блоки и системы на кристалле
-  ;;       </h3>
-  ;;       <p>
-  ;;          Юрий Панчул прочитал эту лекцию в Алма-Ате, а пока доступно
-  ;;          <a href=\"https://www.youtube.com/watch?v=sPaMiEunT_M\">
-  ;;             видео
-  ;;          </a>
-  ;;          , а также его
-  ;;          <a href=\"https://habrahabr.ru/post/309570/\">
-  ;;             отчетный пост
-  ;;          </a>
-  ;;          на хабре.
-  ;;       </p>
-  ;;    </section>
-  ;; </fragment>
-  ;; "
-#+END_SRC
-
-А вот маршрут, который все это использует
-
-#+NAME: route_main
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  <<main_page_route>>
-
-  ;; (restas:define-route main ("/")
-  ;;   (base-page "Программирование - как искусство")
-  ;;   ;; (flet ((title-maker (x)
-  ;;   ;;          (list :date ""
-  ;;   ;;                :content
-  ;;   ;;                (cl-ppcre:regex-replace
-  ;;   ;;                 "<h1 class=\"title\">(.+)</h1>" x
-  ;;   ;;                 #'(lambda (match &rest registers)
-  ;;   ;;                     (declare (ignore match))
-  ;;   ;;                     (format nil "<h2>~A</h2>" (car registers)))
-  ;;   ;;                 :simple-calls t))))
-  ;;   ;;   (let* ((lines (iter (for line in-file "afor.txt" using #'read-line) (collect line)))
-  ;;   ;;          (line  (nth (random (length lines)) lines))
-  ;;   ;;          (blogs-directory "/home/rigidus/repo/rigidus.ru/public_html/blogs/")
-  ;;   ;;          (blogs-content   (mapcar #'alexandria:read-file-into-string
-  ;;   ;;                                   (get-directory-contents blogs-directory )))
-  ;;   ;;          (posts (mapcar #'title-maker blogs-content)))
-  ;;   ;;     (tpl:root (list :headtitle "Программирование - как искусство"
-  ;;   ;;                     :stat (tpl:stat)
-  ;;   ;;                     :navpoints (menu)
-  ;;   ;;                     :title line
-  ;;   ;;                     :columns
-  ;;   ;;                     ;; (let* ((filename (format nil "/home/rigidus/repo/rigidus.ru/public_html/main.html")))
-  ;;   ;;                     ;;   (tpl:orgfile
-  ;;   ;;                     ;;    (list :title ""
-  ;;   ;;                     ;;          :content (alexandria:read-file-into-string filename))))
-  ;;   ;;                     (tpl:main
-  ;;   ;;                      (list
-  ;;   ;;                       :articles (tpl:mainposts (list :posts posts))))
-  ;;   ;;                     ))))
-  ;;   )
-
-
-  (defun maptree-transform (predicate-transformer tree)
-    (multiple-value-bind (t-tree control)
-        (aif (funcall predicate-transformer tree)
-             it
-             (values tree #'mapcar))
-      (if (and (consp t-tree)
-               control)
-          (funcall control
-                   #'(lambda (x)
-                       (maptree-transform predicate-transformer x))
-                   t-tree)
-          t-tree)))
-
-  ;; mtm - синтаксический сахар для maptree-transform
-  (defmacro mtm (transformer tree)
-    (let ((lambda-param (gensym)))
-      `(maptree-transform #'(lambda (,lambda-param)
-                              (values (match ,lambda-param ,transformer)
-                                      #'mapcar))
-                          ,tree)))
-
-
-  (let* ((filename "/home/rigidus/repo/rigidus.ru/public_html/main.html")
-         (filecontent (alexandria:read-file-into-string filename))
-         (parsed (html5-parser:parse-html5-fragment filecontent :dom :xmls)))
-    (print (mtm (`("div" (("table-of-contents")) ,@rest)
-                  (list "zzz"))
-                parsed)))
-#+END_SRC
-
-** Шаблон блоков статистики
+* Шаблон блоков статистики
 
 Это статистика от яндекса, гугла и liveinternet counter
 
 #+NAME: tpl_stat
-#+BEGIN_SRC html
+#+BEGIN_SRC html :tangle src/templates.htm :noweb tangle :exports code :padline no :comments none
+  // -*- mode: closure-template-html; fill-column: 140 -*-
+
+  {namespace tpl}
+
+  {template stat}
+
   {literal}
-    <div style="margin-top: -29px; margin-left: 150px;">
-        <!--Google Analitics -->
-        <script type="text/javascript">
-            var _gaq = _gaq || [];
-            _gaq.push(['_setAccount', 'UA-20801780-1']);
-            _gaq.push(['_trackPageview']);
-            (function() {
-            var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
-            ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
-            var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
-            })();
-        </script>
-        <!--Google Analitics -->
+   <div style="position:absolute; left:-9999px;">
 
-        <!--LiveInternet counter-->
-        <script type="text/javascript">
-            <!--
-                 document.write("<a href='http://www.liveinternet.ru/click' "+
-                 "target=_blank><img src='//counter.yadro.ru/hit?t24.5;r"+
-                 escape(document.referrer)+((typeof(screen)=="undefined")?"":
-                 ";s"+screen.width+"*"+screen.height+"*"+(screen.colorDepth?
-                 screen.colorDepth:screen.pixelDepth))+";u"+escape(document.URL)+
-                 ";h"+escape(document.title.substring(0,80))+";"+Math.random()+
-                 "' alt='' title='LiveInternet: показано число посетителей за"+
-                 " сегодня' "+
-                 "border='0' width='88' height='15'><\/a>")
-       //-->
-        </script>
-        <!--/LiveInternet-->
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <!--Google Analitics -->
+      <script type="text/javascript">
+          var _gaq = _gaq || [];
+          _gaq.push(['_setAccount', 'UA-20801780-1']);
+          _gaq.push(['_trackPageview']);
+          (function() {
+          var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+          ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+          var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+          })();
+      </script>
+      <!--Google Analitics -->
 
-        <!-- Yandex.Metrika informer -->
-        <a href="https://metrika.yandex.ru/stat/?id=3701317&amp;from=informer"
-        target="_blank" rel="nofollow"><img src="//bs.yandex.ru/informer/3701317/1_0_9F9F9FFF_7F7F7FFF_0_pageviews"
-        style="width:80px; height:15px; border:0;" alt="Яндекс.Метрика" title="Яндекс.Метрика: данные за сегодня (просмотры)"
-                                            onclick="try{Ya.Metrika.informer({i:this,id:3701317,lang:'ru'});return false}catch(e){}"/></a>
-        <!-- /Yandex.Metrika informer -->
+      <!--LiveInternet counter-->
+      <script type="text/javascript">
+          <!--
+               document.write("<a href='http://www.liveinternet.ru/click' "+
+               "target=_blank><img src='//counter.yadro.ru/hit?t24.5;r"+
+               escape(document.referrer)+((typeof(screen)=="undefined")?"":
+               ";s"+screen.width+"*"+screen.height+"*"+(screen.colorDepth?
+               screen.colorDepth:screen.pixelDepth))+";u"+escape(document.URL)+
+               ";h"+escape(document.title.substring(0,80))+";"+Math.random()+
+               "' alt='' title='LiveInternet: показано число посетителей за"+
+               " сегодня' "+
+               "border='0' width='88' height='15'><\/a>")
+      //-->
+      </script>
+      <!--/LiveInternet-->
 
-        <!-- Yandex.Metrika counter -->
-        <script type="text/javascript">
-        (function (d, w, c) {
-            (w[c] = w[c] || []).push(function() {
-                try {
-                    w.yaCounter3701317 = new Ya.Metrika({id:3701317,
-                            webvisor:true,
-                            clickmap:true,
-                            trackLinks:true,
-                            accurateTrackBounce:true});
-                } catch(e) { }
-            });
 
-            var n = d.getElementsByTagName("script")[0],
-                s = d.createElement("script"),
-                f = function () { n.parentNode.insertBefore(s, n); };
-            s.type = "text/javascript";
-            s.async = true;
-            s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js";
+      <!-- Yandex.Metrika informer -->
+      <a href="https://metrika.yandex.ru/stat/?id=3701317&amp;from=informer"
+      target="_blank" rel="nofollow"><img src="//bs.yandex.ru/informer/3701317/1_0_9F9F9FFF_7F7F7FFF_0_pageviews"
+      style="width:80px; height:15px; border:0;" alt="Яндекс.Метрика" title="Яндекс.Метрика: данные за сегодня (просмотры)"
+                                          onclick="try{Ya.Metrika.informer({i:this,id:3701317,lang:'ru'});return false}catch(e){}"/></a>
+      <!-- /Yandex.Metrika informer -->
 
-            if (w.opera == "[object Opera]") {
-                d.addEventListener("DOMContentLoaded", f, false);
-            } else { f(); }
-        })(document, window, "yandex_metrika_callbacks");
-        </script>
-        <noscript><div><img src="//mc.yandex.ru/watch/3701317" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-        <!-- /Yandex.Metrika counter -->
+      <!-- Yandex.Metrika counter -->
+      <script type="text/javascript">
+      (function (d, w, c) {
+          (w[c] = w[c] || []).push(function() {
+              try {
+                  w.yaCounter3701317 = new Ya.Metrika({id:3701317,
+                          webvisor:true,
+                          clickmap:true,
+                          trackLinks:true,
+                          accurateTrackBounce:true});
+              } catch(e) { }
+          });
+
+          var n = d.getElementsByTagName("script")[0],
+              s = d.createElement("script"),
+              f = function () { n.parentNode.insertBefore(s, n); };
+          s.type = "text/javascript";
+          s.async = true;
+          s.src = (d.location.protocol == "https:" ? "https:" : "http:") + "//mc.yandex.ru/metrika/watch.js";
+
+          if (w.opera == "[object Opera]") {
+              d.addEventListener("DOMContentLoaded", f, false);
+          } else { f(); }
+      })(document, window, "yandex_metrika_callbacks");
+      </script>
+
+      <noscript><div><img src="//mc.yandex.ru/watch/3701317" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+      <!-- /Yandex.Metrika counter -->
+
+    </div>
   {/literal}
-#+END_SRC
-** Шаблон для страниц ORG
 
-#+NAME: tpl_org_file
-#+BEGIN_SRC html
-  <div id="content">{\n}
-      <h1 class="title">{$title |noAutoescape}</h1>{\n}
-      <div id="orgcontent">
-          <article>
-              {$content |noAutoescape}{\n}
-          </article>
-      </div>
-  </div>{\n}
+  {/template}
 #+END_SRC
 
 * COMMENT Работа с базой данных

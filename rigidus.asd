@@ -30,7 +30,6 @@
                           :serial t
                           :pathname "src"
                           :components ((:static-file "templates.htm")
-                                       (:file "prepare")
                                        (:file "defmodule")
                                        (:file "html")
                                        (:file "ext-html")

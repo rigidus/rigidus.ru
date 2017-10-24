@@ -91,6 +91,13 @@
 ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
 ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
 
+(closure-template:compile-template
+ :common-lisp-backend (merge-pathnames
+                       (make-pathname :name "templates" :type "htm")
+                       (merge-pathnames
+                        (make-pathname :directory '(:relative "src"))
+                        *base-dir*)))
+
 ;; Механизм преобразования страниц
 (in-package :rigidus)
 
@@ -144,8 +151,8 @@
 
 (defun ennobler (pathname &optional dbg)
   (let* ((file-contents (alexandria:read-file-into-string pathname))
-         ;; (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
-         ;; (tree (html-to-tree onestring))
+         (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
+         (tree (html-to-tree onestring))
          ;; (inject-css '("link" (("href" "/css/style.css") ("rel" "stylesheet") ("type" "text/css"))))
          ;; (replace-css #'(lambda (in)
          ;;                  (optima:match in
@@ -156,13 +163,10 @@
          ;;                  (optima:match in
          ;;                    (`("script" (("type" "text/javascript")) ,_) inject-js))))
          ;; (remove-js (maptree-transform replace-js remove-css))
-         )
-    ;; (if dbg
-    ;;     remove-js
-    ;;     (format nil "<!DOCTYPE html>~%~A"
-    ;;             (tree-to-html remove-js)))
-    file-contents))
-
-;; (print
-;;  (ennobler (translate-logical-pathname "org:publish;about") 1))
+         (result tree))
+    (if dbg
+        result
+        (format nil "<!DOCTYPE html>~%~A~%~A"
+                (tree-to-html result)
+                (tpl:stat)))))
 ;; defmodule ends here
