@@ -91,13 +91,6 @@
 ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
 ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
 
-(closure-template:compile-template
- :common-lisp-backend (merge-pathnames
-                       (make-pathname :name "templates" :type "htm")
-                       (merge-pathnames
-                        (make-pathname :directory '(:relative "src"))
-                        *base-dir*)))
-
 ;; Механизм преобразования страниц
 (in-package :rigidus)
 

@@ -272,6 +272,7 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
                             :serial t
                             :pathname "src"
                             :components ((:static-file "templates.htm")
+                                         (:file "prepare")
                                          (:file "defmodule")
                                          (:file "html")
                                          (:file "ext-html")
@@ -282,6 +283,38 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
                                          (:static-file "daemon.lisp")
                                          (:static-file "daemon.sh")))))
 #+END_SRC
+
+** Подготовка к запуску
+
+Этот файл компилирует шаблоны и создает пакет ~TPL~. Он делает это еще до объявления
+базового пакета. Для того чтобы в процессе загрузки все ссылки на этот пакет были
+правильно разрешены, необходимо, чтобы создание пакета завершилось к моменту появления
+ссылок на него. А для этого нужно помещать компиляцию в отдельный файл.
+
+Однако тогда у нас возникает проблема, заключающаяся в том, что ~base-dir~, путь, от
+которого отсчитываются все пути придется объявлять дважды - вне пакета и внутри
+него. Мы решаем эту проблему средствами подстановки литературного программирования:
+
+#+NAME: base_dir
+#+BEGIN_SRC lisp
+  (merge-pathnames
+   (make-pathname :directory '(:relative "repo/rigidus.ru"))
+   (user-homedir-pathname))
+#+END_SRC
+
+
+#+NAME: prepare
+#+BEGIN_SRC lisp :tangle src/prepare.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+
+  (closure-template:compile-template
+   :common-lisp-backend (merge-pathnames
+                         (make-pathname :name "templates" :type "htm")
+                         (merge-pathnames
+                          (make-pathname :directory '(:relative "src"))
+                          <<base_dir>>)))
+#+END_SRC
+
 
 ** Определение пакетов
 
@@ -391,13 +424,6 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   ;; Механизм трансляции путей
   <<pathname-translations>>
 
-  (closure-template:compile-template
-   :common-lisp-backend (merge-pathnames
-                         (make-pathname :name "templates" :type "htm")
-                         (merge-pathnames
-                          (make-pathname :directory '(:relative "src"))
-                          ,*base-dir*)))
-
   ;; Механизм преобразования страниц
   <<enobler>>
 #+END_SRC
@@ -432,9 +458,7 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   (in-package :rigidus)
 
   (defparameter *base-dir*
-    (merge-pathnames
-     (make-pathname :directory '(:relative "repo/rigidus.ru"))
-     (user-homedir-pathname)))
+    <<base_dir>>)
 
   (defparameter *base-path* (directory-namestring *base-dir*))
 
