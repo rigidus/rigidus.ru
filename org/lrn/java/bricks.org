@@ -1,0 +1,165 @@
+#+STARTUP: showall indent hidestars
+
+* Разбиваемые элементы
+
+Гонять шарик по пустому экрану не очень интересно, поэтому сейчас мы займемся созданием
+кирпичей, которые он должен разбивать. Выберем или нарисуем картинку кирпича, я
+нарисовал вот такую:
+
+[[img:brick.png]]
+
+У нас планируется некоторое количество кирпичей, и все они будут обладать одинаковым
+поведением. Так, например, при попадании в них шарика, любой кирпич должен исчезать с
+экрана.
+
+В то же время каждый из кирпичей имеет свое собственное состояние - например,
+координаты. Удобно было бы чтобы каждый кирпич мог проверить, а не произошло ли у него
+столкновение с шаром. При этом нам важно понимать, произошло ли столкновение с
+горизонтальной или вертикальной стенкой кирпича (или может быть с обоими - тогда шарик
+попал точно в угол) - ведь от этого зависит, какое ускорение нам инвертировать.
+
+Это значит мы можем создать для кирпичей свой класс, назовем его Brick. Создадим его в
+отдельном файле, рядом с MyGdxGame:
+
+#+BEGIN_SRC java
+  package com.mygdx.game;
+
+  import com.badlogic.gdx.graphics.Texture;
+  import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+  import com.badlogic.gdx.math.Vector2;
+
+  public class Brick {
+
+      Texture img;
+      public Vector2 pos;
+
+      public Brick(String imgFileName, int x, int y) {
+          img = new Texture(imgFileName);
+          pos = Vector2(x, y);
+      }
+
+      public void render(SpriteBatch batch) {
+          batch.draw(img, pos.x, pos.y);
+      }
+
+      public boolean isCollision(Vector2 ballPosition, Texture ballImg) {
+          if (       isCollisionHorizontal (ballPosition, ballImg)
+                  && isCollisionVertical   (ballPosition, ballImg)) {
+              return true;
+          } else {
+              return false;
+          }
+      }
+
+      public boolean isCollisionHorizontal(Vector2 ballPosition, Texture ballImg) {
+          if (       (ballPosition.x                       < pos.x + img.getWidth())
+                  && (ballPosition.x + ballImg.getWidth()  > pos.x)) {
+              return true;
+          } else {
+              return false;
+          }
+      }
+
+      public boolean isCollisionVertical(Vector2 ballPosition, Texture ballImg) {
+          if (       (ballPosition.y                       < pos.y + img.getHeight())
+                  && (ballPosition.y + ballImg.getHeight() > pos.y)) {
+          } else {
+              return false;
+          }
+      }
+
+      public void dispose() {
+          img.dispose();
+      }
+
+  }
+#+END_SRC
+
+Теперь мы можем определить целый массив кирпичей вот так:
+
+#+BEGIN_SRC java
+  Vector2 old = new Vector2(0,0);
+  int brksCnt = 7;
+  Brick[] brks = new Brick[brksCnt];
+#+END_SRC
+
+Первой строчкой мы определяем еще одну переменную - ~old~, которая хранит координаты
+предшествующей позиции шарика. Дело в том, что шарик может лететь с такой скоростью,
+что в момент столкновения его координаты уже будет рассчитаны внутри кирпича. В этом
+случае нам нужна предыдущие (до столкновения) координаты, иначе шарик будет биться в
+стенки кирпича изнутри.
+
+Мы хотим построить кирпичи в два ряда так, чтобы нечетные кирпичи оказались выше
+четных. Для этого при инициализации (в методе ~create~) применим цикл, а внутри него -
+условие, где мы будем проверять четность и в зависимости от нее менять высоту:
+
+#+BEGIN_SRC java
+  // build wall
+  for (int i=0; i<brksCnt; i++) {
+      int y = 300;
+      if ((i & 1) == 0) {
+          y = 435;
+      }
+      brks[i] = new Brick("brick.png", i*80+30,y);
+  }
+#+END_SRC
+
+Перед тем как отрисовывать поле нам нужно проверить каждый кирпич на столкновение с
+шаром. Вот этот код:
+
+#+BEGIN_SRC java
+  // collision detection
+  for (Brick brk : brks) {
+      if (brk.isCollision(pos, img)) {
+          old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+          if (brk.isCollisionHorizontal(old, img)) {
+              acc.y = -acc.y;
+          } else if (brk.isCollisionVertical(old, img)) {
+              acc.x = -acc.x;
+          } else {
+              acc.x = -acc.x;
+              acc.y = -acc.y;
+          }
+          pos.x = old.x;
+          pos.y = old.y;
+          // hide brk
+          brk.pos.y = -brk.pos.y;
+      }
+  }
+#+END_SRC
+
+Здесь мы проходим по всему массиву кирпичей, и для каждого кирпича спрашиваем, не
+случилось ли столкновения. Если столкновение произошло - мы определяем, случилось оно с
+вертикальной стенкой кирпича, с горизонатальной или обоими. Для этого мы используем
+~old~ - переменную, хранящую предыдущую позицию шарика. Выяснив, как именно произошло
+столкновение, мы меняем нужные ускорения, что приводит к отскоку шарика от стенок
+кирпичей. В конце обработки мы меняем вертикальную координату кирпича, с которым
+произошло столновение на отрицательное значение - и он исчезает с экрана.
+
+После этого нам остается только добавить отрисовку кирпичей. Наш рендер теперь будет
+выглядеть так:
+
+#+BEGIN_SRC java
+  // render
+  batch.begin();
+  for (Brick brk : brks) {
+      brk.render(batch);
+  }
+  batch.draw(img, pos.x, pos.y);
+  batch.end();
+#+END_SRC
+
+Чтобы избежать утечек памяти мы не забываем добавить освобождение памяти кирпичей в
+функцию ~dispose~:
+
+#+BEGIN_SRC java
+  public void dispose () {
+      batch.dispose();
+      img.dispose();
+      for (Brick brk : brks) {
+          brk.dispose();
+      }
+  }
+#+END_SRC
+
+[[img:j-bricks.png]]
