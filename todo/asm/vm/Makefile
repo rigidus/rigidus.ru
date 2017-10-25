@@ -1,8 +1,8 @@
 SHELL = /bin/sh
 
 CC = gcc
-CFLAGS  += -g
-LDFLAGS += -g
+#CFLAGS  += -g
+#LDFLAGS += -g
 
 TARGET = oldgamevm
 
