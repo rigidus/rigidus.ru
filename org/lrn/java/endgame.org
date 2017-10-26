@@ -1,0 +1,574 @@
+#+STARTUP: showall indent hidestars
+
+* Завершение игры
+
+** Условие завершения
+
+Итак, игра может быть закончена в двух случах:
+- игрок выиграл:  все кирпичи имеют отрицательную вертикальную координату
+- игрок проиграл: шарик имеет отрицательную вертикальную координату
+
+Чтобы показывать эти два варианта завершения игры нам надо загрузить два варианта
+картинки. Я использовал первые, что нашел в гугле:
+
+[[img:youwin.png]]
+
+[[img:youlose.jpg]]
+
+Чтобы их показать нам надо определить переменные, которые будут их содержать:
+
+#+BEGIN_SRC java
+  Texture youwin;
+  Texture youlose;
+#+END_SRC
+
+и добавим загрузку картинок в конструкторе:
+
+#+BEGIN_SRC java
+  youwin = new Texture("youwin.png");
+  youlose = new Texture("youlose.jpg");
+#+END_SRC
+
+Определим переменную, которая будет отражать состояние игры и переменную, которая
+будет показывать выиграл игрок или проиграл:
+
+#+BEGIN_SRC java
+  boolean gameover = false;
+  boolean win = false;
+#+END_SRC
+
+В зависимости от нее мы будем использовать либо наш старый отрисовщик, либо новый,
+который покажет в центре экрана игроку картинку, хорошую, если он выиграл или плохую,
+если проиграл. Изменим ~render~:
+
+#+BEGIN_SRC java
+  // render
+  batch.begin();
+  if (gameover) {
+      if (win) {
+          batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+      } else {
+          batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+      }
+  } else {
+      for (Brick brk : brks) {
+          brk.render(batch);
+      }
+      batch.draw(img, pos.x, pos.y);
+      batch.draw(platform, plt.x, 0);
+  }
+  batch.end();
+#+END_SRC
+
+Последнее, что нам осталось сделать: проверять условие завершения игры
+
+#+BEGIN_SRC java
+  // check gameover
+  if (false == gameover) {
+      win = true;
+      for (Brick brk : brks) {
+          if (brk.pos.y > 0) {
+              win = false;
+              break;
+          }
+      }
+      if (win) {
+          gameover = true;
+      }
+      if (ball.pos.y < 0) {
+          gameover = true;
+      }
+  }
+#+END_SRC
+
+И уберем код, который обеспечивал нам отскок шарика от нижней части экрана:
+
+#+BEGIN_SRC java
+  // bounce ball
+  if (pos.x < 0) {
+      acc.x = -acc.x;
+  }
+  //        if (pos.y < 0) {
+  //            acc.y = -acc.y;
+  //        }
+  if (pos.x + img.getWidth() > max.x) {
+      acc.x = -acc.x;
+  }
+  if (pos.y + img.getHeight() > max.y) {
+      acc.y = -acc.y;
+  }
+#+END_SRC
+
+** Промежуточный итог
+
+Посмотрим, что у нас получилось:
+
+#+BEGIN_SRC java
+  package com.mygdx.game;
+
+  import com.badlogic.gdx.ApplicationAdapter;
+  import com.badlogic.gdx.Gdx;
+  import com.badlogic.gdx.Input;
+  import com.badlogic.gdx.graphics.GL20;
+  import com.badlogic.gdx.graphics.Texture;
+  import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+  import com.badlogic.gdx.math.Vector2;
+
+  public class MyGdxGame extends ApplicationAdapter {
+      SpriteBatch batch;
+      Texture img;
+      Texture platform;
+      Vector2 plt = new Vector2(0, 0);
+      Vector2 pos = new Vector2(30,40);
+      Vector2 acc = new Vector2(2,3);
+      Vector2 max = new Vector2(0,0);
+      Vector2 old = new Vector2(0,0);
+      int brksCnt = 7;
+      Brick[] brks = new Brick[brksCnt];
+      Texture youwin;
+      Texture youlose;
+      boolean gameover = false;
+      boolean win = false;
+
+      @Override
+      public void create () {
+          batch = new SpriteBatch();
+          img = new Texture("ball.png");
+          platform = new Texture("platform.png");
+          youwin = new Texture("youwin.png");
+          youlose = new Texture("youlose.jpg");
+          for (int i=0; i<brksCnt; i++) {
+              int y = 300;
+              if ((i & 1) == 0) {
+                  y = 435;
+              }
+              brks[i] = new Brick("brick.png", i*80+30,y);
+          }
+          max.x = Gdx.graphics.getWidth();
+          max.y = Gdx.graphics.getHeight();
+      }
+
+      @Override
+      public void render () {
+          Gdx.gl.glClearColor(0, 0, 0, 1);
+          Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+          // input
+          if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+              //acc.x += 1;
+              plt.y += 1;
+          }
+          if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+              //acc.x -= 1;
+              plt.y -= 1;
+          }
+
+          // braking platform
+          if (plt.y > 7) {
+              plt.y = 7;
+          }
+          if (plt.y < -7) {
+              plt.y = -7;
+          }
+
+          // update coords platform
+          plt.x = plt.x + 2 * plt.y;
+          plt.y *= 1f / 10f * 9.5;
+
+          // stop platform at the border
+          if (plt.x < 0) {
+              plt.x = 0;
+              plt.y = 0;
+          }
+          if (plt.x > max.x - platform.getWidth()) {
+              plt.x = max.x - platform.getWidth();
+              plt.y = 0;
+          }
+
+          // braking ball
+          if (acc.x > 7) {
+              acc.x = 7;
+          }
+          if (acc.y > 7) {
+              acc.y = 7;
+          }
+          if (acc.x < -7) {
+              acc.x = -7;
+          }
+          if (acc.y < -7) {
+              acc.y = -7;
+          }
+
+          // bounce ball
+          if (pos.x < 0) {
+              acc.x = -acc.x;
+          }
+          if (pos.x + img.getWidth() > max.x) {
+              acc.x = -acc.x;
+          }
+          if (pos.y + img.getHeight() > max.y) {
+              acc.y = -acc.y;
+          }
+
+          // collision detection
+          for (Brick brk : brks) {
+              if (brk.isCollision(pos, img)) {
+                  old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+                  if (brk.isCollisionHorizontal(old, img)) {
+                      acc.y = -acc.y;
+                  } else if (brk.isCollisionVertical(old, img)) {
+                      acc.x = -acc.x;
+                  } else {
+                      acc.x = -acc.x;
+                      acc.y = -acc.y;
+                  }
+                  pos.x = old.x;
+                  pos.y = old.y;
+                  // hide brk
+                  brk.pos.y = -brk.pos.y;
+              }
+          }
+
+          // update coords ball
+          pos.x = pos.x + 2 * acc.x;
+          pos.y = pos.y + 2 * acc.y;
+
+          // platform-ball collision
+          if (pos.y < platform.getHeight()) {
+              // шарик ниже платформы
+              if ((pos.x > plt.x) && (pos.x+img.getWidth() < plt.x + platform.getWidth())) {
+                  // платформа под шариком - расчитаем угол отскока
+                  // инвертируем вектор вертикальной скорости
+                  acc.y *= -1;
+                  // вычислим центр шарика
+                  float ballCenter = pos.x + img.getWidth() / 2;
+                  // вычислим центр платформы
+                  float platformCenter = plt.x + platform.getWidth() / 2;
+                  // расстояние между центрами
+                  float distance = ballCenter - platformCenter;
+                  // горизонтальная скорость зависит от дистанции
+                  acc.x = distance / 20;
+                  pos.y = platform.getHeight();
+
+              } else {
+                  // игрок промахнулся - игре конец
+                  gameover = true;
+              }
+          }
+
+          // render
+          batch.begin();
+          if (gameover) {
+              if (win) {
+                  batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+              } else {
+                  batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+              }
+          } else {
+              for (Brick brk : brks) {
+                  brk.render(batch);
+              }
+              batch.draw(img, pos.x, pos.y);
+              batch.draw(platform, plt.x, 0);
+          }
+          batch.end();
+
+          // check gameover
+          if (false == gameover) {
+              win = true;
+              for (Brick brk : brks) {
+                  if (brk.pos.y > 0) {
+                      win = false;
+                      break;
+                  }
+              }
+              if (win) {
+                  gameover = true;
+              }
+          }
+      }
+
+      @Override
+      public void dispose () {
+          batch.dispose();
+          img.dispose();
+          for (Brick brk : brks) {
+              brk.dispose();
+          }
+      }
+  }
+#+END_SRC
+
+Что здесь можно улучшить? В текущей конфигурации нельзя играть двумя шариками. Чтобы
+это стало возможным нам придется вынести весь функционал шарика в отдельный класс
+
+** Рефакторинг
+
+Перенесем переменные, которые отвечают за положение и ускорение шарика в отдельный
+класс:
+- pos
+- acc
+- old
+Также перебросим весь функционал:
+- Торможение при черезмерном увеличении скорости
+- Отскок от всех стен кроме нижней
+- Обновление координат шарика
+- Действия при столкновении с платформой
+- Действия при столкновении с кирпичом
+
+#+BEGIN_SRC java
+  package com.mygdx.game;
+
+  import com.badlogic.gdx.graphics.Texture;
+  import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+  import com.badlogic.gdx.math.Vector2;
+
+  public class Ball {
+      Texture img;
+      Vector2 pos = new Vector2(30,40);
+      Vector2 acc = new Vector2(2,3);
+      Vector2 old = new Vector2(0,0);
+
+      public Ball(String imgFileName, int x, int y) {
+          pos = new Vector2(x, y);
+          img = new Texture("ball.png");
+      }
+
+      public void bracking() {
+          if (acc.x > 7) {
+              acc.x = 7;
+          }
+          if (acc.y > 7) {
+              acc.y = 7;
+          }
+          if (acc.x < -7) {
+              acc.x = -7;
+          }
+          if (acc.y < -7) {
+              acc.y = -7;
+          }
+      }
+
+      public void bounce(Vector2 max) {
+          if (pos.x < 0) {
+              acc.x = -acc.x;
+          }
+          if (pos.x + img.getWidth() > max.x) {
+              acc.x = -acc.x;
+          }
+          if (pos.y + img.getHeight() > max.y) {
+              acc.y = -acc.y;
+          }
+      }
+
+      public void update() {
+          pos.x = pos.x + 2 * acc.x;
+          pos.y = pos.y + 2 * acc.y;
+          if (pos.y < -img.getHeight()*2) {
+              acc.x = 0;
+              acc.y = 0;
+              pos.x = -1000;
+              pos.y = -1000;
+          }
+      }
+
+      public void platform_collision(Vector2 plt, Texture platform) {
+          if (pos.y < platform.getHeight()) {
+              // шарик ниже платформы
+              if ((pos.x > plt.x) && (pos.x + img.getWidth() < plt.x + platform.getWidth())) {
+                  // платформа под шариком - расчитаем угол отскока
+                  // инвертируем вектор вертикальной скорости
+                  acc.y *= -1;
+                  // вычислим центр шарика
+                  float ballCenter = pos.x + img.getWidth() / 2;
+                  // вычислим центр платформы
+                  float platformCenter = plt.x + platform.getWidth() / 2;
+                  // расстояние между центрами
+                  float distance = ballCenter - platformCenter;
+                  // горизонтальная скорость зависит от дистанции
+                  acc.x = distance / 20;
+                  pos.y = platform.getHeight();
+              }
+          }
+      }
+
+      public void brick_collision(Brick[] brks) {
+          for (Brick brk : brks) {
+              if (brk.isCollision(pos, img)) {
+                  old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+                  if (brk.isCollisionHorizontal(old, img)) {
+                      acc.y = -acc.y;
+                  } else if (brk.isCollisionVertical(old, img)) {
+                      acc.x = -acc.x;
+                  } else {
+                      acc.x = -acc.x;
+                      acc.y = -acc.y;
+                  }
+                  pos.x = old.x;
+                  pos.y = old.y;
+                  // hide brk
+                  brk.pos.y = -brk.pos.y;
+              }
+          }
+      }
+
+      public void render(SpriteBatch batch) {
+          batch.draw(img, pos.x, pos.y);
+      }
+
+      public void dispose() {
+          img.dispose();
+      }
+  }
+#+END_SRC
+
+После этого изменим наш основной класс игры, чтобы вызывать методы нового класса
+шарика. Мы будем использовать пока только два шарика, но ничто, кроме скорости реакции
+игрока нас не ограничивает.
+
+#+BEGIN_SRC java
+  package com.mygdx.game;
+
+  import com.badlogic.gdx.ApplicationAdapter;
+  import com.badlogic.gdx.Gdx;
+  import com.badlogic.gdx.Input;
+  import com.badlogic.gdx.graphics.GL20;
+  import com.badlogic.gdx.graphics.Texture;
+  import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+  import com.badlogic.gdx.math.Vector2;
+
+  public class MyGdxGame extends ApplicationAdapter {
+      SpriteBatch batch;
+      Texture platform;
+      Vector2 plt = new Vector2(0, 0);
+      Vector2 max = new Vector2(0,0);
+      int ballsCnt = 2;
+      Ball balls[] = new Ball[ballsCnt];
+      int brksCnt = 7;
+      Brick[] brks = new Brick[brksCnt];
+      Texture youwin;
+      Texture youlose;
+      boolean gameover = false;
+      boolean win = false;
+
+      @Override
+      public void create () {
+          batch = new SpriteBatch();
+          platform = new Texture("platform.png");
+          youwin = new Texture("youwin.png");
+          youlose = new Texture("youlose.jpg");
+          balls[0] = new Ball("ball", 0, 100);
+          balls[1] = new Ball("ball", 10, 100);
+          for (int i=0; i<brksCnt; i++) {
+              int y = 300;
+              if ((i & 1) == 0) {
+                  y = 435;
+              }
+              brks[i] = new Brick("brick.png", i*80+30,y);
+          }
+          max.x = Gdx.graphics.getWidth();
+          max.y = Gdx.graphics.getHeight();
+      }
+
+      @Override
+      public void render () {
+          Gdx.gl.glClearColor(0, 0, 0, 1);
+          Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+          // input
+          if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+              //acc.x += 1;
+              plt.y += 1;
+          }
+          if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+              //acc.x -= 1;
+              plt.y -= 1;
+          }
+
+          // braking platform
+          if (plt.y > 7) {
+              plt.y = 7;
+          }
+          if (plt.y < -7) {
+              plt.y = -7;
+          }
+
+          // update coords platform
+          plt.x = plt.x + 2 * plt.y;
+          plt.y *= 1f / 10f * 9.5;
+
+          // stop platform at the border
+          if (plt.x < 0) {
+              plt.x = 0;
+              plt.y = 0;
+          }
+          if (plt.x > max.x - platform.getWidth()) {
+              plt.x = max.x - platform.getWidth();
+              plt.y = 0;
+          }
+
+          for (Ball ball : balls) {
+              ball.bracking();
+              ball.bounce(max);
+              ball.brick_collision(brks);
+              ball.update();
+              ball.platform_collision(plt, platform);
+          }
+
+          // render
+          batch.begin();
+          if (gameover) {
+              if (win) {
+                  batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+              } else {
+                  batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+              }
+          } else {
+              for (Brick brk : brks) {
+                  brk.render(batch);
+              }
+              for (Ball ball : balls) {
+                  ball.render(batch);
+              }
+              batch.draw(platform, plt.x, 0);
+          }
+          batch.end();
+
+          // check gameover
+          if (false == gameover) {
+              win = true;
+              for (Brick brk : brks) {
+                  if (brk.pos.y > 0) {
+                      win = false;
+                      break;
+                  }
+              }
+              if (win) {
+                  gameover = true;
+              } else {
+                  gameover = true;
+                  for (Ball ball : balls) {
+                      if (ball.pos.y > 0) {
+                          gameover = false;
+                          break;
+                      }
+                  }
+                  if (false == gameover) {
+                      win = false;
+                  }
+              }
+          }
+      }
+
+      @Override
+      public void dispose () {
+          batch.dispose();
+          for (Brick brk : brks) {
+              brk.dispose();
+          }
+      }
+  }
+#+END_SRC
+
+Таким образом мы получили заготовку для игры, которую можно расширять, добавляя бонусы,
+создавая другое поведение у препятствий и.т.п.
