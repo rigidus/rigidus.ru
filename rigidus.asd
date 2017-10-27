@@ -35,6 +35,7 @@
                                        (:file "html")
                                        (:file "ext-html")
                                        (:file "orgmode")
+                                       (:file "render")
                                        (:file "routes")
                                        (:file "init")
                                        (:static-file "daemon.conf")

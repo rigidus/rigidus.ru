@@ -1,52 +1,26 @@
 ;; [[file:doc.org::*Маршрутизация][routes]]
+;;;; Copyright © 2014-2017 Glukhov Mikhail. All rights reserved.
+;;;; Licensed under the GNU AGPLv3
 (in-package #:rigidus)
 
-(in-package :rigidus)
+(in-package #:rigidus)
 
-(restas:define-route index ("/")
-  (ennobler (translate-logical-pathname "org:publish;index")))
-
-(restas:define-route index.html ("/index.html")
-  (ennobler (translate-logical-pathname "org:publish;index")))
-
-(defmacro def/route (name param &body body)
-  `(progn
-     (restas:define-route ,name ,param
-       ,@body)
-     (restas:define-route
-         ,(intern (concatenate 'string (symbol-name name) "/"))
-         ,(cons (concatenate 'string (car param) "/") (cdr param))
-       ,@body)
-     (restas:define-route
-         ,(intern (concatenate 'string (symbol-name name) ".html"))
-         ,(cons (concatenate 'string (car param) ".html") (cdr param))
-       ,@body)))
-
-(def/route about ("about")
-  (ennobler (translate-logical-pathname "org:publish;about")))
-
-(restas:mount-module -doc- (#:restas.directory-publisher)
-  (:url "/doc")
+(restas:mount-module -css- (#:restas.directory-publisher)
+  (:url "/css/")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
+   (merge-pathnames (make-pathname :directory '(:relative "css"))
                     *base-dir*)))
 
-(restas:mount-module -prj- (#:restas.directory-publisher)
-  (:url "/prj")
+(restas:mount-module -img- (#:restas.directory-publisher)
+  (:url "/img/")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
+   (merge-pathnames (make-pathname :directory '(:relative "img"))
                     *base-dir*)))
 
-(restas:mount-module -lrn/asm- (#:restas.directory-publisher)
-  (:url "/lrn/asm")
+(restas:mount-module -js- (#:restas.directory-publisher)
+  (:url "/js/")
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
-                    *base-dir*)))
-
-(restas:mount-module -lrn/java- (#:restas.directory-publisher)
-  (:url "/lrn/java")
-  (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
+   (merge-pathnames (make-pathname :directory '(:relative "js"))
                     *base-dir*)))
 
 (restas:mount-module -resources- (#:restas.directory-publisher)
@@ -71,22 +45,64 @@
 
 (restas:define-route robots ("/robots.txt")
   (format nil "User-agent: *~%Disallow: "))
+(in-package :rigidus)
 
-(restas:mount-module -css- (#:restas.directory-publisher)
-  (:url "/css/")
+;; (restas:mount-module -base- (#:restas.directory-publisher)
+;;   (:url "/")
+;;   (:render-method (make-instance 'orgmode-handler))
+;;   (restas.directory-publisher:*directory*
+;;    (merge-pathnames (make-pathname :directory '(:relative "www"))
+;;                     *base-dir*)))
+
+(restas:mount-module -doc- (#:restas.directory-publisher)
+  (:url "/doc")
+  (:render-method (make-instance 'orgmode-handler))
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "css"))
+   (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
                     *base-dir*)))
 
-(restas:mount-module -img- (#:restas.directory-publisher)
-  (:url "/img/")
+(restas:mount-module -prj- (#:restas.directory-publisher)
+  (:url "/prj")
+  (:render-method (make-instance 'orgmode-handler))
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "img"))
+   (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
                     *base-dir*)))
 
-(restas:mount-module -js- (#:restas.directory-publisher)
-  (:url "/js/")
+(restas:mount-module -lrn/asm- (#:restas.directory-publisher)
+  (:url "/lrn/asm")
+  (:render-method (make-instance 'orgmode-handler))
+
   (restas.directory-publisher:*directory*
-   (merge-pathnames (make-pathname :directory '(:relative "js"))
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
                     *base-dir*)))
+
+(restas:mount-module -lrn/java- (#:restas.directory-publisher)
+  (:url "/lrn/java")
+  (:render-method (make-instance 'orgmode-handler))
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
+                    *base-dir*)))
+(in-package :rigidus)
+
+(restas:define-route index ("/")
+  (enobler (translate-logical-pathname "org:publish;index")))
+
+(restas:define-route index.html ("/index.html")
+  (enobler (translate-logical-pathname "org:publish;index")))
+
+(defmacro def/route (name param &body body)
+  `(progn
+     (restas:define-route ,name ,param
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) "/"))
+         ,(cons (concatenate 'string (car param) "/") (cdr param))
+       ,@body)
+     (restas:define-route
+         ,(intern (concatenate 'string (symbol-name name) ".html"))
+         ,(cons (concatenate 'string (car param) ".html") (cdr param))
+       ,@body)))
+
+;; (def/route about ("about")
+;;   (enobler (translate-logical-pathname "org:publish;about")))
 ;; routes ends here

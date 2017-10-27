@@ -277,6 +277,7 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
                                          (:file "html")
                                          (:file "ext-html")
                                          (:file "orgmode")
+                                         (:file "render")
                                          (:file "routes")
                                          (:file "init")
                                          (:static-file "daemon.conf")
@@ -314,7 +315,6 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
                           (make-pathname :directory '(:relative "src"))
                           <<base_dir>>)))
 #+END_SRC
-
 
 ** Определение пакетов
 
@@ -424,6 +424,9 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   ;; Механизм трансляции путей
   <<pathname-translations>>
 
+  ;; Работа с html tree
+  <<html_s_tree>>
+
   ;; Механизм преобразования страниц
   <<enobler>>
 #+END_SRC
@@ -478,211 +481,11 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
 #+END_SRC
 
-* Преобразование через дерево
-
-Здесь механизм, который разбирает файлы, строит из них дерево s-выражений и
-осуществляет его трансформацию. В данный момент трансформация заключается просто в
-присоединении шаблона, содержащего трекеры статистики.
-
-#+NAME: enobler
-#+BEGIN_SRC lisp
-  (in-package :rigidus)
-
-  (defun html-to-tree (html)
-    ;; (html5-parser:node-to-xmls
-    (html5-parser:parse-html5-fragment html :dom :xmls))
-
-  (defun tree-to-html (tree &optional (step 0))
-    (macrolet ((indent () `(make-string (* 3 step) :initial-element #\Space)))
-      (labels ((paired (subtree)
-                 (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
-                         (indent)
-                         (car subtree)
-                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
-                                 (mapcar #'(lambda (attr)
-                                             (let ((key (car attr))
-                                                   (val (cadr attr)))
-                                               (format nil "~A=\"~A\"" key val)))
-                                         (cadr subtree)))
-                         (format nil "~{~A~}"
-                                 (progn
-                                   (incf step)
-                                   (let ((ret (mapcar #'(lambda (x)
-                                                          (subtree-to-html x step))
-                                                      (cddr subtree))))
-                                     (decf step)
-                                     ret)))))
-               (singled (subtree)
-                 (format nil "~A<~A~A />~%"
-                         (indent)
-                         (car subtree)
-                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
-                                 (mapcar #'(lambda (attr)
-                                             (let ((key (car attr))
-                                                   (val (cadr attr)))
-                                               (format nil "~A=\"~A\"" key val)))
-                                         (cadr subtree)))))
-               (subtree-to-html (subtree &optional (step 0))
-                 (cond ((stringp subtree) (format nil "~A~A~%" (indent) subtree))
-                       ((numberp subtree) (format nil "~A~A~%" (indent) subtree))
-                       ((listp   subtree)
-                        (let ((tag (car subtree)))
-                          (cond ((or (equal tag "img")
-                                     (equal tag "link")
-                                     (equal tag "meta"))  (singled subtree))
-                                (t (paired subtree)))))
-                       (t (format nil "[:err:~A]" subtree)))))
-        (reduce #'(lambda (a b) (concatenate 'string a b))
-                (mapcar #'(lambda (x) (subtree-to-html x step))
-                        tree)))))
-
-  (defun ennobler (pathname &optional dbg)
-    (let* ((file-contents (alexandria:read-file-into-string pathname))
-           (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
-           (tree (html-to-tree onestring))
-           ;; (inject-css '("link" (("href" "/css/style.css") ("rel" "stylesheet") ("type" "text/css"))))
-           ;; (replace-css #'(lambda (in)
-           ;;                  (optima:match in
-           ;;                    (`("style" (("type" "text/css")) ,_) inject-css))))
-           ;; (remove-css (maptree-transform replace-css tree))
-           ;; (inject-js '("script" (("src" "scripts.js"))))
-           ;; (replace-js  #'(lambda (in)
-           ;;                  (optima:match in
-           ;;                    (`("script" (("type" "text/javascript")) ,_) inject-js))))
-           ;; (remove-js (maptree-transform replace-js remove-css))
-           (result tree))
-      (if dbg
-          result
-          (format nil "<!DOCTYPE html>~%~A~%~A"
-                  (tree-to-html result)
-                  (tpl:stat)))))
-#+END_SRC
-
-* Маршрутизация
-
-Маршрутизация осуществляется средствами библиотеки =RESTAS=, документация по
-которой доступна [[http://github.com/archimag/restas/][здесь]]. Мы включаем сюда маршруты всех страниц,
-маршрут 404 страницы и страницы для поисковых ботов, а потом публикуем
-папки, содержащие стили, скрипты и картинки.
-
-#+NAME: routes
-#+BEGIN_SRC lisp :tangle src/routes.lisp :noweb tangle :exports code :padline no :comments link
-  (in-package #:rigidus)
-
-  <<base_routes>>
-  <<route_404>>
-  <<route_robots>>
-
-  (restas:mount-module -css- (#:restas.directory-publisher)
-    (:url "/css/")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "css"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -img- (#:restas.directory-publisher)
-    (:url "/img/")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "img"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -js- (#:restas.directory-publisher)
-    (:url "/js/")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "js"))
-                      ,*base-dir*)))
-#+END_SRC
-
-** Маршруты страницы
-
-#+NAME: base_routes
-#+BEGIN_SRC lisp
-  (in-package :rigidus)
-
-  (restas:define-route index ("/")
-    (ennobler (translate-logical-pathname "org:publish;index")))
-
-  (restas:define-route index.html ("/index.html")
-    (ennobler (translate-logical-pathname "org:publish;index")))
-
-  (defmacro def/route (name param &body body)
-    `(progn
-       (restas:define-route ,name ,param
-         ,@body)
-       (restas:define-route
-           ,(intern (concatenate 'string (symbol-name name) "/"))
-           ,(cons (concatenate 'string (car param) "/") (cdr param))
-         ,@body)
-       (restas:define-route
-           ,(intern (concatenate 'string (symbol-name name) ".html"))
-           ,(cons (concatenate 'string (car param) ".html") (cdr param))
-         ,@body)))
-
-  (def/route about ("about")
-    (ennobler (translate-logical-pathname "org:publish;about")))
-
-  (restas:mount-module -doc- (#:restas.directory-publisher)
-    (:url "/doc")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -prj- (#:restas.directory-publisher)
-    (:url "/prj")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -lrn/asm- (#:restas.directory-publisher)
-    (:url "/lrn/asm")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -lrn/java- (#:restas.directory-publisher)
-    (:url "/lrn/java")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
-                      ,*base-dir*)))
-
-  (restas:mount-module -resources- (#:restas.directory-publisher)
-    (:url "/resources")
-    (restas.directory-publisher:*directory*
-     (merge-pathnames (make-pathname :directory '(:relative "resources"))
-                      ,*base-dir*)))
-#+END_SRC
-
-** 404 страница
-
-#+NAME: route_404
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  (defparameter *log-404* nil)
-
-  (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
-    "404 Not Found")
-
-  (restas:define-route not-found-route ("*any")
-    (push any *log-404*)
-    (restas:abort-route-handler
-     (page-404)
-     :return-code hunchentoot:+http-not-found+
-     :content-type "text/html"))
-#+END_SRC
-
-** Страница robots.txt
-
-#+NAME: route_robots
-#+BEGIN_SRC lisp
-  (in-package #:rigidus)
-
-  (restas:define-route robots ("/robots.txt")
-    (format nil "User-agent: *~%Disallow: "))
-#+END_SRC
-
 * Шаблон блоков статистики
 
 Это статистика от яндекса, гугла и liveinternet counter
+
+[TODO:gmm] - обновить
 
 #+NAME: tpl_stat
 #+BEGIN_SRC html :tangle src/templates.htm :noweb tangle :exports code :padline no :comments none
@@ -765,6 +568,328 @@ Orgmode включает в себя [[http://orgmode.org/manual/index.html#toc_
   {/literal}
 
   {/template}
+#+END_SRC
+
+* Html-tree
+
+В процессе работы бывает очень полезным представление страницы в виде дерева
+s-выражений. Для того чтобы разбирать html в дерево и собирать его обратно используется
+парсер из библиотеки ~html5-parser~ и простой сборщик, сохраняющий отступы:
+
+#+NAME: html_s_tree
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  <<html_to_tree>>
+  <<tree_to_html>>
+#+END_SRC
+
+** Парсинг html
+
+Разбираем html в дерево s-выражений
+
+#+NAME: html_to_tree
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun html-to-tree (html)
+    ;; (html5-parser:node-to-xmls
+    (html5-parser:parse-html5-fragment html :dom :xmls))
+#+END_SRC
+
+** Сборка в html
+
+#+NAME: tree_to_html
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun tree-to-html (tree &optional (step 0))
+    (macrolet ((indent ()
+                 `(make-string (* 3 step) :initial-element #\Space)))
+      (labels ((paired (subtree)
+                 (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))
+                         (format nil "~{~A~}"
+                                 (progn
+                                   (incf step)
+                                   (let ((ret (mapcar #'(lambda (x)
+                                                          (subtree-to-html x step))
+                                                      (cddr subtree))))
+                                     (decf step)
+                                     ret)))))
+               (singled (subtree)
+                 (format nil "~A<~A~A />~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))))
+               (subtree-to-html (subtree &optional (step 0))
+                 (cond ((stringp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((numberp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((listp   subtree)
+                        (let ((tag (car subtree)))
+                          (cond ((or (equal tag "img")
+                                     (equal tag "link")
+                                     (equal tag "meta"))  (singled subtree))
+                                (t (paired subtree)))))
+                       (t (format nil "[:err:~A]" subtree)))))
+        (reduce #'(lambda (a b) (concatenate 'string a b))
+                (mapcar #'(lambda (x) (subtree-to-html x step))
+                        tree)))))
+#+END_SRC
+
+* Преобразование страниц
+
+Здесь механизм, который разбирает файлы, строит из них дерево s-выражений и
+осуществляет его трансформацию.
+
+Я обнаружил определенную проблему с ним, связанную с выводом листингов внутри тега
+~<pre></pre>~ - из-за отступов, которые формирует ~tree-to-html~ сьезжает
+форматирование исходного кода. Поэтому, до написания своего парсера, учитывающего эти
+аспекты, я закомментировал такую обработку, тем более, что в данный момент
+трансформация заключается просто в присоединении шаблона, содержащего трекеры
+статистики.
+
+#+NAME: enobler
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (defun enobler (pathname &optional dbg)
+    (let* ((file-contents (alexandria:read-file-into-string pathname))
+           (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
+           (tree (html-to-tree onestring))
+           ;; (inject-css '("link" (("href" "/css/style.css") ("rel" "stylesheet") ("type" "text/css"))))
+           ;; (replace-css #'(lambda (in)
+           ;;                  (optima:match in
+           ;;                    (`("style" (("type" "text/css")) ,_) inject-css))))
+           ;; (remove-css (maptree-transform replace-css tree))
+           ;; (inject-js '("script" (("src" "scripts.js"))))
+           ;; (replace-js  #'(lambda (in)
+           ;;                  (optima:match in
+           ;;                    (`("script" (("type" "text/javascript")) ,_) inject-js))))
+           ;; (remove-js (maptree-transform replace-js remove-css))
+           (result tree))
+      (if dbg
+          result
+          (format nil "~A~A~%~A~%~A"
+                  ;; "<!DOCTYPE html>\n"
+                  ""
+                  ;; (tree-to-html result)
+                  file-contents
+                  (tpl:stat)
+                  "  <div id=\"linker\"><a href=\"/\">Home</a></div>"
+                  ))))
+#+END_SRC
+
+* Рендеринг
+
+RESTAS использует концепцию ~рендера~ чтобы отделить отображение страницы от ее
+маршрута. Нам надо определить рендер для вывода orgmode-страниц:
+
+#+NAME: render
+#+BEGIN_SRC lisp :tangle src/render.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:rigidus)
+
+  (defclass orgmode-handler () ())
+
+  (defmethod restas:render-object ((renderer orgmode-handler) (file pathname))
+    ;; NOTE: Оставлено как пример вызова CGI
+    ;; (cond
+    ;;   ((and (string= (pathname-type file) "cgi"))
+    ;;    (hunchentoot-cgi::handle-cgi-script file))
+    ;;   (t
+    ;;    (call-next-method)))
+    (enobler file))
+#+END_SRC
+
+* Маршрутизация
+
+Маршрутизация осуществляется средствами библиотеки =RESTAS=, документация по
+которой доступна [[http://github.com/archimag/restas/][здесь]].
+
+#+NAME: routes
+#+BEGIN_SRC lisp :tangle src/routes.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:rigidus)
+
+  <<route_static_files>>
+  <<route_404>>
+  <<route_robots>>
+  <<route_orgmode>>
+  <<route_pages>>
+#+END_SRC
+
+** Статические файлы
+
+Для всех файлов, которые должны отдаваться "как есть", таких как картинки, скрипты и
+стили предусмотрены соответствующие маршруты:
+
+#+NAME: route_static_files
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (restas:mount-module -css- (#:restas.directory-publisher)
+    (:url "/css/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "css"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -img- (#:restas.directory-publisher)
+    (:url "/img/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "img"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -js- (#:restas.directory-publisher)
+    (:url "/js/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "js"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -resources- (#:restas.directory-publisher)
+    (:url "/resources")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "resources"))
+                      ,*base-dir*)))
+#+END_SRC
+
+** 404 страница
+
+Для ненайденных страниц мы определяем страницу с 404 ошибкой.
+
+[TODO:gmm] - Сделать ее более функциональной и красивой
+
+#+NAME: route_404
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (defparameter *log-404* nil)
+
+  (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
+    "404 Not Found")
+
+  (restas:define-route not-found-route ("*any")
+    (push any *log-404*)
+    (restas:abort-route-handler
+     (page-404)
+     :return-code hunchentoot:+http-not-found+
+     :content-type "text/html"))
+#+END_SRC
+
+** Страница robots.txt
+
+Для указаний поисковым краулерам делаем страницу ~robots.txt~
+
+#+NAME: route_robots
+#+BEGIN_SRC lisp
+  (in-package #:rigidus)
+
+  (restas:define-route robots ("/robots.txt")
+    (format nil "User-agent: *~%Disallow: "))
+#+END_SRC
+
+** Страницы orgmode
+
+Для отображения страниц, экспортированных из orgmode, используется ~render-method~,
+который преобразует код страницы перед выдачей пользователю:
+
+#+NAME: route_orgmode
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  ;; (restas:mount-module -base- (#:restas.directory-publisher)
+  ;;   (:url "/")
+  ;;   (:render-method (make-instance 'orgmode-handler))
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "www"))
+  ;;                     *base-dir*)))
+
+  (restas:mount-module -doc- (#:restas.directory-publisher)
+    (:url "/doc")
+    (:render-method (make-instance 'orgmode-handler))
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -about- (#:restas.directory-publisher)
+    (:url "/about")
+    (:render-method (make-instance 'orgmode-handler))
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/about"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -prj- (#:restas.directory-publisher)
+    (:url "/prj")
+    (:render-method (make-instance 'orgmode-handler))
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -lrn/asm- (#:restas.directory-publisher)
+    (:url "/lrn/asm")
+    (:render-method (make-instance 'orgmode-handler))
+
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -lrn/java- (#:restas.directory-publisher)
+    (:url "/lrn/java")
+    (:render-method (make-instance 'orgmode-handler))
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
+                      ,*base-dir*)))
+#+END_SRC
+
+** Маршруты страниц
+
+Для всех остальных страниц маршруты определены напрямую, так, чтобы ведомый слэш не
+приводил к появляению 404-ой ошибки:
+
+#+NAME: route_pages
+#+BEGIN_SRC lisp
+  (in-package :rigidus)
+
+  (restas:define-route index ("/")
+    (enobler (translate-logical-pathname "org:publish;index")))
+
+  (restas:define-route index.html ("/index.html")
+    (enobler (translate-logical-pathname "org:publish;index")))
+
+  (defmacro def/route (name param &body body)
+    `(progn
+       (restas:define-route ,name ,param
+         ,@body)
+       (restas:define-route
+           ,(intern (concatenate 'string (symbol-name name) "/"))
+           ,(cons (concatenate 'string (car param) "/") (cdr param))
+         ,@body)
+       (restas:define-route
+           ,(intern (concatenate 'string (symbol-name name) ".html"))
+           ,(cons (concatenate 'string (car param) ".html") (cdr param))
+         ,@body)))
+
+  (def/route research ("research")
+    (enobler (translate-logical-pathname "org:publish;research")))
+
+  (def/route slides ("slides")
+    (enobler (translate-logical-pathname "org:publish;slides")))
+
+  (def/route projects ("projects")
+    (enobler (translate-logical-pathname "org:publish;projects")))
+
 #+END_SRC
 
 * COMMENT Работа с базой данных

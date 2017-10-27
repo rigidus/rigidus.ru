@@ -91,12 +91,15 @@
 ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
 ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
 
-;; Механизм преобразования страниц
+;; Работа с html tree
+(in-package :rigidus)
+
 (in-package :rigidus)
 
 (defun html-to-tree (html)
   ;; (html5-parser:node-to-xmls
   (html5-parser:parse-html5-fragment html :dom :xmls))
+(in-package :rigidus)
 
 (defun tree-to-html (tree &optional (step 0))
   (macrolet ((indent () `(make-string (* 3 step) :initial-element #\Space)))
@@ -142,7 +145,10 @@
               (mapcar #'(lambda (x) (subtree-to-html x step))
                       tree)))))
 
-(defun ennobler (pathname &optional dbg)
+;; Механизм преобразования страниц
+(in-package :rigidus)
+
+(defun enobler (pathname &optional dbg)
   (let* ((file-contents (alexandria:read-file-into-string pathname))
          (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
          (tree (html-to-tree onestring))
@@ -159,7 +165,9 @@
          (result tree))
     (if dbg
         result
-        (format nil "<!DOCTYPE html>~%~A~%~A"
+        (format nil "<!DOCTYPE html>~%~A~%~A~%~A"
                 (tree-to-html result)
-                (tpl:stat)))))
+                (tpl:stat)
+                "  <div id=\"linker\"><a href=\"/\">Home</a></div>"
+                ))))
 ;; defmodule ends here
