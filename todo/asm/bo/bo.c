@@ -12,41 +12,13 @@
 #define MAX_X 24
 #define MAX_Y 14
 #define TILE_SIZE 32
-
-void game();
-
 #define SIZE_OF_COMMAND_NAME 10
 #define FOR_ALL_COMMAND for (int i=0; i<(sizeof(cmds)/sizeof(struct command)); i++)
-
-void hello();
 
 int exit_flag = 0;
 int cur_priv_lvl  = 0;
 
 typedef void (*pcmd)();
-
-pcmd get_command();
-
-void login();
-void login() {
-    char passbuf[50];
-    puts("enter password:");
-    gets(passbuf);
-    if (0 == strcmp(passbuf, "scrt")) {
-        cur_priv_lvl = 1;
-        puts("success: you are logged");
-    } else {
-        puts("error: wrong password");
-    }
-}
-
-void badcmd() {
-    printf("error: bad command or low privilegies\n");
-}
-
-void quit() {
-    exit_flag = 1;
-}
 
 struct command {
     int  active;
@@ -56,12 +28,34 @@ struct command {
     void (*pf)();
 };
 
+void game();
+void hello();
+pcmd get_command();
+void login();
+void badcmd();
+void quit();
+void badcmd() {    printf("error: bad command or low privilegies\n"); }
+void quit()   {    exit_flag = 1; }
+
 struct command cmds[] = {
     {1,0,1,"quit",  &quit  },
     {1,0,2,"login", &login },
     {1,1,5,"game",  &game  }
 };
 
+char log_ok[] = "success: you are logged";
+
+void login() {
+    char passbuf[50];
+    puts("enter password:");
+    gets(passbuf);
+    if (0 == strcmp(passbuf, log_ok+19)) {
+        cur_priv_lvl = 1;
+        puts(log_ok);
+    } else {
+        puts("error: wrong password");
+    }
+}
 
 void hello() {
     printf("available comands:\n- for logged users: ");
