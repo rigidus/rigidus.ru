@@ -61,6 +61,13 @@
    (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
                     *base-dir*)))
 
+(restas:mount-module -about- (#:restas.directory-publisher)
+  (:url "/about")
+  (:render-method (make-instance 'orgmode-handler))
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/about"))
+                    *base-dir*)))
+
 (restas:mount-module -prj- (#:restas.directory-publisher)
   (:url "/prj")
   (:render-method (make-instance 'orgmode-handler))
@@ -103,6 +110,12 @@
          ,(cons (concatenate 'string (car param) ".html") (cdr param))
        ,@body)))
 
-;; (def/route about ("about")
-;;   (enobler (translate-logical-pathname "org:publish;about")))
+(def/route research ("research")
+  (enobler (translate-logical-pathname "org:publish;research")))
+
+(def/route slides ("slides")
+  (enobler (translate-logical-pathname "org:publish;slides")))
+
+(def/route projects ("projects")
+  (enobler (translate-logical-pathname "org:publish;projects")))
 ;; routes ends here

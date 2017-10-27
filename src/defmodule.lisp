@@ -102,7 +102,8 @@
 (in-package :rigidus)
 
 (defun tree-to-html (tree &optional (step 0))
-  (macrolet ((indent () `(make-string (* 3 step) :initial-element #\Space)))
+  (macrolet ((indent ()
+               `(make-string (* 3 step) :initial-element #\Space)))
     (labels ((paired (subtree)
                (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
                        (indent)
@@ -165,8 +166,11 @@
          (result tree))
     (if dbg
         result
-        (format nil "<!DOCTYPE html>~%~A~%~A~%~A"
-                (tree-to-html result)
+        (format nil "~A~A~%~A~%~A"
+                ;; "<!DOCTYPE html>\n"
+                ""
+                ;; (tree-to-html result)
+                file-contents
                 (tpl:stat)
                 "  <div id=\"linker\"><a href=\"/\">Home</a></div>"
                 ))))
