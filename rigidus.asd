@@ -4,7 +4,7 @@
 (asdf:defsystem #:rigidus
   :version      "0.0.3"
   :author       "rigidus <i.am.rigidus@gmail.com>"
-  :licence      "GPLv3"
+  :licence      "AGPLv3"
   :description  "site http://rigidus.ru"
   :depends-on   (#:anaphora
                  #:closer-mop
