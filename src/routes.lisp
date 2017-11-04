@@ -83,6 +83,14 @@
    (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
                     *base-dir*)))
 
+(restas:mount-module -lrn/forth- (#:restas.directory-publisher)
+  (:url "/lrn/forth")
+  (:render-method (make-instance 'orgmode-handler))
+
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/forth"))
+                    *base-dir*)))
+
 (restas:mount-module -lrn/java- (#:restas.directory-publisher)
   (:url "/lrn/java")
   (:render-method (make-instance 'orgmode-handler))
