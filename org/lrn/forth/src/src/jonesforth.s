@@ -86,6 +86,14 @@ defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
 
 .set sys_exit,1
 .set sys_read,3
+.set sys_write,4
+.set sys_open,5
+.set sys_close,6
+.set sys_creat,8
+.set sys_unlink,0xA
+.set sys_lseek,0x13
+.set sys_truncate,0x5C
+
 .set stdin, 2
 
 .set __NR_exit,  93
@@ -189,7 +197,7 @@ defcode "SYSCALL0",8,,SYSCALL0
 
     defcode "KEY",3,,KEY
     call _KEY
-    push    %eax            #       # push return value on stack
+    push    %eax            #       # push возвращенне значение на стек
     NEXT                    #
 _KEY:                       # <--+
     mov     (currkey), %ebx #    |  # Берем указатель currkey в %ebx
@@ -202,14 +210,14 @@ _KEY:                       # <--+
     ret                     # |  |  #        и выходим (в %eax лежит 0)
     # ---------------- RET    |  |
 1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
-    mov     $sys_read, %eax      |  # param1: SYSCALL #3 (read)
-    mov     $stdin, %ebx         |  # param2: Дескриптор #2 (stdin)
-    mov     $input_buffer, %ecx  |  # param3: Кладем адрес буфера ввода в %ecx
-    mov     %ecx, currkey        |  # Сохраняем адрес буфера ввода в currkey
+    mov     $sys_read, %eax #    |  # param1: SYSCALL #3 (read)
+    mov     $stdin, %ebx    #    |  # param2: Дескриптор #2 (stdin)
+    mov     $input_buffer, %ecx #|  # param3: Кладем адрес буфера ввода в %ecx
+    mov     %ecx, currkey   #    |  # Сохраняем адрес буфера ввода в currkey
     mov     INPUT_BUFFER_SIZE, %edx # Максимальная длина ввода
-    int     $0x80                |  # SYSCALL
+    int     $0x80           #    |  # SYSCALL
     # Проверяем возвращенное     |
-    test    %eax, %eax           |  # (%eax <= 0)?
+    test    %eax, %eax      #    |  # (%eax <= 0)?
     jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
     addl    %eax, %ecx      # |  |  # ?-Нет, добавляем в %ecx кол-во прочитанных байт
     mov     %ecx, bufftop   # |  |  #        записываем %ecx в bufftop
@@ -219,7 +227,7 @@ _KEY:                       # <--+
     mov     $sys_exit, %eax         # param1: SYSCALL #1 (exit)
     xor     %ebx, %ebx              # param2: код возврата
     int     $0x80                   # SYSCALL
-
+    # --------------- EXIT
     .data
     .align 4
 currkey:
@@ -244,17 +252,17 @@ _WORD:
     jbe     1b              #-+   | # ?-Да, переходим назад
     #                             |
     # Ищем конец слова, сохраняя символы по мере продвижения
-    mov     $word_buffer, %edi    | # Указатель на возвращаемы буфер
+    mov     $word_buffer, %edi  # | # Указатель на возвращаемы буфер
 2:                      # <---+   |
     stosb                   # |   | # Добавляем символ в возвращаемый буфер
     call    _KEY            # |   | # Вызываем KEY символ будет возвращен в %al
     cmpb    $' ', %al       # |   | # (Это пробел)?
     ja      2b              #-+   | # Если нет, повторим
-    #                             |
+    #                       #     |
     # Вернем слово (указатель на статический буфер черех %ecx) и его длину (через %edi)
-    sub     $word_buffer, %edi    |
-    mov     %edi, %ecx            | # return: длина слова
-    mov     $word_buffer, %edi    | # return: адрес буфера
+    sub     $word_buffer, %edi  # |
+    mov     %edi, %ecx      #     | # return: длина слова
+    mov     $word_buffer, %edi  # | # return: адрес буфера
     ret                     #     |
     # ----------------- RET       |
     #                             |
