@@ -1,0 +1,2219 @@
+#+STARTUP: showall indent hidestars
+
+* Forth-часть
+
+Теперь мы достигли стадии, на которой работает self-hosted Forth. Все дальнейшие слова
+могут быть записаны как слова Forth, включая такие слова, как IF, THEN, и.т.д., которые
+на большинстве языков будут считаться весьма фундаментальными.
+
+Некоторые примечания о коде:
+
+Я использую отступы для отображения структуры. Количество пробелов не имеет никакого
+значения для Forth, кроме того, кроме того, что вы должны использовать по крайней мере
+один пробельный символ между словами, а сами слова не могут содержать пробелы. Forth
+чувствителен к регистру. Используйте CAPS LOCK.
+
+
+** DIVMOD
+
+Примитивное слово ~/MOD~ (DIVMOD) оставляет как частное, так и остаток в стеке. (В i386
+команда idivl дает оба значения). Теперь мы можем определить ~/~ и ~MOD~ на основе
+~/MOD~ и нескольких других примитивов.
+
+#+NAME: forth_divmod
+#+BEGIN_SRC forth
+  : / /MOD SWAP DROP ;
+  : MOD /MOD DROP ;
+#+END_SRC
+
+** Символьные константы
+
+Определим некоторые символьные константы:
+
+#+NAME: forth_some_constants
+#+BEGIN_SRC forth
+  : '\n' 10 ;
+  : BL   32 ; \ BL (BLank) стандартное слово для пробела
+
+  \ CR печатает возврат каретки
+  : CR '\n' EMIT ;
+
+  \ SPACE печатает пробел
+  : SPACE BL EMIT ;
+
+  \ NEGATE оставляет на стеке обратное число том, что было на стеке
+  : NEGATE 0 SWAP - ;
+
+  \ Стандартные слова для булевых значений.
+  : TRUE  1 ;
+  : FALSE 0 ;
+  : NOT   0= ;
+
+  \ LITERAL берет то, что находится в стеке (<foo>) и компилирует как LIT <foo>
+  : LITERAL IMMEDIATE
+      ' LIT ,      \ компилирует LIT
+      ,            \ компилирует сам литерал (из стека)
+  ;
+#+END_SRC
+
+Теперь мы можем использовать ~[~ и ~]~ для вставки литералов, которые вычисляются во
+время компиляции. (Вспомните, что ~[~ и ~]~ являются словами Forth, которые
+переключаются в и из ~непосредственного режима~.)
+
+В пределах определений используйте ~[~ ... ~]~ LITERAL, где "..." - это константное
+выражение, которое вы, скорее всего, вычислите один раз (во время компиляции, чтобы не
+вычислять его каждый раз, когда выполняется ваше слово).
+
+#+NAME: forth_literal_colon
+#+BEGIN_SRC forth
+  : ':'
+      [         \ входим в immediate mode (временно)
+      CHAR :    \ push 58 (ASCII code of ":") в стек параметров
+      ]         \ переходим назад в compile mode
+      LITERAL   \ компилируем LIT 58 как определения ':' слова
+  ;
+#+END_SRC
+
+Еще несколько символьных констант определены так же, как указано выше.
+
+#+NAME: forth_literals
+#+BEGIN_SRC forth
+  : ';' [ CHAR ; ] LITERAL ;
+  : '(' [ CHAR ( ] LITERAL ;
+  : ')' [ CHAR ) ] LITERAL ;
+  : '"' [ CHAR " ] LITERAL ;
+  : 'A' [ CHAR A ] LITERAL ;
+  : '0' [ CHAR 0 ] LITERAL ;
+  : '-' [ CHAR - ] LITERAL ;
+  : '.' [ CHAR . ] LITERAL ;
+#+END_SRC
+
+** COMPILE
+
+При компиляции ~[ COMPILE ] word~ компилирует ~word~, в противном случае (при
+интерпретации) исполняет его "НЕМЕДЛЕННО".
+
+#+NAME: forth_compile
+#+BEGIN_SRC forth
+  : [COMPILE] IMMEDIATE
+      WORD        \ получить следующее слово
+      FIND        \ найти его в словаре
+      >CFA        \ получить его codeword
+      ,           \ и скомпилировать его
+  ;
+#+END_SRC
+
+** RECURSE
+
+RECURSE делает рекурсивный вызов текущему слову, которое компилируется.
+
+Обычно, когда слово компилируется, оно помечено как HIDDEN, так что ссылки на одно и то
+же слово внутри являются вызовами предыдущего определения слова (если таковое
+есть). Однако у нас все еще есть доступ к слову, которое мы сейчас компилируем с
+помощью LATEST-указателя, поэтому мы можем использовать его для компиляции рекурсивного
+вызова.
+
+#+NAME: forth_recurse
+#+BEGIN_SRC forth
+  : RECURSE IMMEDIATE
+      LATEST @  \ LATEST указывает на слово, компилируемое в данный момент
+      >CFA      \ получаем codeword
+      ,         \ компилируем его
+  ;
+#+END_SRC
+
+** Управляющие выражения
+
+Пока мы определили только очень простые определения. Прежде чем мы сможем идти дальше,
+нам нужно сделать некоторые управляющие структуры, например ~IF ... THEN~ и ~LOOP~. К
+счастью, мы можем определить произвольные элементы управления структуры
+непосредственно в Forth.
+
+Обратите внимание, что структуры управления, так, как я их определил, будут работать
+только внутри компилируемых слов. Если вы попытаетесь ввести выражения с использованием
+IF и.т.д. в непосредственном режиме, то они не будут работать. Выполнение этих операций
+в непосредственном режиме остается в качестве упражнения для читателя.
+
+Условное выражение вида:
+
+#+BEGIN_SRC forth
+  condition IF true-part THEN rest
+#+END_SRC
+
+компилируется в:
+
+#+BEGIN_SRC forth
+  condition 0BRANCH OFFSET true-part rest
+#+END_SRC
+
+где OFFSET - это смещение ~rest~
+
+А условное выражение вида:
+
+#+BEGIN_SRC forth
+  condition IF true-part ELSE false-part THEN
+#+END_SRC
+
+компилируется в:
+
+#+BEGIN_SRC forth
+  condition 0BRANCH OFFSET true-part BRANCH OFFSET2 false-part rest
+#+END_SRC
+
+где ~OFFSET~ - это смещение ~false-part~ и ~OFFSET2~ - это смещение ~rest~.
+
+IF - это НЕМЕДЛЕННОЕ слово, которое компилирует 0BRANCH, за которым следует фиктивное
+смещение, и помещает адрес 0BRANCH в стек. Позже, когда мы увидим THEN, мы вытолкнем
+этот адрес из стека, вычислим смещение и заполним смещение.
+
+#+NAME: forth_if
+#+BEGIN_SRC forth
+  : IF IMMEDIATE
+      ' 0BRANCH ,    \ компилировать 0BRANCH
+      HERE @         \ сохранить позицию смещения в стеке
+      0 ,            \ компилировать фиктивное смещение
+  ;
+
+  : THEN IMMEDIATE
+      DUP
+      HERE @ SWAP -  \ рассчитать смещение от адреса сохраненного в стек
+      SWAP !         \ сохранить смещение в заполненом месте
+  ;
+
+  : ELSE IMMEDIATE
+      ' BRANCH ,     \ определить ветвь до false-part
+      HERE @         \ сохранить местоположение смещения в стеке
+          0 ,        \ компилировать фиктивное смещение
+          SWAP       \ теперь заполнить оригинальное (IF) смещение
+          DUP        \ то же что и для THEN выше
+      HERE @ SWAP -
+      SWAP !
+  ;
+#+END_SRC
+
+** Циклы
+
+Переходим к циклам:
+
+*** BEGIN - UNTIL
+
+#+BEGIN_SRC forth
+  BEGIN loop-part condition UNTIL
+#+END_SRC
+
+компилируется в:
+
+#+BEGIN_SRC forth
+  loop-part condition 0BRANCH OFFSET
+#+END_SRC
+
+где ~OFFSET~ указатель обратно на ~loop-part~. Это похоже на следующий пример из Си:
+
+#+BEGIN_SRC c
+  do {
+      loop-part
+  } while (condition)
+#+END_SRC
+
+#+NAME: forth_begin_until
+#+BEGIN_SRC forth
+  : BEGIN IMMEDIATE
+      HERE @       \ Сохранить location в стеке
+  ;
+
+  : UNTIL IMMEDIATE
+      ' 0BRANCH ,  \ скомпилировать 0BRANCH
+      HERE @ -     \ рассчитать смещение от сохраненного адреса в стеке
+      ,            \ скомпилировать смещение
+  ;
+#+END_SRC
+
+*** BEGIN - AGAIN
+
+#+BEGIN_SRC forth
+  BEGIN loop-part AGAIN
+#+END_SRC
+
+компилируется в:
+
+#+BEGIN_SRC forth
+  loop-part BRANCH OFFSET
+#+END_SRC
+
+где ~OFFSET~ указатель обратно на ~loop-part~. Другими словами, есконечный цикл, которй
+может быть прерван только вызвом EXIT
+
+#+NAME: forth_again
+#+BEGIN_SRC forth
+  : AGAIN IMMEDIATE
+      ' BRANCH , \ скомпилировать BRANCH
+      HERE @ -   \ вычислить смещение назад
+      ,          \ скомпилировать смещение
+  ;
+#+END_SRC
+
+*** BEGIN - WHILE - REPEAT
+
+#+BEGIN_SRC forth
+  BEGIN condition WHILE loop-part REPEAT
+#+END_SRC
+
+компилируется в:
+
+#+BEGIN_SRC forth
+  condition 0BRANCH OFFSET2 loop-part BRANCH OFFSET
+#+END_SRC
+
+где OFFSET указывает назад на условие (в начало) и OFFSET2 указывает в конец, на
+позицию после всего фрагмента кода. Это похоже на следующий пример из Си:
+
+#+BEGIN_SRC c
+  while (condition) {
+      loop-part
+  }
+#+END_SRC
+
+#+NAME: forth_while_repeat
+#+BEGIN_SRC forth
+  : WHILE IMMEDIATE
+      ' 0BRANCH ,   \ компилировать 0BRANCH
+      HERE @        \ сохранить позицию offset2 в стеке
+      0 ,           \ компилировать фиктивное смещение offset2
+  ;
+
+  : REPEAT IMMEDIATE
+      ' BRANCH ,    \ компилировать BRANCH
+      SWAP          \ взять оригинальное смещение (from BEGIN)
+      HERE @ - ,    \ и скомпилировать его после BRANCH
+      DUP
+      HERE @ SWAP - \ вычислить offset2
+      SWAP !        \ и заполнить им оригинальную позицию
+  ;
+#+END_SRC
+
+** Unless
+
+UNLESS будет таким же как IF, но тест будет наоборот.
+
+Обратите внимание на использование [COMPILE]: Поскольку IF является IMMEDIATE, мы не
+хотим, чтобы он выполнялся, пока UNLESS компилируется, но пока UNLESS работает (что
+случается, когда любое слово, использующее UNLESS, компилируется). Поэтому мы
+используем [COMPILE] для обращения эффекта, который оказывает маркировка IF как
+IMMEDIATE.  Этот трюк обычно используется, когда мы хотим написать собственные
+контрольные слова, без необходимости реализовывать их, опираясь на примитивы 0BRANCH и
+BRANCH, а вместо этого используем более простые управляющие слова, такие как (в данном
+случае) IF.
+
+#+NAME: forth_unless
+#+BEGIN_SRC forth
+  : UNLESS IMMEDIATE
+      ' NOT ,        \ скомпилировать NOT (чтобы обратить test)
+      [COMPILE] IF   \ продолжить, вызывав обычный IF
+  ;
+#+END_SRC
+
+** Комментарии
+
+Forth допускает комментарии вида ~(...)~ в определениях функций. Это работает путем
+вызова ~IMMEDIATE word (~, который просто отбрасывает входные символы до тех пор, пока
+не попадет на соответствующий ~)~.
+
+#+NAME: forth_parens
+#+BEGIN_SRC forth
+  : ( IMMEDIATE
+      1                  \ разрешены вложенные комментарии путем отслеживания глубины
+      BEGIN
+          KEY            \ прочесть следующий симво
+          DUP '(' = IF   \ открывающая скобка?
+              DROP       \ drop ее
+              1+         \ увеличить глубину
+          ELSE
+              ')' = IF   \ закрывающая скобка?
+                  1-     \ уменьшить глубину
+              THEN
+          THEN
+      DUP 0= UNTIL       \ продолжать пока не достигнем нулевой глубины
+      DROP               \ drop счетчик
+  ;
+#+END_SRC
+
+** Стековая нотация
+
+
+В стиле Forth мы также можем использовать ~(... - ...)~, чтобы показать эффекты,
+которые имеет слово в стеке параметров. Например:
+- ~( n -- )~ означает, что слово потребляет какое-то целое число (n) параметров из стека.
+- ~( b a -- c )~ означает, что слово использует два целых числа (a и b, где a находится
+  на вершине стека) и возвращает одно целое число (c).
+- (--) означает, что слово не влияет на стек
+
+Некоторые более сложные примеры стека, показывающие нотацию стека:
+
+#+NAME: forth_nip_tuck_pick_spaces_decimal_hex
+#+BEGIN_SRC forth
+  : NIP ( x y -- y ) SWAP DROP ;
+
+  : TUCK ( x y -- y x y ) SWAP OVER ;
+
+  : PICK ( x_u ... x_1 x_0 u -- x_u ... x_1 x_0 x_u )
+      1+                  ( добавить единицу из-за "u" в стек )
+      4 *                 ( умножить на размер слова )
+      DSP@ +              ( добавить к указателю стека )
+      @                   ( и взять )
+  ;
+
+  ( C помощью циклов мы можем теперь написать SPACES, который записывает N пробелов в stdout )
+  : SPACES                ( n -- )
+      BEGIN
+          DUP 0>          ( пока n > 0 )
+      WHILE
+              SPACE       ( напечатать пробел )
+              1-          ( повторять с уменьшением пока не 0 )
+      REPEAT
+      DROP                ( сбросить счетчик со стека )
+  ;
+
+  ( Стандартные слова для манипуляции BASE )
+  : DECIMAL ( -- ) 10 BASE ! ;
+  : HEX     ( -- ) 16 BASE ! ;
+#+END_SRC
+
+** Печать чисел
+
+Стандартное слово Forth ~.~ (DOT) очень важно. Он снимает число с вершины стека и
+печатает его. Однако сначала я собираюсь реализовать некоторые слова Forth более
+низкого уровня:
+- ~U.R~ ( u width -- )  печатает беззнаковое число, дополненное определенной шириной
+- ~U.~  ( u -- )  печатает беззнаковое число
+- ~.R~  ( n width -- )  печатает подписанное число, дополненное определенной шириной.
+
+Например:
+
+#+BEGIN_SRC forth
+  -123 6 .R
+#+END_SRC
+
+напечатет такие символы:
+
+#+BEGIN_SRC forth
+  <space> <space> - 1 2 3
+#+END_SRC
+
+Другими словами. число дополнено до определенного количества символов.
+
+Полное число печатается, даже если оно шире ширины, и это позволяет нам определить
+обычные функции ~U.~ и ~.~ (мы просто устанавливаем ширину в ноль, зная, что в любом
+случае будет напечатано полное число).
+
+Еще одна заминка в функции ~.~ и ее друзьях - это то, что они подчиняются текущей базе
+в переменной BASE. BASE может быть любым в диапазоне от 2 до 36.
+
+Пока мы определяем ~.~ ~&c~ мы также можем определить ~.S~ который является полезным
+инструментом отладки. Это слово печатает текущий стек (не разрушая его) сверху вниз.
+
+Это основное рекурсивное определение ~U.~:
+
+#+NAME: forth_u_print
+#+BEGIN_SRC forth
+  : U. ( u -- )
+      BASE @ /MOD ( width rem quot )
+      ?DUP IF     ( if quotient <> 0 then )
+          RECURSE ( print the quotient )
+      THEN
+
+      ( печатаем остаток )
+      DUP 10 < IF
+          '0' ( десятичные цифры 0..9 )
+      ELSE
+          10 - ( шестнадцатиричные и другие цифры A..Z )
+          'A'
+      THEN
+      +
+      EMIT
+  ;
+#+END_SRC
+
+Слово ~.S~ печатает содержимое стека. Оно не меняет стек. Очень полезно для отладки.
+
+#+NAME: forth_stack_print
+#+BEGIN_SRC forth
+  : .S ( -- )
+      DSP@ ( взять текущий стековый указатель )
+      BEGIN
+          DUP S0 @ <
+      WHILE
+              DUP @ U. ( напечатать элемент из стека )
+              SPACE
+              4+       ( двигаться дальше )
+      REPEAT
+      DROP (сбросить указатель )
+  ;
+#+END_SRC
+
+Это слово возвращает ширину (в символах) числа без знака в текущей базе
+
+#+NAME: forth_uwidth_udotr
+#+BEGIN_SRC forth
+  : UWIDTH ( u -- width )
+      BASE @ / ( rem quot )
+      ?DUP IF ( if quotient <> 0 then )
+          RECURSE 1+ ( return 1+recursive call )
+      ELSE
+          1 ( return 1 )
+      THEN
+  ;
+
+  : U.R ( u width -- )
+      SWAP ( width u )
+      DUP ( width u u )
+      UWIDTH ( width u uwidth )
+      ROT ( u uwidth width )
+      SWAP - ( u width-uwidth )
+      ( В этот момент, если запрошенная ширина уже, у нас будет отрицательное число в стеке.
+      В противном случае число в стеке - это количество пробелов для печати.
+      Но SPACES не будет печатать отрицательное количество пробелов в любом случае,
+      поэтому теперь можно безопасно вызвать SPACES ... )
+      SPACES
+      ( ... а затем вызвать базовую реализацию U. )
+      U.
+  ;
+#+END_SRC
+
+~.R~ печатает беззнаковое число, дополненное определенной шириной. Мы не можем просто
+распечатать знак и вызвать U.R, потому что мы хотим, чтобы знак был рядом с номером
+('-123' а не '- 123').
+
+#+NAME: forth_dotr
+#+BEGIN_SRC forth
+  : .R ( n width -- )
+      SWAP ( width n )
+      DUP 0< IF
+          NEGATE ( width u )
+          1 ( save a flag to remember that it was negative | width n 1 )
+          SWAP ( width 1 u )
+          ROT ( 1 u width )
+          1- ( 1 u width-1 )
+      ELSE
+          0 ( width u 0 )
+          SWAP ( width 0 u )
+          ROT ( 0 u width )
+      THEN
+      SWAP ( flag width u )
+      DUP ( flag width u u )
+      UWIDTH ( flag width u uwidth )
+      ROT ( flag u uwidth width )
+      SWAP - ( flag u width-uwidth )
+
+      SPACES ( flag u )
+      SWAP ( u flag )
+
+      IF ( was it negative? print the - character )
+          '-' EMIT
+      THEN
+
+      U.
+  ;
+#+END_SRC
+
+Наконец, мы можем определить слово ~.~ через ~.R~, с оконечными пробелами.
+
+#+NAME: forth_dotr_with_trailing
+#+BEGIN_SRC forth
+  : . 0 .R SPACE ;
+#+END_SRC
+
+Реальный ~U.~, с оконечными пробелами.
+
+#+NAME: forth_udot_with_trailing
+#+BEGIN_SRC forth
+  : U. U. SPACE ;
+#+END_SRC
+
+Это слово выбирает целое число по адресу и печатает его.
+
+#+NAME: forth_enigma
+#+BEGIN_SRC forth
+  : ? ( addr -- ) @ . ;
+#+END_SRC
+
+** Еще полезные слова
+
+~c a b WITHIN~ возвращает true если a <= c and c < b
+
+или можно определить его без IF : ~OVER - >R - R>  U<~
+
+#+NAME: forth_within
+#+BEGIN_SRC forth
+  : WITHIN
+      -ROT ( b c a )
+      OVER ( b c a c )
+      <= IF
+          > IF ( b c -- )
+              TRUE
+          ELSE
+              FALSE
+          THEN
+      ELSE
+          2DROP ( b c -- )
+          FALSE
+      THEN
+  ;
+#+END_SRC
+
+DEPTH возвращает глубину стека
+
+#+NAME: forth_depth
+#+BEGIN_SRC forth
+  : DEPTH        ( -- n )
+      S0 @ DSP@ -
+      4-         ( adjust because S0 was on the stack when we pushed DSP )
+  ;
+#+END_SRC
+
+ALIGNED берет адрес и округляет его (выравнивает) к следующей границе 4 байта
+
+#+NAME: forth_aligned
+#+BEGIN_SRC forth
+  : ALIGNED ( addr -- addr )
+      3 + 3 INVERT AND ( (addr+3) & ~3 )
+  ;
+#+END_SRC
+
+ALIGN выравнивает указатель HERE, поэтому следующее добавленное слово будет правильно
+выровнено.
+
+#+NAME: forth_depth
+#+BEGIN_SRC forth
+  : ALIGN HERE @ ALIGNED HERE ! ;
+#+END_SRC
+
+** Строки
+
+~S" string"~ используется в Forth для определения строк. Это слово оставляет адрес
+строки и ее длину на вершине стека). Пробел, следующей за ~S"~, является нормальным
+пробелом между словами Forth и не является частью строки.
+
+Это сложно определить, потому что он должен делать разные вещи в зависимости от того,
+компилируем мы или в находимся немедленном режиме. (Таким образом, слово помечено как
+IMMEDIATE, чтобы оно могло обнаружить это и делать разные вещи).
+
+В режиме компиляции мы добавляем:
+
+#+BEGIN_SRC forth
+  LITSTRING <string length> <string rounded up 4 bytes>
+#+END_SRC
+
+к текущему слову. Примитив LITSTRING делает все правильно, когда выполняется текущее
+слово.
+
+В непосредственном режиме нет особого места для размещения строки, но в этом случае мы
+помещаем строку по адресу HERE (но мы не изменяем HERE). Это подразумевается как
+временное местоположение, которое вскоре будет перезаписано.
+
+#+NAME: forth_strings
+#+BEGIN_SRC forth
+  ( C, appends a byte to the current compiled word. )
+  : C,
+      HERE @ C! ( store the character in the compiled image )
+      1 HERE +! ( increment HERE pointer by 1 byte )
+  ;
+
+  : S" IMMEDIATE ( -- addr len )
+      STATE @ IF ( compiling? )
+          ' LITSTRING , ( compile LITSTRING )
+          HERE @ ( save the address of the length word on the stack )
+          0 , ( dummy length - we don't know what it is yet )
+          BEGIN
+              KEY  ( get next character of the string )
+              DUP '"' <>
+          WHILE
+                  C, ( copy character )
+          REPEAT
+          DROP ( drop the double quote character at the end )
+          DUP ( get the saved address of the length word )
+          HERE @ SWAP - ( calculate the length )
+          4- ( subtract 4  (because we measured from the start of the length word) )
+          SWAP ! ( and back-fill the length location )
+          ALIGN ( round up to next multiple of 4 bytes for the remaining code )
+      ELSE ( immediate mode )
+          HERE @ ( get the start address of the temporary space )
+          BEGIN
+              KEY
+              DUP '"' <>
+          WHILE
+                  OVER C! ( save next character )
+                  1+ ( increment address )
+          REPEAT
+          DROP ( drop the final " character )
+          HERE @ - ( calculate the length )
+          HERE @ ( push the start address )
+          SWAP  ( addr len )
+      THEN
+  ;
+#+END_SRC
+
+~."~ является оператором печати строки в Forth. Пример: ~." Something to print"~ Пробел
+после оператора - обычный пробел, требуемый между словами, и не является частью того,
+что напечатано.
+
+В непосредственном режиме мы просто продолжаем читать символы и печатать их, пока не
+перейдем к следующей двойной кавычки.
+
+В режиме компиляции мы используем ~S"~ для хранения строки, а затем добавляем TELL
+впоследствии:
+
+#+BEGIN_SRC forth
+  LITSTRING <string length> <string rounded up to 4 bytes> TELL
+#+END_SRC
+
+Может быть интересно отметить использование ~[COMPILE]~, чтобы превратить вызов в
+непосредственное слово ~S"~ в компиляцию этого слова. Он компилирует его в определение ~."~,
+а не в определение скомпилированного слова, когда оно выполняется (достаточно сложно для вас?)
+
+#+BEGIN_SRC forth
+  : ." IMMEDIATE ( -- )
+      STATE @ IF ( compiling? )
+          [COMPILE] S" ( read the string, and compile LITSTRING, etc. )
+          ' TELL , ( compile the final TELL )
+      ELSE
+          ( In immediate mode, just read characters and print them until we get
+          to the ending double quote. )
+          BEGIN
+              KEY
+              DUP '"' = IF
+                  DROP ( drop the double quote character )
+                  EXIT ( return from this function )
+              THEN
+              EMIT
+          AGAIN
+      THEN
+  ;
+#+END_SRC
+
+** Константы и переменные
+
+В Forth глобальные константы и переменные определяются следующим образом:
+
+#+BEGIN_SRC forth
+  10 CONSTANT TEN  # когда TEN выполняется, он оставляет целое число 10 в стеке
+  VARIABLE VAR     # когда VAR выполняется, он оставляет адрес VAR в стеке
+#+END_SRC
+
+Константы можно читать, но не писать, например:
+
+#+BEGIN_SRC forth
+  TEN . CR # печатает 10
+#+END_SRC
+
+Вы можете прочитать переменную (в этом примере, называемую VAR), выполнив:
+
+#+BEGIN_SRC forth
+  VAR @       # оставляет значение VAR в стеке
+  VAR @ . CR  # печатает значение VAR
+  VAR ? CR    # как и выше, поскольку ? такой же как @ .
+#+END_SRC
+
+и обновить переменную, выполнив:
+
+#+BEGIN_SRC forth
+  20 VAR ! # записывает в VAR число 20
+#+END_SRC
+
+Обратите внимание, что переменные неинициализированы (но см. VALUE позже, в котором
+инициализированные переменные содержат несколько более простой синтаксис).
+
+*** CONSTANT
+
+Как мы можем определить слова CONSTANT и VARIABLE?
+
+Трюк заключается в том, чтобы определить новое слово для самой переменной (например,
+если переменная называлась "VAR", тогда мы бы определили новое слово под названием
+VAR). Это легко сделать, потому что мы открыли создание словарных записей через слово
+CREATE (часть определения ~:~ выше). Вызов WORD [TEN] CREATE (где [TEN] означает, что
+"TEN" является следующим введенным словом) создает запись словаря:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-29.png
+                            +--- HERE
+                            |
+                            V
+  +---------+---+---+---+---+
+  | LINK    | 3 | T | E | N |
+  +---------+---+---+---+---+
+             len
+#+END_SRC
+
+Для CONSTANT мы можем продолжить это, просто добавив DOCOL (как ~codeword~), затем LIT,
+за которым следует сама константа, а затем EXIT, образуя небольшое определение слова,
+которое возвращает константу:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-29.png
+  +---------+---+---+---+---+------------+------------+------------+------------+
+  | LINK    | 3 | T | E | N | DOCOL      | LIT        | 10         | EXIT       |
+  +---------+---+---+---+---+------------+------------+------------+------------+
+             len             codeword
+#+END_SRC
+
+Обратите внимание, что это определение слова точно такое же, как и у вас, если бы вы
+написали
+
+#+BEGIN_SRC forth
+  : TEN 10 ;
+#+END_SRC
+
+Примечание для людей, читающих код ниже: DOCOL - это постоянное слово, которое мы
+определили в ассемблерной части , которая возвращает значение символа ассемблера с тем
+же именем.
+
+#+NAME: forth_constant
+#+BEGIN_SRC forth
+  : CONSTANT
+      WORD     ( получить имя  имя следует за CONSTANT )
+      CREATE   ( создать заголовок элемента словаря )
+      DOCOL ,  ( добавить DOCOL как codeword поля слова )
+      ' LIT ,  ( добавить codeword LIT )
+      ,        ( добавить значение, которое лежит на вершине стека )
+      ' EXIT , ( добавить codeword EXIT )
+  ;
+#+END_SRC
+
+*** VARIABLE
+
+VARIABLE немного сложнее, потому что нам нужно где-то вставить переменную. Нет ничего
+особенного в пользовательской памяти (область памяти, на которую указывает HERE, где мы
+ранее только хранили новые определения слов). Мы можем вырезать кусочки этой области
+памяти, чтобы сохранить что угодно, поэтому одно возможное определение VARIABLE может
+создать это:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-30.png
+  +-------------------------------------------------------------------+
+  |                                                                   |
+  V                                                                   |
+  +---------+---------+---+---+---+---+------------+------------+-----+------+------------+
+  |  var    | LINK    | 3 | T | E | N | DOCOL      | LIT        | addr var   | EXIT       |
+  +---------+---------+---+---+---+---+------------+------------+------------+------------+
+                       len             codeword
+#+END_SRC
+
+Чтобы сделать это более общим, давайте определим пару слов, которые мы можем
+использовать для выделения произвольной памяти из пользовательской памяти.
+
+Первое из них - ALLOT, где ~n ALLOT~ выделяет ~n~ байтов памяти. (Обратите внимание,
+что при вызове ALLOT очень хорошая идея, убедиться, что ~n~ кратно 4, или, по крайней
+мере, в следующий раз, когда слово скомпилировано, что HERE осталось кратным 4).
+
+#+NAME: forth_allot
+#+BEGIN_SRC forth
+  : ALLOT ( n -- addr )
+      HERE @ SWAP ( here n )
+      HERE +!     ( добавляем n к HERE, после этого старое значение остается на стеке )
+  ;
+#+END_SRC
+
+Второе важное слово - Во-вторых, CELLS. В Forth выражение ~n CELLS ALLOT~ означает
+выделение n integer-ов любого размера - это натуральный размер для integer в этой
+машинной архитектуре. На этой 32-битной машине CELLS просто умножает вершину стека
+на 4.
+
+#+NAME: forth_cells
+#+BEGIN_SRC forth
+  : CELLS ( n -- n ) 4 * ;
+#+END_SRC
+
+Итак, теперь мы можем легко определить переменную во многом так же, как и CONSTANT
+выше. См. схему выше, чтобы увидеть, как будет выглядеть слово, которое создает
+VARIABLE.
+
+#+NAME: forth_variable
+#+BEGIN_SRC forth
+  : VARIABLE
+      1 CELLS ALLOT ( выделить 4 байтовую ячейку для integer памяти, push указатель на нее )
+      WORD CREATE   ( создать элемент словаря, имя которого следует за VARIABLE )
+      DOCOL ,       ( добавить DOCOL  как поле codeword этого слова )
+      ' LIT ,       ( добавить codeword LIT )
+      ,             ( добавить указатель на новое имя )
+      ' EXIT ,      ( добавить codeword EXIT )
+  ;
+#+END_SRC
+
+** VALUE
+
+VALUE похожи на VARIABLE, но с более простым синтаксисом. Вы обычно используете их,
+когда вам нужна переменная, которая часто читается, а записывается нечасто.
+
+#+BEGIN_SRC forth
+  20 VALUE VAL \ создаем VAL и инициализируем ее значением 20
+  VAL          \ push-им значение переменной VAL (20) в стек
+  30 TO VAL    \ изменяем VAL, устанавливае ее в 30
+  VAL          \ push-им новое значение переменной VAL (30) в стек
+#+END_SRC
+
+Обратите внимание, что «VAL» сам по себе не возвращает адрес значения, а само значение,
+делая значения более понятными и понятными для использования, чем переменные (без
+косвенности через «@»). Цена представляет собой более сложную реализацию, хотя,
+несмотря на сложность, во время исполнения нет штрафа за производительность.
+
+Наивная реализация "TO" была бы довольно медленной, каждый раз ей приходилось бы искать
+в словаре. Но поскольку это Forth, мы имеем полный контроль над компилятором, чтобы мы
+могли более эффективно компилировать TO, превращая:
+
+#+BEGIN_SRC forth
+  TO VAL
+#+END_SRC
+
+в
+
+#+BEGIN_SRC forth
+  LIT <addr> !
+#+END_SRC
+
+и вычислить <addr> (адрес значения) во время компиляциии
+
+Теперь это довольно умно. Мы скомпилируем наше значение следующим образом:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-31.png
++---------+---+---+---+---+------------+------------+------------+------------+
+| LINK    | 3 | T | E | N | DOCOL      | LIT        | value      | EXIT       |
++---------+---+---+---+---+------------+------------+------------+------------+
+           len             codeword
+#+END_SRC
+
+где <value> - это фактическое значение. Обратите внимание, что когда VAL выполняется,
+он будет выталкивать значение в стек, чего мы и хотим.
+
+Но что будет использовать для адреса <addr>?  Разумеется, указатель на этот <value>:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-32.png
+- - - - - - - - - - - - - - - - -+------------+------------+------+- - - - - - -
+  код, скомплированный TO VAL    | LIT        | addr       | !    |
+- - - - - - - - - - - - - - - - -+------------+------+-----+------+- - - - - - -
+                                                     |
+                                                     |
+                                                     V
++---------+---+---+---+---+------------+------------+------------+------------+
+| LINK    | 3 | T | E | N | DOCOL      | LIT        | value      | EXIT       |
++---------+---+---+---+---+------------+------------+------------+------------+
+           len             codeword
+#+END_SRC
+
+Другими словами, это своего рода самомодифицирующийся код.
+
+(Замечение для людей, которые хотят изменить этот Forth, чтобы добавить инлайнинг:
+значения, определенные таким образом, не могут быть заинлайнены).
+
+#+NAME: forth_to
+#+BEGIN_SRC forth
+  : VALUE ( n -- )
+      WORD CREATE ( создаем заголовок элемента словаря - имя следует за VALUE)
+      DOCOL ,     ( добавляем DOCOL )
+      ' LIT ,     ( добавляем codeword LIT )
+      ,           ( добавляем начальное значение )
+      ' EXIT ,    ( добавляем codeword EXIT )
+  ;
+
+  : TO IMMEDIATE ( n -- )
+      WORD ( получаем имя VALUE )
+      FIND ( ищем его в словаре )
+      >DFA ( получаем указатель на первое поле данных -'LIT' )
+      4+   ( увеличиваем его значение на размер данных )
+      STATE @ IF ( компиляция? )
+          ' LIT , ( да, компилировать LIT )
+          ,       ( компилировать адрес значения )
+          ' ! ,   ( компилировать ! )
+      ELSE ( нет, immediate mode )
+          ! ( обновить сразу )
+      THEN
+  ;
+#+END_SRC
+
+~x +TO VAL~ добавляет x к VAL
+
+#+NAME: forth_to_plus
+#+BEGIN_SRC forth
+  : +TO IMMEDIATE
+      WORD ( получаем имя значения )
+      FIND ( ищем в словаре )
+      >DFA ( получаем указатель на первое поле данных -'LIT' )
+      4+   ( увеличиваем его значение на размер данных )
+      STATE @ IF ( компиляция? )
+          ' LIT , ( да, компилировать LIT )
+          ,       ( компилировать адрес значения )
+          ' +! ,  ( компилировать +! )
+      ELSE ( нет, immediate mode )
+          +! ( обновить сразу )
+      THEN
+  ;
+#+END_SRC
+
+** Печать словаря
+
+~ID.~ берет адрес словаря и печатает имя слова.
+
+Например: ~LATEST @ ID.~ распечатает имя последнего определенного слова
+
+#+NAME: forth_id_dot
+#+BEGIN_SRC forth
+  : ID.
+      4+            ( перепрыгиваем через указатель link )
+      DUP C@        ( получаем байт flags/length )
+      F_LENMASK AND ( маскируем flags - мы хотим просто получить длину )
+
+      BEGIN
+          DUP 0>    ( длина > 0? )
+      WHILE
+              SWAP 1+ ( addr len -- len addr+1 )
+              DUP C@  ( len addr -- len addr char | получаем следующий символ )
+              EMIT    ( len addr char -- len addr | и печатаем его )
+              SWAP 1- ( len addr -- addr len-1    | вычитаем единицу из длины )
+      REPEAT
+      2DROP         ( len addr -- )
+  ;
+#+END_SRC
+
+~WORD word FIND ?HIDDEN~ возвращает true, если слово ~word~ помечено как скрытое.
+~WORD word FIND ?IMMEDIATE~ возвращает true, если слово ~word~ помечен как
+"немедленное".
+
+#+NAME: forth_hidden_immediate_question
+#+BEGIN_SRC forth
+  : ?HIDDEN
+      4+ ( перепрыгиваем через указатель link )
+      C@ ( получаем байт flags/length )
+      F_HIDDEN AND ( маскируем F_HIDDEN флаг и возвращаем его )
+  ;
+
+  : ?IMMEDIATE
+      4+ ( перепрыгиваем через указатель link )
+      C@ ( получаем байт flags/length )
+      F_IMMED AND ( маскируем  F_IMMED флаг и возвращаем его )
+  ;
+#+END_SRC
+
+~WORDS~ печатает все слова, определенные в словаре, начиная с самого последнего слова.
+Однако оно не печатает скрытые слова. Реализация просто двигается назад от LATEST с
+помощью ссылок-указателей.
+
+#+NAME: forth_words
+#+BEGIN_SRC forth
+  : WORDS
+      LATEST @ ( начинаем с LATEST указателя )
+      BEGIN
+          ?DUP ( полка указатель не null )
+      WHILE
+              DUP ?HIDDEN NOT IF ( игнорируем скрытые слова )
+                  DUP ID.        ( если не скрытое, то печатаем слово )
+                  SPACE
+              THEN
+              @ ( dereference link - идем к следующему слову )
+      REPEAT
+      CR
+  ;
+#+END_SRC
+
+** Забывание
+
+До сих пор мы только выделяли память для слов. Forth обеспечивает довольно примитивный
+метод освобождения.
+
+~FORGET word~ удаляет определение «слова» из словаря и всего, что определено после
+него, включая любые переменные и другую память, выделенную после.
+
+Реализация очень проста - мы просматриваем слово (которое возвращает адрес записи
+словаря). Затем мы устанавливаем HERE, чтобы указывать на этот адрес, так что все
+будущие распределения и определения будут перезаписывать память, начиная с него. Нам
+также необходимо установить LATEST, чтобы указать на предыдущее слово.
+
+Обратите внимание: вы не можете FORGET встроенные слова (ну, вы можете попробовать,
+но это, вероятно, вызовет segfault).
+
+XXX: Поскольку мы написали VARIABLE, чтобы сохранить переменную в памяти, выделенную до
+слова, в текущей реализации VARIABLE FOO FORGET FOO приведет к утечке одной ячейки
+памяти.
+
+#+NAME: forth_forget
+#+BEGIN_SRC forth
+  : FORGET
+      WORD FIND      ( найти слов и получить его dictionary entry address )
+      DUP @ LATEST ! ( установить LATEST на указатель предыдущего слова )
+      HERE !         ( и сохранить HERE как dictionary address )
+  ;
+#+END_SRC
+
+** Дамп
+
+~DUMP~ используется для выгрузки содержимого памяти в "традиционном" формате ~hexdump~.
+
+Обратите внимание, что параметры DUMP (адрес, длина) совместимы со строковыми словами,
+такими как ~WORD~ и ~S".~
+
+Вы можете выгрузить исходный код для последнего слова, которое вы определили, выполнив
+что-то вроде:
+
+#+BEGIN_SRC forth
+  LATEST @ 128 DUMP
+#+END_SRC
+
+Вот реализация:
+
+#+NAME: forth_dump
+#+BEGIN_SRC forth
+  : DUMP ( addr len -- )
+      BASE @ -ROT ( save the current BASE at the bottom of the stack )
+      HEX ( and switch to hexadecimal mode )
+
+      BEGIN
+          ?DUP ( while len > 0 )
+      WHILE
+              OVER 8 U.R ( print the address )
+              SPACE
+
+              ( print up to 16 words on this line )
+              2DUP ( addr len addr len )
+              1- 15 AND 1+ ( addr len addr linelen )
+              BEGIN
+                  ?DUP ( while linelen > 0 )
+              WHILE
+                      SWAP ( addr len linelen addr )
+                      DUP C@ ( addr len linelen addr byte )
+                      2 .R SPACE ( print the byte )
+                      1+ SWAP 1- ( addr len linelen addr -- addr len addr+1 linelen-1 )
+              REPEAT
+              DROP ( addr len )
+
+              ( print the ASCII equivalents )
+              2DUP 1- 15 AND 1+  ( addr len addr linelen )
+              BEGIN
+                  ?DUP ( while linelen > 0)
+              WHILE
+                      SWAP ( addr len linelen addr )
+                      DUP C@ ( addr len linelen addr byte )
+                      DUP 32 128 WITHIN IF ( 32 <= c < 128? )
+                          EMIT
+                      ELSE
+                          DROP '.' EMIT
+                      THEN
+                      1+ SWAP 1- ( addr len linelen addr -- addr len addr+1 linelen-1 )
+              REPEAT
+              DROP ( addr len )
+              CR
+
+              DUP 1- 15 AND 1+  ( addr len linelen )
+              TUCK ( addr linelen len linelen )
+              - ( addr linelen len-linelen )
+              >R + R> ( addr+linelen len-linelen )
+      REPEAT
+
+      DROP ( restore stack )
+      BASE ! ( restore saved BASE )
+  ;
+#+END_SRC
+
+** Case
+
+~CASE ... ENDCASE~ - это то, как мы делаем ~switch~ в Forth. Для этого нет общего
+согласованного синтаксиса, поэтому я реализовал синтаксис, предусмотренный стандартом
+ISO Forth (ANS-Forth).
+
+#+BEGIN_SRC forth
+  ( some value on the stack )
+  CASE
+      test1 OF ... ENDOF
+      test2 OF ... ENDOF
+      testn OF ... ENDOF
+      ... ( default case )
+  ENDCASE
+#+END_SRC
+
+Оператор CASE проверяет значение в стеке, проверяя его на равенство с test1, test2,
+..., testn и выполняет соответствующий фрагмент кода внутри OF ... ENDOF. Если ни одно
+из тестовых значений не совпадает, выполняется случай по умолчанию. Внутри ... случая
+по умолчанию значение все еще находится в верхней части стека (оно неявно DROP-нется с
+помощью ENDCASE). Когда ENDOF выполняется, он перескакивает после ENDCASE
+(т. e. Отсутствует 2провал" и нет необходимости в операторе break, как в C).
+
+default case может быть опущен. Фактически tests также могут быть опущены, так
+что у вас будет только default case, хотя это, вероятно, не очень полезно.
+
+Пример (предполагая, что «q» и т. Д. - это слова, которые push-ат значение ASCII-кода
+буквы в стек):
+
+#+BEGIN_SRC forth
+  0 VALUE QUIT
+  0 VALUE SLEEP
+  KEY CASE
+      'q' OF 1 TO QUIT ENDOF
+      's' OF 1 TO SLEEP ENDOF
+      ( default case: )
+      ." Sorry, I didn't understand key <" DUP EMIT ." >, try again." CR
+  ENDCASE
+#+END_SRC
+
+В некоторых версиях Forth поддерживаются более продвинутые tests, такие как диапазоны
+и.т.д. В других версиях Forth вам нужно написать OTHERWISE, чтобы указать default
+case. Как я сказал выше, этот Forth пытается следовать стандарту ANS Forth.
+
+Реализация CASE ... ENDCASE несколько нетривиальна. Я следовал этой реализации:
+http://www.uni-giessen.de/faq/archiv/forthfaq.case_endcase/msg00000.html (в данный
+момент недоступна)
+
+Общий план состоит в том, чтобы скомпилировать код как ряд операторов IF:
+
+#+BEGIN_SRC forth
+  CASE                          \ (push 0 on the immediate-mode parameter stack)
+      test1 OF ... ENDOF        \ test1 OVER = IF DROP ... ELSE
+      test2 OF ... ENDOF        \ test2 OVER = IF DROP ... ELSE
+      testn OF ... ENDOF        \ testn OVER = IF DROP ... ELSE
+      ...  ( default case )...
+  ENDCASE                       \ DROP THEN [THEN [THEN ...]]
+#+END_SRC
+
+Оператор CASE push-ит 0 на стек параметров в "немедленном" режиме, и это число
+используется для подсчета количества инструкций THEN, которые нам нужны, когда мы
+получаем ENDCASE, чтобы каждый IF имел соответствующий THEN. Подсчет делается
+неявно. Если вы помните из реализации выше IF, каждый IF push-ит адрес кода в стеке в
+немедленном режиме, и эти адреса не равны нулю, поэтому к тому времени, когда мы дойдем
+до ENDCASE, стек содержит некоторое количество ненулевых элементов, а затем нуль. Число
+ненулевых чисел - это сколько раз IF был вызван, поэтому сколько же раз мы должны
+сделать соответствующий THEN.
+
+Этот код использует [COMPILE], чтобы мы скомпилировали вызовы IF, ELSE, THEN, а не
+вызывали их во время компиляции слов ниже.
+
+Как и во всех наших структурах управления, они работают только в определениях слов, а
+не в непосредственном режиме.
+
+#+NAME: forth_case
+#+BEGIN_SRC forth
+  : CASE IMMEDIATE
+      0 ( push 0 to mark the bottom of the stack )
+  ;
+
+  : OF IMMEDIATE
+      ' OVER , ( compile OVER )
+      ' = , ( compile = )
+      [COMPILE] IF ( compile IF )
+      ' DROP ,   ( compile DROP )
+  ;
+
+  : ENDOF IMMEDIATE
+      [COMPILE] ELSE ( ENDOF is the same as ELSE )
+  ;
+
+  : ENDCASE IMMEDIATE
+      ' DROP , ( compile DROP )
+
+      ( keep compiling THEN until we get to our zero marker )
+      BEGIN
+          ?DUP
+      WHILE
+              [COMPILE] THEN
+      REPEAT
+  ;
+#+END_SRC
+
+** Декомпилятор
+
+~CFA>~ является противоположностью ~>CFA~.  Он принимает ~codeword~ и пытается найти
+подходящее определение словаря. (По правде говоря, он работает с любым указателем на
+слово, а не только c указателем на ~codeword~, и это необходимо для выполнения
+трассировки стека).
+
+В этом Forth это не так просто. Фактически нам приходится искать через словарь, потому
+что у нас нет удобного обратного указателя (как это часто бывает в других версиях
+Forth).  Из-за этого поиска ~CFA>~ не следует использовать, когда производительность
+критична, поэтому она используется только для инструментов отладки, таких как
+декомпилятор и печать стек-трейсов.
+
+Это слово возвращает 0, если ничего не находит
+
+#+NAME: forth_cfa
+#+BEGIN_SRC forth
+  : CFA>
+      LATEST @ ( start at LATEST dictionary entry )
+      BEGIN
+          ?DUP ( while link pointer is not null )
+      WHILE
+              2DUP SWAP ( cfa curr curr cfa )
+              < IF ( current dictionary entry < cfa? )
+                  NIP ( leave curr dictionary entry on the stack )
+                  EXIT
+              THEN
+              @ ( follow link pointer back )
+      REPEAT
+      DROP ( restore stack )
+      0 ( sorry, nothing found )
+  ;
+#+END_SRC
+
+~SEE~ декомпилирует слово Forth.
+
+Мы ищем ~dictionary entry~ слова, затем снова ищем опять для следующего слова (фактически, конец
+скомпилированного слова). Это приводит к двум указателям:
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-33.png
+  +---------+---+---+---+---+------------+------------+------------+------------+
+  | LINK    | 3 | T | E | N | DOCOL      | LIT        | 10         | EXIT       |
+  +---------+---+---+---+---+------------+------------+------------+------------+
+  ^                                                                             ^
+  |                                                                             |
+  +---начало слова                                              конец слова ----+
+#+END_SRC
+
+С этой информацией мы можем декомпилировать слово. Нам нужно узнавать "мета-слова",
+такие как LIT, LITSTRING, BRANCH и.т.д. И обрабатывать их особенным образом.
+
+#+NAME: forth_see
+#+BEGIN_SRC forth
+  : SEE
+      WORD FIND ( find the dictionary entry to decompile )
+
+      ( Now we search again, looking for the next word in the dictionary.  This gives us
+      the length of the word that we will be decompiling.   (Well, mostly it does). )
+      HERE @ ( address of the end of the last compiled word )
+      LATEST @ ( word last curr )
+      BEGIN
+          2 PICK ( word last curr word )
+          OVER ( word last curr word curr )
+          <> ( word last curr word<>curr? )
+      WHILE ( word last curr )
+              NIP ( word curr )
+              DUP @ ( word curr prev  (which becomes: word last curr) )
+      REPEAT
+
+      DROP ( at this point, the stack is: start-of-word end-of-word )
+      SWAP ( end-of-word start-of-word )
+
+      ( begin the definition with : NAME [IMMEDIATE] )
+      ':' EMIT SPACE DUP ID. SPACE
+      DUP ?IMMEDIATE IF ." IMMEDIATE " THEN
+
+      >DFA ( get the data address, ie. points after DOCOL | end-of-word start-of-data )
+
+      ( now we start decompiling until we hit the end of the word )
+      BEGIN ( end start )
+          2DUP >
+      WHILE
+              DUP @ ( end start codeword )
+
+              CASE
+                  ' LIT OF ( is it LIT ? )
+                      4 + DUP @ ( get next word which is the integer constant )
+                      . ( and print it )
+                  ENDOF
+                  ' LITSTRING OF ( is it LITSTRING ? )
+                      [ CHAR S ] LITERAL EMIT '"' EMIT SPACE  ( print S"<space> )
+                      4 + DUP @ ( get the length word )
+                      SWAP 4 + SWAP ( end start+4 length )
+                      2DUP TELL ( print the string )
+                      '"' EMIT SPACE ( finish the string with a final quote )
+                      + ALIGNED ( end start+4+len, aligned )
+                      4 - ( because we're about to add 4 below )
+                  ENDOF
+                  ' 0BRANCH OF ( is it 0BRANCH ? )
+                      ." 0BRANCH  ( "
+                      4 + DUP @ ( print the offset )
+                      .
+                      ." ) "
+                  ENDOF
+                  ' BRANCH OF ( is it BRANCH ? )
+                      ." BRANCH  ( "
+                      4 + DUP @ ( print the offset )
+                      .
+                      ." ) "
+                  ENDOF
+                  ' ' OF ( is it '  (TICK) ? )
+                      [ CHAR ' ] LITERAL EMIT SPACE
+                      4 + DUP @ ( get the next codeword )
+                      CFA> ( and force it to be printed as a dictionary entry )
+                      ID. SPACE
+                  ENDOF
+                  ' EXIT OF ( is it EXIT? )
+                      ( We expect the last word to be EXIT, and if it is then we don't print it
+                      because EXIT is normally implied by ;.  EXIT can also appear in the middle
+                      of words, and then it needs to be printed. )
+                      2DUP ( end start end start )
+                      4 + ( end start end start+4 )
+                      <> IF ( end start | we're not at the end )
+                          ." EXIT "
+                      THEN
+                  ENDOF
+                  ( default case: )
+                  DUP ( in the default case we always need to DUP before using )
+                  CFA> ( look up the codeword to get the dictionary entry )
+                  ID. SPACE ( and print it )
+              ENDCASE
+
+              4 + ( end start+4 )
+      REPEAT
+
+      ';' EMIT CR
+
+      2DROP ( restore stack )
+  ;
+#+END_SRC
+
+** Токены выполнения
+
+Стандарт Forth определяет концепцию, называемую "токеном выполнения" (или "xt"),
+которая очень похожа на указатель функции в Си. Мы сопоставляем токен выполнения с
+адресом кодового слова.
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-34.png
+                      токен выполнения DOUBLE это адрес его codeword
+                                             |
+                                             V
+  +------+---+---+---+---+---+---+---+---+-----------+------+----+-------+
+  | LINK | 6 | D | O | U | B | L | E | 0 | DOCOL     | DUP  | +  | EXIT  |
+  +------+---+---+---+---+---+---+---+---+-----------+------+----+-------+
+             len                      pad  codeword
+#+END_SRC
+
+Существует один ассемблерный примитив для выполнения токенов, ~EXECUTE~ (xt -), который
+их запускает.
+
+Вы можете сделать токен выполнения для существующего слова длинным путем, используя
+~>CFA~, то есть: ~WORD [foo] FIND >CFA~ будет push-ить ~xt~ для ~foo~ в стек, где
+~foo~ - следующее введенное слово. Таким образом, очень медленный способ запуска DOUBLE
+может быть:
+
+#+BEGIN_SRC forth
+  : DOUBLE DUP + ;
+  : SLOW WORD FIND >CFA EXECUTE ;
+
+  5 SLOW DOUBLE . CR \ prints 10
+#+END_SRC
+
+Мы также предлагаем более простой и быстрый способ получить токен выполнения любого
+слова FOO:
+
+#+BEGIN_SRC forth
+  ['] FOO
+#+END_SRC
+
+Домашнее задание:
+- (1) Какая разница между ~[']~ FOO и ~' FOO~?
+- (2) Как соотносятся ~'~, ~[']~ и ~LIT~?
+
+Более полезным является определение анонимных слов и/или присваивание переменным
+токенов выполнения (xt).
+
+Чтобы определить анонимное слово (и запушить его xt в стеке), используйте: ~NONAME
+...;~ как в этом примере:
+
+#+BEGIN_SRC forth
+  :NONAME ." anon word was called" CR ; \ push-ит xt в стек
+
+  DUP EXECUTE EXECUTE  \ выполянет анонимное слово дважды
+#+END_SRC
+
+Параметры в стеке тоже работают должным образом:
+
+#+BEGIN_SRC forth
+  :NONAME ." called with parameter " . CR ;
+  DUP
+  10 SWAP EXECUTE \ напечатает 'called with parameter 10'
+  20 SWAP EXECUTE \ напечатает 'called with parameter 20'
+#+END_SRC
+
+Обратите внимание, что вышеупомянутый код создает утечку памяти: анонимное слово все еще
+компилируется в сегмент данных, поэтому, даже если вы потеряете отслеживание xt, слово
+продолжает занимать память. Хороший способ отслеживания xt и, таким образом, избежать
+утечки памяти - назначить его CONSTANT, VARIABLE или VALUE:
+
+#+BEGIN_SRC forth
+  0 VALUE ANON
+  :NONAME ." anon word was called" CR ; TO ANON
+  ANON EXECUTE
+  ANON EXECUTE
+#+END_SRC
+
+Еще одно использование ~:NONAME~ - создание массива функций, которые можно быстро
+вызвать (подумайте о быстром ~switch~ например). Этот пример адаптирован из стандарта
+ANS Forth:
+
+#+BEGIN_SRC forth
+  10 CELLS ALLOT CONSTANT CMD-TABLE
+  : SET-CMD CELLS CMD-TABLE + ! ;
+  : CALL-CMD CELLS CMD-TABLE + @ EXECUTE ;
+
+  :NONAME ." alternate 0 was called" CR ; 0 SET-CMD
+  :NONAME ." alternate 1 was called" CR ; 1 SET-CMD
+  \ etc...
+  :NONAME ." alternate 9 was called" CR ; 9 SET-CMD
+
+  0 CALL-CMD
+  1 CALL-CMD
+#+END_SRC
+
+Итак, реализуем ~:NONAME~ и [']:
+
+#+NAME: forth_noname
+#+BEGIN_SRC forth
+  : :NONAME
+      0 0 CREATE ( create a word with no name - we need a dictionary header because ; expects it )
+      HERE @     ( current HERE value is the address of the codeword, ie. the xt )
+      DOCOL ,    ( compile DOCOL  (the codeword) )
+      ]          ( go into compile mode )
+  ;
+
+  : ['] IMMEDIATE
+      ' LIT ,    ( compile LIT )
+  ;
+#+END_SRC
+
+** Исключения
+
+Удивительно, но исключения могут быть реализованы непосредственно в Forth, на самом
+деле довольно легко.
+
+Общее использование:
+
+#+BEGIN_SRC forth
+  : FOO ( n -- ) THROW ;
+
+  : TEST-EXCEPTIONS
+      25 ['] FOO CATCH \ execute 25 FOO, catching any exception
+      ?DUP IF
+          ." called FOO and it threw exception number: "
+          . CR
+          DROP \ we have to drop the argument of FOO (25)
+      THEN
+  ;
+  \ prints: called FOO and it threw exception number: 25
+#+END_SRC
+
+CATCH запускает токен выполнения и определяет, выбрасывает ли оно какое-либо исключение
+или нет. Стековая сигнатура CATCH довольно сложна:
+
+#+BEGIN_SRC forth
+  ( a_n-1 ... a_1 a_0 xt -- r_m-1 ... r_1 r_0 0 ) \ если xt не выбрасывает exception
+  ( a_n-1 ... a_1 a_0 xt -- ?_n-1 ... ?_1 ?_0 e ) \ если xt выбрасывает exception 'e'
+#+END_SRC
+
+где a_i и r_i - это (произвольное число) аргументов и содержимое стека возврата до и
+после того, как ~xt~ выполнен с помощью EXECUTE. Обратите внимание, в частности, на
+такой случай: когда генерируется исключение, указатель стека восстанавливается так, что
+в стеке есть ~n~ из ~something~ в позициях, где раньше были аргументы ~a_i~. Мы
+действительно не гарантируем, что находится в стеке - возможно, исходные аргументы а,
+возможно, какая-то другая ерунда - это во многом зависит от реализации слова, которое
+выполнялось.
+
+THROW, ABORT и еще несколько других исключений.
+
+Номера исключений - это целые числа, отличные от нуля. По условным обозначениям
+положительные числа могут использоваться для особых приложений, а отрицательные числа
+имеют определенные значения, определенные в стандарте ANS Forth. (Например, -1 - это
+исключение, вызванное ABORT).
+
+~0 THROW~ ничего не делает. Вот стековая сигнатура THROW:
+
+#+BEGIN_SRC forth
+  ( 0 -- )
+  ( * e -- ?_n-1 ... ?_1 ?_0 e ) \ the stack is restored to the state
+                                 \ from the corresponding CATCH
+#+END_SRC
+
+Реализация зависит от определений CATCH и THROW и состояния, разделяемого между ними.
+
+До этого момента стек возврата состоял только из списка адресов возврата, причем
+вершина возвращаемого стека была обратным адресом, где мы возобновляем выполнение,
+когда текущее слово делает EXIT. Однако CATCH будет push-ить более сложный ~фрейм стека
+исключений~ в стек возврата. Фрейм стека исключений записывает некоторые вещи о
+состоянии выполнения в момент вызова CATCH.
+
+Когда THROW вызывается, он идет вверх по стеку возврата (этот процесс называется
+"раскруткой"), пока не найдет фрейм стека исключений. Затем он использует данные в
+кадре стека исключений, чтобы восстановить состояние, позволяющее продолжить выполнение
+после соответствующего CATCH. (Если он разматывает стек и не находит фрейм стека
+исключений, он печатает сообщение и возвращается к приглашению, что также является
+нормальным поведением для так называемых "непойманных исключений").
+
+Это то, как выглядит ~фрейм стека исключений~. (Как обычно, стек возвратов показан
+вниз, от более младших до более старших адресов памяти, а растет он вверх).
+
+#+BEGIN_SRC ditaa :file ../../img/forth-interpret-35.png
++------------------------------+
+| адрес возврата из CATCH      |   Обратите внимание, что это уже в стеке возвратов
+|                              |   когда CATCH вызван.
++------------------------------+
+| оригинальные указатель стека |
+| параметров                   |
++------------------------------+  ^
+| стековый маркер исключения   |  |
+| (EXCEPTION-MARKER)           |  |   Направление раскрутки стека
++------------------------------+  |   которое делает THROW.
+                                  |
+                                  |
+#+END_SRC
+
+EXCEPTION-MARKER отмечает эту запись как фрейм стека исключений, а не обычный обратный
+адрес, и именно это THROW "замечает", поскольку оно разматывает стек. (Если вы хотите
+внедрить более сложные исключения, такие как TRY ... WITH, тогда вам нужно будет
+использовать другое значение маркера, если вы хотите, чтобы старые маркеры фреймов стека
+и новые исключения сосуществовали).
+
+Что произойдет, если исполняемое слово не выбрасывает исключение? Он, в конце концов,
+вернется и вызовет EXCEPTION-MARKER, поэтому EXCEPTION-MARKER лучше сделать что-то
+разумное без необходимости изменения EXIT. Это красиво дает нам подходящее определение
+EXCEPTION-MARKER, а именно функцию, которая просто отбрасывает кадр стека и сама
+возвращается (таким образом, "возвращается" из исходного CATCH).
+
+Из этого следует, что исключения - относительно легкий механизм в Forth.
+
+#+NAME: forth_exceptions
+#+BEGIN_SRC forth
+  : EXCEPTION-MARKER
+      RDROP ( drop the original parameter stack pointer )
+      0 ( there was no exception, this is the normal return path )
+  ;
+
+  : CATCH ( xt -- exn? )
+      DSP@ 4+ >R ( save parameter stack pointer  (+4 because of xt) on the return stack )
+      ' EXCEPTION-MARKER 4+ ( push the address of the RDROP inside EXCEPTION-MARKER ... )
+      >R ( ... on to the return stack so it acts like a return address )
+      EXECUTE ( execute the nested function )
+  ;
+
+  : THROW ( n -- )
+      ?DUP IF ( only act if the exception code <> 0 )
+          RSP@  ( get return stack pointer )
+          BEGIN
+              DUP R0 4- < ( RSP < R0 )
+          WHILE
+                  DUP @ ( get the return stack entry )
+                  ' EXCEPTION-MARKER 4+ = IF ( found the EXCEPTION-MARKER on the return stack )
+                      4+ ( skip the EXCEPTION-MARKER on the return stack )
+                      RSP! ( restore the return stack pointer )
+
+                      ( Restore the parameter stack. )
+                      DUP DUP DUP ( reserve some working space so the stack for this word
+                      doesn't coincide with the part of the stack being restored )
+                      R> ( get the saved parameter stack pointer | n dsp )
+                      4- ( reserve space on the stack to store n )
+                      SWAP OVER ( dsp n dsp )
+                      ! ( write n on the stack )
+                      DSP! EXIT ( restore the parameter stack pointer, immediately exit )
+                  THEN
+                  4+
+          REPEAT
+
+          ( No matching catch - print a message and restart the INTERPRETer. )
+          DROP
+
+          CASE
+              0 1- OF ( ABORT )
+                  ." ABORTED" CR
+              ENDOF
+              ( default case )
+              ." UNCAUGHT THROW "
+              DUP . CR
+          ENDCASE
+          QUIT
+      THEN
+  ;
+
+  : ABORT ( -- )
+      0 1- THROW
+  ;
+
+
+  ( Print a stack trace by walking up the return stack. )
+  : PRINT-STACK-TRACE
+      RSP@ ( start at caller of this function )
+      BEGIN
+          DUP R0 4- < ( RSP < R0 )
+      WHILE
+              DUP @ ( get the return stack entry )
+              CASE
+                  ' EXCEPTION-MARKER 4+ OF ( is it the exception stack frame? )
+                      ." CATCH  ( DSP="
+                      4+ DUP @ U. ( print saved stack pointer )
+                      ." ) "
+                  ENDOF
+                  ( default case )
+                  DUP
+                  CFA> ( look up the codeword to get the dictionary entry )
+                  ?DUP IF ( and print it )
+                      2DUP ( dea addr dea )
+                      ID. ( print word from dictionary entry )
+                      [ CHAR + ] LITERAL EMIT
+                      SWAP >DFA 4+ - . ( print offset )
+                  THEN
+              ENDCASE
+              4+ ( move up the stack )
+      REPEAT
+      DROP
+      CR
+  ;
+#+END_SRC
+
+** Строки языка Си
+
+Строки Forth представлены начальным адресом и длиной, хранящейся в стеке или в памяти.
+
+Большинство Forth-ов не обрабатывают строки Си, но мы нуждаемся в них, чтобы получить
+доступ к аргументам процесса и окружающей среде, оставленным в стеке ядром Linux, и
+сделать некоторые системные вызовы.
+
+| Операция             | Input    | Output   | Forth word | Notes              |
+|----------------------+----------+----------+------------+--------------------|
+| Создание Forth-строк | addr len | S" ..."  |            |                    |
+| Создание C-строк     | c-addr   | Z" ..."  |            |                    |
+| C -> Forth           | c-addr   | addr len | DUP STRLEN |                    |
+| Forth -> C           | addr len | c-addr   | CSTRING    | Аллоцируются во    |
+|                      |          |          |            | временном буфере   |
+|                      |          |          |            | и должны быть      |
+|                      |          |          |            | использованы или   |
+|                      |          |          |            | скопированы сразу. |
+|                      |          |          |            | И не должны        |
+|                      |          |          |            | содержать NULs     |
+
+Например, ~DUP STRLEN TELL~ печатает строку C.
+
+Z" ..." очень похожа на S" ..." за исключением того, что строка заканчивается символом
+ASCII NUL.
+
+Чтобы сделать его более похожим на строку C, во время выполнения Z" просто оставляет
+адрес строки в стеке (а не адрес и длину, как ~S"~) Чтобы реализовать это, нам нужно
+добавить дополнительный NUL в строку, а затем инструкцию DROP. Кроме этого, эта
+реализация является лишь модифицированной S".
+
+#+NAME: forth_zerostrings
+#+BEGIN_SRC forth
+  : Z" IMMEDIATE
+      STATE @ IF ( compiling? )
+          ' LITSTRING , ( compile LITSTRING )
+          HERE @ ( save the address of the length word on the stack )
+          0 , ( dummy length - we don't know what it is yet )
+          BEGIN
+              KEY  ( get next character of the string )
+              DUP '"' <>
+          WHILE
+                  HERE @ C! ( store the character in the compiled image )
+                  1 HERE +! ( increment HERE pointer by 1 byte )
+          REPEAT
+          0 HERE @ C! ( add the ASCII NUL byte )
+          1 HERE +!
+          DROP ( drop the double quote character at the end )
+          DUP ( get the saved address of the length word )
+          HERE @ SWAP - ( calculate the length )
+          4- ( subtract 4  (because we measured from the start of the length word) )
+          SWAP ! ( and back-fill the length location )
+          ALIGN ( round up to next multiple of 4 bytes for the remaining code )
+          ' DROP , ( compile DROP  (to drop the length) )
+      ELSE ( immediate mode )
+          HERE @ ( get the start address of the temporary space )
+          BEGIN
+              KEY
+              DUP '"' <>
+          WHILE
+                  OVER C! ( save next character )
+                  1+ ( increment address )
+          REPEAT
+          DROP ( drop the final " character )
+          0 SWAP C! ( store final ASCII NUL )
+          HERE @ ( push the start address )
+      THEN
+  ;
+
+  : STRLEN  ( str -- len )
+      DUP ( save start address )
+      BEGIN
+          DUP C@ 0<> ( zero byte found? )
+      WHILE
+              1+
+      REPEAT
+
+      SWAP - ( calculate the length )
+  ;
+
+  : CSTRING ( addr len -- c-addr )
+      SWAP OVER ( len saddr len )
+      HERE @ SWAP ( len saddr daddr len )
+      CMOVE ( len )
+
+      HERE @ + ( daddr+len )
+      0 SWAP C! ( store terminating NUL char )
+
+      HERE @  ( push start address )
+  ;
+#+END_SRC
+
+** Окружение
+
+Linux делает аргументы процесса и переменные окружения доступными нам в стеке.
+
+Указатель вершины стека сохраняется ранним ассемблерным кодом при запуске Forth в
+переменной S0, и начиная с этого указателя мы можем прочитать аргументы командной
+строки и переменные окружения.
+
+Начав с ~S0~, сам ~S0~ указывает на ~argc~ (количество аргументов командной строки).
+
+~S0+4~ указывает на ~argv[ 0 ]~, S0+8 указывает на ~argv[ 1 ]~ etc до ~argv[ argc-1 ]~.
+
+~argv[ argc ]~ это NULL указатель
+
+После этого стек содержит переменные окружения - набор указателей на строки формы
+NAME=VALUE до тех пор, пока мы не перейдем к другому указателю NULL.
+
+Первое слово, которое мы определяем, ARGC, push-ит количество аргументов командной
+строки (обратите внимание, что как и в случае с Сишным ~argc~, это включает в себя имя
+программы).
+
+#+NAME: forth_argc
+#+BEGIN_SRC forth
+  : ARGC
+      S0 @ @
+  ;
+#+END_SRC
+
+~n ARGV~ получаетет "энный" аргумент командной строки
+
+Например, чтобы напечатать имя программы, вы сделали бы:
+
+#+BEGIN_SRC forth
+  0 ARGV TELL CR
+#+END_SRC
+
+Вот реализация
+
+#+NAME: forth_argv
+#+BEGIN_SRC forth
+  : ARGV  ( n -- str u )
+      1+ CELLS S0 @ + ( get the address of argv[n] entry )
+      @ ( get the address of the string )
+      DUP STRLEN ( and get its length / turn it into a Forth string )
+  ;
+#+END_SRC
+
+ENVIRON возвращает адрес первой строки переменных окружения. Список строк заканчивается
+указателем NULL.
+
+Например, чтобы напечатать первую строку переменных окружения, вы могли бы сделать:
+
+#+BEGIN_SRC forth
+  ENVIRON @ DUP STRLEN TELL
+#+END_SRC
+
+Реализация:
+
+#+NAME: forth_environ
+#+BEGIN_SRC forth
+  : ENVIRON   ( -- addr )
+      ARGC    ( number of command line parameters on the stack to skip )
+      2 +     ( skip command line count and NULL pointer after the command line args )
+      CELLS   ( convert to an offset )
+      S0 @ +  ( add to base stack address )
+  ;
+#+END_SRC
+
+** Системные вызовы и файлы
+
+Различные слова, связанные с системными вызовами, и стандартный доступ к файлам.
+
+BYE вызывается, вызывая системный вызов выхода Linux (2).
+
+#+NAME: forth_bye
+#+BEGIN_SRC forth
+  : BYE ( -- )
+      0 ( return code  (0) )
+      SYS_EXIT ( system call number )
+      SYSCALL1
+  ;
+#+END_SRC
+
+UNUSED возвращает количество ячеек, оставшихся в пользовательской памяти (в сегменте
+данных).
+
+Для нашей реализации мы будем использовать системный вызов Linux brk (2), чтобы узнать
+конец сегмента данных и вычесть HERE из него.
+
+#+NAME: forth_unused
+#+BEGIN_SRC forth
+  : GET-BRK ( -- brkpoint )
+      0 SYS_BRK SYSCALL1 ( call brk (0) )
+  ;
+
+  : UNUSED ( -- n )
+      GET-BRK ( get end of data segment according to the kernel )
+      HERE @ ( get current position in data segment )
+      -
+      4 / ( returns number of cells )
+  ;
+#+END_SRC
+
+MORECORE увеличивает сегмент данных на указанное количество (4-х байтовых) ячеек.
+
+NB. Количество запрошенных ячеек должно быть, как правило, кратным 1024. Причина в том,
+что Linux не может расширить сегмент данных менее чем на одну страницу (4096 байт или
+1024 ячейки).
+
+Этот Forth автоматически не увеличивает размер сегмента данных "по запросу" (т.е. Когда
+используются (COMMA), ALLOT, CREATE и.т.д.). Вместо этого программист должен знать,
+сколько места займет большое выделение, провеить UNUSED и вызвать MORECORE, если это
+необходимо. Простым упражнением для читаетеля является изменение реализации сегмента
+данных, так что MORECORE вызывается автоматически, если программе требуется больше
+памяти.
+
+#+NAME: forth_morecore
+#+BEGIN_SRC forth
+  : BRK( brkpoint -- )
+      SYS_BRK SYSCALL1
+  ;
+
+  : MORECORE( cells -- )
+      CELLS GET-BRK + BRK
+  ;
+#+END_SRC
+
+Стандарт Forth предоставляет некоторые простые примитивы доступа к файлам, которые мы
+моделируем поверх системных вызовов Linux.
+
+Главным осложнением является преобразование строк Forth (адрес и длина) в строки Си для
+ядра Linux.
+
+Обратите внимание, что в этой реализации нет буферизации.
+
+#+NAME: forth_files
+#+BEGIN_SRC forth
+  : R/O  ( -- fam ) O_RDONLY ;
+  : R/W  ( -- fam ) O_RDWR ;
+
+  : OPEN-FILE ( addr u fam -- fd 0  (if successful) | c-addr u fam -- fd errno  (if there was an error) )
+      -ROT ( fam addr u )
+      CSTRING ( fam cstring )
+      SYS_OPEN SYSCALL2  ( open  (filename, flags) )
+      DUP ( fd fd )
+      DUP 0< IF ( errno? )
+          NEGATE ( fd errno )
+      ELSE
+          DROP 0 ( fd 0 )
+      THEN
+  ;
+
+  : CREATE-FILE ( addr u fam -- fd 0  (if successful) | c-addr u fam -- fd errno  (if there was an error) )
+      O_CREAT OR
+      O_TRUNC OR
+      -ROT ( fam addr u )
+      CSTRING ( fam cstring )
+      420 -ROT ( 0644 fam cstring )
+      SYS_OPEN SYSCALL3  ( open  (filename, flags|O_TRUNC|O_CREAT, 0644) )
+      DUP ( fd fd )
+      DUP 0< IF ( errno? )
+          NEGATE ( fd errno )
+      ELSE
+          DROP 0 ( fd 0 )
+      THEN
+  ;
+
+  : CLOSE-FILE ( fd -- 0  (if successful) | fd -- errno  (if there was an error) )
+      SYS_CLOSE SYSCALL1
+      NEGATE
+  ;
+
+  : READ-FILE ( addr u fd -- u2 0  (if successful) | addr u fd -- 0 0  (if EOF) | addr u fd -- u2 errno  (if error) )
+      >R SWAP R> ( u addr fd )
+      SYS_READ SYSCALL3
+
+      DUP ( u2 u2 )
+      DUP 0< IF ( errno? )
+          NEGATE ( u2 errno )
+      ELSE
+          DROP 0 ( u2 0 )
+      THEN
+  ;
+
+  \ PERROR prints a message for an errno, similar to C's perror (3) but we don't have the extensive
+  \ list of strerror strings available, so all we can do is print the errno.
+  : PERROR ( errno addr u -- )
+      TELL
+      ':' EMIT SPACE
+      ." ERRNO="
+      . CR
+  ;
+#+END_SRC
+
+Это всего лишь схема простого ассемблера, позволяющая писать примитивы Forth на языке
+ассемблера прямо изнутри Fort-а
+
+Ассемблерные примитивы начинаются с ~: NAME~ обычным способом, но заканчиваются
+~":CODE.~
+
+~;CODE~ обновляет заголовок так, что кодовое слово не является DOCOL, а указывает
+вместо этого на собранный код (в части DFA слова).
+
+Мы предоставляем удобный макрос NEXT (вы догадались, что он делает). Однако вам не
+нужно использовать его, потому что CODE поместит NEXT в конец вашего слова.
+
+Остальное состоит из некоторых непосредственных слов, которые расширяются в машинный
+код, прилагаемый к определению слова. Только крошечная часть сборки сборки i386
+покрыта, достаточно, чтобы написать несколько ассемблерных примитивов ниже.
+
+#+NAME: forth_asm
+#+BEGIN_SRC forth
+  HEX
+
+  ( Equivalent to the NEXT macro )
+  : NEXT IMMEDIATE AD C, FF C, 20 C, ;
+
+  : ;CODE IMMEDIATE
+      [COMPILE] NEXT        ( end the word with NEXT macro )
+      ALIGN                 ( machine code is assembled in bytes so isn't necessarily aligned at the end )
+      LATEST @ DUP
+      HIDDEN                ( unhide the word )
+      DUP >DFA SWAP >CFA !  ( change the codeword to point to the data area )
+      [COMPILE] [           ( go back to immediate mode )
+  ;
+
+  ( The i386 registers )
+  : EAX IMMEDIATE 0 ;
+  : ECX IMMEDIATE 1 ;
+  : EDX IMMEDIATE 2 ;
+  : EBX IMMEDIATE 3 ;
+  : ESP IMMEDIATE 4 ;
+  : EBP IMMEDIATE 5 ;
+  : ESI IMMEDIATE 6 ;
+  : EDI IMMEDIATE 7 ;
+
+  ( i386 stack instructions )
+  : PUSH IMMEDIATE 50 + C, ;
+  : POP IMMEDIATE 58 + C, ;
+
+  ( RDTSC instruction )
+  : RDTSC IMMEDIATE 0F C, 31 C, ;
+
+  DECIMAL
+
+  \ RDTSC is an assembler primitive which reads the Pentium timestamp counter  (a very fine-
+  \ grained counter which counts processor clock cycles).  Because the TSC is 64 bits wide
+  \ we have to push it onto the stack in two slots.
+
+  : RDTSC ( -- lsb msb )
+      RDTSC ( writes the result in %edx:%eax )
+      EAX PUSH ( push lsb )
+      EDX PUSH ( push msb )
+  ;CODE
+#+END_SRC
+
+INLINE может использоваться для встраивания примитива ассемблера в текущее
+(ассемблерное) слово.
+
+Например:
+
+#+BEGIN_SRC forth
+  : 2DROP INLINE DROP INLINE DROP ;CODE
+#+END_SRC
+
+построит эффективное ассемблерное слово 2DROP, которое содержит встроенный код
+ассемблерной команды для DROP, за которым следует DROP (например, два 'pop %eax'
+инструкции в этом случае).
+
+Другой пример. Рассмотрим это обычное определение Forth:
+
+#+BEGIN_SRC forth
+  : C@++ ( addr -- addr+1 byte ) DUP 1+ SWAP C@ ;
+#+END_SRC
+
+(это эквивалентно операции Си '*p++' где p - указатель на char).  Если вы заметили, что
+все слова, используемые для определения C@++, на самом деле являются ассемблерными
+примитивами, то мы можем писать быстрейшее (но эквивалентное) определение:
+
+#+BEGIN_SRC forth
+  : C@++ INLINE DUP INLINE 1+ INLINE SWAP INLINE C@ ;CODE
+#+END_SRC
+
+Интересно отметить, что этот "конкатенативный" стиль программирования позволяет писать
+на ассемблере переносимым образом. Вышеприведенное определение будет работать для любой
+архитектуры процессора.
+
+Для успешного использования INLINE необходимо выполнить несколько условий:
+- (1) В настоящее время вы должны определить слово ассемблера (т.е. ~: ... ;CODE~).
+- (2) Слово, в котором вы находитесь, должно быть известно как ассемблерное слово. Если
+  вы попытаетесь вставить слово Forth, вы получите сообщение об ошибке.
+- (3) Ассемблерный примитив должен быть позиционно-независимым и должен заканчиваться
+  одним NEXT макросом.
+
+Упражнения для читателя:
+- (a) Обобщите INLINE, чтобы он мог вставлять слова Forth при построении слов Forth.
+- (b) Дальнейшее обобщение INLINE, чтобы оно делало что-то разумное, когда вы пытаетесь
+  встроить Forth в ассемблер и наоборот.
+
+Реализация INLINE довольно проста. Мы находим слово в словаре, проверяем его как
+ассемблерное слово, а затем копируем его в текущее определение байтом за байтом, пока
+не достигнем макроса NEXT (который не копируем).
+
+#+NAME: forth_inlining_asm
+#+BEGIN_SRC forth
+  HEX
+  : =NEXT ( addr -- next? )
+      DUP C@ AD <> IF DROP FALSE EXIT THEN
+      1+ DUP C@ FF <> IF DROP FALSE EXIT THEN
+      1+     C@ 20 <> IF      FALSE EXIT THEN
+      TRUE
+  ;
+  DECIMAL
+
+  (  (INLINE) is the lowlevel inline function. )
+  :  (INLINE) ( cfa -- )
+      @ ( remember codeword points to the code )
+      BEGIN ( copy bytes until we hit NEXT macro )
+          DUP =NEXT NOT
+      WHILE
+              DUP C@ C,
+              1+
+      REPEAT
+      DROP
+  ;
+
+  : INLINE IMMEDIATE
+      WORD FIND ( find the word in the dictionary )
+      >CFA ( codeword )
+
+      DUP @ DOCOL = IF ( check codeword <> DOCOL  (ie. not a Forth word) )
+          ." Cannot INLINE Forth words" CR ABORT
+      THEN
+
+      (INLINE)
+  ;
+
+  HIDE =NEXT
+#+END_SRC
+
+** Заметка
+
+DOES> невозможно реализовать с помощью этого Forth, потому что у нас нет отдельного
+указателя данных.
+
+** Приветствие
+
+Это слово печатает версию и "ok":
+
+#+NAME: forth_welcome
+#+BEGIN_SRC forth
+  : WELCOME
+      S" TEST-MODE" FIND NOT IF
+          ." JONESFORTH VERSION " VERSION . CR
+          UNUSED . ." CELLS REMAINING" CR
+          ." OK "
+      THEN
+  ;
+#+END_SRC
+
+#+NAME: forth_all
+#+BEGIN_SRC forth
+  WELCOME
+  HIDE WELCOME
+#+END_SRC
+
+* Tangling
+
+
+#+NAME: forth_part
+#+BEGIN_SRC forth :tangle src/src/jonesforth.f :noweb tangle :exports code :padline no :comments none
+
+<<forth_some_constants>>
+
+<<forth_divmod>>
+
+<<forth_literal_colon>>
+
+<<forth_literals>>
+
+<<forth_compile>>
+
+<<forth_recurse>>
+
+<<forth_if>>
+
+<<forth_begin_until>>
+
+<<forth_again>>
+
+<<forth_while_repeat>>
+
+<<forth_unless>>
+
+<<forth_parens>>
+
+<<forth_nip_tuck_pick_spaces_decimal_hex>>
+
+<<forth_u_print>>
+
+<<forth_stack_print>>
+
+<<forth_uwidth_udotr>>
+
+<<forth_dotr>>
+
+<<forth_dotr_with_trailing>>
+
+<<forth_udot_with_trailing>>
+
+<<forth_enigma>>
+
+<<forth_within>>
+
+<<forth_depth>>
+
+<<forth_aligned>>
+
+<<forth_depth>>
+
+<<forth_strings>>
+
+<<forth_constant>>
+
+<<forth_allot>>
+
+<<forth_cells>>
+
+<<forth_variable>>
+
+<<forth_to>>
+
+<<forth_to_plus>>
+
+<<forth_id_dot>>
+
+<<forth_hidden_immediate_question>>
+
+<<forth_words>>
+
+<<forth_forget>>
+
+<<forth_dump>>
+
+<<forth_case>>
+
+<<forth_cfa>>
+
+<<forth_see>>
+
+<<forth_noname>>
+
+<<forth_exceptions>>
+
+<<forth_zerostrings>>
+
+<<forth_argc>>
+
+<<forth_argv>>
+
+<<forth_environ>>
+
+<<forth_bye>>
+
+<<forth_unused>>
+
+<<forth_morecore>>
+
+<<forth_files>>
+
+<<forth_asm>>
+
+<<forth_inlining_asm>>
+
+<<forth_welcome>>
+
+<<forth_all>
+
+#+END_SRC
