@@ -87,7 +87,7 @@ defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
 .set __NR_exit,  93
 .set __NR_open,  1024
 .set __NR_close, 57
-.set __NR_read,  213
+.set __NR_read,  4
 .set __NR_write, 64
 .set __NR_creat, 1064
 .set __NR_brk,   214
@@ -117,27 +117,6 @@ DOCOL:
     movl    %eax, %esi      # %esi point to first data word
     NEXT
 
-    .bss
-    /* Forth return stack. */
-    .set RETURN_STACK_SIZE,8192
-    .align 4096
-return_stack:
-    .space RETURN_STACK_SIZE
-return_stack_top:           # Initial top of return stack.
-
-    .text
-    .set INITIAL_DATA_SEGMENT_SIZE,65536
-setup_data_segment:
-    xor     %ebx, %ebx      # Call brk(0)
-    movl    $__NR_brk, %eax
-    int     $0x80
-    movl    %eax, var_HERE  # Initialise HERE to point at beginning of data segment.
-    addl    $INITIAL_DATA_SEGMENT_SIZE, %eax  # Reserve nn bytes of memory for initial data segment.
-    movl    %eax, %ebx      # Call brk(HERE+INITIAL_DATA_SEGMENT_SIZE)
-    movl    $__NR_brk, %eax
-    int     $0x80
-    ret
-
 defcode ">R",2,,TOR
     popl    %eax            # pop parameter stack into %eax
     PUSHRSP %eax            # push it on to the return stack
@@ -160,11 +139,7 @@ defcode "RDROP",5,,RDROP
     addl    $4, %ebp        # pop return stack and throw away
     NEXT
 
-    /* This is used as a temporary input buffer when reading from files or the terminal. */
-    .set INPUT_BUFFER_SIZE,4096
-    .align 4096
-input_buffer:
-    .space INPUT_BUFFER_SIZE
+
 
 defcode "CHAR",4,,CHAR
     call    _WORD           # Returns %ecx = length, %edi = pointer to word.
@@ -210,43 +185,45 @@ defcode "SYSCALL0",8,,SYSCALL0
 
     defcode "KEY",3,,KEY
     call _KEY
-    push    %eax            # push return value on stack
-    NEXT
-_KEY:
-    mov     (currkey), %ebx
-    cmp     (bufftop), %ebx
-    jge     1f              # exhausted the input buffer?
+    push    %eax            # <--+  # push return value on stack
+    NEXT                    #    |
+_KEY:                       #    |
+    mov     (currkey), %ebx #    |  # Берем указатель currkey в %ebx
+    cmp     (bufftop), %ebx #    |  # (bufftop >= currkey)?
+    jge     1f              #-+  |  # ?-Да, переходим вперед
+    xor     %eax, %eax      # |  |  # ?-Нет,
+    mov     (%ebx), %al     # |  |  #        переносим указатель смещешения в начало (на ноль)
+    inc     %ebx            # |  |  #        и инкрементируем
+    mov     %ebx, (currkey) # |  |  #        записываем в переменную
+    ret                     # |  |  #        и выходим (в %eax лежит 0)
+    # ------------------------|--+
+1:  #                     <---+     # Буфер ввода пуст, сделаем read из stdin
+    mov     $3, %eax                # param1: SYSCALL #3 (read)
+    mov     $2, %ebx                # param2: Дескриптор #2 (stdin)
+    mov     $input_buffer, %ecx     # param3: Кладем адрес буфера ввода в %ecx
+    mov     %ecx, currkey           # Сохраняем адрес буфера ввода в currkey
+    mov     $10, %edx               # Максимальная длина ввода
+    int     $0x80                   # SYSCALL
+    # Проверяем возвращенное значение
+    test    %eax, %eax              # (%eax <= 0)?
+    jbe     2f              #-+     # ?-Да, это ошибка, переходим вперед
+    addl    %eax, %ecx      # |     # ?-Нет, добавляем в %ecx кол-во прочитанных байт
+    mov     %ecx, bufftop   # |     #        записываем %ecx в bufftop
+    jmp     _KEY            # |
+    # -------------> KEY      |
+2:  #                     <---+     # Ошибка или конец потока ввода - выходим
     xor     %eax, %eax
-    mov     (%ebx), %al     # get next key from input buffer
-    inc     %ebx
-    mov     %ebx,(currkey)  # increment currkey
-    ret
-1:
-    # Out of input, use read(2) to fetch more input from stdin.
-    xor     %ebx, %ebx      # 1st param: stdin
-    mov     $input_buffer, %ecx   # 2nd param: input_buffer
-    mov     %ecx,currkey
-    mov     $INPUT_BUFFER_SIZE, %edx  # 3rd param: max length
-    mov     $__NR_read, %eax # syscall: read
-    int     $0x80
-    test    %eax, %eax      # If %eax <= 0, then exit.
-    jbe     2f
-    addl    %eax, %ecx      # buffer+%eax = bufftop
-    mov     %ecx,bufftop
-    jmp     _KEY
-2:
-    # Error or end of input: exit the program.
     xor     %ebx, %ebx
-    mov     $__NR_exit, %eax # syscall: exit
-    int     $0x80
+    inc     %eax                    # param1: SYSCALL #1 (exit)
+    int     $0x80                   # SYSCALL
 
     .data
     .align 4
 currkey:
-    # Current place in input buffer (next character to read).
+    # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
     .int input_buffer
 bufftop:
-    # Last valid data in input buffer + 1.
+    # Хранит вершину буфера ввода (последние валидные данные + 1)
     .int input_buffer
 
     defcode "WORD",4,,WORD
@@ -579,7 +556,7 @@ defcode "BRANCH",6,,BRANCH
 
 defcode "0BRANCH",7,,ZBRANCH
     pop     %eax
-    test    %eax, %eax       # top of stack is zero?
+    test    %eax, %eax      # top of stack is zero?
     jz      code_BRANCH     # if so, jump back to the branch function above
     lodsl                   # otherwise we need to skip the offset
     NEXT
@@ -591,17 +568,45 @@ defword "QUIT",4,,QUIT
     .int BRANCH,-8      # and loop (indefinitely)
 
     /* Assembler entry point. */
+
     .text
     .globl  forth_asm_start
     .type   forth_asm_start, @function
 forth_asm_start:
+    # Сбрасываем флаг направления
     cld
-    mov     %esp, var_S0                # Save the initial data stack pointer in Forth variable S0.
-    mov     $return_stack_top, %ebp     # Initialise the return stack.
-    call    setup_data_segment
-    mov     $cold_start, %esi           # Initialise interpreter.
-    NEXT                                # Run interpreter!
+    # Записываем вершину стека %esp параметров в переменную S0
+    mov     %esp, var_S0
+    # Устанавливаем стек возвратов %ebp
+    mov     $return_stack_top, %ebp
+    # Устанавливаем указатель HERE на начало области данных.
+    mov     $data_buffer, %eax
+    mov     %eax, var_HERE
+    # Инициализируем IP
+    mov     $cold_start, %esi
+    # Запускаем интерпретатор
+    NEXT
 
     .section .rodata
 cold_start:                             # High-level code without a codeword.
     .int QUIT
+
+    .bss
+
+    /* Forth return stack. */
+    .set RETURN_STACK_SIZE,8192
+    .align 4096
+return_stack:
+    .space RETURN_STACK_SIZE
+return_stack_top:           # Initial top of return stack.
+
+    /* This is used as a temporary input buffer when reading from files or the terminal. */
+    .set INPUT_BUFFER_SIZE,4096
+    .align 4096
+input_buffer:
+    .space INPUT_BUFFER_SIZE
+
+    .set INITIAL_DATA_SEGMENT_SIZE,65536
+    .align 4096
+data_buffer:
+    .space INITIAL_DATA_SEGMENT_SIZE
