@@ -84,6 +84,10 @@ defconst "F_IMMED",7,,__F_IMMED,F_IMMED
 defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
 defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
 
+.set sys_exit,1
+.set sys_read,3
+.set stdin, 2
+
 .set __NR_exit,  93
 .set __NR_open,  1024
 .set __NR_close, 57
@@ -185,9 +189,9 @@ defcode "SYSCALL0",8,,SYSCALL0
 
     defcode "KEY",3,,KEY
     call _KEY
-    push    %eax            # <--+  # push return value on stack
-    NEXT                    #    |
-_KEY:                       #    |
+    push    %eax            #       # push return value on stack
+    NEXT                    #
+_KEY:                       # <--+
     mov     (currkey), %ebx #    |  # Берем указатель currkey в %ebx
     cmp     (bufftop), %ebx #    |  # (bufftop >= currkey)?
     jge     1f              #-+  |  # ?-Да, переходим вперед
@@ -196,25 +200,24 @@ _KEY:                       #    |
     inc     %ebx            # |  |  #        и инкрементируем
     mov     %ebx, (currkey) # |  |  #        записываем в переменную
     ret                     # |  |  #        и выходим (в %eax лежит 0)
+    # ---------------- RET    |  |
+1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
+    mov     $sys_read, %eax      |  # param1: SYSCALL #3 (read)
+    mov     $stdin, %ebx         |  # param2: Дескриптор #2 (stdin)
+    mov     $input_buffer, %ecx  |  # param3: Кладем адрес буфера ввода в %ecx
+    mov     %ecx, currkey        |  # Сохраняем адрес буфера ввода в currkey
+    mov     INPUT_BUFFER_SIZE, %edx # Максимальная длина ввода
+    int     $0x80                |  # SYSCALL
+    # Проверяем возвращенное     |
+    test    %eax, %eax           |  # (%eax <= 0)?
+    jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
+    addl    %eax, %ecx      # |  |  # ?-Нет, добавляем в %ecx кол-во прочитанных байт
+    mov     %ecx, bufftop   # |  |  #        записываем %ecx в bufftop
+    jmp     _KEY            # |  |
     # ------------------------|--+
-1:  #                     <---+     # Буфер ввода пуст, сделаем read из stdin
-    mov     $3, %eax                # param1: SYSCALL #3 (read)
-    mov     $2, %ebx                # param2: Дескриптор #2 (stdin)
-    mov     $input_buffer, %ecx     # param3: Кладем адрес буфера ввода в %ecx
-    mov     %ecx, currkey           # Сохраняем адрес буфера ввода в currkey
-    mov     $10, %edx               # Максимальная длина ввода
-    int     $0x80                   # SYSCALL
-    # Проверяем возвращенное значение
-    test    %eax, %eax              # (%eax <= 0)?
-    jbe     2f              #-+     # ?-Да, это ошибка, переходим вперед
-    addl    %eax, %ecx      # |     # ?-Нет, добавляем в %ecx кол-во прочитанных байт
-    mov     %ecx, bufftop   # |     #        записываем %ecx в bufftop
-    jmp     _KEY            # |
-    # -------------> KEY      |
 2:  #                     <---+     # Ошибка или конец потока ввода - выходим
-    xor     %eax, %eax
-    xor     %ebx, %ebx
-    inc     %eax                    # param1: SYSCALL #1 (exit)
+    mov     $sys_exit, %eax         # param1: SYSCALL #1 (exit)
+    xor     %ebx, %ebx              # param2: код возврата
     int     $0x80                   # SYSCALL
 
     .data
@@ -232,38 +235,41 @@ bufftop:
     push    %ecx            # push length
     NEXT
 _WORD:
-    # Search for first non-blank character.  Also skip \ comments.
-1:
-    call    _KEY            # get next key, returned in %eax
-    cmpb    $'\\', %al      # start of a comment?
-    je      3f              # if so, skip the comment
-    cmpb    $' ', %al
-    jbe     1b              # if so, keep looking
+    # Ищем первый непробельный символ, пропуская комменты, начинающиеся с обратного слэша
+1:                      # <---+
+    call    _KEY            # |     # Получаем следующую букву, возвращаемую в %eax
+    cmpb    $'\\', %al      # |     # (Это начало комментария)?
+    je      3f              #-|---+ # ?-Да, переходим вперед
+    cmpb    $' ', %al       # |   | # ?-Нет. (Это пробел, возрат каретки, перевод строки)?
+    jbe     1b              #-+   | # ?-Да, переходим назад
+    #                             |
+    # Ищем конец слова, сохраняя символы по мере продвижения
+    mov     $word_buffer, %edi    | # Указатель на возвращаемы буфер
+2:                      # <---+   |
+    stosb                   # |   | # Добавляем символ в возвращаемый буфер
+    call    _KEY            # |   | # Вызываем KEY символ будет возвращен в %al
+    cmpb    $' ', %al       # |   | # (Это пробел)?
+    ja      2b              #-+   | # Если нет, повторим
+    #                             |
+    # Вернем слово (указатель на статический буфер черех %ecx) и его длину (через %edi)
+    sub     $word_buffer, %edi    |
+    mov     %edi, %ecx            | # return: длина слова
+    mov     $word_buffer, %edi    | # return: адрес буфера
+    ret                     #     |
+    # ----------------- RET       |
+    #                             |
+    # Это комментарий, пропускаем | его до конца строки
+3:                      # <---+ <-+
+    call    _KEY            # |
+    cmpb    $'\n', %al      # |     # KEY вернул конец строки?
+    jne     3b              #-+     # Нет, повторим
+    jmp     1b              #
+    # ---------------- to 1
 
-    # Search for the end of the word, storing chars as we go.
-    mov     $word_buffer, %edi  # pointer to return buffer
-2:
-    stosb                   # add character to return buffer
-    call    _KEY            # get next key, returned in %al
-    cmpb    $' ', %al       # is blank?
-    ja      2b              # if not, keep looping
-
-    # Return the word (well, the static buffer) and length. */
-    sub     $word_buffer, %edi
-    mov     %edi, %ecx      # return length of the word
-    mov     $word_buffer, %edi  # return address of the word
-    ret
-
-    # Code to skip \ comments to end of the current line.
-3:
-    call    _KEY
-    cmpb    $'\n', %al      # end of line yet?
-    jne     3b
-    jmp     1b
-
-    .data                   # NB: easier to fit in the .data section
-    # A static buffer where WORD returns.  Subsequent calls
-    # overwrite this buffer.  Maximum word length is 32 chars.
+    .data
+    # Статический буфер, в котором возвращается WORD.
+    # Последующие вызовы перезаписывают этот буфер.
+    # Максимальная длина слова - 32 символа.
 word_buffer:
     .space 32
 
