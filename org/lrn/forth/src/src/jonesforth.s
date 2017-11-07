@@ -8,13 +8,13 @@
 .endm
 
 .macro PUSHRSP reg
-    lea -4(%ebp), %ebp      # push reg в стек возвратов
-    movl \reg, (%ebp)
+    lea     -4(%ebp), %ebp      # декремент %ebp
+    movl    \reg, (%ebp)        # push reg в стек возвратов
 .endm
 
 .macro POPRSP reg
-    mov (%ebp),\reg         # pop вершину стека возвратов в reg
-    lea 4(%ebp), %ebp
+    mov     (%ebp), \reg    # pop вершину стека возвратов в reg
+    lea     4(%ebp), %ebp   # инкремент %ebp на 4
 .endm
 
     .set link,0   #  Store the chain of links.
@@ -31,7 +31,7 @@
     .globl \label
     \label :
     .int DOCOL              # codeword - указатель на функцию-интепретатор
-    # list of word pointers follow
+    # дальше будут идти указатели на слова
 .endm
 
 .macro defcode name, namelen, flags=0, label
@@ -116,19 +116,19 @@ defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
     .text
     .align 4
 DOCOL:
-    PUSHRSP %esi            # push %esi on to the return stack
-    addl    $4, %eax        # %eax points to codeword, so make
-    movl    %eax, %esi      # %esi point to first data word
-    NEXT
+    PUSHRSP %esi            # Сохранить %esi в стеке возвратов
+    addl    $4, %eax        # %eax указывает на codeword
+    movl    %eax, %esi      # %esi теперь указывает на первое слово данных
+    NEXT                    # Делаем NEXT
 
 defcode ">R",2,,TOR
-    popl    %eax            # pop parameter stack into %eax
-    PUSHRSP %eax            # push it on to the return stack
+    popl    %eax            # pop со стека данных в %eax
+    PUSHRSP %eax            # push %eax на стек возвратов
     NEXT
 
 defcode "R>",2,,FROMR
-    POPRSP  %eax            # pop return stack on to %eax
-    pushl   %eax            # and push on to parameter stack
+    POPRSP  %eax            # pop со стека возвратов в %eax
+    pushl   %eax            # push %eax на стек параметров
     NEXT
 
 defcode "RSP@",4,,RSPFETCH
@@ -140,37 +140,7 @@ defcode "RSP!",4,,RSPSTORE
     NEXT
 
 defcode "RDROP",5,,RDROP
-    addl    $4, %ebp        # pop return stack and throw away
-    NEXT
-
-defcode "SYSCALL3",8,,SYSCALL3
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
-    pop     %ecx            # Second parameter
-    pop     %edx            # Third parameter
-    int     $0x80
-    push    %eax            # Result (negative for -errno)
-    NEXT
-
-defcode "SYSCALL2",8,,SYSCALL2
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
-    pop     %ecx            # Second parameter
-    int     $0x80
-    push    %eax            # Result (negative for -errno)
-    NEXT
-
-defcode "SYSCALL1",8,,SYSCALL1
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
-    int     $0x80
-    push    %eax            # Result (negative for -errno)
-    NEXT
-
-defcode "SYSCALL0",8,,SYSCALL0
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    int     $0x80
-    push    %eax            # Result (negative for -errno)
+    addl    $4, %ebp
     NEXT
 
 defcode "DROP",4,,DROP
@@ -407,8 +377,8 @@ defcode "INVERT",6,,INVERT
     NEXT
 
 defcode "EXIT",4,,EXIT
-    POPRSP  %esi            # pop return stack into %esi
-    NEXT
+    POPRSP  %esi            # Восстановить указатель из стека возвратов в %esi
+    NEXT                    # Сделать NEXT
 
 defcode "!",1,,STORE
     popl    %ebx            # забираем со стека адрес, куда будем сохранять
@@ -523,21 +493,17 @@ defcode "EMIT",4,,EMIT
     call    _EMIT
     NEXT
 _EMIT:
-    movl    $1, %ebx        # 1st param: stdout
-
-    # write needs the address of the byte to write
-    mov     %al, emit_scratch
-    mov     $emit_scratch, %ecx # 2nd param: address
-
-    mov     $1, %edx        # 3rd param: nbytes = 1
-
-    mov     $sys_write, %eax   # write syscall
+    movl    $1, %ebx            # param1: stdout
+    mov     %al, emit_scratch   # берем байт и заносим его в emit_scratch
+    mov     $emit_scratch, %ecx # param2: адрес выводимого значения
+    mov     $1, %edx            # param3: длина
+    mov     $sys_write, %eax    # SYSCALL #4 (write)
     int     $0x80
     ret
 
-    .data           # NB: easier to fit in the .data section
+    .data           # NB: проще записать в .data section
 emit_scratch:
-    .space 1        # scratch used by EMIT
+    .space 1        # Место для байта, который выводит EMIT
 
     defcode "WORD",4,,WORD
     call    _WORD
@@ -589,17 +555,15 @@ word_buffer:
     call    _FIND
     push    %eax            # %eax = address of dictionary entry (or NULL)
     NEXT
-
 _FIND:
     push    %esi            # Сохраним %esi - так мы сможем его использовать
                             # для сравнения строк командой cmpsb
-
     # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
     mov     var_LATEST, %edx # %edx = LATEST указыввет на name header
                              # последнего слова в словаре
 1:  #                   <------------+
     test    %edx, %edx      # (NULL указатель, т.е. словарь кончился)?
-    je      4f              #----+   |  # ?-Да, переходим вперед к (4)
+    je  4f                  #----+   |  # ?-Да, переходим вперед к (4)
     #                             |  |
     # Сравним ожидаемую длину и длину слова
     # Внимание, если F_HIDDEN установлен для этого слова, то она не совпадет.
@@ -607,7 +571,7 @@ _FIND:
     movb    4(%edx), %al    #     |  |  # %al = flags+length
     andb    $(F_HIDDEN|F_LENMASK), %al  # %al = длина имени
     cmpb    %cl, %al        #     |  |  # (Длины одинаковые?)
-    jne     2f              #--+  |  |  # ?-Нет, переходим вперед к (2)
+    jne 2f                  #--+  |  |  # ?-Нет, переходим вперед к (2)
     #                          |  |  |
     # Переходим к детальному сравнению
     push    %ecx            #  |  |  |  # Сохраним длину
@@ -616,7 +580,7 @@ _FIND:
     repe    cmpsb           #  |  |  |  # Сравниваем
     pop     %edi            #  |  |  |  # Восстанавливаем адрес
     pop     %ecx            #  |  |  |  # Восстановим длину
-    jne     2f              #--+  |  |  # ?-Если не равны - переходим вперед к (2)
+    jne 2f                  #--+  |  |  # ?-Если не равны - переходим вперед к (2)
     #                          |  |  |
     # Строки равны - возвратим указатель на заголовок в %eax
     pop     %esi            #  |  |  |  # Восстановим %esi
@@ -625,7 +589,7 @@ _FIND:
     # ----------------- RET    |  |  |
 2:  #                     <----+  |  |
     mov     (%edx), %edx    #     |  |  # Переходим по указателю к следующему слову
-    jmp     1b              #     |  |  # И зацикливаемся
+    jmp 1b                  #     |  |  # И зацикливаемся
     # ----------------------------|--+
 4:  #                     <-------+
     # Слово не найдено
@@ -665,53 +629,54 @@ defcode "NUMBER",6,,NUMBER
 _NUMBER:
     xor     %eax, %eax
     xor     %ebx, %ebx
-
-    test    %ecx, %ecx      # trying to parse a zero-length string is an error, but will return 0.
-    jz      5f
-
-    movl    var_BASE, %edx  # get BASE (in %dl)
-
-    # Check if first character is '-'.
-    movb    (%edi), %bl     # %bl = first character in string
-    inc     %edi
-    push    %eax            # push 0 on stack
-    cmpb    $'-', %bl       # negative number?
-    jnz     2f
-    pop     %eax
-    push    %ebx            # push <> 0 on stack, indicating negative
-    dec     %ecx
-    jnz     1f
-    pop     %ebx            # error: string is only '-'.
-    movl    $1, %ecx
-    ret
-    # Loop reading digits.
-1:
-    imull   %edx, %eax      # %eax *= BASE
-    movb    (%edi), %bl     # %bl = next character in string
-    inc     %edi
-    # Convert 0-9, A-Z to a number 0-35.
-2:
-    subb    $'0', %bl       # < '0'?
-    jb      4f
-    cmp     $10, %bl        # <= '9'?
-    jb      3f
-    subb    $17, %bl        # < 'A'? (17 is 'A'-'0')
-    jb      4f
-    addb    $10, %bl
-3:
-    cmp     %dl, %bl        # >= BASE?
-    jge     4f
-    # OK, so add it to %eax and loop.
-    add     %ebx, %eax
-    dec     %ecx
-    jnz     1b
-    # Negate the result if first character was '-' (saved on the stack).
-4:
-    pop     %ebx
-    test    %ebx, %ebx
-    jz      5f
-    neg     %eax
-5:
+    # Попытка распарсить пустую строку это ошибка но мы возвращаем 0
+    test    %ecx, %ecx
+    jz  5f                  #-> RET #
+    # Строка не пуста, будем разбирать
+    movl    var_BASE, %edx  #       # Получаем BASE в %dl
+    # Проверим, может быть первый символ '-'?
+    movb    (%edi), %bl     #       # %bl = первый символ строки
+    inc     %edi            #       #
+    push    %eax            #       # push 0 в стек
+    cmpb    $'-', %bl       #       # (Отрицательное число)?
+    jnz 2f                  #-+     # ?-Нет, переходим к конвертации (2)
+    pop     %eax            # |     # ?-Да, заберем обратно 0 из стека,
+    push    %ebx            # |     #       push не ноль в стек, как индикатор отрицательного
+    dec     %ecx            # |     #       уменьшим счетчик оставшихся символов
+    jnz 1f                  #-----+ #       (Строка закончилась)? ?-Нет: переход на (1)
+    pop     %ebx            # |   | #       ?-Да - это ошибка, строка "-". Забираем из стека
+    movl    $1, %ecx        # |   | #            помещаем в возвращаемую нераспарсенную длину
+    ret                     # |   | #            единицу и выходим.
+    # --------------------- # |   | # -------------------------------------------------------
+    # Цикл чтения чисел     # |   | #
+1:  #                    <========+ #
+    imull   %edx, %eax      # |   | # %eax *= BASE
+    movb    (%edi), %bl     # |   | # %bl = следующий символ в строке
+    inc     %edi            # |   | # Увеличиваем указатель
+2:  #                    <----+   | #
+    # Преобразуем 0-9, A-Z в числа 0-35.
+    subb    $'0', %bl       #     | # (< '0')?
+    jb  4f                  #---+ | # ?-Да, херня какая-то, а не цифра, ошибка, идем на (4)
+    cmp     $10, %bl        #   | | # ?-Нет, (<= '9')?
+    jb  3f                  #-+ | | #        ?-Да, идем на (3), это число между 0 и 9
+    subb    $17, %bl        # | | | #        ?-Нет, (< 'A')? потому что (17 = 'A'-'0')
+    jb  4f                  #---+ | #               ?-Да, это ошибка, идем на (4)
+    addb    $10, %bl        # | | | #               ?-Нет, добавляем к значению 10
+3:  #                     <---+ | | #
+    cmp     %dl, %bl        #   | | #                      (RESULT >= BASE)?
+    jge 4f                  #---+ | #                      ?-Да, перебор, идем на (4)
+    add     %ebx, %eax      #   | | #                      ?-Нет, все в порядке. Добавляем
+    dec     %ecx            #   | | #                        RESULT к %eax и LOOP-им дальше.
+    jnz 1b                  #---|-+ #
+4:  #                     <-----+   #
+    # Тут мы оказываемся если цикл закончился - тогда у нас %ecx=0
+    # В ином случае %ecx содержит количество нераспарсенных символов
+    # Если у нас отрицательный результат, то первый символ '-' (сохранен в стеке)
+    pop     %ebx            #       #
+    test    %ebx, %ebx      #       # (Отрицательное число)?
+    jz  5f                  #-+     # ?-Нет, возвращаем как есть (5)
+    neg     %eax            # |     # ?-Да, инвертируем
+5:  #                     <---+
     ret
 defcode "CREATE",6,,CREATE
 
@@ -758,10 +723,10 @@ defcode "LITSTRING",9,,LITSTRING
     NEXT
 
 defcode "TELL",4,,TELL
-    mov     $1,%ebx         # 1st param: stdout
-    pop     %edx            # 3rd param: length of string
-    pop     %ecx            # 2nd param: address of string
-    mov     $sys_write, %eax    # write syscall
+    pop     %edx                # param3: длина строки
+    pop     %ecx                # param2: адрес строки
+    mov     $1, %ebx            # param1: stdout
+    mov     $sys_write, %eax    # SYSCALL #4 (write)
     int     $0x80
     NEXT
 
@@ -823,102 +788,96 @@ defcode "'",1,,TICK
 
 defcode "INTERPRET",9,,INTERPRET
     call    _WORD           # Возвращает %ecx = длину, %edi = указатель на слово.
-
-    # Is it in the dictionary?
+    # Есть ли слово в словаре?
     xor     %eax, %eax
-    movl    %eax, (interpret_is_lit)    # Это не литерал (или пока нет, по любому)
-    call    _FIND           # Возвращает %eax = указатель на заголовок или 0, если не нашел
-    test    %eax, %eax      # (Совпадение)?
-    jz  1f                  # ?-Не думаю! Переход вперед к (1)
-
-
-
-                            # ?-Да. Найдено совпадающее слово
-                            # (Это IMMEDIATE-слово)?
-    mov     %eax, %edi      # %edi = указатель на слово
-    movb    4(%edi), %al    # %al = flags+length.
-    push    %eax            # Сохраним его ненадолго
-    call    _TCFA           # Преобразуем dictionary entry (в %edi) в указатель на codeword
-    pop     %eax            # Восстановим flags+length
-    andb    $F_IMMED, %al   # (Установлен флаг F_IMMED)?
-    mov     %edi, %eax      # %edi->%eax
-    jnz     4f              # ?-Да, переходим сразу к выполнению (4)
-    jmp 2f                  # ?-Нет, переходим к проверке текущего режима работы (2)
-
-1:
-    # Нет в словаре, предположим, что это литерал
-    incl    (interpret_is_lit)
-    call    _NUMBER         # Возвращает число в in %eax, %ecx > 0 если ошибка
-    test    %ecx, %ecx      # (Удалось распарсить число)?
-    jnz     6f              # ?-Нет, переходим к (6)
-    mov     %eax, %ebx      # Перемещаем число в %ebx
-    mov     $LIT, %eax      # Устанавливаем слово LIT
-
-2:
-    movl    var_STATE, %edx # (Мы компилируемся или выполняемся)?
-    test    %edx, %edx
-    jz  4f                  # ?-Выполняемся. Переходим к (4)
-
-    call    _COMMA          # ?-Компилируемся. Добавляем в текущее словарное определение
-    mov     (interpret_is_lit), %ecx
-    test    %ecx, %ecx      # (Это был литерал)?
-    jz      3f              # ?-Нет, переходим к NEXT
-    mov     %ebx, %eax      # ?-Да, поэтому за LIT следует число,
-    call    _COMMA          #       вызываем _COMMA, чтобы скомпилировать его
-3:
-    NEXT
-
-4:
-    # Выполняемся
-    mov     (interpret_is_lit), %ecx
-    test    %ecx, %ecx      # (Это литерал)?
-    jnz     5f              # ?-Да, переходим к (5)
-
+    movl    %eax, (interpret_is_lit)    # Это не литерал (или пока не литерал)
+    call    _FIND           #           # Возвращает в %eax указатель на заголовок или 0
+    test    %eax, %eax      #           # (Совпадение)?
+    jz  1f                  #--------+  # ?-Не думаю! Переход вперед к (1)
+    # Это словарное слово   #        |  # ?-Да. Найдено совпадающее слово. Продолжаем.
+    # Это IMMEDIATE-слово?  #        |  #
+    mov     %eax, %edi      #        |  # %edi = указатель на слово
+    movb    4(%edi), %al    #        |  # %al = flags+length.
+    push    %eax            #        |  # Сохраним его (flags+length) ненадолго
+    call    _TCFA           #        |  # Преобразуем entry (в %edi) в указатель на codeword
+    pop     %eax            #        |  # Восстановим flags+length
+    andb    $F_IMMED, %al   #        |  # (Установлен флаг F_IMMED)?
+    mov     %edi, %eax      #        |  # %edi->%eax
+    jnz     4f              #        |  # ?-Да, переходим сразу к выполнению (4)
+    jmp 2f                  #--+     |  # ?-Нет, переходим к проверке режима работы (2)
+    # --------------------- #  |     |  # -------------------------------------------------
+1:  #                   <------|-----+
+    # Нет в словаре, будем считать, что это литерал
+    incl    (interpret_is_lit)#|        # Установим флаг
+    call    _NUMBER         #  |        # Возвращает число в in %eax, %ecx > 0 если ошибка
+    test    %ecx, %ecx      #  |        # (Удалось распарсить число)?
+    jnz 6f                  #--|-----+  # ?-Нет, переходим к (6)
+    mov     %eax, %ebx      #  |     |  # ?-Да, Перемещаем число в %ebx,
+    mov     $LIT, %eax      #  |     |  #     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
+2:  #                   <------+     |  #
+    # Проверим в каком мы режиме     |  #
+    movl    var_STATE, %edx #        |  #
+    test    %edx, %edx      #        |  #     (Мы компилируемся или выполняемся)?
+    jz  4f                  #-----+  |  #     ?-Выполняемся. Переходим к (4)
+    call    _COMMA          #     |  |  #     ?-Компилируемся. Добавляем словарное определение
+    mov     (interpret_is_lit), %ecx#|  #
+    test    %ecx, %ecx      #     |  |  #       (Это был литерал)?
+    jz      3f              #--+  |  |  #       ?-Нет, переходим к NEXT
+    mov     %ebx, %eax      #  |  |  |  #       ?-Да, поэтому за LIT следует число,
+    call    _COMMA          #  |  |  |  #            вызываем _COMMA, чтобы скомпилить его
+3:  #                   <------+  |  |
+    NEXT                    #     |  |  # NEXT
+    # ---------------------       |  |  # -------------------------------------------------
+4:  #                   <---------+  |
+    # Выполняемся                    |
+    mov     (interpret_is_lit), %ecx#|
+    test    %ecx, %ecx      #        |  # (Это литерал)?
+    jnz 5f                  #--+     |  # ?-Да, переходим к (5)
     # Не литерал, выполним прямо сейчас. Мы не осуществляем возврата, но
     # codeword в конечном итоге вызовет NEXT, который повторно вернет цикл в QUIT
-    jmp     *(%eax)
-
-5:
+    jmp     *(%eax)         #  |     |
+    # --------------------- #  |     |  # -------------------------------------------------
+5:  #                    <-----+     |
     # Выполняем литерал, что означает, что мы push-им его в стек и делаем NEXT
-    push    %ebx
-    NEXT
-
-6:
+    push    %ebx            #        |
+    NEXT                    #        |
+6:  #                    <-----------+
     # Мы здесь, если не получилось распарсить число в текущей базе или этого
     # слова нет в словаре. Печатаем сообщение об ошибке и 40 символов контекста.
-    mov     $stderr, %ebx       # 1st param: stderr
-    mov     $errmsg, %ecx       # 2nd param: error message
-    mov     $errmsgend-errmsg, %edx # 3rd param: length of string
-    mov     $sys_write, %eax     # write syscall
-    int     $0x80               # SYSCALL
-
-    mov     (currkey), %ecx # Ошибка произошла перед currkey
-    mov     %ecx, %edx
-    sub     $input_buffer, %edx # %edx = currkey - buffer (длина буфера перед currkey)
-    cmp     $40, %edx           # (if > 40)?
-    jle     7f                  # ?-Нет, печатаем все
-    mov     $40, %edx           # ?-Да, печатать только 40 символов
-7:
-    sub     %edx, %ecx          # %ecx = start of area to print, %edx = length
-    mov     $sys_write, %eax    # write syscall
-    int     $0x80               # SYSCALL
-
-    mov     $errmsgnl, %ecx     # newline
-    mov     $1, %edx
-    mov     $sys_write, %eax    # write syscall
-    int     $0x80               # SYSCALL
-
-    NEXT
-
+    mov     $sys_write, %eax#           # SYSCALL #4 (write)
+    mov     $stderr, %ebx   #           # param1: stderr
+    mov     $errmsg, %ecx   #           # param2: Выводимая строка
+    mov     $errmsgend-errmsg, %edx     # param3: Длина выводимой строки
+    int     $0x80           #           # SYSCALL
+    # Ошибка произошла перед currkey
+    mov     (currkey), %ecx #
+    mov     %ecx, %edx      #
+    sub     $input_buffer, %edx         # %edx = (currkey - buffer) (длина буфера перед currkey)
+    cmp     $40, %edx       #           # (if > 40)?
+    jle 7f                  #--+        # ?-Нет, печатаем все
+    mov     $40, %edx       #  |        # ?-Да, печатать только 40 символов
+7:  #                    <-----+
+    sub     %edx, %ecx      #           # %ecx = start of area to print, %edx = length
+    mov     $sys_write, %eax            # SYSCALL #4 (write)
+    int     $0x80           #           # SYSCALL
+    # Выведем перевод строки
+    mov     $sys_write, %eax            # SYSCALL #4 (write)
+    mov     $errmsgnl, %ecx #           # newline
+    mov     $1, %edx        #           # Длина
+    int     $0x80           #           # SYSCALL
+    NEXT                    #           # NEXT
+    # ---------------------
     .section .rodata
-errmsg:  .ascii "PARSE ERROR: "
+errmsg:
+    .ascii "PARSE ERROR: "
 errmsgend:
-errmsgnl:    .ascii "\n"
+errmsgnl:
+    .ascii "\n"
 
-    .data                   # NB: easier to fit in the .data section
+    .data                   # NB: проще записать в .data section
     .align 4
 interpret_is_lit:
-    .int 0                  # Flag used to record if reading a literal
+    .int 0                  # Флаг литерала
 
 defcode "BRANCH",6,,BRANCH
     add     (%esi),%esi     # add the offset to the instruction pointer
@@ -933,9 +892,14 @@ defcode "0BRANCH",7,,ZBRANCH
 
 # QUIT must not return (ie. must not call EXIT).
 defword "QUIT",4,,QUIT
-    .int RZ,RSPSTORE    # R0 RSP!, clear the return stack
-    .int INTERPRET      # interpret the next word
-    .int BRANCH,-8      # and loop (indefinitely)
+    # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
+    .int RZ
+    # Установить значение, лежащее на стеке параметров, как новое значение вершины стека возвратов
+    .int RSPSTORE       # Это очищает стек возвратов
+    # Запустить интерпретатор команд                  <-----+
+    .int INTERPRET      # Интерпретировать следующее слово  |
+    # И навсегда зациклиться                                |
+    .int BRANCH,-8      # -----------------------------------
 
 defcode "CHAR",4,,CHAR
     call    _WORD           # Returns %ecx = length, %edi = pointer to word.
@@ -949,6 +913,36 @@ defcode "EXECUTE",7,,EXECUTE
     jmp     *(%eax)         # and jump to it.
     # After xt runs its NEXT will continue executing the current word.
 
+defcode "SYSCALL3",8,,SYSCALL3
+    pop     %eax            # System call number (see <asm/unistd.h>)
+    pop     %ebx            # First parameter.
+    pop     %ecx            # Second parameter
+    pop     %edx            # Third parameter
+    int     $0x80
+    push    %eax            # Result (negative for -errno)
+    NEXT
+
+defcode "SYSCALL2",8,,SYSCALL2
+    pop     %eax            # System call number (see <asm/unistd.h>)
+    pop     %ebx            # First parameter.
+    pop     %ecx            # Second parameter
+    int     $0x80
+    push    %eax            # Result (negative for -errno)
+    NEXT
+
+defcode "SYSCALL1",8,,SYSCALL1
+    pop     %eax            # System call number (see <asm/unistd.h>)
+    pop     %ebx            # First parameter.
+    int     $0x80
+    push    %eax            # Result (negative for -errno)
+    NEXT
+
+defcode "SYSCALL0",8,,SYSCALL0
+    pop     %eax            # System call number (see <asm/unistd.h>)
+    int     $0x80
+    push    %eax            # Result (negative for -errno)
+    NEXT
+
     /* Assembler entry point. */
 
     .text
@@ -957,7 +951,7 @@ defcode "EXECUTE",7,,EXECUTE
 forth_asm_start:
     # Сбрасываем флаг направления
     cld
-    # Записываем вершину стека %esp параметров в переменную S0
+    # Записываем вершину стека параметров %esp в переменную S0
     mov     %esp, var_S0
     # Устанавливаем стек возвратов %ebp
     mov     $return_stack_top, %ebp
