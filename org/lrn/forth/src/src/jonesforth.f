@@ -1,28 +1,22 @@
-: '\n' 10 ;
-: BL   32 ; \ BL (BLank) стандартное слово для пробела
+: / /MOD SWAP DROP ;
+: MOD /MOD DROP ;
 
-\ CR печатает возврат каретки
-: CR '\n' EMIT ;
+: '\n' 10 ;       \ Возврат каретки
+: BL   32 ;       \ BL (BLank) стандартное слово для пробела
 
-\ SPACE печатает пробел
-: SPACE BL EMIT ;
+: CR     '\n' EMIT ;  \ CR печатает возврат каретки
+: SPACE  BL   EMIT ;  \ SPACE печатает пробел
 
-\ NEGATE оставляет на стеке обратное число том, что было на стеке
 : NEGATE 0 SWAP - ;
 
-\ Стандартные слова для булевых значений.
 : TRUE  1 ;
 : FALSE 0 ;
 : NOT   0= ;
 
-\ LITERAL берет то, что находится в стеке (<foo>) и компилирует как LIT <foo>
 : LITERAL IMMEDIATE
     ' LIT ,      \ компилирует LIT
     ,            \ компилирует сам литерал (из стека)
 ;
-
-: / /MOD SWAP DROP ;
-: MOD /MOD DROP ;
 
 : ':'
     [         \ входим в immediate mode (временно)
@@ -132,38 +126,38 @@
 : TUCK ( x y -- y x y ) SWAP OVER ;
 
 : PICK ( x_u ... x_1 x_0 u -- x_u ... x_1 x_0 x_u )
-    1+                  ( добавить единицу из-за "u" в стек )
-    4 *                 ( умножить на размер слова )
-    DSP@ +              ( добавить к указателю стека )
-    @                   ( и взять )
+    1+                  \ добавить единицу из-за "u" в стек
+    4 *                 \ умножить на размер слова
+    DSP@ +              \ добавить к указателю стека
+    @                   \ и взять
 ;
 
-( C помощью циклов мы можем теперь написать SPACES, который записывает N пробелов в stdout )
+\ C помощью циклов мы можем теперь написать SPACES, который записывает N пробелов в stdout
 : SPACES                ( n -- )
     BEGIN
-        DUP 0>          ( пока n > 0 )
+        DUP 0>          \ пока n > 0
     WHILE
-            SPACE       ( напечатать пробел )
-            1-          ( повторять с уменьшением пока не 0 )
+            SPACE       \ напечатать пробел
+            1-          \ повторять с уменьшением пока не 0
     REPEAT
-    DROP                ( сбросить счетчик со стека )
+    DROP                \ сбросить счетчик со стека
 ;
 
-( Стандартные слова для манипуляции BASE )
+\ Стандартные слова для манипуляции BASE )
 : DECIMAL ( -- ) 10 BASE ! ;
 : HEX     ( -- ) 16 BASE ! ;
 
 : U. ( u -- )
-    BASE @ /MOD ( width rem quot )
-    ?DUP IF     ( if quotient <> 0 then )
-        RECURSE ( print the quotient )
+    BASE @ /MOD \ width rem quot
+    ?DUP IF     \ if quotient <> 0 then
+        RECURSE \ print the quotient
     THEN
 
-    ( печатаем остаток )
+    \ печатаем остаток
     DUP 10 < IF
-        '0' ( десятичные цифры 0..9 )
+        '0'  \ десятичные цифры 0..9 )
     ELSE
-        10 - ( шестнадцатиричные и другие цифры A..Z )
+        10 - \ шестнадцатиричные и другие цифры A..Z )
         'A'
     THEN
     +
@@ -171,32 +165,32 @@
 ;
 
 : .S ( -- )
-    DSP@ ( взять текущий стековый указатель )
+    DSP@ \ взять текущий стековый указатель
     BEGIN
         DUP S0 @ <
     WHILE
-            DUP @ U. ( напечатать элемент из стека )
+            DUP @ U. \ напечатать элемент из стека
             SPACE
-            4+       ( двигаться дальше )
+            4+       \ двигаться дальше
     REPEAT
-    DROP (сбросить указатель )
+    DROP \ сбросить указатель
 ;
 
 : UWIDTH ( u -- width )
-    BASE @ / ( rem quot )
-    ?DUP IF ( if quotient <> 0 then )
-        RECURSE 1+ ( return 1+recursive call )
+    BASE @ /        \ rem quot
+    ?DUP IF         \ if quotient <> 0 then
+        RECURSE 1+  \ return 1+recursive call
     ELSE
-        1 ( return 1 )
+        1           \ return 1
     THEN
 ;
 
-: U.R ( u width -- )
-    SWAP ( width u )
-    DUP ( width u u )
-    UWIDTH ( width u uwidth )
-    ROT ( u uwidth width )
-    SWAP - ( u width-uwidth )
+: U.R       ( u width -- )
+    SWAP    ( width u )
+    DUP     ( width u u )
+    UWIDTH  ( width u uwidth )
+    ROT     ( u uwidth width )
+    SWAP -  ( u width-uwidth )
     ( В этот момент, если запрошенная ширина уже, у нас будет отрицательное число в стеке.
     В противном случае число в стеке - это количество пробелов для печати.
     Но SPACES не будет печатать отрицательное количество пробелов в любом случае,
@@ -206,29 +200,29 @@
     U.
 ;
 
-: .R ( n width -- )
-    SWAP ( width n )
+: .R  ( n width -- )
+    SWAP        ( width n )
     DUP 0< IF
-        NEGATE ( width u )
-        1 ( save a flag to remember that it was negative | width n 1 )
-        SWAP ( width 1 u )
-        ROT ( 1 u width )
-        1- ( 1 u width-1 )
+        NEGATE  ( width u )
+        1       ( сохранить флаг, чтобы запомнить, что оно отрицательное | width n 1 )
+        SWAP    ( width 1 u )
+        ROT     ( 1 u width )
+        1-      ( 1 u width-1 )
     ELSE
-        0 ( width u 0 )
-        SWAP ( width 0 u )
-        ROT ( 0 u width )
+        0       ( width u 0 )
+        SWAP    ( width 0 u )
+        ROT     ( 0 u width )
     THEN
-    SWAP ( flag width u )
-    DUP ( flag width u u )
-    UWIDTH ( flag width u uwidth )
-    ROT ( flag u uwidth width )
-    SWAP - ( flag u width-uwidth )
+    SWAP        ( flag width u )
+    DUP         ( flag width u u )
+    UWIDTH      ( flag width u uwidth )
+    ROT         ( flag u uwidth width )
+    SWAP -      ( flag u width-uwidth )
 
-    SPACES ( flag u )
-    SWAP ( u flag )
+    SPACES      ( flag u )
+    SWAP        ( u flag )
 
-    IF ( was it negative? print the - character )
+    IF          ( число было отрицательным? печатаем минус )
         '-' EMIT
     THEN
 
@@ -258,117 +252,129 @@
 
 : DEPTH        ( -- n )
     S0 @ DSP@ -
-    4-         ( adjust because S0 was on the stack when we pushed DSP )
+    4-         ( это нужно потому что Ы0 было на стеке, когда мы push-или DSP )
 ;
-: ALIGN HERE @ ALIGNED HERE ! ;
 
 : ALIGNED ( addr -- addr )
-    3 + 3 INVERT AND ( (addr+3) & ~3 )
+    3 + 3 INVERT AND \ (addr+3) & ~3
 ;
 
-: DEPTH        ( -- n )
-    S0 @ DSP@ -
-    4-         ( adjust because S0 was on the stack when we pushed DSP )
-;
 : ALIGN HERE @ ALIGNED HERE ! ;
 
-( C, appends a byte to the current compiled word. )
+\ C, добавляет байт к текущему компилируемому слову
 : C,
-    HERE @ C! ( store the character in the compiled image )
-    1 HERE +! ( increment HERE pointer by 1 byte )
+    HERE @ C! \ сохраняет символ в текущем компилируемом образе
+    1 HERE +! \ увеличивает указатель HERE на 1 байт
 ;
 
 : S" IMMEDIATE ( -- addr len )
-    STATE @ IF ( compiling? )
-        ' LITSTRING , ( compile LITSTRING )
-        HERE @ ( save the address of the length word on the stack )
-        0 , ( dummy length - we don't know what it is yet )
+    STATE @ IF           \ (компилируем)?
+        ' LITSTRING ,    \ ?-Да: компилировать LITSTRING
+        HERE @           \ сохранить адрес длины слова в стеке
+        0 ,              \ фейковая длина - мы ее пока не знаем
         BEGIN
-            KEY  ( get next character of the string )
+            KEY          \ взять следующий символ строки
             DUP '"' <>
         WHILE
-                C, ( copy character )
+                C,       \ копировать символ
         REPEAT
-        DROP ( drop the double quote character at the end )
-        DUP ( get the saved address of the length word )
-        HERE @ SWAP - ( calculate the length )
-        4- ( subtract 4  (because we measured from the start of the length word) )
-        SWAP ! ( and back-fill the length location )
-        ALIGN ( round up to next multiple of 4 bytes for the remaining code )
-    ELSE ( immediate mode )
-        HERE @ ( get the start address of the temporary space )
+        DROP             \ сбросить символ двойной кавычки, которым заканчивалась строка
+        DUP              \ получить сохраненный адрес длины слова
+        HERE @ SWAP -    \ вычислить длину
+        4-               \ вычесть 4 потому что мы измеряем от начала длины слова
+        SWAP !           \ и заполнить длину )
+        ALIGN            \ округить к следующему кратному 4 байту для оставшегося кода
+    ELSE \ immediate mode
+        HERE @           \ взять адрес начала временного пространства
         BEGIN
             KEY
             DUP '"' <>
         WHILE
-                OVER C! ( save next character )
-                1+ ( increment address )
+                OVER C!  \ сохраниь следующий символ
+                1+       \ увеличить адрес
         REPEAT
-        DROP ( drop the final " character )
-        HERE @ - ( calculate the length )
-        HERE @ ( push the start address )
-        SWAP  ( addr len )
+        DROP             \ сбросить символ двойной кавычки, которым заканчивалась строка
+        HERE @ -         \ вычислить длину
+        HERE @           \ push начальный адрес
+        SWAP             ( addr len )
+    THEN
+;
+
+: ." IMMEDIATE ( -- )
+    STATE @ IF       \ компиляция?
+        [COMPILE] S" \ прочитать строку и скомпилировать LITSTRING, etc.
+        ' TELL ,     \ скомпилировать окончательный TELL
+    ELSE
+        \ В немедленном режиме просто читаем символы и печаетем им пока не встретим кавычку
+        BEGIN
+            KEY
+            DUP '"' = IF
+                DROP \ сбросим со стека символ двойной кавычки
+                EXIT \ возврат из функции
+            THEN
+            EMIT
+        AGAIN
     THEN
 ;
 
 : CONSTANT
-    WORD     ( получить имя  имя следует за CONSTANT )
-    CREATE   ( создать заголовок элемента словаря )
-    DOCOL ,  ( добавить DOCOL как codeword поля слова )
-    ' LIT ,  ( добавить codeword LIT )
-    ,        ( добавить значение, которое лежит на вершине стека )
-    ' EXIT , ( добавить codeword EXIT )
+    WORD     \ получить имя  имя следует за CONSTANT
+    CREATE   \ создать заголовок элемента словаря
+    DOCOL ,  \ добавить DOCOL как codeword поля слова
+    ' LIT ,  \ добавить codeword LIT
+    ,        \ добавить значение, которое лежит на вершине стека
+    ' EXIT , \ добавить codeword EXIT
 ;
 
 : ALLOT ( n -- addr )
     HERE @ SWAP ( here n )
-    HERE +!     ( добавляем n к HERE, после этого старое значение остается на стеке )
+    HERE +!     \ добавляем n к HERE, после этого старое значение остается на стеке
 ;
 
 : CELLS ( n -- n ) 4 * ;
 
 : VARIABLE
-    1 CELLS ALLOT ( выделить 4 байтовую ячейку для integer памяти, push указатель на нее )
-    WORD CREATE   ( создать элемент словаря, имя которого следует за VARIABLE )
-    DOCOL ,       ( добавить DOCOL  как поле codeword этого слова )
-    ' LIT ,       ( добавить codeword LIT )
-    ,             ( добавить указатель на новое имя )
-    ' EXIT ,      ( добавить codeword EXIT )
+    1 CELLS ALLOT \ выделить 4 байтовую ячейку для integer памяти, push указатель на нее
+    WORD CREATE   \ создать элемент словаря, имя которого следует за VARIABLE
+    DOCOL ,       \ добавить DOCOL  как поле codeword этого слова
+    ' LIT ,       \ добавить codeword LIT
+    ,             \ добавить указатель на новое имя
+    ' EXIT ,      \ добавить codeword EXIT
 ;
 
 : VALUE ( n -- )
-    WORD CREATE ( создаем заголовок элемента словаря - имя следует за VALUE)
-    DOCOL ,     ( добавляем DOCOL )
-    ' LIT ,     ( добавляем codeword LIT )
-    ,           ( добавляем начальное значение )
-    ' EXIT ,    ( добавляем codeword EXIT )
+    WORD CREATE \ создаем заголовок элемента словаря - имя следует за VALUE
+    DOCOL ,     \ добавляем DOCOL
+    ' LIT ,     \ добавляем codeword LIT
+    ,           \ добавляем начальное значение
+    ' EXIT ,    \ добавляем codeword EXIT
 ;
 
 : TO IMMEDIATE ( n -- )
-    WORD ( получаем имя VALUE )
-    FIND ( ищем его в словаре )
-    >DFA ( получаем указатель на первое поле данных -'LIT' )
-    4+   ( увеличиваем его значение на размер данных )
-    STATE @ IF ( компиляция? )
-        ' LIT , ( да, компилировать LIT )
-        ,       ( компилировать адрес значения )
-        ' ! ,   ( компилировать ! )
-    ELSE ( нет, immediate mode )
-        ! ( обновить сразу )
+    WORD        \ получаем имя VALUE
+    FIND        \ ищем его в словаре
+    >DFA        \ получаем указатель на первое поле данных -'LIT'
+    4+          \ увеличиваем его значение на размер данных
+    STATE @ IF \ компиляция?
+        ' LIT , \ да, компилировать LIT
+        ,       \ компилировать адрес значения
+        ' ! ,   \ компилировать !
+    ELSE       \ нет, immediate mode
+        !       \ обновить сразу
     THEN
 ;
 
 : +TO IMMEDIATE
-    WORD ( получаем имя значения )
-    FIND ( ищем в словаре )
-    >DFA ( получаем указатель на первое поле данных -'LIT' )
-    4+   ( увеличиваем его значение на размер данных )
-    STATE @ IF ( компиляция? )
-        ' LIT , ( да, компилировать LIT )
-        ,       ( компилировать адрес значения )
-        ' +! ,  ( компилировать +! )
-    ELSE ( нет, immediate mode )
-        +! ( обновить сразу )
+    WORD \ получаем имя значения
+    FIND \ ищем в словаре
+    >DFA \ получаем указатель на первое поле данных -'LIT'
+    4+   \ увеличиваем его значение на размер данных
+    STATE @ IF \ компиляция?
+        ' LIT , \ да, компилировать LIT
+        ,       \ компилировать адрес значения
+        ' +! ,  \ компилировать +!
+    ELSE \ нет, immediate mode
+        +! \ обновить сразу
     THEN
 ;
 
