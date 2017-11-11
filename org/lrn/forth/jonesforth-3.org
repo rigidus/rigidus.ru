@@ -1,0 +1,1319 @@
+#+STARTUP: showall indent hidestars
+
+* Расширяем Forth
+
+** Минимализм
+
+Необходимы шесть специальных форм:
+- ссылка на переменную
+- константный литерал
+- (quote exp)
+- (if test conseq alt)
+- (set! var exp) присваивание
+- (define var exp)
+- (lambda (var...) exp)
+- последовательность (progn)
+- вызов процедуры (proc exp...)
+
+И три синтаксические конструкции
+- parse
+- eval
+- environment
+
+** Eval
+
+#+BEGIN_SRC python
+  def eval(x, env=global_env):
+      "Evaluate an expression in an environment."
+      if isa(x, Symbol):             # variable reference
+          return env.find(x)[x]
+      elif not isa(x, list):         # constant literal
+          return x
+      elif x[0] == 'quote':          # (quote exp)
+          (_, exp) = x
+          return exp
+      elif x[0] == 'if':             # (if test conseq alt)
+          (_, test, conseq, alt) = x
+          return eval((conseq if eval(test, env) else alt), env)
+      elif x[0] == 'set!':           # (set! var exp)
+          (_, var, exp) = x
+          env.find(var)[var] = eval(exp, env)
+      elif x[0] == 'define':         # (define var exp)
+          (_, var, exp) = x
+          env[var] = eval(exp, env)
+      elif x[0] == 'lambda':         # (lambda (var*) exp)
+          (_, vars, exp) = x
+          return lambda *args: eval(exp, Env(vars, args, env))
+      elif x[0] == 'begin':          # (begin exp*)
+          for exp in x[1:]:
+              val = eval(exp, env)
+              return val
+          else:                          # (proc exp*)
+              exps = [eval(exp, env) for exp in x]
+              proc = exps.pop(0)
+              return proc(*exps)
+
+      isa = isinstance
+      Symbol = str
+#+END_SRC
+
+** Environment
+
+#+BEGIN_SRC python
+  class Env(dict):
+      "An environment: a dict of {'var':val} pairs, with an outer Env."
+      def __init__(self, parms=(), args=(), outer=None):
+          self.update(zip(parms,args))
+          self.outer = outer
+          def find(self, var):
+              "Find the innermost Env where var appears."
+              return self if var in self else self.outer.find(var)
+#+END_SRC
+
+** Global definitions
+
+- +
+- -
+- *
+- /
+- not
+- >
+- <
+- >=
+- <=
+- =
+- equal?
+- eq?
+- length
+- cons
+- car
+- cdr
+- append
+- list
+- list?
+- null?
+- symbol?
+
+** Read
+*** Tokenizer
+
+** Atom
+
+* Базовые типы
+
+Итак мы имеем следующие базовые типы данных:
+- точечная пара,
+- символ,
+- число,
+- строка (pascal style, т.к. это даст возможность хранения произвольных бинарных данных
+  в неизменном виде)
+
+(функции и макросы могут быть представлены обычными s-выражениями)
+
+для удобства реализации добавлены 4 дополнительных типа:
+- функция,
+- макрос,
+- встроенная функция
+- встроенный макрос.
+
+Итак, имеем следующую структуру для s-выражения:
+
+#+BEGIN_SRC c
+  struct l_env;
+
+  typedef struct s_expr *(*built_in) (struct s_expr*, struct l_env*, struct file_pos*);
+
+  struct s_expr {
+      enum {
+          DOTTED_PAIR, STRING, SYMBOL, NUMBER, FUNCTION, MACRO, BUILT_IN_FUNCTION, BUILT_IN_MACRO
+      } type;
+      union {
+          struct {
+              struct s_expr *first, *rest;
+          } pair;
+          struct {
+              char *ptr;
+              size_t size;
+          } string;
+          struct {
+              struct s_expr *expr;
+              struct l_env *env;
+          } function;
+          char *symbol;
+          double number;
+          built_in built_in;
+      } u;
+  };
+
+  struct l_env {
+      char *symbol;
+      struct s_expr *expr;
+      struct l_env *next;
+  };
+#+END_SRC
+
+На базе вышеприведённой структуры s-выражения легко построить функцию его вычисления:
+
+#+BEGIN_SRC c
+  struct s_expr *eval_s_expr (struct s_expr *expr, struct l_env *env, struct file_pos *pos) {
+      struct s_expr *first, *in = expr;
+      struct l_env *benv;
+
+      trace_put("%s -> ...", in, NULL, env);
+
+      if (expr)
+          if (expr->type == SYMBOL)
+              if (find_symbol(expr->u.symbol, &env))
+                  expr = env->expr;
+              else
+                  error(UNBOUND_SYMBOL_MSG, pos, expr->u.symbol);
+          else if (expr->type == DOTTED_PAIR) {
+              first = eval_s_expr(expr->u.pair.first, env, pos);
+
+              if (!first || first->type == DOTTED_PAIR || first->type == SYMBOL ||
+                  first->type == STRING || first->type == NUMBER)
+                  error(NON_FUNC_MACRO_MSG, pos, s_expr_string(first, env));
+
+              expr = first->type == FUNCTION || first->type == BUILT_IN_FUNCTION ?
+                  map_eval(expr->u.pair.rest, env, pos) : expr->u.pair.rest;
+
+              if (first->type == FUNCTION || first->type == MACRO) {
+                  assert(first->u.function.expr->type == DOTTED_PAIR);
+
+                  benv = apply_args(first->u.function.expr->u.pair.first, expr,
+                                    first->u.function.env, pos);
+
+                  expr = eval_list(first->u.function.expr->u.pair.rest, benv, pos);
+
+                  if (first->type == MACRO) {
+                      trace_put("%s ~> %s", in, expr, env);
+                      expr = eval_s_expr(expr, env, pos);
+                  }
+              }
+              else
+                  expr = first->u.built_in(expr, env, pos);
+          }
+
+      trace_put("%s -> %s", in, expr, env);
+
+      return expr;
+  }
+#+END_SRC
+
+Если вычислимое выражение является символом, мы просто ищем его значение в текущем
+лексическом окружении (find_symbol). Если вызов функции: вначале вычисляем фактические
+параметры, используя текущее лексическое окружение (map_eval), затем привязываем их к
+символам формальных параметров (apply_args) уже в лексическом окружении самой
+функции. Далее последовательно вычисляем элементы тела на основе полученного
+лексического окружения, возвращая значение последнего выражения (eval_list). Для вызова
+макроса порядок вычисления несколько иной. Фактические параметры не вычисляются, а
+передаются в неизменном виде. Кроме того, результирующее выражение макроса
+(макроподстановка) подвергается дополнительному вычислению. Числа, строки, функции и
+макросы вычисляются сами в себя.
+
+* Полный текст си-части
+
+#+BEGIN_SRC c
+  #include <assert.h>
+  #include <ctype.h>
+  #include <float.h>
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+
+  #define LINE_COMMENT_CHAR ';'
+  #define BLOCK_COMMENT_CHAR1 ';'
+  #define BLOCK_COMMENT_CHAR2 '|'
+  #define LIST_OPEN_BRACE_CHAR '('
+  #define LIST_CLOSE_BRACE_CHAR ')'
+  #define LIST_DOT_CHAR '.'
+  #define STRING_DELIMITER_CHAR '"'
+  #define STRING_ESCAPE_CHAR '\\'
+  #define NUMBER_PREFIX_CHAR '$'
+  #define NUMBER_FORMAT_HEX_CHAR 'h'
+  #define NUMBER_FORMAT_OCT_CHAR 'o'
+
+  #define NIL_SYMBOL_STR "_"
+  #define TRUE_SYMBOL_STR "t"
+  #define TRACE_SYMBOL_STR "trace"
+  #define CAR_SYMBOL_STR "@"
+  #define CDR_SYMBOL_STR "%"
+  #define CONS_SYMBOL_STR "^"
+  #define IF_SYMBOL_STR "?"
+  #define LAMBDA_SYMBOL_STR "!"
+  #define MACRO_SYMBOL_STR "#"
+  #define SETQ_SYMBOL_STR "="
+  #define QUOTE_SYMBOL_STR "'"
+  #define PLUS_SYMBOL_STR "+"
+  #define GREATER_SYMBOL_STR ">"
+
+  #define FUNCTION_STR_FORMAT "<!%s>"
+  #define MACRO_STR_FORMAT "<#%s>"
+
+  #define OUT_OF_MEMORY_MSG "out of memory"
+  #define UNEXPECTED_EOF_MSG "unexpected end of file"
+  #define BAD_SYNTAX_MSG "bad syntax"
+  #define NON_FUNC_MACRO_MSG "expression %s is neither a function nor a macro"
+  #define NON_NONEMPTY_LIST_MSG "expression %s is not a nonempty list"
+  #define NON_LIST_MSG "expression %s is not a proper list"
+  #define UNBOUND_SYMBOL_MSG "unbound symbol %s"
+  #define BAD_FORMAL_ARGS_MSG "bad formal arguments %s"
+  #define BAD_ACTUAL_ARGS_MSG "bad actual arguments %s"
+  #define STRING_OVERFLOW_MSG "string size overflow"
+
+  #define NUMBER_LENGTH_MAX 32
+  #define SYMBOL_LENGTH_MAX 32
+  #define STRING_LENGTH_MAX 256
+  #define S_EXPR_LENGTH_MAX 1024
+
+  struct file_pos {
+      char *filename;
+      int line, chr;
+  };
+
+  struct l_env;
+
+  typedef struct s_expr *(*built_in) (struct s_expr*, struct l_env*,
+                                      struct file_pos*);
+
+  struct s_expr {
+      enum {
+          DOTTED_PAIR, STRING, SYMBOL, NUMBER, FUNCTION, MACRO,
+          BUILT_IN_FUNCTION, BUILT_IN_MACRO
+      } type;
+      union {
+          struct {
+              struct s_expr *first, *rest;
+          } pair;
+          struct {
+              char *ptr;
+              size_t size;
+          } string;
+          struct {
+              struct s_expr *expr;
+              struct l_env *env;
+          } function;
+          char *symbol;
+          double number;
+          built_in built_in;
+      } u;
+  };
+
+  void error(char *message, struct file_pos *pos, char *expr) {
+      if (pos)
+          printf("Error at %s:%d:%d: ", pos->filename, pos->line, pos->chr);
+      else
+          printf("Error: ");
+      if (expr)
+          printf(message, expr);
+      else
+          printf("%s", message);
+      puts("");
+      exit(1);
+  }
+
+  void *alloc_mem(size_t size) {
+      void *ptr = malloc(size);
+      if (!ptr)
+          error(OUT_OF_MEMORY_MSG, NULL, NULL);
+      return ptr;
+  }
+
+  struct s_expr *true_ () {
+      static struct s_expr *expr = NULL;
+      if (!expr) {
+          expr = alloc_mem(sizeof(*expr));
+          expr->type = SYMBOL;
+          expr->u.symbol = TRUE_SYMBOL_STR;
+      }
+      return expr;
+  }
+
+  int get_char(FILE *file, struct file_pos *pos) {
+      int chr = getc(file);
+      if (chr == '\n')
+          pos->line++, pos->chr = 1;
+      else if (chr != EOF)
+          pos->chr++;
+      return chr;
+  }
+
+  int next_char(FILE *file) {
+      int chr = getc(file);
+      ungetc(chr, file);
+      return chr;
+  }
+
+  int get_significant_char (FILE *file, struct file_pos *pos) {
+      enum { NO_COMMENT, LINE_COMMENT, BLOCK_COMMENT } state = NO_COMMENT;
+      int chr;
+
+      while (1) {
+          chr = get_char(file, pos);
+          if (state == NO_COMMENT) {
+              if (chr == BLOCK_COMMENT_CHAR1 &&
+                  next_char(file) == BLOCK_COMMENT_CHAR2) {
+                  get_char(file, pos);
+                  state = BLOCK_COMMENT;
+                  continue;
+              }
+              if (chr == LINE_COMMENT_CHAR)
+                  state = LINE_COMMENT;
+              else if (chr != ' ' && chr != '\t' && chr != '\r' && chr != '\n')
+                  return chr;
+          }
+          else if (state == BLOCK_COMMENT) {
+              if (chr == BLOCK_COMMENT_CHAR2 &&
+                  next_char(file) == BLOCK_COMMENT_CHAR1) {
+                  get_char(file, pos);
+                  state = NO_COMMENT;
+              }
+              else if (chr == EOF)
+                  error(UNEXPECTED_EOF_MSG, pos, NULL);
+          }
+          else if (state == LINE_COMMENT) {
+              if (chr == '\n')
+                  state = NO_COMMENT;
+              else if (chr == EOF)
+                  return EOF;
+          }
+      }
+  }
+
+  struct s_expr *parse_s_expr (FILE*, struct file_pos*);
+
+  struct s_expr *parse_list (FILE *file, struct file_pos *pos) {
+      struct s_expr *expr, *rest;
+      int chr;
+
+      chr = get_significant_char(file, pos);
+      if (chr == LIST_CLOSE_BRACE_CHAR)
+          return NULL;
+
+      ungetc(chr, file);
+      pos->chr--;
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = DOTTED_PAIR;
+      expr->u.pair.first = parse_s_expr(file, pos);
+      rest = expr;
+
+      while (1) {
+          chr = get_significant_char(file, pos);
+          if (chr == LIST_DOT_CHAR) {
+              rest->u.pair.rest = parse_s_expr(file, pos);
+              if (get_significant_char(file, pos) != LIST_CLOSE_BRACE_CHAR)
+                  error(BAD_SYNTAX_MSG, pos, NULL);
+              break;
+          }
+          else if (chr == LIST_CLOSE_BRACE_CHAR) {
+              rest->u.pair.rest = NULL;
+              break;
+          }
+          else if (chr == EOF)
+              error(UNEXPECTED_EOF_MSG, pos, NULL);
+          else {
+              ungetc(chr, file);
+              pos->chr--;
+              rest->u.pair.rest = alloc_mem(sizeof(*expr));
+              rest->u.pair.rest->type = DOTTED_PAIR;
+              rest->u.pair.rest->u.pair.first = parse_s_expr(file, pos);
+              rest = rest->u.pair.rest;
+          }
+      }
+
+      return expr;
+  }
+
+  void read_escape_seq (FILE *file, struct file_pos *pos, char *buf) {
+      /* TODO: add support for escape sequences */
+
+  }
+
+  struct s_expr *parse_string (FILE *file, struct file_pos *pos) {
+      char buf[STRING_LENGTH_MAX];
+      struct s_expr *expr;
+      int chr, i = 0;
+
+      while (i < STRING_LENGTH_MAX) {
+          chr = get_char(file, pos);
+          if (chr == STRING_ESCAPE_CHAR)
+              read_escape_seq(file, pos, buf);
+          else if (chr == STRING_DELIMITER_CHAR)
+              break;
+          else if (chr == EOF)
+              error(UNEXPECTED_EOF_MSG, pos, NULL);
+          else
+              buf[i++] = chr;
+      }
+
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = STRING;
+      expr->u.string.ptr = i ? alloc_mem(i) : NULL;
+      memcpy(expr->u.string.ptr, buf, i);
+      expr->u.string.size = i;
+
+      return expr;
+  }
+
+  void read_double (FILE *file, struct file_pos *pos, char *buf) {
+      int chr, i = 0, point = -1;
+
+      chr = next_char(file);
+      if (chr == '+' || chr == '-') {
+          get_char(file, pos);
+          buf[i++] = chr;
+      }
+
+      while (i < NUMBER_LENGTH_MAX && isdigit(next_char(file)))
+          buf[i++] = get_char(file, pos);
+
+      if (i < NUMBER_LENGTH_MAX && next_char(file) == '.')
+          buf[point = i++] = get_char(file, pos);
+
+      while (i < NUMBER_LENGTH_MAX && isdigit(next_char(file)))
+          buf[i++] = get_char(file, pos);
+
+      chr = next_char(file);
+      if (i < NUMBER_LENGTH_MAX && (chr == 'e' || chr == 'E') && i > point + 1) {
+          get_char(file, pos);
+          buf[i++] = chr;
+
+          chr = next_char(file);
+          if (i < NUMBER_LENGTH_MAX && (chr == '+' || chr == '-')) {
+              get_char(file, pos);
+              buf[i++] = chr;
+          }
+
+          while (i < NUMBER_LENGTH_MAX && isdigit(next_char(file)))
+              buf[i++] = get_char(file, pos);
+      }
+
+      if (i && i < NUMBER_LENGTH_MAX)
+          buf[i] = 0;
+      else
+          error(BAD_SYNTAX_MSG, pos, NULL);
+  }
+
+  void read_int (FILE *file, struct file_pos *pos, int base, char *buf) {
+      int chr, i = 0;
+
+      assert(base == 8 || base == 16);
+
+      for (; i < NUMBER_LENGTH_MAX; get_char(file, pos)) {
+          chr = next_char(file);
+          if ((base == 16 && isxdigit(chr)) || (chr >= '0' && chr <= '7'))
+              buf[i++] = chr;
+          else
+              break;
+      }
+
+      if (i && i < NUMBER_LENGTH_MAX)
+          buf[i] = 0;
+      else
+          error(BAD_SYNTAX_MSG, pos, NULL);
+  }
+
+  struct s_expr *parse_number (FILE *file, struct file_pos *pos) {
+      char buf[NUMBER_LENGTH_MAX + 1];
+      struct s_expr *expr;
+      int inum;
+
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = NUMBER;
+
+      switch (next_char(file)) {
+      case NUMBER_FORMAT_HEX_CHAR:
+          get_char(file, pos);
+          read_int(file, pos, 16, buf);
+          sscanf(buf, "%x", &inum);
+          expr->u.number = inum;
+          break;
+      case NUMBER_FORMAT_OCT_CHAR:
+          get_char(file, pos);
+          read_int(file, pos, 8, buf);
+          sscanf(buf, "%o", &inum);
+          expr->u.number = inum;
+          break;
+      default:
+          read_double(file, pos, buf);
+          sscanf(buf, "%lf", &expr->u.number);
+          break;
+      }
+
+      return expr;
+  }
+
+  struct s_expr *parse_symbol (FILE *file, struct file_pos *pos) {
+      char buf[NUMBER_LENGTH_MAX + 1];
+      struct s_expr *expr;
+      int chr, chr2, i = 0;
+
+      for (; i < NUMBER_LENGTH_MAX; get_char(file, pos)) {
+          chr = next_char(file);
+          if (chr == BLOCK_COMMENT_CHAR1) {
+              get_char(file, pos);
+              chr2 = next_char(file);
+              ungetc(chr2, file);
+              pos->chr--;
+
+              if (chr2 == BLOCK_COMMENT_CHAR2)
+                  break;
+          }
+          if (chr >= '!' && chr <= '~' && chr != LINE_COMMENT_CHAR &&
+                      chr != LIST_OPEN_BRACE_CHAR && chr != LIST_CLOSE_BRACE_CHAR &&
+                      chr != LIST_DOT_CHAR && chr != STRING_DELIMITER_CHAR &&
+              chr != NUMBER_PREFIX_CHAR)
+              buf[i++] = chr;
+          else
+              break;
+      }
+
+      if (i && i < SYMBOL_LENGTH_MAX)
+          buf[i] = 0;
+      else
+          error(BAD_SYNTAX_MSG, pos, NULL);
+
+      if(!strcmp(buf, NIL_SYMBOL_STR))
+          return NULL;
+      if(!strcmp(buf, TRUE_SYMBOL_STR))
+          return true_();
+
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = SYMBOL;
+      expr->u.symbol = alloc_mem(i + 1);
+      strcpy(expr->u.symbol, buf);
+
+      return expr;
+  }
+
+  struct s_expr *parse_s_expr (FILE *file, struct file_pos *pos) {
+      struct s_expr *expr;
+      int chr;
+
+      chr = get_significant_char(file, pos);
+
+      switch (chr) {
+      case EOF:
+          return NULL;
+      case LIST_OPEN_BRACE_CHAR:
+          expr = parse_list(file, pos);
+          break;
+      case STRING_DELIMITER_CHAR:
+          expr = parse_string(file, pos);
+          break;
+      case NUMBER_PREFIX_CHAR:
+          expr = parse_number(file, pos);
+          break;
+      default:
+          ungetc(chr, file);
+          pos->chr--;
+          expr = parse_symbol(file, pos);
+          break;
+      }
+
+      return expr;
+  }
+
+  struct l_env {
+      char *symbol;
+      struct s_expr *expr;
+      struct l_env *next;
+  };
+
+  static int do_trace = 0;
+
+  char *s_expr_string (struct s_expr*, struct l_env*);
+
+  void trace_put (char *format, struct s_expr *expr1, struct s_expr *expr2,
+                  struct l_env *env) {
+      if (do_trace) {
+          printf("Trace: ");
+          printf(format, s_expr_string(expr1, env), s_expr_string(expr2, env));
+          puts("");
+      }
+  }
+
+  struct l_env *add_symbol (char *symbol, struct s_expr *expr,
+                            struct l_env *env, int append) {
+      struct l_env *new_env;
+      new_env = alloc_mem(sizeof(*new_env));
+      new_env->symbol = symbol, new_env->expr = expr;
+      if (append)
+          env->next = new_env, new_env->next = NULL;
+      else
+          new_env->next = env;
+      return new_env;
+  }
+
+  struct l_env * add_built_in (int macro, char *symbol, built_in bi,
+                               struct l_env *env) {
+      struct s_expr *expr = alloc_mem(sizeof(*expr));
+      expr->type = macro ? BUILT_IN_MACRO : BUILT_IN_FUNCTION;
+      expr->u.built_in = bi;
+      return add_symbol(symbol, expr, env, 0);
+  }
+
+  int find_symbol (char *symbol, struct l_env **env) {
+      struct l_env *next = *env;
+      for (; next; *env = next, next = next->next)
+          if (!strcmp(symbol, next->symbol)) {
+              ,*env = next;
+              return 1;
+          }
+      return 0;
+  }
+
+  char *str_cat (char *dest, size_t dest_size, char *src) {
+      if (strlen(src) > dest_size - 1 - strlen(dest))
+          error(STRING_OVERFLOW_MSG, NULL, NULL);
+      return strcat(dest, src);
+  }
+
+  char *list_string (struct s_expr *list, struct l_env *env) {
+      char buf[S_EXPR_LENGTH_MAX + 1] = { LIST_OPEN_BRACE_CHAR, 0 };
+      char psep[] = { ' ', LIST_DOT_CHAR, ' ', 0 };
+      char cbrc[] = { LIST_CLOSE_BRACE_CHAR, 0 };
+
+      for (; list && list->type == DOTTED_PAIR; list = list->u.pair.rest) {
+          if (buf[1])
+              str_cat(buf, S_EXPR_LENGTH_MAX + 1, " ");
+          str_cat(buf, S_EXPR_LENGTH_MAX + 1,
+                  s_expr_string(list->u.pair.first, env));
+      }
+
+      if (list)
+          str_cat(str_cat(buf, S_EXPR_LENGTH_MAX + 1, psep),
+                  S_EXPR_LENGTH_MAX + 1, s_expr_string(list, env));
+
+      str_cat(buf, S_EXPR_LENGTH_MAX + 1, cbrc);
+
+      return strcpy(alloc_mem(strlen(buf) + 1), buf);
+  }
+
+  char *string_string (char *ptr, size_t size) {
+      char *str = alloc_mem(size + 3);
+      str[0] = str[size + 1] = '"';
+      memcpy(str + 1, ptr, size);
+      str[size + 2] = 0;
+      return str;
+  }
+
+  char *number_string (double number) {
+      char *str = alloc_mem(NUMBER_LENGTH_MAX + 2);
+      str[0] = NUMBER_PREFIX_CHAR;
+      sprintf(str + 1, "%g", number);
+      return str;
+  }
+
+  char *function_string (struct s_expr *expr, int macro, struct l_env *env) {
+      char *str;
+
+      for (; env; env = env->next)
+          if (env->expr == expr)
+              break;
+
+      str = alloc_mem((macro ? sizeof(MACRO_STR_FORMAT) :
+                       sizeof(FUNCTION_STR_FORMAT)) +
+                      (env ? strlen(env->symbol) : 0) - 1);
+
+      sprintf(str, macro ? MACRO_STR_FORMAT : FUNCTION_STR_FORMAT,
+              env ? env->symbol : "");
+
+      return str;
+  }
+
+  char *s_expr_string (struct s_expr *expr, struct l_env *env) {
+      if (!expr)
+          return NIL_SYMBOL_STR;
+
+      switch (expr->type) {
+      case DOTTED_PAIR:
+          return list_string(expr, env);
+      case STRING:
+          return string_string(expr->u.string.ptr, expr->u.string.size);
+      case SYMBOL:
+          return expr->u.symbol;
+      case NUMBER:
+          return number_string(expr->u.number);
+      case FUNCTION:
+      case BUILT_IN_FUNCTION:
+          return function_string(expr, 0, env);
+      case MACRO:
+      case BUILT_IN_MACRO:
+          return function_string(expr, 1, env);
+      default:
+          assert(0);
+          return NULL;
+      }
+  }
+
+  int proper_listp (struct s_expr *expr) {
+      while (expr && expr->type == DOTTED_PAIR)
+          expr = expr->u.pair.rest;
+      return expr == NULL;
+  }
+
+  struct s_expr *search_symbol(struct s_expr *list, char *symbol) {
+      for (; list && list->type == DOTTED_PAIR; list = list->u.pair.rest) {
+          assert(list->u.pair.first->type == SYMBOL);
+          if (!strcmp(list->u.pair.first->u.symbol, symbol))
+              return list;
+      }
+      return NULL;
+  }
+
+  void check_fargs (struct s_expr *fargs, struct l_env *env,
+                    struct file_pos *pos) {
+      struct s_expr *rest = fargs;
+
+      if (rest && rest->type == DOTTED_PAIR &&
+          !rest->u.pair.first && rest->u.pair.rest->type == SYMBOL)
+          return;
+
+      for (; rest && rest->type == DOTTED_PAIR; rest = rest->u.pair.rest)
+          if (!rest->u.pair.first || rest->u.pair.first->type != SYMBOL ||
+              search_symbol(fargs, rest->u.pair.first->u.symbol) != rest)
+              error(BAD_FORMAL_ARGS_MSG, pos, s_expr_string(fargs, env));
+
+      if (rest && (rest->type != SYMBOL || search_symbol(fargs, rest->u.symbol)))
+          error(BAD_FORMAL_ARGS_MSG, pos, s_expr_string(fargs, env));
+  }
+
+  void check_aargs (struct s_expr *args, int count, int va, struct l_env *env,
+                    struct file_pos *pos) {
+      struct s_expr *rest = args;
+
+      for (; count && rest && rest->type == DOTTED_PAIR; count--)
+          rest = rest->u.pair.rest;
+
+      if (count || (!va && rest) || !proper_listp(rest))
+          error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+  }
+
+  struct s_expr *eval_list (struct s_expr*, struct l_env*, struct file_pos*);
+  struct s_expr *eval_s_expr (struct s_expr*, struct l_env*, struct file_pos*);
+
+  #define ARG1(args) args->u.pair.first
+  #define ARG2(args) args->u.pair.rest->u.pair.first
+  #define ARG3(args) args->u.pair.rest->u.pair.rest->u.pair.first
+
+  struct s_expr *trace (struct s_expr *args, struct l_env *env,
+                        struct file_pos *pos) {
+      struct s_expr *expr;
+      do_trace = 1;
+      expr = eval_list(args, env, pos);
+      do_trace = 0;
+      return expr;
+  }
+
+  struct s_expr *quote (struct s_expr *args, struct l_env *env,
+                        struct file_pos *pos) {
+      check_aargs(args, 1, 0, env, pos);
+      return ARG1(args);
+  }
+
+  struct s_expr *car (struct s_expr *args, struct l_env *env,
+                      struct file_pos *pos) {
+      check_aargs(args, 1, 0, env, pos);
+      if (ARG1(args) && ARG1(args)->type != DOTTED_PAIR)
+          error(NON_LIST_MSG, pos, s_expr_string(ARG1(args), env));
+      return ARG1(args) ? ARG1(args)->u.pair.first : NULL;
+  }
+
+  struct s_expr *cdr (struct s_expr *args, struct l_env *env,
+                      struct file_pos *pos) {
+      check_aargs(args, 1, 0, env, pos);
+      if (ARG1(args) && ARG1(args)->type != DOTTED_PAIR)
+          error(NON_LIST_MSG, pos, s_expr_string(ARG1(args), env));
+      return ARG1(args) ? ARG1(args)->u.pair.rest : NULL;
+  }
+
+  struct s_expr *cons (struct s_expr *args, struct l_env *env,
+                       struct file_pos *pos) {
+      struct s_expr *expr;
+      check_aargs(args, 2, 0, env, pos);
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = DOTTED_PAIR;
+      expr->u.pair.first = ARG1(args);
+      expr->u.pair.rest = ARG2(args);
+      return expr;
+  }
+
+  struct s_expr *if_ (struct s_expr *args, struct l_env *env,
+                      struct file_pos *pos) {
+      check_aargs(args, 3, 0, env, pos);
+      return eval_s_expr(ARG1(args), env, pos) ?
+          eval_s_expr(ARG2(args), env, pos) :
+          eval_s_expr(ARG3(args), env, pos);
+  }
+
+  struct s_expr *function (struct s_expr *args, struct l_env *env,
+                           struct file_pos *pos, int macro) {
+      struct s_expr *expr;
+      check_aargs(args, 1, 1, env, pos);
+      check_fargs(ARG1(args), env, pos);
+      expr = alloc_mem(sizeof(*expr));
+      expr->type = macro ? MACRO : FUNCTION;
+      expr->u.function.expr = args;
+      expr->u.function.env = env;
+      return expr;
+  }
+
+  struct s_expr *lambda (struct s_expr *args, struct l_env *env,
+                         struct file_pos *pos) {
+      return function(args, env, pos, 0);
+  }
+
+  struct s_expr *macro (struct s_expr *args, struct l_env *env,
+                        struct file_pos *pos) {
+      return function(args, env, pos, 1);
+  }
+
+  struct s_expr *setq (struct s_expr *args, struct l_env *env,
+                       struct file_pos *pos) {
+      struct s_expr *rest = args, *expr = NULL;
+      struct l_env *senv;
+
+      while (rest && rest->type == DOTTED_PAIR) {
+          if (ARG1(rest) && ARG1(rest)->type == SYMBOL &&
+              rest->u.pair.rest && rest->u.pair.rest->type == DOTTED_PAIR) {
+              expr = eval_s_expr(ARG2(rest), env, pos), senv = env;
+              if (find_symbol(ARG1(rest)->u.symbol, &senv)) {
+                  trace_put("%s => %s [assign]", expr, ARG1(rest), env);
+                  senv->expr = expr;
+              }
+              else {
+                  trace_put("%s => %s [global]", expr, ARG1(rest), env);
+                  add_symbol(ARG1(rest)->u.symbol, expr, senv, 1);
+              }
+          }
+          else
+              error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+
+          rest = rest->u.pair.rest->u.pair.rest;
+      }
+
+      if (rest)
+          error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+
+      return expr;
+  }
+
+  struct s_expr *plus (struct s_expr *args, struct l_env *env,
+                       struct file_pos *pos) {
+      struct s_expr *rest = args;
+      double sum = 0;
+
+      while (rest && rest->type == DOTTED_PAIR && ARG1(rest)->type == NUMBER)
+          sum += ARG1(rest)->u.number, rest = rest->u.pair.rest;
+
+      if (rest)
+          error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+
+      rest = alloc_mem(sizeof(*rest));
+      rest->type = NUMBER;
+      rest->u.number = sum;
+      return rest;
+  }
+
+  struct s_expr *greater (struct s_expr *args, struct l_env *env,
+                          struct file_pos *pos) {
+      struct s_expr *rest = args, *num;
+      double prev = DBL_MAX;
+
+      while (rest && rest->type == DOTTED_PAIR) {
+          num = eval_s_expr(ARG1(rest), env, pos);
+
+          if (!num || num->type != NUMBER)
+              error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+
+          if (prev - num->u.number < DBL_EPSILON)
+              return NULL;
+
+          prev = num->u.number, rest = rest->u.pair.rest;
+      }
+
+      if (rest)
+          error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(args, env));
+
+      return true_();
+  }
+
+  struct l_env *create_env () {
+      struct l_env *env = NULL;
+      env = add_built_in(1, TRACE_SYMBOL_STR, trace, env);
+      env = add_built_in(1, QUOTE_SYMBOL_STR, quote, env);
+      env = add_built_in(0, CAR_SYMBOL_STR, car, env);
+      env = add_built_in(0, CDR_SYMBOL_STR, cdr, env);
+      env = add_built_in(0, CONS_SYMBOL_STR, cons, env);
+      env = add_built_in(1, IF_SYMBOL_STR, if_, env);
+      env = add_built_in(1, LAMBDA_SYMBOL_STR, lambda, env);
+      env = add_built_in(1, MACRO_SYMBOL_STR, macro, env);
+      env = add_built_in(1, SETQ_SYMBOL_STR, setq, env);
+      env = add_built_in(0, PLUS_SYMBOL_STR, plus, env);
+      env = add_built_in(1, GREATER_SYMBOL_STR, greater, env);
+      return env;
+  }
+
+  struct s_expr *map_eval (struct s_expr *list, struct l_env *env,
+                           struct file_pos *pos) {
+      struct s_expr *expr = NULL, *rest;
+
+      while (list) {
+          if (list->type != DOTTED_PAIR)
+              error(NON_LIST_MSG, pos, s_expr_string(list, env));
+          if (expr) {
+              rest->u.pair.rest = alloc_mem(sizeof(*expr));
+              rest = rest->u.pair.rest;
+          }
+          else
+              expr = rest = alloc_mem(sizeof(*expr));
+          rest->type = DOTTED_PAIR;
+          rest->u.pair.first = eval_s_expr(list->u.pair.first, env, pos);
+          list = list->u.pair.rest;
+      }
+
+      if (expr)
+          rest->u.pair.rest = NULL;
+
+      return expr;
+  }
+
+  struct l_env *apply_args (struct s_expr *fargs, struct s_expr *aargs,
+                            struct l_env *env, struct file_pos *pos) {
+      struct s_expr *rest = aargs;
+
+      if (!fargs || fargs->u.pair.first)
+          while (fargs && fargs->type == DOTTED_PAIR) {
+              if (!rest || rest->type != DOTTED_PAIR)
+                  error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(aargs, env));
+              assert(fargs->u.pair.first->type == SYMBOL);
+              trace_put("%s => %s [local]", rest->u.pair.first,
+                        fargs->u.pair.first, env);
+              env = add_symbol(fargs->u.pair.first->u.symbol,
+                               rest->u.pair.first, env, 0);
+              fargs = fargs->u.pair.rest, rest = rest->u.pair.rest;
+          }
+      else
+          fargs = fargs->u.pair.rest;
+
+      if (fargs) {
+          assert(fargs->type == SYMBOL);
+          if (rest && !proper_listp(rest))
+              error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(aargs, env));
+          trace_put("%s => %s [local]", rest, fargs, env);
+          env = add_symbol(fargs->u.symbol, rest, env, 0);
+      }
+      else if (rest)
+          error(BAD_ACTUAL_ARGS_MSG, pos, s_expr_string(aargs, env));
+
+      return env;
+  }
+
+  struct s_expr *eval_list (struct s_expr *list, struct l_env *env,
+                            struct file_pos *pos) {
+      struct s_expr *expr = NULL, *rest = list;
+
+      for (; rest && rest->type == DOTTED_PAIR; rest = rest->u.pair.rest)
+          expr = eval_s_expr(rest->u.pair.first, env, pos);
+
+      if (rest)
+          error(NON_LIST_MSG, pos, s_expr_string(list, env));
+
+      return expr;
+  }
+
+  struct s_expr *eval_s_expr (struct s_expr *expr, struct l_env *env,
+                              struct file_pos *pos) {
+      struct s_expr *first, *in = expr;
+      struct l_env *benv;
+
+      trace_put("%s -> ...", in, NULL, env);
+
+      if (expr)
+          if (expr->type == SYMBOL)
+              if (find_symbol(expr->u.symbol, &env))
+                  expr = env->expr;
+              else
+                  error(UNBOUND_SYMBOL_MSG, pos, expr->u.symbol);
+          else if (expr->type == DOTTED_PAIR) {
+              first = eval_s_expr(expr->u.pair.first, env, pos);
+
+              if (!first || first->type == DOTTED_PAIR || first->type == SYMBOL ||
+                  first->type == STRING || first->type == NUMBER)
+                  error(NON_FUNC_MACRO_MSG, pos, s_expr_string(first, env));
+
+                    expr = first->type == FUNCTION || first->type == BUILT_IN_FUNCTION ?
+                        map_eval(expr->u.pair.rest, env, pos) : expr->u.pair.rest;
+
+                    if (first->type == FUNCTION || first->type == MACRO) {
+                        assert(first->u.function.expr->type == DOTTED_PAIR);
+
+                        benv = apply_args(first->u.function.expr->u.pair.first, expr,
+                                          first->u.function.env, pos);
+
+                        expr = eval_list(first->u.function.expr->u.pair.rest, benv, pos);
+
+                        if (first->type == MACRO) {
+                            trace_put("%s ~> %s", in, expr, env);
+                            expr = eval_s_expr(expr, env, pos);
+                        }
+                    }
+                    else
+                        expr = first->u.built_in(expr, env, pos);
+          }
+
+      trace_put("%s -> %s", in, expr, env);
+
+      return expr;
+  }
+
+  struct s_expr *eval_file (char *filename, struct l_env *env) {
+      struct file_pos pos, prev_pos;
+      struct s_expr *expr;
+      FILE *file;
+      int chr;
+
+      file = fopen(filename, "r");
+      if (!file) {
+          printf("Failed to open file '%s'\n", filename);
+          exit(1);
+      }
+
+      pos.filename = filename, pos.line = pos.chr = 1;
+      expr = NULL;
+
+      while (1) {
+          chr = get_significant_char(file, &pos);
+          if (chr == EOF)
+              break;
+          ungetc(chr, file);
+          pos.chr--, prev_pos = pos;
+          expr = eval_s_expr(parse_s_expr(file, &pos), env, &prev_pos);
+      }
+
+      fclose(file);
+      return expr;
+  }
+
+  int main (int argc, char *argv[]) {
+      struct l_env *env;
+
+      if (argc != 2) {
+          puts("Usage: int source");
+          exit(1);
+      }
+
+      env = create_env();
+      puts(s_expr_string(eval_file(argv[1], env), env));
+
+      return 0;
+  }
+#+END_SRC
+
+* Лисп-часть
+
+Я решил ввести более лаконичные названия для базовых и произвольных функций и
+макросов. В классическом LISP (и, особенно, в Common Lisp) меня немного напрягает
+многословность базовых примитивов. С одной стороны, я не хотел усложнять парсер, потому
+quote и backquote синтаксис им не поддерживается, только скобочная нотация. С другой
+стороны, стремился компенсировать избыточную скобочность широким использованием
+специальных символов для лаконичности. Кому-то это покажется весьма спорным решением.
+
+Имена я старался подбирать в соответствии с их ассоциативным рядом:
+
+_ — заменяет nil
+! — заменяет lambda
+# — аналогично !, но объявляет безымянный макрос
+? — заменяет if с обязательным третим параметром
+^ — заменяет cons
+@ — заменяет car
+% — заменяет cdr
+= — заменяет setq
+
+
+Соответственно, имена производных функций и макросов во многом стали производными от имён базовых:
+
+!! — заменяет defun
+## — заменяет defmacro
+^^ — заменяет list
+@% — заменяет cadr
+%% — заменяет cddr
+: — заменяет let для одной переменной
+:: — заменяет let без избыточных скобок
+& — заменяет and
+| — заменяет or
+
+Теперь рассмотрим производные определения. Вначале определим базовые сокращения:
+
+#+BEGIN_SRC lisp
+  (setq cadr (lambda (list) (car (cdr list))))
+  (setq cddr (lambda (list) (cdr (cdr list))))
+  (setq list (lambda (nil . elts) elts))
+
+  (setq defmacro (defmacro-anon (name fargs . body)
+                     (list setq name (cons defmacro-anon (cons fargs body)))))
+
+  (defmacro defun (name fargs . body)
+    (list setq name (cons lambda (cons fargs body))))
+#+END_SRC
+
+Обратите внимание на точечную нотацию списка формальных аргументов. Символ после
+точки захватывает оставшиеся фактические параметры. Случай, когда все аргументы
+необязательны, описывается специальной нотацией (nil . rest-args). Далее определим
+классический map и два парных разбиения списка:
+
+#+BEGIN_SRC lisp
+  (defun map (func list)
+    (if list (cons (func (car list)) (map func (cdr list))) nil))
+
+  (defun pairs1 (list) ; (a b c d) -> ((a b) (b c) (c d))
+    (if (cdr list) (cons (list (car list) (cadr list)) (pairs1 (cdr list))) nil))
+  (defun pairs2 (list) ; (a b c d) -> ((a b) (c d))
+    (if list (cons (list (car list) (cadr list)) (pairs2 (cddr list))) nil))
+#+END_SRC
+
+Определяем два варианта let
+
+#+BEGIN_SRC lisp
+  (defmacro let (name value . body) ; simplified let
+    (list (cons lambda (cons (list name) body)) value))
+
+  (defmacro let (vars . body) ; let without redundant braces
+    (setq vars (pairs2 vars))
+    (cons (cons lambda (cons (map car vars) body)) (map cadr vars)))
+#+END_SRC
+
+Классический reverse и левую свёртку
+
+#+BEGIN_SRC lisp
+  (defun reverse (list)
+    (let reverse+ nil
+         (defun reverse+ (list rlist)
+           (if list (reverse+ (cdr list) (cons (car list) rlist)) rlist))
+         (reverse+ list nil)))
+
+  (defun fold (list func last) ; (fold (' (a b)) f l) <setq> (f a (f b l))
+    (if list (func (car list) (fold (cdr list) func last)) last))
+#+END_SRC
+
+Теперь логические операторы на основе iflet
+
+#+BEGIN_SRC lisp
+  (setq t (' t)) ; true constant
+  (defun ~ (bool) (if bool nil t)) ; not
+  (defmacro and (nil . bools) ; and
+    (let and (lambda (bool1 bool2) (list if bool1 (list if bool2 t nil) nil))
+         (fold bools and t)))
+  (defmacro or (nil . bools) ; or
+    (let or (lambda (bool1 bool2) (list if bool1 t (list if bool2 t nil)))
+         (fold bools or nil)))
+#+END_SRC
+
+И, наконец, операторы сравнения на основе встроенного > (greater)let
+
+#+BEGIN_SRC lisp
+  (let defcmp (lambda (cmp)
+                (defmacro-anon (nil . nums)
+                    (let cmp+ (lambda (pair bool)
+                                (list and (cmp (car pair) (cadr pair)) bool))
+                         (fold (pairs1 nums) cmp+ t))))
+       (setq setqsetq (defcmp (lambda (num1 num2) (list and (list ~ (list > num1 num2))
+                                                        (list ~ (list > num2 num1))))))
+       (setq >setq (defcmp (lambda (num1 num2) (list ~ (list > num2 num1))))))
+  (defmacro < (nil . nums) (cons > (reverse nums)))
+  (defmacro <setq (nil . nums) (cons >setq (reverse nums)))
+#+END_SRC
+
+Обратите внимание, что в последнем блоке определений явно используется замыкание.
+
+Полный тест файла lib.l
+
+#+BEGIN_SRC lisp
+  #|
+                                          ;
+  Formal argument list notationlet
+    ([{arg1 [arg2 [arg3 ...]] or nil} [. args]])
+
+  Number notationlet
+    ${double or ooctal or hhex} ; $4 $-2.2e3 $o376 $h7EF
+
+  Built-in symbolslet
+    nil ; nil
+
+  Built-in functionslet
+    car (list) ; car
+    cdr (list) ; cdr
+    cons (first rest) ; cons
+    + (nil . nums)
+
+  Built-in macroslet
+    trace (nil . body)
+    ' (expr)
+    if (cond texpr fexpr) ; if with mandatory fexpr
+    lambda (args . body) ; lambda
+    defmacro-anon (args . body) ; creates anonymous macro
+    > (nil . nums)
+  or;
+  |#
+
+  (setq cadr (lambda (list) (car (cdr list)))) ; cadr
+  (setq cddr (lambda (list) (cdr (cdr list)))) ; cddr
+  (setq list (lambda (nil . elts) elts)) ; list
+
+  (setq defmacro (defmacro-anon (name fargs . body) ; defmacro
+                     (list setq name (cons defmacro-anon (cons fargs body)))))
+  (defmacro defun (name fargs . body) ; defun
+    (list setq name (cons lambda (cons fargs body))))
+
+  (defun map (func list)
+    (if list (cons (func (car list)) (map func (cdr list))) nil))
+
+  (defun pairs1 (list) ; (a b c d) -> ((a b) (b c) (c d))
+    (if (cdr list) (cons (list (car list) (cadr list)) (pairs1 (cdr list))) nil))
+  (defun pairs2 (list) ; (a b c d) -> ((a b) (c d))
+    (if list (cons (list (car list) (cadr list)) (pairs2 (cddr list))) nil))
+
+  (defmacro let (name value . body) ; simplified let
+    (list (cons lambda (cons (list name) body)) value))
+  (defmacro let (vars . body) ; let without redundant braces
+    (setq vars (pairs2 vars))
+    (cons (cons lambda (cons (map car vars) body)) (map cadr vars)))
+
+  (defun reverse (list)
+    (let reverse+ nil
+         (defun reverse+ (list rlist)
+           (if list (reverse+ (cdr list) (cons (car list) rlist)) rlist))
+         (reverse+ list nil)))
+
+  (defun fold (list func last) ; (fold (' (a b)) f l) <setq> (f a (f b l))
+    (if list (func (car list) (fold (cdr list) func last)) last))
+
+  (setq t (' t)) ; true constant
+
+  (defun ~ (bool) (if bool nil t)) ; not
+
+  (defmacro and (nil . bools) ; and
+    (let and (lambda (bool1 bool2) (list if bool1 (list if bool2 t nil) nil))
+         (fold bools and t)))
+
+  (defmacro or (nil . bools) ; or
+    (let or (lambda (bool1 bool2) (list if bool1 t (list if bool2 t nil)))
+         (fold bools or nil)))
+
+  (let defcmp (lambda (cmp)
+                (defmacro-anon (nil . nums)
+                    (let cmp+ (lambda (pair bool)
+                                (list and (cmp (car pair) (cadr pair)) bool))
+                         (fold (pairs1 nums) cmp+ t))))
+       (setq setqsetq (defcmp (lambda (num1 num2) (list and (list ~ (list > num1 num2))
+                                                        (list ~ (list > num2 num1))))))
+       (setq >setq (defcmp (lambda (num1 num2) (list ~ (list > num2 num1))))))
+
+  (defmacro < (nil . nums) (cons > (reverse nums)))
+  (defmacro <setq (nil . nums) (cons >setq (reverse nums)))
+#+END_SRC
+
+* Полезные ссылки
+
+https://habrahabr.ru/post/115206/
