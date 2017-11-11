@@ -318,7 +318,7 @@
 ;
 
 : CONSTANT
-    WORD     \ получить имя  имя следует за CONSTANT
+    WORD     \ получить имя, которое следует за CONSTANT
     CREATE   \ создать заголовок элемента словаря
     DOCOL ,  \ добавить DOCOL как codeword поля слова
     ' LIT ,  \ добавить codeword LIT
@@ -781,6 +781,7 @@
     SYSCALL1
 ;
 
+(
 : GET-BRK ( -- brkpoint )
     0 SYS_BRK SYSCALL1 ( call brk (0) )
 ;
@@ -791,7 +792,9 @@
     -
     4 / ( returns number of cells )
 ;
+)
 
+(
 : BRK( brkpoint -- )
     SYS_BRK SYSCALL1
 ;
@@ -799,6 +802,7 @@
 : MORECORE( cells -- )
     CELLS GET-BRK + BRK
 ;
+)
 
 : R/O  ( -- fam ) O_RDONLY ;
 : R/W  ( -- fam ) O_RDWR ;
@@ -936,9 +940,11 @@ HIDE =NEXT
 : WELCOME
     S" TEST-MODE" FIND NOT IF
         ." JONESFORTH VERSION " VERSION . CR
-        UNUSED . ." CELLS REMAINING" CR
+        \ UNUSED .
+        \ ." CELLS REMAINING" CR
         ." OK "
     THEN
 ;
 
-<<forth_all>
+WELCOME
+HIDE WELCOME
