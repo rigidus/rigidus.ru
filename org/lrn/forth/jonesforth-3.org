@@ -1,8 +1,249 @@
 #+STARTUP: showall indent hidestars
 
+* Cons-ячейки
+** Создание cons-ячеек
 
-*
+Чтобы создать cons-ячейку, надо выделить под нее 2 слова и вернуть указатель:
 
+#+NAME: cons0
+#+BEGIN_SRC forth
+  : CONS0 2 CELLS ALLOT ;
+#+END_SRC
+
+Чтобы записать в CAR этой CONS-ячейки значение, нужен указатель и собственно значение:
+
+#+NAME: set_car_cons
+#+BEGIN_SRC forth
+  : CAR! ( value addr -- ) ! ;
+#+END_SRC
+
+Чтобы прочитать значение из CAR этой ячейки нужен только адрес:
+
+#+NAME: get_car_cons
+#+BEGIN_SRC forth
+  : CAR@ ( value addr -- ) @ ;
+#+END_SRC
+
+Чтобы записать/прочитать в CDR нужно сделать то же самое, только увеличить адрес на
+размер машинного слова:
+
+#+NAME: set_cdr_cons
+#+BEGIN_SRC forth
+  : CDR! ( value addr -- ) 1 CELLS + ! ;
+#+END_SRC
+
+#+NAME: set_cdr_cons
+#+BEGIN_SRC forth
+  : CDR@ ( value addr -- ) 1 CELLS + @ ;
+#+END_SRC
+
+*** Alter
+
+Альтернативные варианты этого
+
+#+BEGIN_SRC forth
+  : car! ( v a - ) ! ;
+  : cdr! ( v a - ) cell+ ! ;
+  : car@ ( a - v ) @ ;
+  : cdr@ ( a - v ) cell+ @ ;
+  : cons ( k v - a ) swap 2 cells allocate throw tuck ! tuck ! ;
+  : cons0 ( - a ) 0 0 cons ;
+
+  \ Простую ячейку cons можно сделать с меньшей сложностью без динамического распределения памяти:
+
+  \
+  \ Simplified cons cells
+  \ Tested under RetroForth, gForth, Win32Forth
+  \
+  : car! ( v a -- ) ! ;
+  : cdr! ( v a -- ) cell+ ! ;
+  : car@ ( a -- v ) @ ;
+  : cdr@ ( a -- v ) cell+ @ ;
+  : cons ( car cdr -- a ) swap here >r , , r> ;
+  : cons0 ( -- a ) 0 0 cons ;
+
+
+  \ For Retro 11.x
+  \ Use @car @cdr !car !cdr with this.
+  : car    (  a-A )  ;
+  : cdr    (  a-A )  1+ ;
+  : cons   ( cc-a )  swap here [ 2, ] dip ;
+  : cons0  (   -a )  0 0 cons ;
+
+  \
+  \ For PygmyForth
+  \
+  : car! ( v a -- ) ! ;
+  : cdr! ( v a -- ) 2 + ! ;
+  : car@ ( a -- v ) @ ;
+  : cdr@ ( a -- v ) 2 + @ ;
+  : cons ( car cdr -- a ) SWAP HERE PUSH , , POP ;
+  : cons0 ( -- a ) 0 0 cons ;
+
+#+END_SRC
+
+#+BEGIN_SRC forth
+  0 CONSTANT NULL
+  : null? NULL = ;
+  : cons ( tail head -- cons )  , , HERE 2 cells - ;
+  : head ( cons -- head )  @ ;
+  : tail ( cons -- tail )  1 cells + @ ;
+  : execr ( func -- n )  swap execute ;
+
+  : size ( cons -- n ) recursive
+      dup null? if
+          drop 0
+      else
+          tail size 1+
+      endif ;
+
+  : str ( cons -- ) recursive
+      dup null? if
+          ." NULL"
+      else
+          dup head .
+          tail str
+      endif ;
+
+  : range ( upto from -- cons ) recursive
+      2dup = if
+          2drop NULL
+      else
+          tuck 1+ range
+          swap cons
+      endif ;
+
+  : nth ( nthindex cons -- nthelem ) recursive
+      over 0 = if
+          head nip
+      else
+          swap 1- swap tail nth
+      endif ;
+
+  : 3dup ( a b c -- a b c a b c )  dup 2over rot ;
+
+  : reduce ( binop initn cons -- n ) recursive
+      dup null? if
+          drop nip
+      else
+          3dup
+          head rot execute
+          rot drop
+          swap tail reduce
+      endif ;
+
+  : map ( func cons -- cons ) recursive
+      dup null? if
+          nip
+      else
+          2dup
+          tail map -rot
+          head execr cons
+      endif ;
+
+  : filter ( pred cons -- cons ) recursive
+      dup null? if
+          nip
+      else
+          2dup tail filter -rot
+          head tuck execr if
+              cons
+          else
+              drop
+          endif
+      endif ;
+
+  : sum ( cons -- sumn )  ['] + 0 rot reduce ;
+
+  : cons= ( cons1 cons2 -- bool ) recursive
+      dup null? if
+          drop null?
+      else
+          over null? if
+              2drop 0
+          else
+              2dup
+              head swap head = if
+                  tail swap tail swap cons=
+              else
+                  2drop 0
+              endif
+          endif
+      endif ;
+
+  ( *** TESTS *** )
+  : assert ( bool -- ) invert if cr s" AssertionError: " exception throw endif ;
+  : even? ( n -- bool ) 2 mod 0 = ;
+  : odd? ( n -- bool ) even? invert ;
+  : doubled ( n -- 2n ) 2 * ;
+  : square ( n -- nsquared ) dup * ;
+
+  NULL 1 cons head 1 = assert
+  NULL 1 cons tail NULL = assert
+  NULL 2 cons 1 cons head 1 = assert
+  NULL 2 cons 1 cons tail head 2 = assert
+  NULL 2 cons 1 cons tail tail NULL = assert
+  NULL 3 cons 2 cons 1 cons size 3 = assert
+
+  2 even? assert
+  3 odd? assert
+
+  10 1 range size 9 = assert
+
+  ' odd? 16 1 range filter
+  NULL 15 cons 13 cons 11 cons 9 cons 7 cons 5 cons 3 cons 1 cons
+  cons= assert
+
+  ' even? 11 1 range filter
+  NULL 10 cons 8 cons 6 cons 4 cons 2 cons
+  cons= assert
+
+  ' even? 6 1 range dup ' odd? swap filter
+  cons= invert assert
+
+  10 2 range
+  17 3 range
+  cons= invert assert
+
+  NULL
+  NULL 1 cons
+  cons= invert assert
+
+  NULL 1 cons
+  NULL
+  cons= invert assert
+
+  NULL NULL cons= assert
+
+  ' square 6 1 range map
+  NULL 25 cons 16 cons 9 cons 4 cons 1 cons
+  cons= assert
+
+  ' odd? 10 1 range map
+  NULL -1 cons 0 cons -1 cons 0 cons -1 cons 0 cons -1 cons 0 cons -1 cons
+  cons= assert
+
+  0 NULL 1 cons nth 1 = assert
+  0 NULL 3 cons 2 cons 1 cons nth 1 = assert
+  1 NULL 3 cons 2 cons 1 cons nth 2 = assert
+  2 NULL 3 cons 2 cons 1 cons nth 3 = assert
+
+  ' + 123 null reduce 123 = assert
+  ' + 123 null 5 cons reduce 128 = assert
+  ' + 123 null 2 cons 1 cons reduce 126 = assert
+  ' + 100 null 4 cons 3 cons 2 cons 1 cons reduce 110 = assert
+  ' + 0   101 1 range reduce 5050 = assert
+  ' * 1   11 1 range reduce 3628800 = assert
+  1753 112 range sum 1529412 = assert
+
+  ' + 0 ' doubled
+  ' odd?
+  3201 1350 range
+  filter
+  map
+  reduce
+  4208750 = assert
+#+END_SRC
 
 * Расширяем Forth
 
