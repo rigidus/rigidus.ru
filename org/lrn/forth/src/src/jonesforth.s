@@ -71,7 +71,7 @@ name_\label :
 
 defvar "STATE",5,,STATE
 defvar "HERE",4,,HERE
-defvar "LATEST",6,,LATEST,name_SYSCALL0   # SYSCALL0 must be last in built-in dictionary
+defvar "LATEST",6,,LATEST,name_SYSCALL0  # SYSCALL0 должен быть последним встроенным словом
 defvar "S0",2,,SZ
 defvar "BASE",4,,BASE,10
 
@@ -117,8 +117,7 @@ defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
     .align 4
 DOCOL:
     PUSHRSP %esi            # Сохранить %esi в стеке возвратов
-    addl    $4, %eax        # %eax указывает на codeword
-    movl    %eax, %esi      # %esi теперь указывает на первое слово данных
+    leal    4(%eax), %esi   # %esi теперь указывает на первое слово данных
     NEXT                    # Делаем NEXT
 
 defcode ">R",2,,TOR
@@ -604,19 +603,19 @@ _FIND:
     NEXT
 _TCFA:
     xor     %eax, %eax
-    add     $4, %edi        # Skip link pointer.
-    movb    (%edi), %al     # Load flags+len into %al.
-    inc     %edi            # Skip flags+len byte.
-    andb    $F_LENMASK, %al # Just the length, not the flags.
-    add     %eax, %edi      # Skip the name.
-    addl    $3, %edi        # The codeword is 4-byte aligned.
+    add     $4, %edi        # Пропускаем LINK - указатель на предыдущее слово
+    movb    (%edi), %al     # Загружаем flags+len в %al
+    inc     %edi            # Пропускаем flags+len байт
+    andb    $F_LENMASK, %al # Маскируем, чтобы получить длину имени, без флагов
+    add     %eax, %edi      # Пропускаем имя
+    addl    $3, %edi        # Учитываем выравнивание
     andl    $~3, %edi
     ret
 
 defword ">DFA",4,,TDFA
-    .int TCFA       # >CFA     (get code field address)
-    .int INCR4      # 4+       (add 4 to it to get to next word)
-    .int EXIT       # EXIT     (return from Forth word)
+    .int TCFA       # >CFA     (получаем code field address)
+    .int INCR4      # 4+       (добавляем 4, чтобы получить адрес первого слова в опредении)
+    .int EXIT       # EXIT     (возвращаемся)
 
 defcode "NUMBER",6,,NUMBER
     pop     %ecx            # length of string
@@ -678,32 +677,6 @@ _NUMBER:
     neg     %eax            # |     # ?-Да, инвертируем
 5:  #                     <---+
     ret
-defcode "CREATE",6,,CREATE
-
-    # Get the name length and address.
-    pop     %ecx            # %ecx = length
-    pop     %ebx            # %ebx = address of name
-
-    # Link pointer.
-    movl    var_HERE, %edi  # %edi is the address of the header
-    movl    var_LATEST, %eax    # Get link pointer
-    stosl                   # and store it in the header.
-
-    # Length byte and the word itself.
-    mov     %cl,%al         # Get the length.
-    stosb                   # Store the length/flags byte.
-    push    %esi
-    mov     %ebx, %esi      # %esi = word
-    rep     movsb           # Copy the word
-    pop     %esi
-    addl    $3, %edi        # Align to next 4 byte boundary.
-    andl    $~3, %edi
-
-    # Update LATEST and HERE.
-    movl    var_HERE, %eax
-    movl    %eax, var_LATEST
-    movl    %edi, var_HERE
-    NEXT
 
 defcode "LIT",3,,LIT
     # %esi указывает на следующую команду, но в этом случае это указатель на следующий
@@ -714,11 +687,11 @@ defcode "LIT",3,,LIT
     push %eax
     NEXT
 defcode "LITSTRING",9,,LITSTRING
-    lodsl                   # get the length of the string
-    push    %esi            # push the address of the start of the string
-    push    %eax            # push it on the stack
-    addl    %eax,%esi       # skip past the string
-    addl    $3,%esi         # but round up to next 4 byte boundary
+    lodsl                   # Получить длину строки
+    push    %esi            # push адрес начала строки
+    push    %eax            # push длину
+    addl    %eax,%esi       # пропустить строку
+    addl    $3,%esi         # но округлить до следующей 4 байтовой границы
     andl    $~3,%esi
     NEXT
 
@@ -728,6 +701,33 @@ defcode "TELL",4,,TELL
     mov     $1, %ebx            # param1: stdout
     mov     $sys_write, %eax    # SYSCALL #4 (write)
     int     $0x80
+    NEXT
+
+defcode "CREATE",6,,CREATE
+
+    # Получаем length и address имени
+    pop     %ecx            # %ecx = length
+    pop     %ebx            # %ebx = address
+
+    # Формируем указатель LINK
+    movl    var_HERE, %edi  # %edi теперь адрес заголовка
+    movl    var_LATEST, %eax    # Получаем значение указателя LINK
+    stosl                   # и сохраняем его в заголовок
+
+    # Байт длины и с само слово
+    mov     %cl,%al         # Получаем длину
+    stosb                   # Сохраняем length/flags байт.
+    push    %esi            # Ненадолго сохраним %esi
+    mov     %ebx, %esi      # %esi теперь указывает на имя слова
+    rep     movsb           # Копируем имя слова
+    pop     %esi            # Восстановим %esi
+    addl    $3, %edi        # Вычислим выравнивание
+    andl    $~3, %edi
+
+    # Обновим LATEST и HERE.
+    movl    var_HERE, %eax
+    movl    %eax, var_LATEST
+    movl    %edi, var_HERE
     NEXT
 
 defcode ",",1,,COMMA
@@ -742,44 +742,44 @@ _COMMA:
 
 defcode "[",1,F_IMMED,LBRAC
     xor     %eax, %eax
-    movl    %eax, var_STATE # Set STATE to 0.
+    movl    %eax, var_STATE     # Установить STATE в 0
     NEXT
 
 defcode "]",1,,RBRAC
-    movl    $1, var_STATE   # Set STATE to 1.
+    movl    $1, var_STATE       # Установить STATE в 1
     NEXT
 
 defword ":",1,,COLON
-    .int WORD               # Get the name of the new word
-    .int CREATE             # CREATE the dictionary entry / header
-    .int LIT, DOCOL, COMMA  # Добавляем DOCOL  (как codeword).
-    .int LATEST, FETCH, HIDDEN # Делает слово скрытым (см. ниже для определения).
+    .int WORD               # Получаем имя нового слова
+    .int CREATE             # CREATE заголовок записи словаря
+    .int LIT, DOCOL, COMMA  # Добавляем DOCOL (как codeword).
+    .int LATEST, FETCH, HIDDEN # Делаем слово скрытым (см. ниже определение HIDDEN).
     .int RBRAC              # Переходим в режим компиляции
     .int EXIT               # Возврат из функции
 
 defword ";",1,F_IMMED,SEMICOLON
-    .int LIT, EXIT, COMMA   # Append EXIT (so the word will return).
-    .int LATEST, FETCH, HIDDEN # Переключаем hidden flag  (см. ниже для определения).
+    .int LIT, EXIT, COMMA   # Добавляем EXIT (так слово делает RETURN).
+    .int LATEST, FETCH, HIDDEN # Переключаем HIDDEN flag  (см. ниже для определения).
     .int LBRAC              # Возвращаемся в IMMEDIATE режим.
-    .int EXIT               # Возврат из функци
+    .int EXIT               # Возврат из функции
 
 defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
-    movl    var_LATEST, %edi    # LATEST word.
-    addl    $4, %edi        # Point to name/flags byte.
-    xorb    $F_IMMED, (%edi)    # Toggle the IMMED bit.
+    movl    var_LATEST, %edi    # LATEST слово в %edi.
+    addl    $4, %edi            # Теперь %edi указывает на байт name/flags
+    xorb    $F_IMMED, (%edi)    # Переключить the F_IMMED бит.
     NEXT
 
 defcode "HIDDEN",6,,HIDDEN
-    pop     %edi                # Dictionary entry.
-    addl    $4, %edi            # Point to name/flags byte.
-    xorb    $F_HIDDEN, (%edi)   # Toggle the HIDDEN bit.
+    pop     %edi                # Указатель на слово в %edi
+    addl    $4, %edi            # Теперь указывает на байт length/flags.
+    xorb    $F_HIDDEN, (%edi)   # Переключаем HIDDEN бит.
     NEXT
 
 defword "HIDE",4,,HIDE
-    .int    WORD                # Get the word (after HIDE).
-    .int    FIND                # Look up in the dictionary.
-    .int    HIDDEN              # Set F_HIDDEN flag.
-    .int    EXIT                # Return.
+    .int    WORD                # Получаем слово (ищущее за HIDE).
+    .int    FIND                # Ищем его в словаре
+    .int    HIDDEN              # Устанавливаем F_HIDDEN флаг.
+    .int    EXIT                # Выходим
 
 defcode "'",1,,TICK
     lodsl                   # Получить адрес следующего слова и пропустить его
@@ -880,17 +880,17 @@ interpret_is_lit:
     .int 0                  # Флаг литерала
 
 defcode "BRANCH",6,,BRANCH
-    add     (%esi),%esi     # add the offset to the instruction pointer
+    add     (%esi),%esi     # добавить offset к instruction pointer
     NEXT
 
 defcode "0BRANCH",7,,ZBRANCH
     pop     %eax
-    test    %eax, %eax      # top of stack is zero?
-    jz      code_BRANCH     # if so, jump back to the branch function above
-    lodsl                   # otherwise we need to skip the offset
+    test    %eax, %eax      # Вершина стека равна нулю?
+    jz      code_BRANCH     # Если да, вернуться назад к функции BRANCH выше
+    lodsl                   # иначе пропустить смещение
     NEXT
 
-# QUIT must not return (ie. must not call EXIT).
+# QUIT не должна возвращаться (те есть вызывать EXIT).
 defword "QUIT",4,,QUIT
     # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
     .int RZ
@@ -902,45 +902,44 @@ defword "QUIT",4,,QUIT
     .int BRANCH,-8      # -----------------------------------
 
 defcode "CHAR",4,,CHAR
-    call    _WORD           # Returns %ecx = length, %edi = pointer to word.
+    call    _WORD           # Возвращает %ecx = length, %edi = указатель на слово.
     xor     %eax, %eax
-    movb    (%edi), %al     # Get the first character of the word.
-    push    %eax            # Push it onto the stack.
+    movb    (%edi), %al     # Получаем первый символ слова
+    push    %eax            # Кладем его в стек
     NEXT
 
 defcode "EXECUTE",7,,EXECUTE
-    pop     %eax            # Get xt into %eax
-    jmp     *(%eax)         # and jump to it.
-    # After xt runs its NEXT will continue executing the current word.
+    pop     %eax            # Получить токен выполнения в %eax
+    jmp     *(%eax)         # и выполнить jump на него.
 
 defcode "SYSCALL3",8,,SYSCALL3
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
-    pop     %ecx            # Second parameter
-    pop     %edx            # Third parameter
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
+    pop     %ecx            # Второй параметр
+    pop     %edx            # Третий параметр
     int     $0x80
-    push    %eax            # Result (negative for -errno)
+    push    %eax            # Результат
     NEXT
 
 defcode "SYSCALL2",8,,SYSCALL2
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
-    pop     %ecx            # Second parameter
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
+    pop     %ecx            # Второй параметр
     int     $0x80
-    push    %eax            # Result (negative for -errno)
+    push    %eax            # Результат
     NEXT
 
 defcode "SYSCALL1",8,,SYSCALL1
-    pop     %eax            # System call number (see <asm/unistd.h>)
-    pop     %ebx            # First parameter.
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
     int     $0x80
-    push    %eax            # Result (negative for -errno)
+    push    %eax            # Результат
     NEXT
 
 defcode "SYSCALL0",8,,SYSCALL0
-    pop     %eax            # System call number (see <asm/unistd.h>)
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
     int     $0x80
-    push    %eax            # Result (negative for -errno)
+    push    %eax            # Результат
     NEXT
 
     /* Assembler entry point. */
@@ -969,19 +968,20 @@ cold_start:                             # High-level code without a codeword.
 
     .bss
 
-    /* Forth return stack. */
+    # Стек возвратов Forth
     .set RETURN_STACK_SIZE,8192
     .align 4096
 return_stack:
     .space RETURN_STACK_SIZE
 return_stack_top:           # Initial top of return stack.
 
-    /* This is used as a temporary input buffer when reading from files or the terminal. */
+    # Буфер ввода
     .set INPUT_BUFFER_SIZE,4096
     .align 4096
 input_buffer:
     .space INPUT_BUFFER_SIZE
 
+    # Буфер данных - cюда указывает HERE
     .set INITIAL_DATA_SEGMENT_SIZE,65536
     .align 4096
 data_buffer:
