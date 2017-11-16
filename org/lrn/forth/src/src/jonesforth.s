@@ -8,8 +8,8 @@
 .endm
 
 .macro PUSHRSP reg
-    lea     -4(%ebp), %ebp      # декремент %ebp
-    movl    \reg, (%ebp)        # push reg в стек возвратов
+    lea     -4(%ebp), %ebp  # декремент %ebp
+    movl    \reg, (%ebp)    # push reg в стек возвратов
 .endm
 
 .macro POPRSP reg
@@ -22,14 +22,14 @@
     .section .rodata
     .align 4
     .globl name_\label
-    name_\label :
+name_\label :
     .int link               # link
     .set link,name_\label
     .byte \flags+\namelen   # flags + байт длины
     .ascii "\name"          # имя
     .align 4                # выравнивание на 4-х байтовую границу
     .globl \label
-    \label :
+\label :
     .int DOCOL              # codeword - указатель на функцию-интепретатор
     # дальше будут идти указатели на слова
 .endm
@@ -50,7 +50,7 @@ name_\label :
     .text
     //.align 4
     .globl  code_\label
-    code_\label :              # далее следует ассемблерный код
+code_\label :              # далее следует ассемблерный код
 .endm
 
 .macro defvar name, namelen, flags=0, label, initial=0
@@ -117,7 +117,7 @@ defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
     .align 4
 DOCOL:
     PUSHRSP %esi            # Сохранить %esi в стеке возвратов
-    leal    4(%eax), %esi   # %esi теперь указывает на первое слово данных
+    leal    4(%eax), %esi   # %esi теперь указывает на param-field
     NEXT                    # Делаем NEXT
 
 defcode ">R",2,,TOR
@@ -246,12 +246,21 @@ defcode "*",1,,MUL
     NEXT
 
 defcode "/MOD",4,,DIVMOD
-    xor     %edx, %edx
-    popl    %ebx
-    popl    %eax
+    pop     %ebx
+    pop     %eax
+    cdq
     idivl   %ebx
     pushl   %edx            # push остаток
     pushl   %eax            # push частное
+    NEXT
+
+defcode "U/MOD",5,,UDIVMOD
+    xor %edx, %edx
+    pop %ebx
+    pop %eax
+    divl %ebx
+    push %edx               # push остаток
+    push %eax               # push частное
     NEXT
 
 defcode "=",1,,EQU
@@ -911,6 +920,45 @@ defcode "CHAR",4,,CHAR
 defcode "EXECUTE",7,,EXECUTE
     pop     %eax            # Получить токен выполнения в %eax
     jmp     *(%eax)         # и выполнить jump на него.
+
+DODOES:
+    PUSHRSP %esi            # (с) Сохраняем ESI на стеке возвратов
+
+    pop     %esi            # (b,d) CALL-RETADDR -> ESI
+
+    lea     4(%eax), %eax   # (a) вычислить param-field DEUX
+    pushl   %eax            # (a) push его на стек данных
+
+    NEXT                    # (e) вызвать интерпретатор
+
+
+msg:
+    .ascii "\nWEFEWFEWFWEF\n"
+    .byte   0
+
+    .section .rodata
+    .align 4
+    .globl CONST_CONST
+CONST_CONST :
+    .int    link               # link
+    .set    link,CONST_CONST
+    .byte   0+5                # flags + байт длины
+    .ascii  "CONST"            # имя
+    .align  4                  # выравнивание на 4-х байтовую границу
+    .globl  CONST
+CONST :
+    .int    code_CONST         # codeword
+    .text
+    //.align 4
+    .globl  code_CONST
+code_CONST :                   # далее следует ассемблерный код
+    pushal
+    push    $msg
+    call    printf
+    pop     %eax
+    popal
+    NEXT
+
 
 defcode "SYSCALL3",8,,SYSCALL3
     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
