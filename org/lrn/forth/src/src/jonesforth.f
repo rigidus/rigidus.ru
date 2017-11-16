@@ -862,19 +862,18 @@
 
 HEX
 
-( Equivalent to the NEXT macro )
-: NEXT IMMEDIATE AD C, FF C, 20 C, ;
+: NEXT IMMEDIATE AD C, FF C, 20 C, ; \ NEXT эквивалент
 
 : ;CODE IMMEDIATE
-    [COMPILE] NEXT        ( end the word with NEXT macro )
-    ALIGN                 ( machine code is assembled in bytes so isn't necessarily aligned at the end )
-    LATEST @ DUP
-    HIDDEN                ( unhide the word )
-    DUP >DFA SWAP >CFA !  ( change the codeword to point to the data area )
-    [COMPILE] [           ( go back to immediate mode )
+    [COMPILE] NEXT        \ заканчиваем слово с помощью NEXT
+    ALIGN                 \ машинный код собирается побайтово, поэтому м.б. не выравнивнен
+    LATEST @ DUP          \ получить значение LATEST и сделать еще одну его копию в стеке
+    HIDDEN                \ unhide - забирает одно значение LATEST из стека
+    DUP >DFA SWAP >CFA !  \ изменяем codeword чтобы он указывал на param-field
+    [COMPILE] [           \ вкомпилить [ чтобы вернуться immediate mode
 ;
 
-( The i386 registers )
+\ Регистры
 : EAX IMMEDIATE 0 ;
 : ECX IMMEDIATE 1 ;
 : EDX IMMEDIATE 2 ;
@@ -884,21 +883,21 @@ HEX
 : ESI IMMEDIATE 6 ;
 : EDI IMMEDIATE 7 ;
 
-( i386 stack instructions )
+\ Стековые инструкции
 : PUSH IMMEDIATE 50 + C, ;
 : POP IMMEDIATE 58 + C, ;
 
-( RDTSC instruction )
+\ RDTSC
 : RDTSC IMMEDIATE 0F C, 31 C, ;
 
 DECIMAL
 
-\ RDTSC is an assembler primitive which reads the Pentium timestamp counter  (a very fine-
-\ grained counter which counts processor clock cycles).  Because the TSC is 64 bits wide
-\ we have to push it onto the stack in two slots.
+\ RDTSC является ассемблерным примитивом, который считывает счетчик
+\ времени Pentium (который подсчитывает такты процессора).  Поскольку
+\ TSC имеет ширину 64 бит мы должны push-ить его в стек в два приема
 
 : RDTSC ( -- lsb msb )
-    RDTSC ( writes the result in %edx:%eax )
+    RDTSC    \ записывает результат в %edx:%eax )
     EAX PUSH ( push lsb )
     EDX PUSH ( push msb )
 ;CODE
