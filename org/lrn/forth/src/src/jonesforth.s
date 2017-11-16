@@ -932,8 +932,41 @@ DODOES:
     NEXT                    # (e) вызвать интерпретатор
 
 
+defcode "(;CODE)",7,,SUBCODE
+    POPRSP  %eax            # pop со стека возвратов в %eax
+    mov     var_LATEST, %ebx # берем адрес codeword последнего слова
+    mov     %eax, (%ebx)    # сохраняем адрес машинного кода в codeword последнего слова
+    # EXIT
+    POPRSP  %esi            # Восстановить указатель из стека возвратов в %esi
+    NEXT                    # Сделать NEXT
+
+
+defcode "DOES>",5,F_IMMED,DOES  # IMMEDIATE
+    movl    var_HERE, %edi  # %edi теперь адрес за заголовком - туда и компилим
+    mov     $SUBCODE, %eax  # вкомпиливаем (;CODE)
+    stosl
+    mov     $0xE8, %al      # вкомпиливаем CALL
+    stosb
+    mov     %edi, %eax      # рассчитаем смещение DODOES
+    add     $4, %eax
+    sub     $DODOES, %eax
+    stosl                   # и вкомпилим его
+
+    pushal
+    push    %eax
+    push    $msg
+    call    printf
+    pop     %eax
+    pop     %eax
+    popal
+
+    NEXT
+
+
+
+
 msg:
-    .ascii "\nWEFEWFEWFWEF\n"
+    .ascii "\nWEFEWFEWFWEF:%x\n"
     .byte   0
 
     .section .rodata
@@ -953,8 +986,10 @@ CONST :
     .globl  code_CONST
 code_CONST :                   # далее следует ассемблерный код
     pushal
+    push    $DODOES
     push    $msg
     call    printf
+    pop     %eax
     pop     %eax
     popal
     NEXT
