@@ -148,9 +148,9 @@
 : HEX     ( -- ) 16 BASE ! ;
 
 : U. ( u -- )
-    BASE @ /MOD \ width rem quot
-    ?DUP IF     \ if quotient <> 0 then
-        RECURSE \ print the quotient
+    BASE @ U/MOD \ width rem quot
+    ?DUP IF      \ if quotient <> 0 then
+        RECURSE  \ print the quotient
     THEN
 
     \ печатаем остаток
@@ -334,11 +334,11 @@
 : CELLS ( n -- n ) 4 * ;
 
 : VARIABLE
-    1 CELLS ALLOT \ выделить 4 байтовую ячейку для integer памяти, push указатель на нее
+    1 CELLS ALLOT \ выделить 4 байтовую ячейку для integer в памяти, push указатель на нее
     WORD CREATE   \ создать элемент словаря, имя которого следует за VARIABLE
     DOCOL ,       \ добавить DOCOL  как поле codeword этого слова
     ' LIT ,       \ добавить codeword LIT
-    ,             \ добавить указатель на новое имя
+    ,             \ добавить указатель на выделенную память
     ' EXIT ,      \ добавить codeword EXIT
 ;
 
