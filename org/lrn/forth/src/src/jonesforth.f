@@ -879,7 +879,7 @@ HEX
                           \ LATEST @ >DFA      \ получаем  DFA
                           \ LATEST @ >CFA      \ получаем  CFA
                           \ !                  \ сохраняем DFA в CFA
-    [COMPILE] [           \ вернуться в immediate mode
+    [COMPILE] [           \ вставляем в компилируемое слово возврат в immediate режим
 ;
 
 \ Регистры
