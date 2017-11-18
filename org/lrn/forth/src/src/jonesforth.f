@@ -866,11 +866,14 @@ HEX
 
 : ;CODE IMMEDIATE
     [COMPILE] NEXT        \ заканчиваем слово с помощью NEXT
-    ALIGN                 \ машинный код собирается побайтово, поэтому м.б. не выравнивнен
+    ALIGN                 \ машинный код собирается побайтово, поэтому его конец
+                          \ может быть не выровнен. А мы хотим чтобы следующее слово
+                          \ начиналось с выровненной границы, поэтому выровняем HERE
     LATEST @ DUP          \ получить значение LATEST и сделать еще одну его копию в стеке
-    HIDDEN                \ unhide - забирает одно значение LATEST из стека
+    HIDDEN                \ unhide - забирает одно сохраненное значение LATEST из стека
     DUP >DFA SWAP >CFA !  \ изменяем codeword чтобы он указывал на param-field
-    [COMPILE] [           \ вкомпилить [ чтобы вернуться immediate mode
+    \  [COMPILE] [           \ вкомпилить [ чтобы вернуться immediate mode
+    [
 ;
 
 \ Регистры
@@ -887,7 +890,7 @@ HEX
 : PUSH IMMEDIATE 50 + C, ;
 : POP IMMEDIATE 58 + C, ;
 
-\ RDTSC
+\ RDTSC опкод
 : RDTSC IMMEDIATE 0F C, 31 C, ;
 
 DECIMAL
@@ -897,9 +900,9 @@ DECIMAL
 \ TSC имеет ширину 64 бит мы должны push-ить его в стек в два приема
 
 : RDTSC ( -- lsb msb )
-    RDTSC    \ записывает результат в %edx:%eax )
-    EAX PUSH ( push lsb )
-    EDX PUSH ( push msb )
+    RDTSC    \ записывает результат в %edx:%eax
+    EAX PUSH \ push lsb
+    EDX PUSH \ push msb
 ;CODE
 
 HEX
