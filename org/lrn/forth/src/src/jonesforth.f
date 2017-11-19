@@ -864,7 +864,7 @@ HEX
 
 : NEXT IMMEDIATE AD C, FF C, 20 C, ; \ NEXT эквивалент
 
-: ;CODE IMMEDIATE
+: ;ASMCODE IMMEDIATE
     [COMPILE] NEXT        \ вставляем NEXT в компилируемое слово
     ALIGN                 \ машинный код собирается побайтово, поэтому его конец
                           \ может быть не выровнен. А мы хотим чтобы следующее слово
@@ -909,7 +909,15 @@ DECIMAL
     RDTSC    \ записывает результат в %edx:%eax
     EAX PUSH \ push lsb
     EDX PUSH \ push msb
-;CODE
+;ASMCODE
+
+HEX
+: (DOCON) IMMEDIATE
+      8D C, 40 C, 04 C,  \ lea     4(%eax), %eax
+      8B C, 00 C,        \ movl    (%eax), %eax
+      50 C,              \ pushl   %eax
+      AD C, FF C, 20 C,  \ NEXT
+;
 
 HEX
 : =NEXT ( addr -- next? )
@@ -956,3 +964,96 @@ HIDE =NEXT
 
 WELCOME
 HIDE WELCOME
+
+HEX
+: (DOCON) IMMEDIATE
+      8D C, 40 C, 04 C,  \ lea     4(%eax), %eax
+      8B C, 00 C,        \ movl    (%eax), %eax
+      50 C,              \ pushl   %eax
+      AD C, FF C, 20 C,  \ NEXT
+;
+
+\ : DEFCONST
+\     WORD             \ прочтем слово с stdin
+\     CREATE           \ создадим заголовок слова
+\     0 ,              \ вместо codeword вкомпилим заглушку-ноль
+\     ,                \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\     [COMPILE] [      \ вкомпилить в DEFCONST переход в immediate-режим
+\     \ Здесь, во время определения слова DEFCONST мы можем
+\     \ вычислить начало ассемблерного кода, вкомпилив его адрес как литерал
+\     \ чтобы во время выполнения DEFCONST заменить codeword создаваемого
+\     \ дочернего слова на адрес машинного кода
+\     LIT
+\     [
+\       HEX
+\       HERE @ 18 +    \ Вычисляем адрес начала машинного кода относительно HERE:
+\                      \ сейчас будет вкомпилен вычисленный адрес, потом
+\                      \ еще 5 команд, всего 6, каждая по 4 байта = 24
+\                      \ байта в десятичной = 18 в шестнадцатиричной.
+\       ,              \ И вкомпиливаем его в DEFCONST
+\     ]
+\     LATEST @ >CFA    \ получаем CFA дочернего слова
+\     !                \ сохраняем адрес начала машинного кода в CFA дочернего кода
+\     EXIT             \ вкомпилить в DEFCONST вызов слова EXIT,
+\                      \ чтобы при исполнении DEFCONST осуществить возврат.
+\     (DOCON)          \ А дальше "немедленно" вкомпилить машинный код
+\ ;
+
+
+
+
+: (;CODE)
+    R>                  \ pop-ит адрес машинного кода со стека возвратов
+    LATEST @ >CFA       \ берет адрес codeword последнего слова
+    !                   \ сохраняет адрес машинного кода в codeword создаваемого слова
+;
+
+: ;CODE
+    ' (;CODE) ,      \ вкомпилить (;CODE) в определение
+    \ [COMPILE] [         \ вкомпилить переход в immediate-режим
+    \ ASSEMBLER           \ включить ассемблер
+; IMMEDIATE          \ Это слово немедленного исполнения!
+
+
+\ : REVEAL  ( -- )  \ reveal most recently defined word
+\    LAST @ ?DUP IF  \ LAST = 0 means last word was :NONAMEd
+\       GET-CURRENT !  \ update chain in current wordlist
+\    THEN ;
+\
+\ : LCHECK  ( -- )  \ make sure all labels are resolved
+\    +LNEST @ /LNEST  OVER + SWAP  \ check current nesting level only
+\    DO  I LLINK @ ABORT" Label not resolved!"  LOOP ;
+\
+\ : ?CSP  ( -- )  \ check stack depth
+\    SP@ CSP @ =  \ THROW if CSP is not equal to SP@
+\    0= D# -22 AND THROW ;  \ -22 is "Unbalanced stack!"
+\
+\
+\ : PREVIOUS  ( -- )  \ drop a wordlist from the search order stack
+\    GET-ORDER  NIP 1-  SET-ORDER ;
+\
+\
+  : END-CODE  ( -- )  \ end assembler definition
+\      PREVIOUS ?CSP LCHECK REVEAL
+  ;
+
+: DEFCONST
+    WORD             \ прочтем слово с stdin
+    CREATE           \ создадим заголовок слова
+    0 ,              \ вместо codeword вкомпилим заглушку-ноль
+    ,                \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+
+    ;CODE         \ завершить высокоуровневый код и начать низкоуровневый
+
+ \   (DOCON)             \ пока вместо ассемблера будем использовать (DOCON)
+ \   LEA   4(%EAX), %EAX  \ фрагмент машинного кода для DOCON
+ \   MOV   (%EAX), %EAX
+ \   PUSH  %EAX
+ \   NEXT
+
+;
+\ END-CODE          \ завершить определение
+
+\ 1337 DEFCONST PUSH1337
+
+8051CBC 200 DUMP
