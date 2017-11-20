@@ -882,15 +882,24 @@ HEX
     [COMPILE] [           \ вставляем в компилируемое слово возврат в immediate режим
 ;
 
-\ Регистры
-: EAX IMMEDIATE 0 ;
-: ECX IMMEDIATE 1 ;
-: EDX IMMEDIATE 2 ;
-: EBX IMMEDIATE 3 ;
-: ESP IMMEDIATE 4 ;
-: EBP IMMEDIATE 5 ;
-: ESI IMMEDIATE 6 ;
-: EDI IMMEDIATE 7 ;
+\ Регистры и соответтсвующие им значения битов reg
+: EAX IMMEDIATE 0 ; \ 000
+: ECX IMMEDIATE 1 ; \ 001
+: EDX IMMEDIATE 2 ; \ 010
+: EBX IMMEDIATE 3 ; \ 011
+: ESP IMMEDIATE 4 ; \ 100
+: EBP IMMEDIATE 5 ; \ 101
+: ESI IMMEDIATE 6 ; \ 110
+: EDI IMMEDIATE 7 ; \ 111
+
+: AL IMMEDIATE 0 ; \ 000
+: CL IMMEDIATE 1 ; \ 001
+: DL IMMEDIATE 2 ; \ 010
+: BL IMMEDIATE 3 ; \ 011
+: AH IMMEDIATE 4 ; \ 100
+: CH IMMEDIATE 5 ; \ 101
+: DH IMMEDIATE 6 ; \ 110
+: BH IMMEDIATE 7 ; \ 111
 
 \ Стековые инструкции
 : PUSH IMMEDIATE 50 + C, ;
@@ -910,6 +919,24 @@ DECIMAL
     EAX PUSH \ push lsb
     EDX PUSH \ push msb
 ;ASMCODE
+HEX
+: MOD-DISP-NONE    0  ; \ 00---+++
+: MOD-DISP-SHORT   40 ; \ 01---+++
+: MOD-DISP         80 ; \ 10---+++
+: MOD-REG-OR-IMM   C0 ; \ 11---+++
+: REG-DST ( --+++reg -- --reg000 )                                  8 * ;
+: REG-SRC ( --+++reg -- --+++reg )                                      ;
+: TWO-REG ( reg-dst reg-src -- ++regreg )   SWAP REG-DST SWAP REG-SRC + ;
+: MODR/M  ( mod reg -- modr/m    )                                    + ;
+: LEA IMMEDIATE
+    8D C,
+    TWO-REG MODR/M C,
+    C,
+;
+: MOV-R32,R/M32 IMMEDIATE
+    8B C,
+    TWO-REG MODR/M C,
+;
 
 HEX
 : (DOCON) IMMEDIATE
@@ -1010,8 +1037,8 @@ HEX
 
 : ;CODE
     ' (;CODE) ,      \ вкомпилить (;CODE) в определение
-    \ [COMPILE] [         \ вкомпилить переход в immediate-режим
-    \ ASSEMBLER           \ включить ассемблер
+    [COMPILE] [      \ вкомпилить переход в immediate-режим
+    \ ASSEMBLER         \ включить ассемблер (пока он всегда включен)
 ; IMMEDIATE          \ Это слово немедленного исполнения!
 
 
@@ -1038,21 +1065,19 @@ HEX
   ;
 
 : DEFCONST
-    WORD             \ прочтем слово с stdin
-    CREATE           \ создадим заголовок слова
-    0 ,              \ вместо codeword вкомпилим заглушку-ноль
-    ,                \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+    WORD    \ прочтем слово с stdin
+    CREATE  \ создадим заголовок слова
+    0 ,     \ вместо codeword вкомпилим заглушку-ноль
+    ,       \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
 
-    ;CODE         \ завершить высокоуровневый код и начать низкоуровневый
+    ;CODE   \ завершить высокоуровневый код и начать низкоуровневый
 
- \   (DOCON)             \ пока вместо ассемблера будем использовать (DOCON)
- \   LEA   4(%EAX), %EAX  \ фрагмент машинного кода для DOCON
- \   MOV   (%EAX), %EAX
- \   PUSH  %EAX
- \   NEXT
+    04 MOD-DISP-SHORT EAX EAX LEA        \   LEA   4(%EAX), %EAX
+    MOD-DISP-NONE EAX EAX MOV-R32,R/M32  \   MOV   (%EAX), %EAX
+    EAX PUSH                             \   PUSH  %EAX
+    NEXT                                 \   NEXT
 
-;
-\ END-CODE          \ завершить определение
+; \ END-CODE   \ завершить определение - ";" вставляет EXIT, хочется избежать этого
 
 \ 1337 DEFCONST PUSH1337
 
