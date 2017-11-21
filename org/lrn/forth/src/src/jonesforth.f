@@ -1011,16 +1011,16 @@ HEX
 \     \ чтобы во время выполнения DEFCONST заменить codeword создаваемого
 \     \ дочернего слова на адрес машинного кода
 \     LIT
-\     [
+\     [            \ Ненадолго переходим в IMMEDIATE-режим - compile-time вычисления
 \       HEX
 \       HERE @ 18 +    \ Вычисляем адрес начала машинного кода относительно HERE:
 \                      \ сейчас будет вкомпилен вычисленный адрес, потом
 \                      \ еще 5 команд, всего 6, каждая по 4 байта = 24
 \                      \ байта в десятичной = 18 в шестнадцатиричной.
 \       ,              \ И вкомпиливаем его в DEFCONST
-\     ]
+\     ]            \ Возврат из IMMEDIATE-режима
 \     LATEST @ >CFA    \ получаем CFA дочернего слова
-\     !                \ сохраняем адрес начала машинного кода в CFA дочернего кода
+\     !                \ сохраняем адрес начала машинного кода в codeword дочернего кода
 \     EXIT             \ вкомпилить в DEFCONST вызов слова EXIT,
 \                      \ чтобы при исполнении DEFCONST осуществить возврат.
 \     (DOCON)          \ А дальше "немедленно" вкомпилить машинный код
@@ -1041,44 +1041,43 @@ HEX
     \ ASSEMBLER         \ включить ассемблер (пока он всегда включен)
 ; IMMEDIATE          \ Это слово немедленного исполнения!
 
+: END-CODE  ( -- )  \ Завершить ассемблерное определение
+    LATEST @ HIDDEN EXIT
+; IMMEDIATE
 
-\ : REVEAL  ( -- )  \ reveal most recently defined word
-\    LAST @ ?DUP IF  \ LAST = 0 means last word was :NONAMEd
-\       GET-CURRENT !  \ update chain in current wordlist
-\    THEN ;
-\
-\ : LCHECK  ( -- )  \ make sure all labels are resolved
-\    +LNEST @ /LNEST  OVER + SWAP  \ check current nesting level only
-\    DO  I LLINK @ ABORT" Label not resolved!"  LOOP ;
-\
-\ : ?CSP  ( -- )  \ check stack depth
-\    SP@ CSP @ =  \ THROW if CSP is not equal to SP@
-\    0= D# -22 AND THROW ;  \ -22 is "Unbalanced stack!"
-\
-\
-\ : PREVIOUS  ( -- )  \ drop a wordlist from the search order stack
-\    GET-ORDER  NIP 1-  SET-ORDER ;
-\
-\
-  : END-CODE  ( -- )  \ end assembler definition
-\      PREVIOUS ?CSP LCHECK REVEAL
-  ;
-
-: DEFCONST
-    WORD    \ прочтем слово с stdin
-    CREATE  \ создадим заголовок слова
-    0 ,     \ вместо codeword вкомпилим заглушку-ноль
-    ,       \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
-
-    ;CODE   \ завершить высокоуровневый код и начать низкоуровневый
-
-    04 MOD-DISP-SHORT EAX EAX LEA        \   LEA   4(%EAX), %EAX
-    MOD-DISP-NONE EAX EAX MOV-R32,R/M32  \   MOV   (%EAX), %EAX
-    EAX PUSH                             \   PUSH  %EAX
-    NEXT                                 \   NEXT
-
-; \ END-CODE   \ завершить определение - ";" вставляет EXIT, хочется избежать этого
+\ : DEFCONST
+\     WORD    \ прочтем слово с stdin
+\     CREATE  \ создадим заголовок слова
+\     0 ,     \ вместо codeword вкомпилим заглушку-ноль
+\     ,       \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\ 
+\     ;CODE   \ завершить высокоуровневый код и начать низкоуровневый
+\ 
+\     04 MOD-DISP-SHORT EAX EAX LEA        \   LEA   4(%EAX), %EAX
+\     MOD-DISP-NONE EAX EAX MOV-R32,R/M32  \   MOV   (%EAX), %EAX
+\     EAX PUSH                             \   PUSH  %EAX
+\     NEXT                                 \   NEXT
+\ 
+\ END-CODE   \ завершить ассемблерное определение
 
 \ 1337 DEFCONST PUSH1337
 
-8051CBC 200 DUMP
+
+
+: DOES>
+    ' (;CODE) ,                \ вкомпилить (;CODE) в определение
+    0E8 C,                     \ вкомпилить байт опкода CALL
+    DODOES_ADDR HERE @ 4+ - ,  \ относительное смещение к DODOES
+; IMMEDIATE
+
+: MAKE-CONST ( n -- )
+    WORD     \ прочтем слово с stdin
+    CREATE   \ создадим заголовок слова
+    0 ,      \ вместо codeword вкомпилим заглушку-ноль
+    ,        \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+  DOES>      \ завершение "создающей" части, начало части "действия"
+    @        \ прочесть значение из поля параметров слова,
+             \разыменовать для получения содержимого
+;
+
+LATEST @ @ @ 200 DUMP
