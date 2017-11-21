@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Что такое @PLT</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">Что такое @PLT</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">И как libc линкуется в рантайме?</a>
+<ul>
+<li><a href="#unnumbered-2">ASLR</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-3">Загрузка динамических библиотек</a>
+<ul>
+<li><a href="#unnumbered-4">GOT</a></li>
+<li><a href="#unnumbered-5">PLT</a></li>
+<li><a href="#unnumbered-6">Как все эо работает?</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">И как libc линкуется в рантайме?</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Каждый, кто своим любопытным отладчиком смотрел в собственноручно собранный helloworld,
+замечал там, неожиданную строчку:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">0x000000000040c04b6 &lt;main+30&gt;:   callq  0x400398 &lt;<a href="mailto:printf&#64;plt">printf&#64;plt</a>&gt;
+</pre>
+</div>
+
+<p>
+и удивлялся тому, что его привычный и знакомый <code>printf</code> обрел какой-то странный и
+непонятный суффикс <code>@plt</code>. Посмотрим, почему это произошло.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-3">
+<h3 id="unnumbered-2">ASLR</h3>
+<div class="outline-text-3" id="text-unnumbered-2">
+<p>
+Сравнительно недавно динамические разделяемые библиотеки загружались в адресное
+пространство целевого процесса по стандартным, одинаковым для всех процессов, адресам,
+зависящим, разве что от версии операционной системы. Это весьма облегчало жизнь разного
+рода вредоносным программам, потому что они могли с некоторой долей уверенности
+предполагать расположение нужных им функций операционной системы, например для открытия
+и записи в файлы, чтобы заразить другие программы.
+</p>
+
+<p>
+Поэтому через некоторое время была придумана и внедрена рандомизация размещения
+адресного пространства (address space layout randomization - ASLR). И теперь программам
+заранее неизвестны адреса вызовов библиотечных функций, когда библиотеки линкуются
+динамически.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Загрузка динамических библиотек</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Итак, если код разделяемой библиотеки загружен неведомо куда, то как же программе его
+вызывать? Для этого придумали GOT и PLT.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">GOT</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Каждый исполняемый ELF-файл имеет раздел, называемый <code>глобальной таблицей смещений</code>
+(Global Offset Table, GOT). Эта таблица получает значения абсолютных адресов функций во
+время выполнения.
+</p>
+
+<p>
+Мы можем взглянуть на нее:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">rigidus@machine:~$ objdump -R ./hello_world
+
+./hello_world:     file format elf32-i386
+
+DYNAMIC RELOCATION RECORDS
+OFFSET   TYPE              VALUE
+08049564 R_386_GLOB_DAT    __gmon_start__
+08049574 R_386_JUMP_SLOT   __gmon_start__
+08049578 R_386_JUMP_SLOT   __libc_start_main
+0804957c R_386_JUMP_SLOT   printf
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-3">
+<h3 id="unnumbered-5">PLT</h3>
+<div class="outline-text-3" id="text-unnumbered-5">
+<p>
+Также каждый исполняемый файл имеет секцию, называемую <code>таблицей связей процедур</code>
+(Procedure Linkage Table, PLT). Когда вы читаете дизассемблированный код, вы видите,
+что вызовы функций, такие как <code>printf</code> указывают именно туда.
+</p>
+
+<p>
+Если взглянуть внимательнее в эту секцию, то можно увидеть короткие однотипны цепочки
+инструкций:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">rigidus@machine:~$ objdump -d -j .plt ./hello_world
+
+./hello_world:     file format elf32-i386
+
+Disassembly of section .plt:
+
+08048270 &lt;<a href="mailto:__gmon_start__&#64;plt-0x10">__gmon_start__&#64;plt-0x10</a>&gt;:
+8048270:       ff 35 6c 95 04 08       pushl  0x804956c
+8048276:       ff 25 70 95 04 08       jmp    *0x8049570
+804827c:       00 00                   add    %al,(%eax)
+
+08048280 &lt;<a href="mailto:__gmon_start__&#64;plt">__gmon_start__&#64;plt</a>&gt;:
+8048280:       ff 25 74 95 04 08       jmp    *0x8049574
+8048286:       68 00 00 00 00          push   $<span style="color: #af5f00;">0</span>x0
+804828b:       e9 e0 ff ff ff          jmp    8048270 &lt;_init+0x18&gt;
+
+08048290 &lt;<a href="mailto:__libc_start_main&#64;plt">__libc_start_main&#64;plt</a>&gt;:
+8048290:       ff 25 78 95 04 08       jmp    *0x8049578
+8048296:       68 08 00 00 00          push   $<span style="color: #af5f00;">0</span>x8
+804829b:       e9 d0 ff ff ff          jmp    8048270 &lt;_init+0x18&gt;
+
+080482a0 &lt;<a href="mailto:printf&#64;plt">printf&#64;plt</a>&gt;:
+80482a0:       ff 25 7c 95 04 08       jmp    *0x804957c
+80482a6:       68 10 00 00 00          push   $<span style="color: #af5f00;">0</span>x10
+80482ab:       e9 c0 ff ff ff          jmp    8048270 &lt;_init+0x18&gt;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-3">
+<h3 id="unnumbered-6">Как все эо работает?</h3>
+<div class="outline-text-3" id="text-unnumbered-6">
+<p>
+Перейдем к первому вызову <code>printf@plt</code>, который на самом деле не <code>printf</code> а jmp на
+соответствующее место в PLT:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">080482a0 &lt;<a href="mailto:printf&#64;plt">printf&#64;plt</a>&gt;:
+80482a0:       ff 25 7c 95 04 08       jmp    *0x804957c
+80482a6:       68 10 00 00 00          push   $<span style="color: #af5f00;">0</span>x10
+80482ab:       e9 c0 ff ff ff          jmp    8048270 &lt;_init+0x18&gt;
+</pre>
+</div>
+
+<p>
+Обратите внимание, что это коссвенный переход по указателю <code>0x804957c</code>, который
+находится в GOT. GOT в конечном итоге будет иметь абсолютный адрес для <code>printf</code>, однако
+при первом вызове произойдет возврат к инструкции после перехода в PLT -
+<code>0x80482a6</code>. Мы можем увидеть это ниже:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">(gdb) x/8x 0x804957c-20
+0x8049568 &lt;_GLOBAL_OFFSET_TABLE_&gt;:      0x0804949c      0xb80016e0      0xb7ff92f0      0x08048286
+0x8049578 &lt;_GLOBAL_OFFSET_TABLE_+16&gt;:   0xb7eafde0      0x080482a6      0x00000000      0x00000000
+</pre>
+</div>
+
+<p>
+В коде внутри PLT смещение кладется в стек и выполняется другой jmp:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">080482a0 &lt;<a href="mailto:printf&#64;plt">printf&#64;plt</a>&gt;:
+80482a0:       ff 25 7c 95 04 08       jmp    *0x804957c
+80482a6:       68 10 00 00 00          push   $<span style="color: #af5f00;">0</span>x10
+80482ab:       e9 c0 ff ff ff          jmp    8048270 &lt;_init+0x18&gt;
+</pre>
+</div>
+
+<p>
+Этот переход - это переход к возможному компоновщику времени выполнения, который будет
+загружать разделяемую библиотеку, которая содержит printf. Смещение <code>$0x10</code>, которое
+было положено в стек, сообщает этому компоновщику код смещения символа в GOT (см. вывод
+<code>objdump -R ./hello_world</code> выше), printf в этом случае. Затем компоновщик будет
+записывать адрес printf в GOT по адресу <code>0x804957c</code>. Мы можем увидеть это, если
+посмотрим на GOT после загрузки библиотеки:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">(gdb) x/8x 0x804957c-20
+0x8049568 &lt;_GLOBAL_OFFSET_TABLE_&gt;:      0x0804949c      0xb80016e0      0xb7ff92f0      0x08048286
+0x8049578 &lt;_GLOBAL_OFFSET_TABLE_+16&gt;:   0xb7eafde0      0xb7edf620      0x00000000      0x00000000
+</pre>
+</div>
+
+<p>
+Обратите внимание, что предыдущий адрес, <code>0x80482a6</code>, был заменен компоновщиком на
+<code>0xb7edf620</code>. Чтобы подтвердить, что это действительно адрес для printf, мы можем
+начать дизассемблировать по этому адресу:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">(gdb) disassemble 0xb7edf620
+Dump of assembler code for <span style="color: #af00ff;">function</span> <span style="color: #0000ff;">printf</span>:
+...
+</pre>
+</div>
+
+<p>
+Поскольку библиотека теперь загружена и GOT был перезаписан абсолютным адресом для
+printf, последующие вызовы функции printf@plt перейдут непосредственно к адресу printf.
+</p>
+
+<p>
+Все это также имеет дополнительное преимущество в том, что общая библиотека не
+загружается до загрузки функции в ее библиотеку - другими словами, это "ленивая
+загрузка".
+</p>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

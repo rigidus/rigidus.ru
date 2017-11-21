@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Завершение игры</a>
+<ul>
+<li><a href="#unnumbered-2">Условие завершения</a></li>
+<li><a href="#unnumbered-3">Промежуточный итог</a></li>
+<li><a href="#unnumbered-4">Рефакторинг</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Завершение игры</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+</div><div id="outline-container-unnumbered-2" class="outline-3">
+<h3 id="unnumbered-2">Условие завершения</h3>
+<div class="outline-text-3" id="text-unnumbered-2">
+<p>
+Итак, игра может быть закончена в двух случах:
+</p>
+<ul class="org-ul">
+<li>игрок выиграл:  все кирпичи имеют отрицательную вертикальную координату
+</li>
+<li>игрок проиграл: шарик имеет отрицательную вертикальную координату
+</li>
+</ul>
+
+<p>
+Чтобы показывать эти два варианта завершения игры нам надо загрузить два варианта
+картинки. Я использовал первые, что нашел в гугле:
+</p>
+
+<p>
+<div class="figure"><img src="/img/youwin.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+<div class="figure"><img src="/img/youlose.jpg" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Чтобы их показать нам надо определить переменные, которые будут их содержать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youwin</span>;
+<span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youlose</span>;
+</pre>
+</div>
+
+<p>
+и добавим загрузку картинок в конструкторе:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java">youwin = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youwin.png"</span>);
+youlose = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youlose.jpg"</span>);
+</pre>
+</div>
+
+<p>
+Определим переменную, которая будет отражать состояние игры и переменную, которая
+будет показывать выиграл игрок или проиграл:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #008700;">boolean</span> <span style="color: #af5f00;">gameover</span> = <span style="color: #008787;">false</span>;
+<span style="color: #008700;">boolean</span> <span style="color: #af5f00;">win</span> = <span style="color: #008787;">false</span>;
+</pre>
+</div>
+
+<p>
+В зависимости от нее мы будем использовать либо наш старый отрисовщик, либо новый,
+который покажет в центре экрана игроку картинку, хорошую, если он выиграл или плохую,
+если проиграл. Изменим <code>render</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">render</span>
+batch.begin();
+<span style="color: #af00ff;">if</span> (gameover) {
+    <span style="color: #af00ff;">if</span> (win) {
+        batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+    } <span style="color: #af00ff;">else</span> {
+        batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+    }
+} <span style="color: #af00ff;">else</span> {
+    <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+        brk.render(batch);
+    }
+    batch.draw(img, pos.x, pos.y);
+    batch.draw(platform, plt.x, 0);
+}
+batch.end();
+</pre>
+</div>
+
+<p>
+Последнее, что нам осталось сделать: проверять условие завершения игры
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">check gameover</span>
+<span style="color: #af00ff;">if</span> (<span style="color: #008787;">false</span> == gameover) {
+    win = <span style="color: #008787;">true</span>;
+    <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+        <span style="color: #af00ff;">if</span> (brk.pos.y &gt; 0) {
+            win = <span style="color: #008787;">false</span>;
+            <span style="color: #af00ff;">break</span>;
+        }
+    }
+    <span style="color: #af00ff;">if</span> (win) {
+        gameover = <span style="color: #008787;">true</span>;
+    }
+    <span style="color: #af00ff;">if</span> (ball.pos.y &lt; 0) {
+        gameover = <span style="color: #008787;">true</span>;
+    }
+}
+</pre>
+</div>
+
+<p>
+И уберем код, который обеспечивал нам отскок шарика от нижней части экрана:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">bounce ball</span>
+<span style="color: #af00ff;">if</span> (pos.x &lt; 0) {
+    acc.x = -acc.x;
+}
+<span style="color: #af0000;">//        </span><span style="color: #af0000;">if (pos.y &lt; 0) {</span>
+<span style="color: #af0000;">//            </span><span style="color: #af0000;">acc.y = -acc.y;</span>
+<span style="color: #af0000;">//        </span><span style="color: #af0000;">}</span>
+<span style="color: #af00ff;">if</span> (pos.x + img.getWidth() &gt; max.x) {
+    acc.x = -acc.x;
+}
+<span style="color: #af00ff;">if</span> (pos.y + img.getHeight() &gt; max.y) {
+    acc.y = -acc.y;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">Промежуточный итог</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+Посмотрим, что у нас получилось:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">package</span> com.mygdx.<span style="color: #008787;">game</span>;
+
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">ApplicationAdapter</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">Gdx</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">Input</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008700;">GL20</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008700;">Texture</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008787;">g2d</span>.<span style="color: #008700;">SpriteBatch</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">math</span>.<span style="color: #008700;">Vector2</span>;
+
+<span style="color: #af00ff;">public</span> <span style="color: #af00ff;">class</span> <span style="color: #008700;">MyGdxGame</span> <span style="color: #af00ff;">extends</span> <span style="color: #008700;">ApplicationAdapter</span> {
+    <span style="color: #008700;">SpriteBatch</span> <span style="color: #af5f00;">batch</span>;
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">img</span>;
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">platform</span>;
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">plt</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0, 0);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">pos</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(30,40);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">acc</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(2,3);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">max</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">old</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">brksCnt</span> = 7;
+    <span style="color: #008700;">Brick</span>[] <span style="color: #af5f00;">brks</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Brick</span>[brksCnt];
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youwin</span>;
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youlose</span>;
+    <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">gameover</span> = <span style="color: #008787;">false</span>;
+    <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">win</span> = <span style="color: #008787;">false</span>;
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">create</span> () {
+        batch = <span style="color: #af00ff;">new</span> <span style="color: #008700;">SpriteBatch</span>();
+        img = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"ball.png"</span>);
+        platform = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"platform.png"</span>);
+        youwin = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youwin.png"</span>);
+        youlose = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youlose.jpg"</span>);
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i&lt;<span style="color: #008700;">brksCnt</span>; i++) {
+            <span style="color: #008700;">int</span> <span style="color: #af5f00;">y</span> = 300;
+            <span style="color: #af00ff;">if</span> ((i &amp; 1) == 0) {
+                y = 435;
+            }
+            brks[i] = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Brick</span>(<span style="color: #87005f;">"brick.png"</span>, i*80+30,y);
+        }
+        max.x = Gdx.graphics.getWidth();
+        max.y = Gdx.graphics.getHeight();
+    }
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">render</span> () {
+        Gdx.gl.glClearColor(0, 0, 0, 1);
+        Gdx.gl.glClear(<span style="color: #008787;">GL20</span>.GL_COLOR_BUFFER_BIT);
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">input</span>
+        <span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.RIGHT)) {
+            <span style="color: #af0000;">//</span><span style="color: #af0000;">acc.x += 1;</span>
+            plt.y += 1;
+        }
+        <span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.LEFT)) {
+            <span style="color: #af0000;">//</span><span style="color: #af0000;">acc.x -= 1;</span>
+            plt.y -= 1;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">braking platform</span>
+        <span style="color: #af00ff;">if</span> (plt.y &gt; 7) {
+            plt.y = 7;
+        }
+        <span style="color: #af00ff;">if</span> (plt.y &lt; -7) {
+            plt.y = -7;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">update coords platform</span>
+        plt.x = plt.x + 2 * plt.y;
+        plt.y *= 1f / 10f * 9.5;
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">stop platform at the border</span>
+        <span style="color: #af00ff;">if</span> (plt.x &lt; 0) {
+            plt.x = 0;
+            plt.y = 0;
+        }
+        <span style="color: #af00ff;">if</span> (plt.x &gt; max.x - platform.getWidth()) {
+            plt.x = max.x - platform.getWidth();
+            plt.y = 0;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">braking ball</span>
+        <span style="color: #af00ff;">if</span> (acc.x &gt; 7) {
+            acc.x = 7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.y &gt; 7) {
+            acc.y = 7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.x &lt; -7) {
+            acc.x = -7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.y &lt; -7) {
+            acc.y = -7;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">bounce ball</span>
+        <span style="color: #af00ff;">if</span> (pos.x &lt; 0) {
+            acc.x = -acc.x;
+        }
+        <span style="color: #af00ff;">if</span> (pos.x + img.getWidth() &gt; max.x) {
+            acc.x = -acc.x;
+        }
+        <span style="color: #af00ff;">if</span> (pos.y + img.getHeight() &gt; max.y) {
+            acc.y = -acc.y;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">collision detection</span>
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+            <span style="color: #af00ff;">if</span> (brk.isCollision(pos, img)) {
+                old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+                <span style="color: #af00ff;">if</span> (brk.isCollisionHorizontal(old, img)) {
+                    acc.y = -acc.y;
+                } <span style="color: #af00ff;">else</span> <span style="color: #af00ff;">if</span> (brk.isCollisionVertical(old, img)) {
+                    acc.x = -acc.x;
+                } <span style="color: #af00ff;">else</span> {
+                    acc.x = -acc.x;
+                    acc.y = -acc.y;
+                }
+                pos.x = old.x;
+                pos.y = old.y;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">hide brk</span>
+                brk.pos.y = -brk.pos.y;
+            }
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">update coords ball</span>
+        pos.x = pos.x + 2 * acc.x;
+        pos.y = pos.y + 2 * acc.y;
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">platform-ball collision</span>
+        <span style="color: #af00ff;">if</span> (pos.y &lt; platform.<span style="color: #008700;">getHeight</span>()) {
+            <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1096;&#1072;&#1088;&#1080;&#1082; &#1085;&#1080;&#1078;&#1077; &#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1099;</span>
+            <span style="color: #af00ff;">if</span> ((pos.x &gt; plt.x) &amp;&amp; (pos.x+img.getWidth() &lt; plt.x + platform.getWidth())) {
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1072; &#1087;&#1086;&#1076; &#1096;&#1072;&#1088;&#1080;&#1082;&#1086;&#1084; - &#1088;&#1072;&#1089;&#1095;&#1080;&#1090;&#1072;&#1077;&#1084; &#1091;&#1075;&#1086;&#1083; &#1086;&#1090;&#1089;&#1082;&#1086;&#1082;&#1072;</span>
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1080;&#1085;&#1074;&#1077;&#1088;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084; &#1074;&#1077;&#1082;&#1090;&#1086;&#1088; &#1074;&#1077;&#1088;&#1090;&#1080;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1089;&#1082;&#1086;&#1088;&#1086;&#1089;&#1090;&#1080;</span>
+                acc.y *= -1;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1084; &#1094;&#1077;&#1085;&#1090;&#1088; &#1096;&#1072;&#1088;&#1080;&#1082;&#1072;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">ballCenter</span> = pos.x + img.getWidth() / 2;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1084; &#1094;&#1077;&#1085;&#1090;&#1088; &#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1099;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">platformCenter</span> = plt.x + platform.getWidth() / 2;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1088;&#1072;&#1089;&#1089;&#1090;&#1086;&#1103;&#1085;&#1080;&#1077; &#1084;&#1077;&#1078;&#1076;&#1091; &#1094;&#1077;&#1085;&#1090;&#1088;&#1072;&#1084;&#1080;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">distance</span> = ballCenter - platformCenter;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1075;&#1086;&#1088;&#1080;&#1079;&#1086;&#1085;&#1090;&#1072;&#1083;&#1100;&#1085;&#1072;&#1103; &#1089;&#1082;&#1086;&#1088;&#1086;&#1089;&#1090;&#1100; &#1079;&#1072;&#1074;&#1080;&#1089;&#1080;&#1090; &#1086;&#1090; &#1076;&#1080;&#1089;&#1090;&#1072;&#1085;&#1094;&#1080;&#1080;</span>
+                acc.x = distance / 20;
+                pos.y = platform.getHeight();
+
+            } <span style="color: #af00ff;">else</span> {
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1080;&#1075;&#1088;&#1086;&#1082; &#1087;&#1088;&#1086;&#1084;&#1072;&#1093;&#1085;&#1091;&#1083;&#1089;&#1103; - &#1080;&#1075;&#1088;&#1077; &#1082;&#1086;&#1085;&#1077;&#1094;</span>
+                gameover = <span style="color: #008787;">true</span>;
+            }
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">render</span>
+        batch.begin();
+        <span style="color: #af00ff;">if</span> (gameover) {
+            <span style="color: #af00ff;">if</span> (win) {
+                batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+            } <span style="color: #af00ff;">else</span> {
+                batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+            }
+        } <span style="color: #af00ff;">else</span> {
+            <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+                brk.render(batch);
+            }
+            batch.draw(img, pos.x, pos.y);
+            batch.draw(platform, plt.x, 0);
+        }
+        batch.end();
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">check gameover</span>
+        <span style="color: #af00ff;">if</span> (<span style="color: #008787;">false</span> == gameover) {
+            win = <span style="color: #008787;">true</span>;
+            <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+                <span style="color: #af00ff;">if</span> (brk.pos.y &gt; 0) {
+                    win = <span style="color: #008787;">false</span>;
+                    <span style="color: #af00ff;">break</span>;
+                }
+            }
+            <span style="color: #af00ff;">if</span> (win) {
+                gameover = <span style="color: #008787;">true</span>;
+            }
+        }
+    }
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">dispose</span> () {
+        batch.dispose();
+        img.dispose();
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+            brk.dispose();
+        }
+    }
+}
+</pre>
+</div>
+
+<p>
+Что здесь можно улучшить? В текущей конфигурации нельзя играть двумя шариками. Чтобы
+это стало возможным нам придется вынести весь функционал шарика в отдельный класс
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Рефакторинг</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Перенесем переменные, которые отвечают за положение и ускорение шарика в отдельный
+класс:
+</p>
+<ul class="org-ul">
+<li>pos
+</li>
+<li>acc
+</li>
+<li>old
+</li>
+</ul>
+<p>
+Также перебросим весь функционал:
+</p>
+<ul class="org-ul">
+<li>Торможение при черезмерном увеличении скорости
+</li>
+<li>Отскок от всех стен кроме нижней
+</li>
+<li>Обновление координат шарика
+</li>
+<li>Действия при столкновении с платформой
+</li>
+<li>Действия при столкновении с кирпичом
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">package</span> com.mygdx.<span style="color: #008787;">game</span>;
+
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008700;">Texture</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008787;">g2d</span>.<span style="color: #008700;">SpriteBatch</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">math</span>.<span style="color: #008700;">Vector2</span>;
+
+<span style="color: #af00ff;">public</span> <span style="color: #af00ff;">class</span> <span style="color: #008700;">Ball</span> {
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">img</span>;
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">pos</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(30,40);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">acc</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(2,3);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">old</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+
+    <span style="color: #af00ff;">public</span> <span style="color: #0000ff;">Ball</span>(<span style="color: #008700;">String</span> <span style="color: #af5f00;">imgFileName</span>, <span style="color: #008700;">int</span> <span style="color: #af5f00;">x</span>, <span style="color: #008700;">int</span> <span style="color: #af5f00;">y</span>) {
+        pos = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(x, y);
+        img = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"ball.png"</span>);
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">bracking</span>() {
+        <span style="color: #af00ff;">if</span> (acc.x &gt; 7) {
+            acc.x = 7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.y &gt; 7) {
+            acc.y = 7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.x &lt; -7) {
+            acc.x = -7;
+        }
+        <span style="color: #af00ff;">if</span> (acc.y &lt; -7) {
+            acc.y = -7;
+        }
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">bounce</span>(<span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">max</span>) {
+        <span style="color: #af00ff;">if</span> (pos.x &lt; 0) {
+            acc.x = -acc.x;
+        }
+        <span style="color: #af00ff;">if</span> (pos.x + img.getWidth() &gt; max.x) {
+            acc.x = -acc.x;
+        }
+        <span style="color: #af00ff;">if</span> (pos.y + img.getHeight() &gt; max.y) {
+            acc.y = -acc.y;
+        }
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">update</span>() {
+        pos.x = pos.x + 2 * acc.x;
+        pos.y = pos.y + 2 * acc.y;
+        <span style="color: #af00ff;">if</span> (pos.y &lt; -img.getHeight()*2) {
+            acc.x = 0;
+            acc.y = 0;
+            pos.x = -1000;
+            pos.y = -1000;
+        }
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">platform_collision</span>(<span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">plt</span>, <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">platform</span>) {
+        <span style="color: #af00ff;">if</span> (pos.y &lt; platform.<span style="color: #008700;">getHeight</span>()) {
+            <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1096;&#1072;&#1088;&#1080;&#1082; &#1085;&#1080;&#1078;&#1077; &#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1099;</span>
+            <span style="color: #af00ff;">if</span> ((pos.x &gt; plt.x) &amp;&amp; (pos.x + img.getWidth() &lt; plt.x + platform.getWidth())) {
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1072; &#1087;&#1086;&#1076; &#1096;&#1072;&#1088;&#1080;&#1082;&#1086;&#1084; - &#1088;&#1072;&#1089;&#1095;&#1080;&#1090;&#1072;&#1077;&#1084; &#1091;&#1075;&#1086;&#1083; &#1086;&#1090;&#1089;&#1082;&#1086;&#1082;&#1072;</span>
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1080;&#1085;&#1074;&#1077;&#1088;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084; &#1074;&#1077;&#1082;&#1090;&#1086;&#1088; &#1074;&#1077;&#1088;&#1090;&#1080;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1089;&#1082;&#1086;&#1088;&#1086;&#1089;&#1090;&#1080;</span>
+                acc.y *= -1;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1084; &#1094;&#1077;&#1085;&#1090;&#1088; &#1096;&#1072;&#1088;&#1080;&#1082;&#1072;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">ballCenter</span> = pos.x + img.getWidth() / 2;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1084; &#1094;&#1077;&#1085;&#1090;&#1088; &#1087;&#1083;&#1072;&#1090;&#1092;&#1086;&#1088;&#1084;&#1099;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">platformCenter</span> = plt.x + platform.getWidth() / 2;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1088;&#1072;&#1089;&#1089;&#1090;&#1086;&#1103;&#1085;&#1080;&#1077; &#1084;&#1077;&#1078;&#1076;&#1091; &#1094;&#1077;&#1085;&#1090;&#1088;&#1072;&#1084;&#1080;</span>
+                <span style="color: #008700;">float</span> <span style="color: #af5f00;">distance</span> = ballCenter - platformCenter;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">&#1075;&#1086;&#1088;&#1080;&#1079;&#1086;&#1085;&#1090;&#1072;&#1083;&#1100;&#1085;&#1072;&#1103; &#1089;&#1082;&#1086;&#1088;&#1086;&#1089;&#1090;&#1100; &#1079;&#1072;&#1074;&#1080;&#1089;&#1080;&#1090; &#1086;&#1090; &#1076;&#1080;&#1089;&#1090;&#1072;&#1085;&#1094;&#1080;&#1080;</span>
+                acc.x = distance / 20;
+                pos.y = platform.getHeight();
+            }
+        }
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">brick_collision</span>(<span style="color: #008700;">Brick</span>[] <span style="color: #af5f00;">brks</span>) {
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+            <span style="color: #af00ff;">if</span> (brk.isCollision(pos, img)) {
+                old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+                <span style="color: #af00ff;">if</span> (brk.isCollisionHorizontal(old, img)) {
+                    acc.y = -acc.y;
+                } <span style="color: #af00ff;">else</span> <span style="color: #af00ff;">if</span> (brk.isCollisionVertical(old, img)) {
+                    acc.x = -acc.x;
+                } <span style="color: #af00ff;">else</span> {
+                    acc.x = -acc.x;
+                    acc.y = -acc.y;
+                }
+                pos.x = old.x;
+                pos.y = old.y;
+                <span style="color: #af0000;">// </span><span style="color: #af0000;">hide brk</span>
+                brk.pos.y = -brk.pos.y;
+            }
+        }
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">render</span>(<span style="color: #008700;">SpriteBatch</span> <span style="color: #af5f00;">batch</span>) {
+        batch.draw(img, pos.x, pos.y);
+    }
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">dispose</span>() {
+        img.dispose();
+    }
+}
+</pre>
+</div>
+
+<p>
+После этого изменим наш основной класс игры, чтобы вызывать методы нового класса
+шарика. Мы будем использовать пока только два шарика, но ничто, кроме скорости реакции
+игрока нас не ограничивает.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">package</span> com.mygdx.<span style="color: #008787;">game</span>;
+
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">ApplicationAdapter</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">Gdx</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008700;">Input</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008700;">GL20</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008700;">Texture</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008787;">g2d</span>.<span style="color: #008700;">SpriteBatch</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">math</span>.<span style="color: #008700;">Vector2</span>;
+
+<span style="color: #af00ff;">public</span> <span style="color: #af00ff;">class</span> <span style="color: #008700;">MyGdxGame</span> <span style="color: #af00ff;">extends</span> <span style="color: #008700;">ApplicationAdapter</span> {
+    <span style="color: #008700;">SpriteBatch</span> <span style="color: #af5f00;">batch</span>;
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">platform</span>;
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">plt</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0, 0);
+    <span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">max</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">ballsCnt</span> = 2;
+    <span style="color: #008700;">Ball</span> <span style="color: #af5f00;">balls</span>[] = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Ball</span>[ballsCnt];
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">brksCnt</span> = 7;
+    <span style="color: #008700;">Brick</span>[] <span style="color: #af5f00;">brks</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Brick</span>[brksCnt];
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youwin</span>;
+    <span style="color: #008700;">Texture</span> <span style="color: #af5f00;">youlose</span>;
+    <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">gameover</span> = <span style="color: #008787;">false</span>;
+    <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">win</span> = <span style="color: #008787;">false</span>;
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">create</span> () {
+        batch = <span style="color: #af00ff;">new</span> <span style="color: #008700;">SpriteBatch</span>();
+        platform = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"platform.png"</span>);
+        youwin = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youwin.png"</span>);
+        youlose = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"youlose.jpg"</span>);
+        balls[0] = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Ball</span>(<span style="color: #87005f;">"ball"</span>, 0, 100);
+        balls[1] = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Ball</span>(<span style="color: #87005f;">"ball"</span>, 10, 100);
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i&lt;<span style="color: #008700;">brksCnt</span>; i++) {
+            <span style="color: #008700;">int</span> <span style="color: #af5f00;">y</span> = 300;
+            <span style="color: #af00ff;">if</span> ((i &amp; 1) == 0) {
+                y = 435;
+            }
+            brks[i] = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Brick</span>(<span style="color: #87005f;">"brick.png"</span>, i*80+30,y);
+        }
+        max.x = Gdx.graphics.getWidth();
+        max.y = Gdx.graphics.getHeight();
+    }
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">render</span> () {
+        Gdx.gl.glClearColor(0, 0, 0, 1);
+        Gdx.gl.glClear(<span style="color: #008787;">GL20</span>.GL_COLOR_BUFFER_BIT);
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">input</span>
+        <span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.RIGHT)) {
+            <span style="color: #af0000;">//</span><span style="color: #af0000;">acc.x += 1;</span>
+            plt.y += 1;
+        }
+        <span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.LEFT)) {
+            <span style="color: #af0000;">//</span><span style="color: #af0000;">acc.x -= 1;</span>
+            plt.y -= 1;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">braking platform</span>
+        <span style="color: #af00ff;">if</span> (plt.y &gt; 7) {
+            plt.y = 7;
+        }
+        <span style="color: #af00ff;">if</span> (plt.y &lt; -7) {
+            plt.y = -7;
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">update coords platform</span>
+        plt.x = plt.x + 2 * plt.y;
+        plt.y *= 1f / 10f * 9.5;
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">stop platform at the border</span>
+        <span style="color: #af00ff;">if</span> (plt.x &lt; 0) {
+            plt.x = 0;
+            plt.y = 0;
+        }
+        <span style="color: #af00ff;">if</span> (plt.x &gt; max.x - platform.getWidth()) {
+            plt.x = max.x - platform.getWidth();
+            plt.y = 0;
+        }
+
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Ball</span> <span style="color: #af5f00;">ball</span> : balls) {
+            ball.bracking();
+            ball.bounce(max);
+            ball.brick_collision(brks);
+            ball.update();
+            ball.platform_collision(plt, platform);
+        }
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">render</span>
+        batch.begin();
+        <span style="color: #af00ff;">if</span> (gameover) {
+            <span style="color: #af00ff;">if</span> (win) {
+                batch.draw(youwin,  max.x/2-youwin.getWidth()/2,  max.y/2-youwin.getHeight()/2);
+            } <span style="color: #af00ff;">else</span> {
+                batch.draw(youlose, max.x/2-youlose.getWidth()/2, max.y/2-youlose.getHeight()/2);
+            }
+        } <span style="color: #af00ff;">else</span> {
+            <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+                brk.render(batch);
+            }
+            <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Ball</span> <span style="color: #af5f00;">ball</span> : balls) {
+                ball.render(batch);
+            }
+            batch.draw(platform, plt.x, 0);
+        }
+        batch.end();
+
+        <span style="color: #af0000;">// </span><span style="color: #af0000;">check gameover</span>
+        <span style="color: #af00ff;">if</span> (<span style="color: #008787;">false</span> == gameover) {
+            win = <span style="color: #008787;">true</span>;
+            <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+                <span style="color: #af00ff;">if</span> (brk.pos.y &gt; 0) {
+                    win = <span style="color: #008787;">false</span>;
+                    <span style="color: #af00ff;">break</span>;
+                }
+            }
+            <span style="color: #af00ff;">if</span> (win) {
+                gameover = <span style="color: #008787;">true</span>;
+            } <span style="color: #af00ff;">else</span> {
+                gameover = <span style="color: #008787;">true</span>;
+                <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Ball</span> <span style="color: #af5f00;">ball</span> : balls) {
+                    <span style="color: #af00ff;">if</span> (ball.pos.y &gt; 0) {
+                        gameover = <span style="color: #008787;">false</span>;
+                        <span style="color: #af00ff;">break</span>;
+                    }
+                }
+                <span style="color: #af00ff;">if</span> (<span style="color: #008787;">false</span> == gameover) {
+                    win = <span style="color: #008787;">false</span>;
+                }
+            }
+        }
+    }
+
+    <span style="color: #008787;">@Override</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">dispose</span> () {
+        batch.dispose();
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">Brick</span> <span style="color: #af5f00;">brk</span> : brks) {
+            brk.dispose();
+        }
+    }
+}
+</pre>
+</div>
+
+<p>
+Таким образом мы получили заготовку для игры, которую можно расширять, добавляя бонусы,
+создавая другое поведение у препятствий и.т.п.
+</p>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

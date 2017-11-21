@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Добавляем управление</a>
+<ul>
+<li><a href="#unnumbered-2">Управление координатами</a></li>
+<li><a href="#unnumbered-3">Добавляем физику</a></li>
+<li><a href="#unnumbered-4">Добавляем границы</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Добавляем управление</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+</div><div id="outline-container-unnumbered-2" class="outline-3">
+<h3 id="unnumbered-2">Управление координатами</h3>
+<div class="outline-text-3" id="text-unnumbered-2">
+<p>
+Теперь, когда мы можем определить, когда игрок нажимает на кнопки, мы могли бы
+попробовать дать ему возможность двигать картинку внутри окна. Будем следить за
+нажатиями кнопок "вверх", "вниз", "влево" и "вправо" и изменять координату, где будет
+выводиться картинка.
+</p>
+
+<p>
+Чтобы удобно хранить координату нам потребуется переменная совершенно особого типа
+<code>Vector2</code>. Эта переменная хранит в себе координату "икс" и координату "игрек" и
+определена в пакете <code>com.badlogic.gdx.math.Vector2</code>, который мы должны подключить вслед
+за всем импортами, которые у нас есть:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">graphics</span>.<span style="color: #008787;">g2d</span>.<span style="color: #008700;">SpriteBatch</span>;
+<span style="color: #af00ff;">import</span> <span style="color: #008787;">com</span>.<span style="color: #008787;">badlogic</span>.<span style="color: #008787;">gdx</span>.<span style="color: #008787;">math</span>.<span style="color: #008700;">Vector2</span>;
+
+<span style="color: #af00ff;">public</span> <span style="color: #af00ff;">class</span> <span style="color: #008700;">MyGdxGame</span> <span style="color: #af00ff;">extends</span> <span style="color: #008700;">ApplicationAdapter</span> {
+</pre>
+</div>
+
+<p>
+Теперь мы можем объявлять переменные типа <code>Vector2</code>. Объявим такую в начале нашего
+класса:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #008700;">Texture</span> <span style="color: #af5f00;">img</span>;
+<span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">pos</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(10,0);
+
+<span style="color: #008787;">@Override</span>
+</pre>
+</div>
+
+<p>
+Теперь напишем код, который будет изменять координаты, в зависимости от того, какие
+кнопки нажимает пользователь:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">input</span>
+Gdx.gl.glClear(<span style="color: #008787;">GL20</span>.GL_COLOR_BUFFER_BIT);
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.UP)) {
+    pos.y += 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.DOWN)) {
+    pos.y -= 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.RIGHT)) {
+    pos.x += 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.LEFT)) {
+    pos.x -= 10;
+}
+batch.begin();
+</pre>
+</div>
+
+<p>
+Теперь нам осталось только выводить картинку в те координаты, которые лежат в
+переменной:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">render</span>
+batch.begin();
+batch.draw(img, pos.x, pos.y);
+batch.end();
+</pre>
+</div>
+
+<p>
+Попробуйте понажимать на стрелки и вы увидите, что наш злобный смайлик двигается по экрану.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">Добавляем физику</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+Немного усложним способ расчета координат: пусть нажатия кнопок пользователем влияют на
+ускорение картинки, а не координату. А координата будет считаться по закону ускорений:
+следующая координата будет равна предыдущей, умноженной на удвоенное ускорение. Так мы
+получим некоторую инерциальную массу.
+</p>
+
+<p>
+Добавим еще один <code>Vector2</code> для того чтобы хранить в нем ускорения назовем его <code>acc</code> от
+"acceleration":
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">pos</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(10,0);
+<span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">acc</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(2,3);
+
+<span style="color: #008787;">@Override</span>
+</pre>
+</div>
+
+<p>
+Теперь изменим влияние нажатий кнопок так, чтобы они изменяли ускорение:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">input</span>
+Gdx.gl.glClear(<span style="color: #008787;">GL20</span>.GL_COLOR_BUFFER_BIT);
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.UP)) {
+    acc.y += 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.DOWN)) {
+    acc.y -= 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.RIGHT)) {
+    acc.x += 10;
+}
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.LEFT)) {
+    acc.x -= 10;
+}
+batch.begin();
+</pre>
+</div>
+
+<p>
+А теперь добавим кусок кода, который по предыдущим координатам и ускорению вычисляет
+новые координаты:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">update coords ball</span>
+pos.x = pos.x + 2 * acc.x;
+pos.y = pos.y + 2 * acc.y;
+</pre>
+</div>
+
+<p>
+Чтобы ускорение не было слишком большим добавим ограничитель:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">braking ball</span>
+<span style="color: #af00ff;">if</span> (acc.x &gt; 7) {
+    acc.x = 7;
+}
+<span style="color: #af00ff;">if</span> (acc.y &gt; 7) {
+    acc.y = 7;
+}
+<span style="color: #af00ff;">if</span> (acc.x &lt; -7) {
+    acc.x = -7;
+}
+<span style="color: #af00ff;">if</span> (acc.y &lt; -7) {
+    acc.y = -7;
+}
+</pre>
+</div>
+
+<p>
+Посмотрите, как изменилось поведение картинки. Правда она стремиться улететь за границы
+окна, поэтому&#x2026;
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Добавляем границы</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Чтобы добавить границы, за которые картинка не должна улетать, нам нужно узнать ширину
+и высоту окна. В библиотеке есть специальные функции для этого, задействуем их, но
+сначала объявим еще одну переменную для хранения максимальных значений:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">acc</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+<span style="color: #008700;">Vector2</span> <span style="color: #af5f00;">max</span> = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Vector2</span>(0,0);
+
+<span style="color: #008787;">@Override</span>
+</pre>
+</div>
+
+<p>
+А теперь присвоим ей правильное значение:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">public</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">create</span> () {
+    batch = <span style="color: #af00ff;">new</span> <span style="color: #008700;">SpriteBatch</span>();
+    img = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"badlogic.jpg"</span>);
+    max.x = Gdx.graphics.getWidth();
+    max.y = Gdx.graphics.getHeight();
+}
+</pre>
+</div>
+
+<p>
+Теперь можно добавить кусок кода, который будет изменять направление скорости при
+столкновении со стенками - это вызовет эффект отражения картинки от краев окна:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af0000;">// </span><span style="color: #af0000;">bounce</span>
+<span style="color: #af00ff;">if</span> (Gdx.input.isKeyPressed(<span style="color: #008787;">Input</span>.<span style="color: #008787;">Keys</span>.LEFT)) {
+    acc.x -= 1;
+}
+<span style="color: #af00ff;">if</span> (pos.x &lt; 0) {
+    acc.x = -acc.x;
+}
+<span style="color: #af00ff;">if</span> (pos.y &lt; 0) {
+    acc.y = -acc.y;
+}
+<span style="color: #af00ff;">if</span> (pos.x + img.getWidth() &gt; max.x) {
+    acc.x = -acc.x;
+}
+<span style="color: #af00ff;">if</span> (pos.y + img.getHeight() &gt; max.y) {
+    acc.y = -acc.y;
+}
+pos.x = pos.x + 2 * acc.x;
+</pre>
+</div>
+
+<p>
+Теперь картинка ведет себя так как мы ожидаем - отскакивает от краев окна и имеет
+некоторую инерцию. Убедившись, что все работает нормально, можно заменить большую
+картинку на какой-нибудь маленький шарик. Я выбрал тенисный мячик:
+</p>
+
+<p>
+<div class="figure"><img src="/img/ball.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Эту картинку надо положить в папку <code>core/assets</code> и изменить строчку, которая ее
+загружает:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java">batch = <span style="color: #af00ff;">new</span> <span style="color: #008700;">SpriteBatch</span>();
+img = <span style="color: #af00ff;">new</span> <span style="color: #008700;">Texture</span>(<span style="color: #87005f;">"ball.png"</span>);
+max.x = Gdx.graphics.getWidth();
+</pre>
+</div>
+
+<p>
+Еще я сделал фон радикально черным - так смотрится лучше:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java">Gdx.gl.glClearColor(0, 0, 0, 1);
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

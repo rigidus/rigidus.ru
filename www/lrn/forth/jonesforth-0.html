@@ -1,0 +1,2863 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Словарь</a></li>
+<li><a href="#unnumbered-2">Прямой шитый код</a></li>
+<li><a href="#unnumbered-3">Коссвенный шитый код</a></li>
+<li><a href="#unnumbered-4">Интерпретатор и стек возвратов</a></li>
+<li><a href="#unnumbered-5">Начинаем</a></li>
+<li><a href="#unnumbered-6">Встроенные слова</a></li>
+<li><a href="#unnumbered-7">Возвращение из форт-слов</a></li>
+<li><a href="#unnumbered-8">Литералы</a></li>
+<li><a href="#unnumbered-9">Память</a></li>
+<li><a href="#unnumbered-10">Встроенные переменные</a></li>
+<li><a href="#unnumbered-11">Встроенные константы</a></li>
+<li><a href="#unnumbered-12">Стек возвратов</a></li>
+<li><a href="#unnumbered-13">Стек параметров (данных)</a></li>
+<li><a href="#unnumbered-14">Ввод и вывод</a></li>
+<li><a href="#unnumbered-15">Просмотр словаря</a></li>
+<li><a href="#unnumbered-16">Компиляция</a></li>
+<li><a href="#unnumbered-17">Расширение компилятора</a></li>
+<li><a href="#unnumbered-18">Ветвление</a></li>
+<li><a href="#unnumbered-19">Строковые литералы</a></li>
+<li><a href="#unnumbered-20">QUIT</a></li>
+<li><a href="#unnumbered-21">INTERPRET</a></li>
+<li><a href="#unnumbered-22">ODDS и ENDS</a></li>
+<li><a href="#unnumbered-23">Сегмент данных</a></li>
+</ul>
+</div>
+</div>
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Словарь</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+В Forth, как вы узнаете, функции называются «словами», и, так же, как и на других
+языках, у них есть <code>имя</code> и <code>определение</code>. Вот два слова Forth:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: DOUBLE DUP + ;              <span style="color: #af0000;">\ &#1080;&#1084;&#1103;: "DOUBLE"     &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1077;: "DUP +"
+</span><span style="color: #af00ff;">: </span><span style="color: #0000ff;">QUADRUPLE </span>DOUBLE DOUBLE ;   <span style="color: #af0000;">\ &#1080;&#1084;&#1103;: "QUADRUPLE"  &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1077;: "DOUBLE DOUBLE"
+</span>
+</pre>
+</div>
+
+<p>
+Слова, как встроенные, так и те, которые программист определяет позже, хранятся в
+словаре, который является только связанным списком записей словаря.
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-dict-list.png" alt="forth-dict-list.png">
+</p>
+</div>
+
+<p>
+Мы дойдем до определения слова позже. Сейчас просто посмотрите на его заголовок
+(dictionary entry / header). Первые 4 байта - это указатель ссылки. Он указывает на
+предыдущее слово в словаре, и для первого слова в словаре является указателем
+<code>NULL</code>. Затем появляется байт длины/флагов. Длина слова может составлять до 31 символа
+(используется 5 бит), а три верхних бита используются для различных флагов, про которые
+я расскажу позже. За этим следует само имя, и в этой реализации имя всегда кратно 4
+байтам, и первоначально заполнено нулевыми байтами. Это просто для того, чтобы
+определение начиналось с 32-битной границы.
+</p>
+
+<p>
+Переменная Forth, называемая <code>LATEST</code>, содержит указатель на последнее заданное слово,
+другими словами, <code>голову</code> этого связанного списка.
+</p>
+
+<p>
+<code>DOUBLE</code> и <code>QUADRUPLE</code> могут выглядеть так::
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-dict-2words.png" alt="forth-dict-2words.png">
+</p>
+</div>
+
+<p>
+Вы должны увидеть из этого, как можно реализовать поиск слова в словаре (просто пройти
+по записям, начинающимся с той, на которую указывает LATEST, и сопоставляя имена, пока
+вы не найдете совпадение или не наткнетесь на указатель NULL в конце словаря).
+</p>
+
+<p>
+И как добавить слово в словарь (создать новое определение, установить его LINK в LATEST
+и установить LATEST, чтобы он указывал на новое слово). Мы увидим именно эти функции,
+реализованные в ассемблере позже.
+</p>
+
+<p>
+Одним из интересных последствий использования связанного списка является то, что вы
+можете переопределять слова, и более новое определение слова переопределяет более
+старое. Это важная концепция в Forth, потому что это означает, что любое слово (даже
+"встроенные" или "стандартные" слова) могут быть переопределены новым определением,
+либо для его улучшения, либо для его ускорения или даже для его отключения. Однако
+из-за того, как компилируются слова Forth, которые вы поймете ниже, слова, определенные
+с использованием старого определения слова, продолжают использовать старое
+определение. Только новые слова, определенные после нового определения, используют
+новое определение.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Прямой шитый код</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Теперь мы перейдем к действительно важному, для пониманию Forth, аспекту. Если вы не
+поймете этот раздел, то вы не поймете как работает Forth, и это будет неудачей с моей
+стороны.
+</p>
+
+<p>
+Давайте поговорим сначала о том, что означает "шитый код". Представьте себе
+своеобразную версию Cи, где вам разрешено вызывать только функции без аргументов. (Не
+беспокойтесь, о том, что такой язык будет совершенно бесполезен) Итак, в нашем
+своеобразном Cи код будет выглядеть так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #0000ff;">f</span> () {
+    a ();
+    b ();
+    c ();
+}
+</pre>
+</div>
+
+<p>
+&#x2026;и так далее. Как бы функция, скажем, <code>f</code> выше, была скомпилирована стандартным
+компилятором Cи в машинный код? Например для i386 так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm"><span style="color: #0000ff;">f</span>:
+    <span style="color: #af00ff;">CALL</span> a          #  E8 08 00 00 00
+    <span style="color: #af00ff;">CALL</span> b          #  E8 1C 00 00 00
+    <span style="color: #af00ff;">CALL</span> c          #  E8 2C 00 00 00
+    <span style="color: #af0000;">;;  </span><span style="color: #af0000;">&#1089;&#1077;&#1081;&#1095;&#1072;&#1089; &#1084;&#1099; &#1087;&#1086;&#1082;&#1072; &#1080;&#1075;&#1085;&#1086;&#1088;&#1080;&#1088;&#1091;&#1077;&#1084; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080;</span>
+</pre>
+</div>
+
+<p>
+<code>E8</code> - это машинный код x86 для «CALL» функции. В первые 20 лет компьютерная память
+была ужасно дорогой, и мы могли бы беспокоиться о том, что расходуем впустую
+память повторенными байтами «E8». Мы можем сэкономить 20% в размере кода (и,
+следовательно, дорогостоящей памяти), сжав это:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm"><span style="color: #0000ff;">08</span> <span style="color: #af00ff;">00</span> 00 00   #  &#1055;&#1088;&#1086;&#1089;&#1090;&#1086; &#1072;&#1076;&#1088;&#1077;&#1089;&#1072; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1081;, &#1073;&#1077;&#1079; CALL
+<span style="color: #0000ff;">1C</span> <span style="color: #af00ff;">00</span> 00 00
+<span style="color: #0000ff;">2C</span> <span style="color: #af00ff;">00</span> 00 00
+</pre>
+</div>
+
+<p>
+На 16-битной машине, подобной той, на которой Forth был запущен в первый раз, экономия
+еще больше - 33%.
+</p>
+
+<p>
+Историческое примечание: Если модель исполнения, используемая Forth, кажется странной,
+то она была полностью мотивирована необходимостью экономить память на ранних
+компьютерах. Это сжатие не так важно сейчас, когда наши машины имеют больше памяти в
+своих кэшах L1, чем в ранних компьютерах, но модель исполнения по-прежнему обладает
+некоторыми полезными свойствами. Кроме того, на современных процессорах, Forth-система
+способна целиком поместиться в кеше процессора, что делает ее прямо таки чудовищно
+быстрой.
+</p>
+
+<p>
+Конечно, этот сжатый код, из которого убраны <code>E8</code>, больше не будет работать
+непосредственно на процессоре. Вместо этого нам нужно написать интерпретатор, который
+берет каждый адрес и вызывает его.
+</p>
+
+<p>
+На машине i386 получается, что этот интерпретатор можно легко написать в двух
+ассемблерных инструкциях, которые превращаются всего в 3 байта машинного кода. Давайте
+сохраним в регистре <code>%esi</code> указатель на следующее слово для выполнения:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-01.png" alt="forth-interpret-01.png">
+</p>
+</div>
+
+<p>
+В i386 есть инструкция <code>LODSL</code> (или в терминологии руководств Intel, <code>LODSW</code>). Она
+делает две вещи:
+</p>
+<ul class="org-ul">
+<li>читает из памяти, на которую указывает <code>%esi</code> 4 байта в регистр <code>%eax</code>
+</li>
+<li>увеличивает значение в регистре <code>%esi</code> на 4
+</li>
+</ul>
+
+<p>
+Итак, после выполнения инструкции <code>LODSL</code> ситуация выглядит так:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-02.png" alt="forth-interpret-02.png">
+</p>
+</div>
+
+<p>
+Сейчас нам надо сделать <code>jmp</code> на адрес, содержащийся в <code>%eax</code>. Это снова всего одна
+x86-инструкция, которая записывается как <code>JMP *(%eax)</code>. И после того как мы сделаем JMP
+ситуация выглядит так:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-03.png" alt="forth-interpret-03.png">
+</p>
+</div>
+
+<p>
+Для выполнения этой работы каждая подпрограмма сопровождается двумя инструкциями:
+<code>LODSL; JMP *(%eax)</code>, которые буквально переходят к следующей подпрограмме.
+</p>
+
+<p>
+И это подводит нас к нашей первой части реального кода! Ну, то есть, это макрос.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_next"><span style="color: #af00ff;">.macro</span> NEXT
+    <span style="color: #af00ff;">lodsl</span>
+    <span style="color: #af00ff;">jmp</span> *(<span style="color: #af5f00;">%eax</span>)
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+Этот макрос называется <code>NEXT</code>. Это "фортизм". Он раскрывается в эти две инструкции.
+</p>
+
+<p>
+Каждый примитив Forth, который мы пишем, должен быть завершен <code>NEXT</code>. Думайте об
+этом как о <code>return</code>.
+</p>
+
+<p>
+Все, что описано выше, называется <code>прямым шитым кодом</code>.
+</p>
+
+<p>
+Подводя итог: мы сжимаем наши вызовы функций до списка адресов и используем макрос,
+чтобы переходить к следующей функции в списке. Мы также используем один регистр
+(<code>%esi</code>), как своего рода указатель инструкции, указывая на следующую функцию в списке.
+</p>
+
+<p>
+Я просто дам вам намек на то, что должно произойти, сказав, что определение Forth,
+такое как:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: QUADRUPLE DOUBLE DOUBLE ;   <span style="color: #af0000;">\ &#1080;&#1084;&#1103;: "QUADRUPLE"  &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1077;: "DOUBLE DOUBLE"
+</span>
+</pre>
+</div>
+
+<p>
+на самом деле компилирует (не совсем точно, но мы сразу увидим, почему) список адресов
+функций для DOUBLE, DOUBLE и специальную функцию EXIT для завершения.
+</p>
+
+<p>
+На данный момент, остроглазые эксперты ассемблера могут воскликнуть: "вы сделали
+ошибку!".
+</p>
+
+<p>
+Ага, я лгал вам о <code>JMP *(%eax)</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Коссвенный шитый код</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Оказывается, что <code>прямой шитый код</code> интересен, но только если вы хотите просто
+выполнить список функций, написанных на ассемблере. Поэтому QUADRUPLE будет работать
+только в том случае, если DOUBLE является функцией языка ассемблера. В <code>прямом шитом
+коде</code> QUADRUPLE будет выглядеть так:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-04.png" alt="forth-interpret-04.png">
+</p>
+</div>
+
+<p>
+Мы можем добавить дополнительный уровень косвенности, позволяющей нам запускать как
+слова, написанные на ассемблере (примитивы, написанные для скорости), так и слова,
+написанные на Forth-е, как списки адресов.
+</p>
+
+<p>
+Дополнительная косвенность является причиной скобок в <code>JMP *(%eax)</code>.
+</p>
+
+<p>
+Давайте посмотрим, как QUADRUPLE и DOUBLE действительно выглядят в Forth:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-05.png" alt="forth-interpret-05.png">
+</p>
+</div>
+
+<p>
+Это та часть, где вам может понадобиться дополнительная чашка кофе. Что изменилось, так
+это то, что я добавил дополнительный указатель на начало определения. В Forth это
+называют <code>codeword</code> - кодовое слово. <code>codeword</code> является указателем на интерпретатор
+для запуска функции. Для примитивов, написанных на языке ассемблера, <code>codeword</code> просто
+указывает на сам код - его не нужно интерпретировать, он просто запускается.
+</p>
+
+<p>
+В словах, написанных в Forth (например, QUADRUPLE и DOUBLE), кодовое слово указывает на
+функцию-интерпретатор.
+</p>
+
+<p>
+Я вскоре покажу вам функцию-интерпретатор, но давайте вспомним наш косвенный <code>JMP
+*(%eax)</code> с "дополнительными" скобками. Возьмем случай, когда мы выполняем DOUBLE, как
+показано, и вызывается DUP. Обратите внимание, что <code>%esi</code> указывает на адрес <code>+</code>
+</p>
+
+<p>
+Ассемблерный код для DUP в конце делает <code>NEXT</code>. Это:
+</p>
+<ul class="org-ul">
+<li>читает адрес <code>+</code> в <code>%eax</code> - теперь <code>%eax</code> указывает на <code>codeword</code> для кода <code>+</code>
+</li>
+<li>увеличивает <code>%esi</code> на 4
+</li>
+<li>выполняет <code>jmp</code> на содержимое того адреса, который лежит в <code>%eax</code> → т.е. <code>jmp</code> по
+адресу, лежащему в <code>codeword</code> слова <code>+</code>, → т.е. <code>jmp</code> на ассемблерный код, реализующий
+<code>+</code>.
+</li>
+</ul>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-06.png" alt="forth-interpret-06.png">
+</p>
+</div>
+
+<p>
+Поэтому я надеюсь, что я убедил вас, что <code>NEXT</code> делает примерно то, что вы
+ожидаете. Это <code>коссвенный шитый код</code>.
+</p>
+
+<p>
+Я не сказал о четырех вещах. Интересно, сможете ли вы догадаться о них, не читая
+дальше?
+</p>
+
+<p>
+Вот список этих вещей:
+</p>
+<ul class="org-ul">
+<li>что делает <code>EXIT</code>?
+</li>
+<li>как происходит вызов функции, т.е. как <code>%esi</code> начинает указывать на часть QUADRUPLE,
+а затем указывать на часть DOUBLE?
+</li>
+<li>Что входит в <code>codeword</code> для слов, написанных на Forth?
+</li>
+<li>Как компилировать функцию, которая делает что-то еще, кроме вызова других функций,
+например функцию, которая содержит число, такую как <code>: DOUBLE 2 * ;</code>?
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-2">
+<h2 id="unnumbered-4">Интерпретатор и стек возвратов</h2>
+<div class="outline-text-2" id="text-unnumbered-4">
+<p>
+Не останавливаясь на этом, давайте поговорим о третьей и второй проблемах,
+интерпретаторе и стек возврата.
+</p>
+
+<p>
+Слова, которые определены в Forth, нуждаются в <code>codeword</code>, которое указывает на
+небольшое количество кода, который протягивает им "руку помощи". Им не нужно многого,
+но им нужно то, что известно как <code>интерпретатор</code>, хотя на самом деле он не является
+интерпретатором в том же смысле, как, например, медленный интерпретатор байт-кода
+Java. Этот интерпретатор просто устанавливает несколько машинных регистров, чтобы затем
+слово могло выполняться на полной скорости с использованием модели коссвенного шитого
+кода, показанной выше.
+</p>
+
+<p>
+Одна из вещей, которые должны произойти, когда QUADRUPLE вызывает DOUBLE, заключается в
+том, что мы сохраняем старый указатель инструкций <code>%esi</code> и создаем новый, указывающий
+на первое слово в DOUBLE. Поскольку нам нужно будет восстановить старый <code>%esi</code> в конце
+слова DOUBLE (в конце концов, это как вызов функции), нам понадобится стек для хранения
+этих "адресов возврата" (старых значений <code>%esi</code>).
+</p>
+
+<p>
+Как вы, наверно видели в документации, Forth имеет два стека, обычный <code>стек параметров</code>
+и <code>стек возвратов</code>, который немного загадочен. Но наш <code>стек возвратов</code> - это просто тот
+стек, о котором я говорил в предыдущем абзаце, используемый для сохранения <code>%esi</code> когда
+из одного слова Forth вызывается другое слово Forth.
+</p>
+
+<p>
+В этом Forth мы используем указатель обычного стека (<code>%esp</code>) для <code>стека параметров</code>. Мы
+будем использовать другой указатель стека i386 (<code>%ebp</code>, обычно называемый "указателем
+фрейма") для <code>стека возвратов</code>.
+</p>
+
+<p>
+У меня есть два макроса, которые просто оборачивают детали использования <code>%ebp</code> для
+<code>стека возвратов</code>. Вы используете их, например, <code>PUSHRSP %eax</code> (<code>push</code> %eax в стек
+возвратов) или <code>POPRSP %ebx</code> (<code>pop</code> значение, на которое указывает вершина стека
+возвратов %ebp в регистр <code>%ebx</code>).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_pushrsp"><span style="color: #af00ff;">.macro</span> PUSHRSP reg
+    <span style="color: #af00ff;">lea</span> -4(<span style="color: #af5f00;">%ebp</span>), <span style="color: #af5f00;">%ebp</span>      # push reg &#1074; &#1089;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+    <span style="color: #af00ff;">movl</span> \reg, (<span style="color: #af5f00;">%ebp</span>)
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_poprsp"><span style="color: #af00ff;">.macro</span> POPRSP reg
+    <span style="color: #af00ff;">mov</span> (<span style="color: #af5f00;">%ebp</span>),\reg         # pop &#1074;&#1077;&#1088;&#1096;&#1080;&#1085;&#1091; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; &#1074; reg
+    <span style="color: #af00ff;">lea</span> 4(<span style="color: #af5f00;">%ebp</span>), <span style="color: #af5f00;">%ebp</span>
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+И с этим мы теперь можем поговорить об <code>интерпретаторе</code>.
+</p>
+
+<p>
+В Forth функция-интерпретатор часто называется DOCOL (я думаю, что это означает "DO
+COLON", потому что все определения Forth начинаются с двоеточия, как например в
+выражении <code>: DOUBLE DUP ;</code>
+</p>
+
+<p>
+Интерпретатору (на самом деле это не "интерпретация") нужно push-нуть старый <code>%esi</code> в
+стек и установить <code>%esi</code> так, чтобы он указывал на первое слово в определении. Помните,
+как мы перешли к функции с помощью <code>JMP *(%eax)</code>? Вследствие этого удобно, что <code>%eax</code>
+содержит адрес этого <code>codeword</code>, поэтому просто добавляя к нему 4, мы получаем адрес
+первого слова данных. Наконец, после установки <code>%esi</code>, он просто делает NEXT, который
+вызывает запуск первого слова.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="asm_docol">    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af00ff;">.align</span> 4
+<span style="color: #0000ff;">DOCOL</span>:
+    <span style="color: #af00ff;">PUSHRSP</span> <span style="color: #af5f00;">%esi</span>            # push <span style="color: #af5f00;">%esi</span> on to the return stack
+    <span style="color: #af00ff;">addl</span>    $4, <span style="color: #af5f00;">%eax</span>        # <span style="color: #af5f00;">%eax</span> points to codeword, so make
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%esi</span>      # <span style="color: #af5f00;">%esi</span> point to first data word
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Чтобы это было совершенно ясно, посмотрим, как работает DOCOL при прыжке с QUADRUPLE в
+DOUBLE:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-07.png" alt="forth-interpret-07.png">
+</p>
+</div>
+
+<p>
+Во-первых, вызов DOUBLE вызывает DOCOL (кодовое слово DOUBLE). DOCOL делает следующее:
+он push-ит старый <code>%esi</code> на стек возвратов. <code>%eax</code> указывает на <code>codeword</code> DOUBLE,
+поэтому мы просто добавляем к нему 4, чтобы получить наш новый <code>%esi</code>:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-08.png" alt="forth-interpret-08.png">
+</p>
+</div>
+
+<p>
+Затем он делает NEXT и так как из-за магии шитого кода, это увеличивает <code>%esi</code> снова,
+то вызывается DUP.
+</p>
+
+<p>
+Ну, похоже, это работает.
+</p>
+
+<p>
+Здесь есть одна второстепенная вещь. Поскольку DOCOL - это первый кусок ассемблерного
+кода, который должен быть определен в этом файле (остальные - только макросы), и
+поскольку я обычно компилирую этот код с сегментом <code>.text</code>, начинающимся с адреса 0,
+DOCOL имеет адрес 0. Поэтому, если вы дизассемблируете код и увидите слово с <code>codeword</code>
+0, вы сразу же поймете, что это слово Forth (а не ассемблерный примитив), и поэтому
+использует DOCOL в качестве интерпретатора.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Начинаем</h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+<p>
+Теперь давайте перейдем к гайкам и болтам. Когда мы запускаем программу, нам нужно
+настроить несколько вещей, таких как стек возвратов. Но как только мы сможем, мы хотим
+перейти в код Forth (хотя большая часть «раннего» кода Forth все равно должна быть
+написана как примитивы на host-языке).
+</p>
+
+<p>
+Это то, что делает код настройки:
+</p>
+<ul class="org-ul">
+<li>Делает небольшую вступительную часть
+</li>
+<li>Настраивает отдельный стек возврата (NB: Linux уже дает нам обычный стек параметров)
+</li>
+<li>затем сразу переходит к слову Forth, называемому QUIT. Несмотря на свое название QUIT
+никуда не выходит. Он сбрасывает некоторое внутреннее состояние и начинает чтение и
+интерпретацию команд. (Причина, по которой он называется QUIT, заключается в том, что
+вы можете вызывать QUIT из вашего собственного кода Forth, чтобы «выйти» из вашей
+программы и вернуться к интерпретации).
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="asm_entry">    <span style="color: #af0000;">/* </span><span style="color: #af0000;">Assembler entry point. */</span>
+    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af00ff;">.globl</span>  forth_asm_start
+    <span style="color: #af00ff;">.type</span>   forth_asm_start, @function
+<span style="color: #0000ff;">forth_asm_start</span>:
+    <span style="color: #af00ff;">cld</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%esp</span>, var_S0                # Save the initial data stack pointer in Forth variable S0.
+    <span style="color: #af00ff;">mov</span>     $return_stack_top, <span style="color: #af5f00;">%ebp</span>     # Initialise the return stack.
+    <span style="color: #af00ff;">call</span>    setup_data_segment
+    <span style="color: #af00ff;">mov</span>     $cold_start, <span style="color: #af5f00;">%esi</span>           # Initialise interpreter.
+    <span style="color: #af00ff;">NEXT</span>                                # Run interpreter!
+
+    <span style="color: #af00ff;">.section</span> .rodata
+<span style="color: #0000ff;">cold_start</span>:                             # High-level code without a codeword.
+    <span style="color: #af00ff;">.int</span> QUIT
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">Встроенные слова</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+<p>
+Помните наши словарные записи? Давайте приведем их вместе с кодовым словом и словами
+данных, чтобы увидеть, как
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: DOUBLE DUP <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+действительно выглядит в памяти.
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-09.png" alt="forth-interpret-09.png">
+</p>
+</div>
+
+<p>
+Вначале мы не можем просто написать буквально <code>: DOUBLE DUP;</code> , потому что нам еще пока
+нечем читать строку, разбивать ее на пробелы, анализировать каждое слово и.т.д. Поэтому
+вместо этого нам придется определять встроенные слова, используя конструкторы данных
+ассемблера GNU (например, .int, .byte, .string, .ascii и.т.д.)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm">    <span style="color: #af00ff;">.int</span>  &lt;&#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1087;&#1088;&#1077;&#1076;&#1099;&#1076;&#1091;&#1097;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;&gt;
+    <span style="color: #af00ff;">.byte</span> 6         # len
+    <span style="color: #af00ff;">.ascii</span> <span style="color: #87005f;">"DOUBLE"</span> # name
+    <span style="color: #af00ff;">.byte</span> 0         # padding
+<span style="color: #0000ff;">DOUBLE</span>:
+    <span style="color: #af00ff;">.int</span> DOCOL      # codeword
+    <span style="color: #af00ff;">.int</span> DUP        # &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; codeword DUP
+    <span style="color: #af00ff;">.int</span> PLUS       # &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; codeword +
+    <span style="color: #af00ff;">.int</span> EXIT       # &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; codeword EXIT
+</pre>
+</div>
+
+<p>
+Но это быстро утомляет, поэтому я определяю ассемблерный макрос, чтобы я мог просто
+написать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"DOUBLE"</span>,6,,DOUBLE
+    <span style="color: #af00ff;">.int</span> DUP,PLUS,EXIT
+</pre>
+</div>
+
+<p>
+и получить точно такой же эффект. Не беспокойтесь о деталях реализации этого макроса -
+он может показаться сложным.
+</p>
+
+<p>
+<i>* Flags - это мы обсудим потом *</i>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="flags"><span style="color: #af00ff;">.set</span> F_IMMED,0x80
+<span style="color: #af00ff;">.set</span> F_HIDDEN,0x20
+<span style="color: #af00ff;">.set</span> F_LENMASK,0x1f  # length mask
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defword">    <span style="color: #af00ff;">.set</span> link,0   #  Store the chain of links.
+<span style="color: #af00ff;">.macro</span> defword name, namelen, flags=0, label
+    <span style="color: #af00ff;">.section</span> .rodata
+    <span style="color: #af00ff;">.align</span> 4
+    <span style="color: #af00ff;">.globl</span> name_\label
+    <span style="color: #af00ff;">name_</span>\label :
+    <span style="color: #af00ff;">.int</span> link               # link
+    <span style="color: #af00ff;">.set</span> link,name_\label
+    <span style="color: #af00ff;">.byte</span> \flags+\namelen   # flags + &#1073;&#1072;&#1081;&#1090; &#1076;&#1083;&#1080;&#1085;&#1099;
+    <span style="color: #af00ff;">.ascii</span> <span style="color: #87005f;">"\name"</span>          # &#1080;&#1084;&#1103;
+    <span style="color: #af00ff;">.align</span> 4                # &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077; &#1085;&#1072; 4-&#1093; &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1091;&#1102; &#1075;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">.globl</span> \label
+    \label :
+    <span style="color: #af00ff;">.int</span> DOCOL              # codeword - &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1102;-&#1080;&#1085;&#1090;&#1077;&#1087;&#1088;&#1077;&#1090;&#1072;&#1090;&#1086;&#1088;
+    # list of word pointers follow
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+Таким образом я хочу писать слова, написанные на ассемблере. Мы должны написать
+некоторое количество базового кода, прежде чем будет достаточно "инфраструктуры", чтобы
+начать писать слова на Forth, но также я хочу определить некоторые общие слова Forth в
+языке ассемблера для скорости, хотя я мог бы написать их на Forth.
+</p>
+
+<p>
+Вот как DUP выглядит в памяти:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-10.png" alt="forth-interpret-10.png">
+</p>
+</div>
+
+<p>
+Опять же, для краткости я собираюсь написать макрос ассемблера с именем <code>defcode</code>. Как
+и в случае с <code>defword</code> выше, не беспокойтесь о сложных деталях макроса.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defcode"><span style="color: #af00ff;">.macro</span> defcode name, namelen, flags=0, label
+    <span style="color: #af00ff;">.section</span> .rodata
+    <span style="color: #af00ff;">.align</span> 4
+    <span style="color: #af00ff;">.globl</span> name_\label
+<span style="color: #0000ff;">name</span>_\label :
+    <span style="color: #af00ff;">.int</span>    link               # link
+    <span style="color: #af00ff;">.set</span>    link,name_\label
+    <span style="color: #af00ff;">.byte</span>   \flags+\namelen    # flags + &#1073;&#1072;&#1081;&#1090; &#1076;&#1083;&#1080;&#1085;&#1099;
+    <span style="color: #af00ff;">.ascii</span>  <span style="color: #87005f;">"\name"</span>            # &#1080;&#1084;&#1103;
+    <span style="color: #af00ff;">.align</span>  4                  # &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077; &#1085;&#1072; 4-&#1093; &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1091;&#1102; &#1075;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">.globl</span>  \label
+\label :
+    <span style="color: #af00ff;">.int</span>    code_\label        # codeword
+    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af0000;">//</span><span style="color: #af0000;">.align 4</span>
+    <span style="color: #af00ff;">.globl</span>  code_\label
+    <span style="color: #af00ff;">code_</span>\label :              # &#1076;&#1072;&#1083;&#1077;&#1077; &#1089;&#1083;&#1077;&#1076;&#1091;&#1077;&#1090; &#1072;&#1089;&#1089;&#1077;&#1084;&#1073;&#1083;&#1077;&#1088;&#1085;&#1099;&#1081; &#1082;&#1086;&#1076;
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+Теперь несколько простых примитивов Forth. Они написаны на ассемблере для
+скорости. Если вы понимаете язык ассемблера i386, то стоит их прочитать.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="simple_primitives"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DROP"</span>,4,,DROP
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1089;&#1073;&#1088;&#1086;&#1089;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SWAP"</span>,4,,SWAP
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1087;&#1086;&#1084;&#1077;&#1085;&#1103;&#1090;&#1100; &#1084;&#1077;&#1089;&#1090;&#1072;&#1084;&#1080; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DUP"</span>,3,,DUP
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%eax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"OVER"</span>,4,,OVER
+    <span style="color: #af00ff;">mov</span>     4(<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%eax</span>   # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1090;&#1086;&#1088;&#1086;&#1081; &#1086;&#1090; &#1074;&#1077;&#1088;&#1093;&#1072; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>            # &#1080; &#1087;&#1086;&#1083;&#1086;&#1078;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086; &#1082;&#1086;&#1087;&#1080;&#1102; &#1089;&#1074;&#1077;&#1088;&#1093;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"ROT"</span>,3,,ROT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-ROT"</span>,4,,NROT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2DROP"</span>,5,,TWODROP
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1089;&#1073;&#1088;&#1086;&#1089;&#1080;&#1090;&#1100; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2DUP"</span>,4,,TWODUP
+    <span style="color: #af00ff;">movl</span>    (<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%eax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">movl</span>    4(<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2SWAP"</span>,5,,TWOSWAP
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1087;&#1086;&#1084;&#1077;&#1085;&#1103;&#1090;&#1100; &#1084;&#1077;&#1089;&#1090;&#1072;&#1084;&#1080; &#1076;&#1074;&#1077; &#1087;&#1072;&#1088;&#1099; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1086;&#1074; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"?DUP"</span>,4,,QDUP
+    <span style="color: #af00ff;">movl</span>    (<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%eax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1077;&#1089;&#1083;&#1080; &#1086;&#1085; &#1085;&#1077; &#1085;&#1091;&#1083;&#1077;&#1074;&#1086;&#1081;
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">jz</span>      1f
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+<span style="color: #0000ff;">1</span>:
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"1+"</span>,2,,INCR
+    <span style="color: #af00ff;">incl</span>    (<span style="color: #af5f00;">%esp</span>)          # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; &#1077;&#1076;&#1080;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"1-"</span>,2,,DECR
+    <span style="color: #af00ff;">decl</span>    (<span style="color: #af5f00;">%esp</span>)          # &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; &#1077;&#1076;&#1080;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"4+"</span>,2,,INCR4
+    <span style="color: #af00ff;">addl</span>    $4, (<span style="color: #af5f00;">%esp</span>)      # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 4
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"4-"</span>,2,,DECR4
+    <span style="color: #af00ff;">subl</span>    $4, (<span style="color: #af5f00;">%esp</span>)      # &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 4
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"+"</span>,1,,ADD
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">addl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%esp</span>)    # &#1087;&#1088;&#1080;&#1073;&#1072;&#1074;&#1080;&#1100; &#1077;&#1075;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1091;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1089;&#1090;&#1072;&#1083; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-"</span>,1,,SUB
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">subl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%esp</span>)    # &#1074;&#1099;&#1095;&#1077;&#1089;&#1090;&#1100; &#1077;&#1075;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1080;&#1079; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1089;&#1090;&#1072;&#1083; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"*"</span>,1,,MUL
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;
+    <span style="color: #af00ff;">imull</span>   <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%eax</span>      # &#1091;&#1084;&#1085;&#1086;&#1078;&#1080;&#1090;&#1100; &#1080;&#1093; &#1076;&#1088;&#1091;&#1075; &#1085;&#1072; &#1076;&#1088;&#1091;&#1075;&#1072;
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>            # &#1080;&#1075;&#1085;&#1086;&#1088;&#1080;&#1088;&#1091;&#1077;&#1084; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+В этом Forth только <code>/MOD</code> примитив. Позже мы определим слова <code>/</code> и <code>MOD</code> в терминах
+примитива <code>/MOD</code>. Конструкция ассемблерной команды <code>idiv</code>, которая оставляет как частное,
+так и остаток, делает этот выбор очевидным.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="mod"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"/MOD"</span>,4,,DIVMOD
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">idivl</span>   <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%edx</span>            # push &#1086;&#1089;&#1090;&#1072;&#1090;&#1086;&#1082;
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>            # push &#1095;&#1072;&#1089;&#1090;&#1085;&#1086;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Множество сравнительных операций, таких как <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, и.т.д
+</p>
+
+<p>
+Стандарт ANSI Forth говорит, что слова сравнения должны возвращать все двоичные разряды
+равные единице для TRUE, и все двоичные разряды равные нулю для FALSE. Однако это
+немного странное соглашение, поэтому этот Forth не следует ему и возвращает более
+нормальное (для программистов на Си) значение <code>1</code> для TRUE и <code>0</code> для FALSE.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="comparison"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"="</span>,1,,EQU
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1090;&#1077;&#1082;&#1072; &#1088;&#1072;&#1074;&#1085;&#1099;?
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">sete</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;&gt;"</span>,2,,NEQU
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1077; &#1088;&#1072;&#1074;&#1085;&#1099;?
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setne</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;"</span>,1,,LT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">setl</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;"</span>,1,,GT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">setg</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;="</span>,2,,LE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">setle</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;="</span>,2,,GE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmpl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">setge</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0="</span>,2,,ZEQU
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1088;&#1072;&#1074;&#1077;&#1085; &#1085;&#1091;&#1083;&#1102;?
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setz</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;&gt;"</span>,3,,ZNEQU
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1077; &#1088;&#1072;&#1074;&#1077;&#1085; &#1085;&#1091;&#1083;&#1102;?
+    <span style="color: #af00ff;">testl</span>   <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setnz</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;"</span>,2,,ZLT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # comparisons with 0
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setl</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&gt;"</span>,2,,ZGT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">testl</span>   <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setg</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;="</span>,3,,ZLE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">testl</span>   <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setle</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&gt;="</span>,3,,ZGE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">setge</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzbl</span>  <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"AND"</span>,3,,AND
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; AND
+    <span style="color: #af00ff;">andl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%esp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"OR"</span>,2,,OR
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; OR
+    <span style="color: #af00ff;">orl</span>     <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%esp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"XOR"</span>,3,,XOR
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; XOR
+    <span style="color: #af00ff;">xorl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%esp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"INVERT"</span>,6,,INVERT
+    <span style="color: #af00ff;">notl</span>    (<span style="color: #af5f00;">%esp</span>)          # &#1101;&#1090;&#1086; &#1073;&#1080;&#1090;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; <span style="color: #87005f;">"NOT"</span> (&#1089;&#1084;. NEGATE and NOT)
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-2">
+<h2 id="unnumbered-7">Возвращение из форт-слов</h2>
+<div class="outline-text-2" id="text-unnumbered-7">
+<p>
+Время поговорить о том, что происходит, когда мы делаем EXIT. На этой диаграмме
+QUADRUPLE вызывает DOUBLE, и DOUBLE собирается сделать EXIT (посмотрите, куда указывает
+<code>%esi</code>)
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-11.png" alt="forth-interpret-11.png">
+</p>
+</div>
+
+<p>
+Что происходит, когда функция выполняет NEXT? Выполняется следующий код:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="exit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EXIT"</span>,4,,EXIT
+    <span style="color: #af00ff;">POPRSP</span>  <span style="color: #af5f00;">%esi</span>            # pop return stack into <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+EXIT получает старый <code>%esi</code>, который мы сохранили ранее в <code>стеке возвратов</code>, и помещает
+его в <code>%esi</code>. Итак, после этого (но до NEXT) мы получаем:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-12.png" alt="forth-interpret-12.png">
+</p>
+</div>
+
+<p>
+И NEXT просто завершает работу, в этом случае, просто вызвав DOUBLE снова.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-2">
+<h2 id="unnumbered-8">Литералы</h2>
+<div class="outline-text-2" id="text-unnumbered-8">
+<p>
+Последний момент, который я "замалчивал" раньше, заключался в том, как иметь дело с
+функциями, которые делают что-либо помимо вызова других функций. Например, предположим,
+что DOUBLE был определен следующим образом:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: DOUBLE 2 * <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+Он делает то же самое, но как мы его скомпилируем, если он содержит буквально цифру 2?
+Одним из способов было бы иметь функцию под названием <code>2</code> (которую вы должны были бы
+написать на ассемблере), но вам понадобится такая функция для каждого отдельного
+литерала, который вы бы хотели использовать.
+</p>
+
+<p>
+Forth решает это, компилируя функцию, используя специальное слово LIT:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-13.png" alt="forth-interpret-13.png">
+</p>
+</div>
+
+<p>
+LIT выполняется обычным способом, но то, что он делает дальше, определенно не
+нормально. Он смотрит на <code>%esi</code> (который теперь указывает на число 2), захватывает его
+(число 2), кладет его в стек, а затем манипулирует <code>%esi</code>, чтобы пропустить номер, как
+если бы он никогда не был там.
+</p>
+
+<p>
+Что интересно, так это то, что весь захват и манипуляция может быть выполнена с
+использованием одной байтовой команды i386, нашего старого друга <code>LODSL</code>. Вместо того,
+чтобы рисовать диаграммы, посмотрите, можете ли вы узнать, как работает <code>LIT</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="exit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"LIT"</span>,3,,LIT
+    # <span style="color: #af5f00;">%esi</span> &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1091;&#1102; &#1082;&#1086;&#1084;&#1072;&#1085;&#1076;&#1091;, &#1085;&#1086; &#1074; &#1101;&#1090;&#1086;&#1084; &#1089;&#1083;&#1091;&#1095;&#1072;&#1077; &#1101;&#1090;&#1086; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081;
+    # &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;, &#1087;&#1088;&#1077;&#1076;&#1089;&#1090;&#1072;&#1074;&#1083;&#1103;&#1102;&#1097;&#1080;&#1081; &#1089;&#1086;&#1073;&#1086;&#1081; 4 &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1086;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;. &#1055;&#1086;&#1083;&#1091;&#1095;&#1077;&#1085;&#1080;&#1077; &#1101;&#1090;&#1086;&#1075;&#1086; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;&#1072; &#1074; <span style="color: #af5f00;">%eax</span>
+    # &#1080; &#1080;&#1085;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090; <span style="color: #af5f00;">%esi</span> &#1085;&#1072; x86 -  &#1101;&#1090;&#1086; &#1091;&#1076;&#1086;&#1073;&#1085;&#1072;&#1103; &#1086;&#1076;&#1085;&#1086;&#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1072;&#1103; &#1080;&#1085;&#1089;&#1090;&#1088;&#1091;&#1082;&#1094;&#1080;&#1103;! (&#1089;&#1084;. NEXT macro)
+    <span style="color: #af00ff;">lodsl</span>
+    # push literal &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-2">
+<h2 id="unnumbered-9">Память</h2>
+<div class="outline-text-2" id="text-unnumbered-9">
+<p>
+Важным моментом в Forth является то, что он дает вам прямой доступ к самым низким
+деталям машины. Манипулирование памятью часто осуществляется в Forth, и вот примитивы
+для этого:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="store"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"!"</span>,1,,STORE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089;, &#1082;&#1091;&#1076;&#1072; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%ebx</span>)    # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1086; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"@"</span>,1,,FETCH
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1081; &#1085;&#1072;&#1076;&#1086; &#1074;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;
+    <span style="color: #af00ff;">movl</span>    (<span style="color: #af5f00;">%ebx</span>), <span style="color: #af5f00;">%eax</span>    # &#1074;&#1099;&#1103;&#1089;&#1085;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>            # push-&#1080;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"+!"</span>,2,,ADDSTORE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1091;&#1102; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1085;&#1072; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">addl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%ebx</span>)    # &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-!"</span>,2,,SUBSTORE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1091;&#1102; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1085;&#1072; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">subl</span>    <span style="color: #af5f00;">%eax</span>, (<span style="color: #af5f00;">%ebx</span>)    # &#1074;&#1099;&#1095;&#1080;&#1090;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1080;&#1079; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+<code>!</code> и <code>@</code> (STORE и FETCH) работают с 32-битными словами. Также полезно иметь
+возможность читать и писать байты, поэтому мы также определяем стандартные слова <code>C@</code> и
+<code>C!</code>. Байт-ориентированные операции работают только на архитектуре, которая их
+разрешает (i386 является одним из них).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="char_store"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C!"</span>,2,,STOREBYTE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089;, &#1082;&#1091;&#1076;&#1072; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">movb</span>    <span style="color: #af5f00;">%al</span>, (<span style="color: #af5f00;">%ebx</span>)     # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1086; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C@"</span>,2,,FETCHBYTE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1081; &#1085;&#1072;&#1076;&#1086; &#1074;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;
+    <span style="color: #af00ff;">xorl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>      # &#1086;&#1095;&#1080;&#1097;&#1072;&#1077;&#1084; &#1088;&#1077;&#1075;&#1080;&#1089;&#1090;&#1088; <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%ebx</span>), <span style="color: #af5f00;">%al</span>     # &#1074;&#1099;&#1103;&#1089;&#1085;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # push-&#1080;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+
+# C@C! - &#1101;&#1090;&#1086; &#1087;&#1086;&#1083;&#1077;&#1079;&#1085;&#1099;&#1081; &#1087;&#1088;&#1080;&#1084;&#1080;&#1090;&#1080;&#1074; &#1076;&#1083;&#1103; &#1082;&#1086;&#1087;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; &#1073;&#1072;&#1081;&#1090;
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C@C!"</span>,4,,CCOPY
+    <span style="color: #af00ff;">movl</span>    4(<span style="color: #af5f00;">%esp</span>), <span style="color: #af5f00;">%ebx</span>   # &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%ebx</span>), <span style="color: #af5f00;">%al</span>     # &#1087;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1073;&#1072;&#1081;&#1090; &#1080;&#1079; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%edi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">stosb</span>                   # &#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1073;&#1072;&#1081;&#1090; &#1074; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%edi</span>            # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">incl</span>    4(<span style="color: #af5f00;">%esp</span>)         # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">NEXT</span>
+
+# CMOVE - &#1086;&#1087;&#1077;&#1088;&#1072;&#1094;&#1080;&#1103; &#1082;&#1086;&#1087;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; &#1073;&#1083;&#1086;&#1082;&#1072; &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CMOVE"</span>,5,,CMOVE
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%esi</span>, <span style="color: #af5f00;">%edx</span>      # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ecx</span>            # length
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%edi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%esi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">rep</span>     movsb           # &#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082; &#1074; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082; length &#1088;&#1072;&#1079;
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%esi</span>      # &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-2">
+<h2 id="unnumbered-10">Встроенные переменные</h2>
+<div class="outline-text-2" id="text-unnumbered-10">
+<p>
+Это некоторые встроенные переменные и соответствующие стандартные слова Forth. Из них
+единственное, что мы обсуждали до сих пор, было LATEST, что указывает на последнее
+(последнее определенное) слово в словаре Forth. LATEST также является словом Forth,
+которое выталкивает адрес переменнуй LATEST в стек, поэтому вы можете читать или писать
+ее с помощью операторов <code>@</code> и <code>!</code>. Например, чтобы напечатать текущее значение LATEST
+(и это применимо к любой переменной Forth), вы должны:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">LATEST @ . CR
+</pre>
+</div>
+
+<p>
+Чтобы уменьшить определение переменных, я использую макрос <code>defvar</code>, похожий на
+<code>defword</code> и <code>defcode</code> выше. (Фактически, <code>defvar</code> макрос использует <code>defcode</code> для
+создания заголовка в словаре).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defvar"><span style="color: #af00ff;">.macro</span> defvar name, namelen, flags=0, label, initial=0
+    <span style="color: #af00ff;">defcode</span> \name,\namelen,\flags,\label
+    <span style="color: #af00ff;">push</span>    $var_\name
+    <span style="color: #af00ff;">NEXT</span>
+    <span style="color: #af00ff;">.data</span>
+    <span style="color: #af00ff;">.align</span> 4
+    <span style="color: #af00ff;">var_</span>\name :
+    <span style="color: #af00ff;">.int</span> \initial
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+Встроенные переменные:
+</p>
+<ul class="org-ul">
+<li>STATE   - состояние интерпретации(0) или компиляции слова (отличным от нуля)
+</li>
+<li>LATEST  - указатель на последнее заданное слово в словаре.
+</li>
+<li>HERE    - указатель на следующий свободный байт памяти. При компиляции скомпилированные слова
+помещаются тут.
+</li>
+<li>S0      - хранит адрес верхней части стека параметров.
+</li>
+<li>BASE    - текущая база для печати и чтения чисел.
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="built_in_vars"><span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"STATE"</span>,5,,STATE
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"HERE"</span>,4,,HERE
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"LATEST"</span>,6,,LATEST,name_SYSCALL0   # SYSCALL0 must be last in built-in dictionary
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"S0"</span>,2,,SZ
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"BASE"</span>,4,,BASE,10
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-2">
+<h2 id="unnumbered-11">Встроенные константы</h2>
+<div class="outline-text-2" id="text-unnumbered-11">
+<p>
+Встроенные константы:
+</p>
+<ul class="org-ul">
+<li>VERSION   - это текущая версия этого Forth.
+</li>
+<li>R0        - адрес вершины стека возвратов.
+</li>
+<li>DOCOL     - Указатель на DOCOL.
+</li>
+<li>F<sub>IMMED</sub>   - текущее значение флага IMMEDIATE.
+</li>
+<li>F<sub>HIDDEN</sub>  - Текущее значение флага HIDDEN.
+</li>
+<li>F<sub>LENMASK</sub> - Маска длины в  flags/len байте
+</li>
+<li>SYS_ * и числовые коды различных системных вызовов Linux (из &lt;asm/unistd.h&gt;)
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defconst"><span style="color: #af00ff;">.macro</span> defconst name, namelen, flags=0, label, value
+    <span style="color: #af00ff;">defcode</span> \name,\namelen,\flags,\label
+    <span style="color: #af00ff;">push</span> $\value
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="built_in_constants"><span style="color: #af00ff;">.set</span> JONES_VERSION,47
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"VERSION"</span>,7,,VERSION,JONES_VERSION
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"R0"</span>,2,,RZ,return_stack_top
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"DOCOL"</span>,5,,__DOCOL,DOCOL
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_IMMED"</span>,7,,__F_IMMED,F_IMMED
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_HIDDEN"</span>,8,,__F_HIDDEN,F_HIDDEN
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_LENMASK"</span>,9,,__F_LENMASK,F_LENMASK
+
+<span style="color: #af00ff;">.set</span> __NR_exit,  93
+<span style="color: #af00ff;">.set</span> __NR_open,  1024
+<span style="color: #af00ff;">.set</span> __NR_close, 57
+<span style="color: #af00ff;">.set</span> __NR_read,  213
+<span style="color: #af00ff;">.set</span> __NR_write, 64
+<span style="color: #af00ff;">.set</span> __NR_creat, 1064
+<span style="color: #af00ff;">.set</span> __NR_brk,   214
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_EXIT"</span>,8,,SYS_EXIT,__NR_exit
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_OPEN"</span>,8,,SYS_OPEN,__NR_open
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_CLOSE"</span>,9,,SYS_CLOSE,__NR_close
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_READ"</span>,8,,SYS_READ,__NR_read
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_WRITE"</span>,9,,SYS_WRITE,__NR_write
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_CREAT"</span>,9,,SYS_CREAT,__NR_creat
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_BRK"</span>,7,,SYS_BRK,__NR_brk
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_RDONLY"</span>,8,,__O_RDONLY,0
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_WRONLY"</span>,8,,__O_WRONLY,1
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_RDWR"</span>,6,,__O_RDWR,2
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_CREAT"</span>,7,,__O_CREAT,0100
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_EXCL"</span>,6,,__O_EXCL,0200
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_TRUNC"</span>,7,,__O_TRUNC,01000
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_APPEND"</span>,8,,__O_APPEND,02000
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_NONBLOCK"</span>,10,,__O_NONBLOCK,04000
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-2">
+<h2 id="unnumbered-12">Стек возвратов</h2>
+<div class="outline-text-2" id="text-unnumbered-12">
+<p>
+Эти слова позволяют получить доступ к стеку возвратов. Напомним, что регистр %ebp всегда
+указывает на вершину стека возвратов.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="words_for_retstack"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;R"</span>,2,,TOR
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>            # pop parameter stack into <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">PUSHRSP</span> <span style="color: #af5f00;">%eax</span>            # push it on to the return stack
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"R&gt;"</span>,2,,FROMR
+    <span style="color: #af00ff;">POPRSP</span>  <span style="color: #af5f00;">%eax</span>            # pop return stack on to <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pushl</span>   <span style="color: #af5f00;">%eax</span>            # and push on to parameter stack
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RSP@"</span>,4,,RSPFETCH
+    <span style="color: #af00ff;">pushl</span>    <span style="color: #af5f00;">%ebp</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RSP!"</span>,4,,RSPSTORE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%ebp</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RDROP"</span>,5,,RDROP
+    <span style="color: #af00ff;">addl</span>    $4, <span style="color: #af5f00;">%ebp</span>        # pop return stack and throw away
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-2">
+<h2 id="unnumbered-13">Стек параметров (данных)</h2>
+<div class="outline-text-2" id="text-unnumbered-13">
+<p>
+Эти функции позволяют вам управлять стеком параметров. Напомним, что Linux
+устанавливает для нас стек параметров, и он доступен через регистр <code>%esp</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="data_stack_words"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DSP@"</span>,4,,DSPFETCH
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%esp</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DSP!"</span>,4,,DSPSTORE
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%esp</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-2">
+<h2 id="unnumbered-14">Ввод и вывод</h2>
+<div class="outline-text-2" id="text-unnumbered-14">
+<p>
+Это наши первые действительно сложные примитивы Forth. Я решил написать их на
+ассемблере, но удивительно, что в реальных реализациях Forth они часто пишутся в
+терминах более фундаментальных примитивов Forth.
+</p>
+
+<p>
+Я решил избежать этого, потому что я думаю, что это просто скрывает реализацию. В конце
+концов, вы можете не понимать ассемблер, но вы можете просто подумать об этом как о
+непрозрачном блоке кода, который делает то, что он говорит.
+</p>
+
+<p>
+Давайте сначала обсудим ввод.
+</p>
+
+<p>
+Слово KEY считывает следующий байт из stdin (и push-ит его на стек
+параметров). Поэтому, если KEY вызывается, и кто-то нажимает на клавишу пробела, то
+число 32 (ASCII-код пробела) помещается в стек.
+</p>
+
+<p>
+В Forth нет различий между чтением кода и чтением ввода. Мы могли бы читать и
+компилировать код, мы могли бы читать слова для выполнения, мы могли бы попросить
+пользователя набрать свое имя - в конечном итоге все это происходит через KEY.
+</p>
+
+<p>
+Реализация KEY использует входной буфер определенного размера (определенный в конце
+этого файла). Он вызывает системный вызов Linux read(2) для заполнения этого буфера и
+отслеживает его положение в буфере с помощью пары переменных, и если у него
+заканчивается входной буфер, он автоматически заполняет его. Если KEY обнаруживает, что
+stdin закрыт, он выходит из программы, поэтому, когда вы нажимаете ^D, система Forth
+полностью завершается.
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-14.png" alt="forth-interpret-14.png">
+</p>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_key">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"KEY"</span>,3,,KEY
+    <span style="color: #af00ff;">call</span> _KEY
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # push return value on stack
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_KEY</span>:
+    <span style="color: #af00ff;">mov</span>     (currkey), <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">cmp</span>     (bufftop), <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">jge</span>     1f              # exhausted the input buffer?
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%ebx</span>), <span style="color: #af5f00;">%al</span>     # get next key from input buffer
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ebx</span>,(currkey)  # increment currkey
+    <span style="color: #af00ff;">ret</span>
+<span style="color: #0000ff;">1</span>:
+    # Out of input, use read(2) to fetch more input from stdin.
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%ebx</span>      # 1st param: stdin
+    <span style="color: #af00ff;">mov</span>     $buffer, <span style="color: #af5f00;">%ecx</span>   # 2nd param: buffer
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ecx</span>,currkey
+    <span style="color: #af00ff;">mov</span>     $BUFFER_SIZE, <span style="color: #af5f00;">%edx</span>  # 3rd param: max length
+    <span style="color: #af00ff;">mov</span>     $__NR_read, <span style="color: #af5f00;">%eax</span> # syscall: read
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>      # If <span style="color: #af5f00;">%eax</span> &lt;= 0, then exit.
+    <span style="color: #af00ff;">jbe</span>     2f
+    <span style="color: #af00ff;">addl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ecx</span>      # buffer+<span style="color: #af5f00;">%eax</span> = bufftop
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ecx</span>,bufftop
+    <span style="color: #af00ff;">jmp</span>     _KEY
+<span style="color: #0000ff;">2</span>:
+    # Error or end of input: exit the program.
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">mov</span>     $__NR_exit, <span style="color: #af5f00;">%eax</span> # syscall: exit
+    <span style="color: #af00ff;">int</span>     $0x80
+
+    <span style="color: #af00ff;">.data</span>
+    <span style="color: #af00ff;">.align</span> 4
+<span style="color: #0000ff;">currkey</span>:
+    # Current place in input buffer (next character to read).
+    <span style="color: #af00ff;">.int</span> buffer
+<span style="color: #0000ff;">bufftop</span>:
+    # Last valid data in input buffer + 1.
+    <span style="color: #af00ff;">.int</span> buffer
+</pre>
+</div>
+
+<p>
+Напротив, выход намного проще. Слово EMIT выводит один байт в stdout. Эта реализация
+просто использует системный вызов <code>write</code>. Никакой попытки сделать буфер не
+производится, но было бы хорошим упражнением добавить его.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_emit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EMIT"</span>,4,,EMIT
+    <span style="color: #af00ff;">popl</span>    <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">call</span>    _EMIT
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_EMIT</span>:
+    <span style="color: #af00ff;">movl</span>    $1, <span style="color: #af5f00;">%ebx</span>        # 1st param: stdout
+
+    # write needs the address of the byte to write
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%al</span>, emit_scratch
+    <span style="color: #af00ff;">mov</span>     $emit_scratch, <span style="color: #af5f00;">%ecx</span> # 2nd param: address
+
+    <span style="color: #af00ff;">mov</span>     $1, <span style="color: #af5f00;">%edx</span>        # 3rd param: nbytes = 1
+
+    <span style="color: #af00ff;">mov</span>     $__NR_write, <span style="color: #af5f00;">%eax</span>   # write syscall
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">ret</span>
+
+    <span style="color: #af00ff;">.data</span>           # NB: easier to fit in the .data section
+<span style="color: #0000ff;">emit_scratch</span>:
+    <span style="color: #af00ff;">.space</span> 1        # scratch used by EMIT
+</pre>
+</div>
+
+<p>
+Вернемся к вводу. WORD - это слово , которое читает следующее полное слово со
+стандартного ввода. Если подробнее, он сначала пропускает любые пробелы (пробелы,
+вкладки, символы новой строки и.т.д.). Затем он вызывает KEY, чтобы читать символы во
+внутреннем буфере, пока не наткнется на пробел. Затем он вычисляет длину прочитанного
+слова и возвращает адрес и длину как два слова в стеке (с длиной в верхней части
+стека).
+</p>
+
+<p>
+Обратите внимание, что WORD имеет единственный внутренний буфер, который он
+перезаписывает каждый раз (скорее, как статическая строка в си). Также обратите
+внимание, что внутренний буфер WORD составляет всего 32 байта, и нет проверки для
+переполнения. 31 байт - это максимальная длина слова Forth, которое мы поддерживаем, и
+это то, для чего WORD и используется: чтения слов Forth при компиляции и выполнении
+кода. Возвращенные строки не заканчиваются NUL.
+</p>
+
+<p>
+Начальный адрес и длина строки - это обычный способ представления строк в Forth (не
+заканчивающийся символом ASCII NUL, как в C), и поэтому строки Forth могут содержать
+любой символ, включая NUL, и могут быть любой длины.
+</p>
+
+<p>
+WORD не подходит для простого считывания строк (например, пользовательского ввода)
+из-за всех вышеперечисленных особенностей и ограничений.
+</p>
+
+<p>
+Обратите внимание, что при выполнении вы увидите:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">WORD FOO
+</pre>
+</div>
+
+<p>
+который помещает «FOO» и длину 3 в стек, но при компиляции:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: BAR WORD FOO <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+будет ошибка (или, по крайней мере, это не сделает то, что вы можете ожидать). Позже мы
+поговорим о компиляции и про <code>режим немедленного исполнения</code>, и вы поймете, почему.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_word">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"WORD"</span>,4,,WORD
+    <span style="color: #af00ff;">call</span>    _WORD
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%edi</span>            # push base address
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ecx</span>            # push length
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_WORD</span>:
+    # Search for first non-blank character.  Also skip \ comments.
+<span style="color: #0000ff;">1</span>:
+    <span style="color: #af00ff;">call</span>    _KEY            # get next key, returned in <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">cmpb</span>    $'\\', <span style="color: #af5f00;">%al</span>      # start of a comment?
+    <span style="color: #af00ff;">je</span>      3f              # if so, skip the comment
+    <span style="color: #af00ff;">cmpb</span>    $' ', <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">jbe</span>     1b              # if so, keep looking
+
+    # Search for the end of the word, storing chars as we go.
+    <span style="color: #af00ff;">mov</span>     $word_buffer, <span style="color: #af5f00;">%edi</span>  # pointer to return buffer
+<span style="color: #0000ff;">2</span>:
+    <span style="color: #af00ff;">stosb</span>                   # add character to return buffer
+    <span style="color: #af00ff;">call</span>    _KEY            # get next key, returned in <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">cmpb</span>    $' ', <span style="color: #af5f00;">%al</span>       # is blank?
+    <span style="color: #af00ff;">ja</span>      2b              # if not, keep looping
+
+    # Return the word (well, the static buffer) and length. */
+    <span style="color: #af00ff;">sub</span>     $word_buffer, <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%edi</span>, <span style="color: #af5f00;">%ecx</span>      # return length of the word
+    <span style="color: #af00ff;">mov</span>     $word_buffer, <span style="color: #af5f00;">%edi</span>  # return address of the word
+    <span style="color: #af00ff;">ret</span>
+
+    # Code to skip \ comments to end of the current line.
+<span style="color: #0000ff;">3</span>:
+    <span style="color: #af00ff;">call</span>    _KEY
+    <span style="color: #af00ff;">cmpb</span>    $'\n', <span style="color: #af5f00;">%al</span>      # end of line yet?
+    <span style="color: #af00ff;">jne</span>     3b
+    <span style="color: #af00ff;">jmp</span>     1b
+
+    <span style="color: #af00ff;">.data</span>                   # NB: easier to fit in the .data section
+    # A static buffer where WORD returns.  Subsequent calls
+    # overwrite this buffer.  Maximum word length is 32 chars.
+<span style="color: #0000ff;">word_buffer</span>:
+    <span style="color: #af00ff;">.space</span> 32
+</pre>
+</div>
+
+<p>
+Помимо чтения слов, нам нужно будет читать цифры, и для этого мы используем функцию
+NUMBER. Она анализирует числовую строку, например, возвращаемую WORD, и push-ит число в
+стек параметров.
+</p>
+
+<p>
+эта функция использует переменную BASE в качестве базы (radix) для преобразования,
+поэтому, например, если BASE равна 2, мы ожидаем двоичное число. Обычно BASE составляет
+</p>
+<ol class="org-ol">
+<li></li>
+</ol>
+
+<p>
+Если слово начинается с символа '-', тогда возвращаемое значение отрицательно.
+</p>
+
+<p>
+Если строка не может быть проанализирована как число (или содержит символы за пределами
+текущей BASE), тогда нам нужно вернуть индикацию ошибки. Таким образом, NUMBER
+фактически возвращает два элемента в стеке. В верхней части стека мы возвращаем
+количество несконвертированных символов (т. Е. Если 0, то все символы были
+преобразованы, поэтому нет ошибки). Второй элемент от вершины стека - это
+распарсенное число или частичное значение, если произошла ошибка.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_number">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"NUMBER"</span>,6,,NUMBER
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # length of string
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edi</span>            # start address of string
+    <span style="color: #af00ff;">call</span>    _NUMBER
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # parsed number
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ecx</span>            # number of unparsed characters (0 = no error)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">_NUMBER</span>:
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%ebx</span>
+
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%ecx</span>, <span style="color: #af5f00;">%ecx</span>      # trying to parse a zero-length string is an error, but will return 0.
+    <span style="color: #af00ff;">jz</span>      5f
+
+    <span style="color: #af00ff;">movl</span>    var_BASE, <span style="color: #af5f00;">%edx</span>  # get BASE (in <span style="color: #af5f00;">%dl</span>)
+
+    # Check if first character is '-'.
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%edi</span>), <span style="color: #af5f00;">%bl</span>     # <span style="color: #af5f00;">%bl</span> = first character in string
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # push 0 on stack
+    <span style="color: #af00ff;">cmpb</span>    $'-', <span style="color: #af5f00;">%bl</span>       # negative number?
+    <span style="color: #af00ff;">jnz</span>     2f
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ebx</span>            # push &lt;&gt; 0 on stack, indicating negative
+    <span style="color: #af00ff;">dec</span>     <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">jnz</span>     1f
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>            # error: string is only '-'.
+    <span style="color: #af00ff;">movl</span>    $1, <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">ret</span>
+    # Loop reading digits.
+<span style="color: #0000ff;">1</span>:
+    <span style="color: #af00ff;">imull</span>   <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%eax</span>      # <span style="color: #af5f00;">%eax</span> *= BASE
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%edi</span>), <span style="color: #af5f00;">%bl</span>     # <span style="color: #af5f00;">%bl</span> = next character in string
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%edi</span>
+    # Convert 0-9, A-Z to a number 0-35.
+<span style="color: #0000ff;">2</span>:
+    <span style="color: #af00ff;">subb</span>    $'0', <span style="color: #af5f00;">%bl</span>       # &lt; '0'?
+    <span style="color: #af00ff;">jb</span>      4f
+    <span style="color: #af00ff;">cmp</span>     $10, <span style="color: #af5f00;">%bl</span>        # &lt;= '9'?
+    <span style="color: #af00ff;">jb</span>      3f
+    <span style="color: #af00ff;">subb</span>    $17, <span style="color: #af5f00;">%bl</span>        # &lt; 'A'? (17 is 'A'-'0')
+    <span style="color: #af00ff;">jb</span>      4f
+    <span style="color: #af00ff;">addb</span>    $10, <span style="color: #af5f00;">%bl</span>
+<span style="color: #0000ff;">3</span>:
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%dl</span>, <span style="color: #af5f00;">%bl</span>        # &gt;= BASE?
+    <span style="color: #af00ff;">jge</span>     4f
+    # OK, so add it to <span style="color: #af5f00;">%eax</span> and loop.
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">dec</span>     <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">jnz</span>     1b
+    # Negate the result if first character was '-' (saved on the stack).
+<span style="color: #0000ff;">4</span>:
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">jz</span>      5f
+    <span style="color: #af00ff;">neg</span>     <span style="color: #af5f00;">%eax</span>
+<span style="color: #0000ff;">5</span>:
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-2">
+<h2 id="unnumbered-15">Просмотр словаря</h2>
+<div class="outline-text-2" id="text-unnumbered-15">
+<p>
+Мы подходим к нашей прелюдии о том, как компилируется код Forth, но сначала нам нужно
+еще немного инфраструктуры.
+</p>
+
+<p>
+Слово FIND принимает строку (слово, которое анализируется WORD - см. выше) и находит
+его его в словаре. Фактически он возвращает адрес заголовка словаря, если он находит
+его, или 0, в противном случае
+</p>
+
+<p>
+Поэтому, если DOUBLE определен в словаре, тогда
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">WORD DOUBLE FIND
+</pre>
+</div>
+
+<p>
+возвращает следующий указатель:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-15.png" alt="forth-interpret-15.png">
+</p>
+</div>
+
+<p>
+See also &gt;CFA and &gt;DFA.
+</p>
+
+<p>
+FIND не находит словарные записи, помеченные как HIDDEN. См. ниже, почему.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_find">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"FIND"</span>,4,,FIND
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # <span style="color: #af5f00;">%ecx</span> = length
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edi</span>            # <span style="color: #af5f00;">%edi</span> = address
+    <span style="color: #af00ff;">call</span>    _FIND
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # <span style="color: #af5f00;">%eax</span> = address of dictionary entry (or NULL)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">_FIND</span>:
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%esi</span>            # Save <span style="color: #af5f00;">%esi</span> so we can use it in string comparison.
+
+    # Now we start searching backwards through the dictionary for this word.
+    <span style="color: #af00ff;">mov</span>     var_LATEST, <span style="color: #af5f00;">%edx</span> # LATEST points to name header of the latest word in the dictionary
+<span style="color: #0000ff;">1</span>:
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%edx</span>      # NULL pointer?  (end of the linked list)
+    <span style="color: #af00ff;">je</span>      4f
+
+    # Compare the length expected and the length of the word.
+    # Note that if the F_HIDDEN flag is set on the word, then by a bit of trickery
+    # this won't pick the word (the length will appear to be wrong).
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movb</span>    4(<span style="color: #af5f00;">%edx</span>), <span style="color: #af5f00;">%al</span>    # <span style="color: #af5f00;">%al</span> = flags+length field
+    <span style="color: #af00ff;">andb</span>    $(F_HIDDEN|F_LENMASK), <span style="color: #af5f00;">%al</span> # <span style="color: #af5f00;">%al</span> = name length
+    <span style="color: #af00ff;">cmpb</span>    <span style="color: #af5f00;">%cl</span>, <span style="color: #af5f00;">%al</span>        # Length is the same?
+    <span style="color: #af00ff;">jne</span>     2f
+
+    # Compare the strings in detail.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ecx</span>            # Save the length
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%edi</span>            # Save the address (repe cmpsb will move this pointer)
+    <span style="color: #af00ff;">lea</span>     5(<span style="color: #af5f00;">%edx</span>), <span style="color: #af5f00;">%esi</span>   # Dictionary string we are checking against.
+    <span style="color: #af00ff;">repe</span>    cmpsb           # Compare the strings.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">jne</span>     2f              # Not the same.
+
+    # The strings are the same - return the header pointer in <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">ret</span>
+<span style="color: #0000ff;">2</span>:
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%edx</span>), <span style="color: #af5f00;">%edx</span>    # Move back through the link field to the previous word
+    <span style="color: #af00ff;">jmp</span>     1b              # .. and loop.
+<span style="color: #0000ff;">4</span>:
+    # Not found.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>      # Return zero to indicate not found.
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+<p>
+FIND возвращает указатель словаря, но при компиляции нам нужен указатель кодового слова
+(напомним, что определения Forth скомпилированы в списки указателей на
+<code>codeword</code>-ы). Стандартное слово <code>&gt;CFA</code> превращает указатель словаря в указатель на
+<code>codeword</code>.
+</p>
+
+<p>
+В приведенном ниже примере показан результат:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">WORD DOUBLE FIND &gt;CFA
+</pre>
+</div>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-16.png" alt="forth-interpret-16.png">
+</p>
+</div>
+
+<p>
+NB: поскольку имена различаются по длине, это не просто простое приращение.
+</p>
+
+<p>
+В этом Forth вы не можете легко превратить указатель кодового слова обратно в указатель
+на элемент словаря, но это не так для большинства реализаций Forth, где они хранят
+обратный указатель в определении (с очевидной стоимостью памяти / сложности).
+</p>
+
+<p>
+Причина, по которой они делают это, заключается в том, что это бывает полезно, чтобы
+быстро декомпилировать определения Forth.
+</p>
+
+<p>
+Что означает <code>CFA</code>? Мое лучшее предположение - "Code Field Address"
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tcfa">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"&gt;CFA"</span>,4,,TCFA
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">call</span>    _TCFA
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_TCFA</span>:
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">add</span>     $4, <span style="color: #af5f00;">%edi</span>        # Skip link pointer.
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%edi</span>), <span style="color: #af5f00;">%al</span>     # Load flags+len into <span style="color: #af5f00;">%al</span>.
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%edi</span>            # Skip flags+len byte.
+    <span style="color: #af00ff;">andb</span>    $F_LENMASK, <span style="color: #af5f00;">%al</span> # Just the length, not the flags.
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%edi</span>      # Skip the name.
+    <span style="color: #af00ff;">addl</span>    $3, <span style="color: #af5f00;">%edi</span>        # The codeword is 4-byte aligned.
+    <span style="color: #af00ff;">andl</span>    $~3, <span style="color: #af5f00;">%edi</span>
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+<p>
+В связи с &gt;CFA рассмотрим &gt;DFA, который берет адрес записи словаря, возвращаемый FIND,
+и возвращает указатель на первое поле данных.
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-17.png" alt="forth-interpret-17.png">
+</p>
+</div>
+
+<p>
+(Обратите внимание на этот момент, кто знаком с исходным кодом FIG-Forth / ciforth: Это
+&gt;DFA определение отличается от их, потому что у них есть дополнительная косвенность).
+</p>
+
+<p>
+Как легко можно увидеть &gt;DFA легко определяется в Forth, просто путем добавления 4 к
+результату &gt;CFA.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_number"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"&gt;DFA"</span>,4,,TDFA
+    <span style="color: #af00ff;">.int</span> TCFA       # &gt;CFA     (get code field address)
+    <span style="color: #af00ff;">.int</span> INCR4      # 4+       (add 4 to it to get to next word)
+    <span style="color: #af00ff;">.int</span> EXIT       # EXIT     (return from Forth word)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-2">
+<h2 id="unnumbered-16">Компиляция</h2>
+<div class="outline-text-2" id="text-unnumbered-16">
+<p>
+Теперь мы поговорим о том, как Forth компилирует слова. Напомним, что определение слова
+выглядит следующим образом:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: DOUBLE DUP + <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+и мы должны превратить это в:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-18.png" alt="forth-interpret-18.png">
+</p>
+</div>
+
+<p>
+Теперь нам нужно решить несколько задач:
+</p>
+<ul class="org-ul">
+<li>Куда поместить новое слово?
+</li>
+<li>Как мы читаем слова?
+</li>
+<li>Как мы определяем слова <code>:</code> (COLON) и <code>;</code> (SEMICOLON)?
+</li>
+</ul>
+
+<p>
+Forth решает это довольно изящно и, как вы можете ожидать, очень низкоуровневым
+способом, который позволяет вам изменить способ работы компилятора над вашим
+собственным кодом.
+</p>
+
+<p>
+Forth имеет функцию INTERPRET (настоящий интерпретатор на этот раз, а не DOCOL),
+которая работает в цикле, читая слова (используя WORD), просматривая их (используя
+FIND), превращая их в указатели кодового слова (используя &gt;CFA) и решая, что с ними
+делать.
+</p>
+
+<p>
+То, что он делает, зависит от режима интерпретатора (в переменной STATE).
+</p>
+
+<p>
+Когда STATE равно нулю, интерпретатор просто запускает каждое слово, когда оно
+находит их. Это называется "немедленным режимом" (immediate mode).
+</p>
+
+<p>
+Интересные вещи происходят, когда STATE не равен нулю - "режим компиляции" (compiling
+mode). В этом режиме интерпретатор добавляет указатель <code>codeword</code> в
+пользовательскую память (переменная HERE указывает на следующий свободный байт
+пользовательской памяти - см. Раздел СЕГМЕНТ ДАННЫХ ниже).
+</p>
+
+<p>
+Таким образом, вы сможете увидеть, как мы можем определить <code>:</code> (COLON). Общий план:
+</p>
+<ul class="org-ul">
+<li>(1) Использовать WORD для чтения имени определяемой функции.
+</li>
+<li>(2) Построить запись словаря - только часть заголовка - в пользовательской памяти:
+</li>
+</ul>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-19.png" alt="forth-interpret-19.png">
+</p>
+</div>
+
+<ul class="org-ul">
+<li>(3) Установить LATEST, чтобы указать на новое слово, &#x2026;
+</li>
+<li>(4) .. и самое главное оставить ЗДЕСЬ, указывая сразу после нового <code>codeword</code>. Здесь
+интерпретатор будет добавлять кодовые слова.
+</li>
+<li>(5) Установить STATE в 1. Это вызовет переход в режим компиляции, поэтому интерпретатор
+начинает добавлять кодовые слова к нашему частично сформированному заголовку.
+</li>
+</ul>
+
+<p>
+После того, как <code>:</code> запущен, наш вход находится здесь:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-20.png" alt="forth-interpret-20.png">
+</p>
+</div>
+
+<p>
+поэтому интерпретатор (теперь он находится в режиме компиляции, поэтому я думаю, что
+это на самом деле компилятор) читает "DUP", просматривает его в словаре, получает его
+указатель на кодовое слово и добавляет его.
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-21.png" alt="forth-interpret-21.png">
+</p>
+</div>
+
+<p>
+Затем мы читаем <code>+</code>, получаем указатель его <code>codeword</code> и добавляем его:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-22.png" alt="forth-interpret-22.png">
+</p>
+</div>
+
+<p>
+Теперь проблема заключается в следующем. Очевидно, что мы не хотим, чтобы мы читали <code>;</code>
+скомпилировали его и продолжали компилировать все подряд.
+</p>
+
+<p>
+На этом этапе Forth использует трюк. Помните, что длина байта в определении словаря не
+просто байт длины, но также может содержать флаги. Один флаг называется флагом
+IMMEDIATE (F<sub>IMMED</sub> в этом коде). Если слово в словаре помечено как IMMEDIATE, тогда
+интерпретатор запускает его немедленно <span class="underline">даже если он находится в режиме компиляции</span>.
+</p>
+
+<p>
+Вот как это слово <code>;</code> (SEMICOLON) работает - как слово, помеченное в словаре как
+IMMEDIATE.
+</p>
+
+<p>
+Все, что оно делает, - это добавляет кодовое слово для EXIT в текущее определение и
+возвращает к немедленному режиму (установкой STATE на 0). Вскоре мы увидим его
+фактическое определение; и мы увидим, что это действительно очень простое определение,
+объявленное IMMEDIATE.
+</p>
+
+<p>
+После чтения интерпретатором <code>;</code> и выполнения его "немедленно", мы получаем это:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-23.png" alt="forth-interpret-23.png">
+</p>
+</div>
+
+<p>
+и STATE установлена в 0;
+</p>
+
+<p>
+И это вся работа, наше новое определение скомпилировано, и мы вернулись в
+непосредственный режим, простых чтений и выполнений слов, возможно, включая вызов,
+чтобы проверить наше новое слово DOUBLE.
+</p>
+
+<p>
+Единственная последняя заминка в том, что, хотя пока слово компилируется, оно было в
+полуготовом состоянии. Мы, разумеется, не хотели бы, чтобы DOUBLE был вызван кем-то в
+это время. Есть несколько способов сделать это это, но в Forth мы устанавливаем байт
+длины слова с флагом HIDDEN (F_<sub>HIDDEN</sub> в этом коде) во время его компиляции. Это предотвращает
+обнаружение компилируемого слова с помощью FIND и, таким образом, теоретически
+предотвращает любой шанс его вызова.
+</p>
+
+<p>
+Вышеприведенное объясняет, как компилировать <code>:</code> (COLON) и <code>;</code> (SEMICOLON), и через
+мгновение я их определю. Функция: (COLON) может быть сделана немного более общей, если
+написать ее в двух частях. Первая часть, называемая CREATE, создает только заголовок:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-24.png" alt="forth-interpret-24.png">
+</p>
+</div>
+
+<p>
+и вторая часть, фактическое определение <code>:</code> (COLON), вызывает CREATE и добавляет кодовое
+слово DOCOL:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-25.png" alt="forth-interpret-25.png">
+</p>
+</div>
+
+<p>
+CREATE является стандартным словом Forth, и преимущество этого разделения состоит в
+том, что мы можем его повторно использовать для создания других типов слов (а не только
+тех, которые содержат код, но например и таких, которые содержат переменные, константы
+и другие данные).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_number"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CREATE"</span>,6,,CREATE
+
+    # Get the name length and address.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # <span style="color: #af5f00;">%ecx</span> = length
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>            # <span style="color: #af5f00;">%ebx</span> = address of name
+
+    # Link pointer.
+    <span style="color: #af00ff;">movl</span>    var_HERE, <span style="color: #af5f00;">%edi</span>  # <span style="color: #af5f00;">%edi</span> is the address of the header
+    <span style="color: #af00ff;">movl</span>    var_LATEST, <span style="color: #af5f00;">%eax</span>    # Get link pointer
+    <span style="color: #af00ff;">stosl</span>                   # and store it in the header.
+
+    # Length byte and the word itself.
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%cl</span>,<span style="color: #af5f00;">%al</span>         # Get the length.
+    <span style="color: #af00ff;">stosb</span>                   # Store the length/flags byte.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%esi</span>      # <span style="color: #af5f00;">%esi</span> = word
+    <span style="color: #af00ff;">rep</span>     movsb           # Copy the word
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">addl</span>    $3, <span style="color: #af5f00;">%edi</span>        # Align to next 4 byte boundary.
+    <span style="color: #af00ff;">andl</span>    $~3, <span style="color: #af5f00;">%edi</span>
+
+    # Update LATEST and HERE.
+    <span style="color: #af00ff;">movl</span>    var_HERE, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, var_LATEST
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%edi</span>, var_HERE
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Поскольку я хочу определить <code>:</code> (COLON) в Forth, а не в ассемблере, нам нужно еще
+несколько слов Forth.
+</p>
+
+<p>
+Первый - это ~,~ (COMMA), который является стандартным словом Forth, которое добавляет
+32-битное целое к пользовательской памяти, на которое указывает HERE, а потом добавляет 4 к
+HERE. Таким образом, действие ~,~ (COMMA):
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-26.png" alt="forth-interpret-26.png">
+</p>
+</div>
+
+<p>
+DATA - любое 32-битное значение, которое лежит на вершине стека
+</p>
+
+<p>
+~,~ (COMMA) является довольно фундаментальной операцией при компиляции. Он используется
+для добавления <code>codeword</code>-ов в текущее слово, которое компилируется.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_comma"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">","</span>,1,,COMMA
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>        # Code pointer to store.
+    <span style="color: #af00ff;">call</span>    _COMMA
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_COMMA</span>:
+    <span style="color: #af00ff;">movl</span>    var_HERE, <span style="color: #af5f00;">%edi</span>  # HERE
+    <span style="color: #af00ff;">stosl</span>                   # Store it.
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%edi</span>, var_HERE  # Update HERE (incremented)
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+<p>
+Наши определения <code>:</code> (COLON) и <code>;</code> (SEMICOLON) необходимо будет переключать в режим
+компиляции и из него.
+</p>
+
+<p>
+Глобальная переменная STATE определяет текущий режим (<code>немедленный</code> или <code>режим
+компиляции</code>) и, изменяя эту переменную, мы можем переключаться между этими двумя
+режимами.
+</p>
+
+<p>
+По различным причинам, которые проявятся позже, Forth определяет два стандартных слова,
+называемых <code>[</code> и <code>]</code> (LBRAC и RBRAC), которые переключают между этими режимами:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="left">
+
+<col  class="left">
+
+<col  class="left">
+
+<col  class="left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="left">Слово</th>
+<th scope="col" class="left">Ассемблерное имя</th>
+<th scope="col" class="left">Действие</th>
+<th scope="col" class="left">Эффект</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="left">[</td>
+<td class="left">LBRAC</td>
+<td class="left">STATE = 0</td>
+<td class="left">Переключение в немедленный режим.</td>
+</tr>
+
+<tr>
+<td class="left">]</td>
+<td class="left">RBRAC</td>
+<td class="left">STATE = 1</td>
+<td class="left">Переключение в режим компиляции.</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+<code>[</code> (LBRAC) является НЕМЕДЛЕННЫМ (IMMEDIATE) словом. Причина такова: если бы это было
+не так и мы находились в режиме компиляции, и интерпретатор увидел <code>[</code> - тогда он
+скомпилировал бы ее, а не выполнил бы ее. И мы никогда не смогли бы вернуться к
+немедленному режиму! Поэтому мы помечаем слово как IMMEDIATE, так что даже в режиме
+компиляции <code>[</code> запускается в немедленном режиме, переключая нас обратно в немедленный
+режим.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_rbrac"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"["</span>,1,F_IMMED,LBRAC
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, var_STATE # Set STATE to 0.
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"]"</span>,1,,RBRAC
+    <span style="color: #af00ff;">movl</span>    $1, var_STATE   # Set STATE to 1.
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Теперь мы можем определить <code>:</code> (COLON), используя CREATE. Он просто вызывает CREATE,
+добавляет DOCOL (как <code>codeword</code>), устанавливает HIDDEN и переходит в режим компиляции.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_colon"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">":"</span>,1,,COLON
+    <span style="color: #af00ff;">.int</span> WORD               # Get the name of the new word
+    <span style="color: #af00ff;">.int</span> CREATE             # CREATE the dictionary entry / header
+    <span style="color: #af00ff;">.int</span> LIT, DOCOL, COMMA  # &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; DOCOL  (&#1082;&#1072;&#1082; codeword).
+    <span style="color: #af00ff;">.int</span> LATEST, FETCH, HIDDEN # &#1044;&#1077;&#1083;&#1072;&#1077;&#1090; &#1089;&#1083;&#1086;&#1074;&#1086; &#1089;&#1082;&#1088;&#1099;&#1090;&#1099;&#1084; (&#1089;&#1084;. &#1085;&#1080;&#1078;&#1077; &#1076;&#1083;&#1103; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1103;).
+    <span style="color: #af00ff;">.int</span> RBRAC              # &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074; &#1088;&#1077;&#1078;&#1080;&#1084; &#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1103;&#1094;&#1080;&#1080;
+    <span style="color: #af00ff;">.int</span> EXIT               # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080;
+</pre>
+</div>
+
+<p>
+<code>;</code> (SEMICOLON) также элегантно прост. Обратите внимание на флаг F<sub>IMMED</sub>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_semicolon"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">";"</span>,1,F_IMMED,SEMICOLON
+    <span style="color: #af00ff;">.int</span> LIT, EXIT, COMMA   # Append EXIT (so the word will return).
+    <span style="color: #af00ff;">.int</span> LATEST, FETCH, HIDDEN # &#1055;&#1077;&#1088;&#1077;&#1082;&#1083;&#1102;&#1095;&#1072;&#1077;&#1084; hidden flag  (&#1089;&#1084;. &#1085;&#1080;&#1078;&#1077; &#1076;&#1083;&#1103; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1103;).
+    <span style="color: #af00ff;">.int</span> LBRAC              # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1089;&#1103; &#1074; IMMEDIATE &#1088;&#1077;&#1078;&#1080;&#1084;.
+    <span style="color: #af00ff;">.int</span> EXIT               # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-2">
+<h2 id="unnumbered-17">Расширение компилятора</h2>
+<div class="outline-text-2" id="text-unnumbered-17">
+<p>
+Слова, помеченные IMMEDIATE (F<sub>IMMED</sub>), предназначены не только для использования
+компилятором Forth. Вы также можете определить свои собственные слова IMMEDIATE, и это
+важный аспект при расширении базового Forth, поскольку он позволяет фактически
+расширять сам компилятор. GCC позволяет вам это делать?
+</p>
+
+<p>
+Стандартные слова Forth, такие как <code>IF</code>, <code>WHILE</code>, ~."~ и.т.д., Все написаны как
+расширения базового компилятора, и все это IMMEDIATE слова.
+</p>
+
+<p>
+Слово IMMEDIATE переключает флаг F<sub>IMMED</sub> (IMMEDIATE) на последнее определенное слово
+или на текущее слово, если вы вызываете его в середине определения.
+</p>
+
+<p>
+Типичное использование:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: MYIMMEDWORD <span style="color: #af00ff;">IMMEDIATE</span>
+    ...definition...
+<span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+но некоторые программисты Forth пишут это вместо этого:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth"><span style="color: #af00ff;">: </span><span style="color: #0000ff;">MYIMMEDWORD
+</span>    ...definition...
+<span style="color: #af00ff;">; IMMEDIATE</span>
+</pre>
+</div>
+
+<p>
+Эти два способа использования эквивалентны в первом приближении.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_immediate"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"IMMEDIATE"</span>,9,F_IMMED,IMMEDIATE
+    <span style="color: #af00ff;">movl</span>    var_LATEST, <span style="color: #af5f00;">%edi</span>    # LATEST word.
+    <span style="color: #af00ff;">addl</span>    $4, <span style="color: #af5f00;">%edi</span>        # Point to name/flags byte.
+    <span style="color: #af00ff;">xorb</span>    $F_IMMED, (<span style="color: #af5f00;">%edi</span>)    # Toggle the IMMED bit.
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+<code>addr HIDDEN</code> переключает hidden флаг (F<sub>HIDDEN</sub>) слова, определенного в addr. Чтобы
+скрыть последнее заданное слово (используемое выше в <code>:</code> и <code>;</code> определениях), вы
+должны:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">LATEST @ HIDDEN
+</pre>
+</div>
+
+<p>
+<code>HIDE word</code> переключает флаг названного слова <code>word</code>.
+</p>
+
+<p>
+Установка этого флага останавливает поиск слова FIND, поэтому его можно использовать
+для создания "private" слов. Например, чтобы разбить большое слово на более мелкие
+части, вы можете сделать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: SUB1 ... subword ... <span style="color: #af00ff;">;</span>
+<span style="color: #af00ff;">: </span><span style="color: #0000ff;">SUB2 </span>... subword ... <span style="color: #af00ff;">;</span>
+<span style="color: #af00ff;">: </span><span style="color: #0000ff;">SUB3 </span>... subword ... <span style="color: #af00ff;">;</span>
+<span style="color: #af00ff;">: </span><span style="color: #0000ff;">MAIN </span>... defined in terms of SUB1, SUB2, SUB3 ... <span style="color: #af00ff;">;</span>
+HIDE SUB1
+HIDE SUB2
+HIDE SUB3
+</pre>
+</div>
+
+<p>
+После этого только MAIN "экспортируется" или видимо для остальной части программы.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_hidden"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"IMMEDIATE"</span>,9,F_IMMED,IMMEDIATE
+    <span style="color: #af00ff;">movl</span>    var_LATEST, <span style="color: #af5f00;">%edi</span>    # LATEST word.
+    <span style="color: #af00ff;">addl</span>    $4, <span style="color: #af5f00;">%edi</span>        # Point to name/flags byte.
+    <span style="color: #af00ff;">xorb</span>    $F_IMMED, (<span style="color: #af5f00;">%edi</span>)    # Toggle the IMMED bit.
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+' (TICK) - это стандартное слово Forth, которое возвращает указатель <code>codeword</code>
+следующего слова.
+</p>
+
+<p>
+Общее использование:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth"><span style="color: #af00ff;">' </span><span style="color: #0000ff;">FOO </span>,
+</pre>
+</div>
+
+<p>
+это способ добавить <code>codeword</code> FOO к текущему слову, которое мы определяем (это
+работает только в компилируемом коде).
+</p>
+
+<p>
+Вы, как правило, используете ' в IMMEDIATE словах. Например, альтернативный (и довольно
+бесполезный) способ определения литерала 2 может быть:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: LIT2 <span style="color: #af00ff;">IMMEDIATE</span>
+    <span style="color: #af00ff;">' </span>LIT ,   <span style="color: #af0000;">\ &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1090; LIT &#1082; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1103;&#1077;&#1084;&#1086;&#1084;&#1091; &#1074; &#1085;&#1072;&#1089;&#1090;&#1086;&#1103;&#1097;&#1080;&#1081; &#1084;&#1086;&#1084;&#1077;&#1085;&#1090; &#1089;&#1083;&#1086;&#1074;&#1091;
+</span>    <span style="color: #008787;">2 </span>,       <span style="color: #af0000;">\ &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1090; &#1095;&#1080;&#1089;&#1083;&#1086; 2 &#1082; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1103;&#1077;&#1084;&#1086;&#1084;&#1091; &#1074; &#1085;&#1072;&#1089;&#1090;&#1086;&#1103;&#1097;&#1080;&#1081; &#1084;&#1086;&#1084;&#1077;&#1085;&#1090; &#1089;&#1083;&#1086;&#1074;&#1091;
+</span><span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+Таким образом, вы можете сделать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: DOUBLE LIT2 * <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+(Если вы не понимаете, как работает LIT2, вы должны просмотреть материал о компиляции
+слов и немедленном режиме).
+</p>
+
+<p>
+Это ассемблерное определение ' использует чит, который я скопировал из buzzard92. В
+результате он работает только в скомпилированном коде. Можно написать версию ' на
+основе WORD, FIND, &gt;CFA, которая также работает в непосредственном режиме.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tick"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"'"</span>,1,,TICK
+    <span style="color: #af00ff;">lodsl</span>                   # &#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1077;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072; &#1080; &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1090;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086;
+    <span style="color: #af00ff;">pushl</span>    <span style="color: #af5f00;">%eax</span>           # Push &#1077;&#1075;&#1086; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-18" class="outline-2">
+<h2 id="unnumbered-18">Ветвление</h2>
+<div class="outline-text-2" id="text-unnumbered-18">
+<p>
+Оказывается, все, что вам нужно для определения циклов, IF-выражений и.т.д. - это два
+примитива.
+</p>
+
+<p>
+BRANCH - безусловная ветвь (эквивалентная команде безусловного перехода
+ассемблера). 0BRANCH - условная ветвь (переход будет осуществлен, если значение на
+вершине стека равно нулю).
+</p>
+
+<p>
+Диаграмма ниже показывает, как BRANCH работает в некотором мнимом скомпилированном
+слове. Когда BRANCH выполняется, <code>%esi</code> начинается с указания на поле смещения
+(сравните с LIT выше):
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-27.png" alt="forth-interpret-27.png">
+</p>
+</div>
+
+<p>
+Смещение добавляется в <code>%esi</code>, чтобы создать новый <code>%esi</code>, и результатом является то,
+что при выполнении NEXT выполнение продолжается по целевому адресу ветки. Отрицательные
+смещения тоже работают, как ожидается.
+</p>
+
+<p>
+0BRANCH - это то же самое, за исключением того, что ветвление происходит по условию.
+</p>
+
+<p>
+Теперь стандартные Forth слова, такие как IF, THEN, ELSE, WHILE, REPEAT и т. Д., Могут
+быть полностью реализованы в Forth. Это НЕМЕДЛЕННЫЕ слова, которые добавляют различные
+комбинации BRANCH или 0BRANCH в слово, которое в настоящее время компилируется.
+</p>
+
+<p>
+Например, код, написанный следующим образом:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">condition-code IF true-part <span style="color: #ff0000; font-weight: bold;">THEN </span>rest-code
+</pre>
+</div>
+
+<p>
+компилируется в:
+</p>
+
+
+<div class="figure">
+<p><img src="../../img/forth-interpret-28.png" alt="forth-interpret-28.png">
+</p>
+</div>
+
+<p>
+Вот определение:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_branch"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"BRANCH"</span>,6,,BRANCH
+    <span style="color: #af00ff;">add</span>     (<span style="color: #af5f00;">%esi</span>),<span style="color: #af5f00;">%esi</span>     # add the offset to the instruction pointer
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0BRANCH"</span>,7,,ZBRANCH
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, eax       # top of stack is zero?
+    <span style="color: #af00ff;">jz</span>      code_BRANCH     # if so, jump back to the branch function above
+    <span style="color: #af00ff;">lodsl</span>                   # otherwise we need to skip the offset
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-19" class="outline-2">
+<h2 id="unnumbered-19">Строковые литералы</h2>
+<div class="outline-text-2" id="text-unnumbered-19">
+<p>
+LITSTRING - это примитив, используемый для реализации операторов ~."~ И ~S"~ (которые
+написаны в формате Forth). См. ниже определение этих операторов.
+</p>
+
+<p>
+TELL просто печатает строку. Это более эффективно определять в ассемблере, потому что
+мы можем сделать это одним из системных вызовов Linux.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_lit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"LITSTRING"</span>,9,,LITSTRING
+    <span style="color: #af00ff;">lodsl</span>                   # get the length of the string
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%esi</span>            # push the address of the start of the string
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # push it on the stack
+    <span style="color: #af00ff;">addl</span>    <span style="color: #af5f00;">%eax</span>,<span style="color: #af5f00;">%esi</span>       # skip past the string
+    <span style="color: #af00ff;">addl</span>    $3,<span style="color: #af5f00;">%esi</span>         # but round up to next 4 byte boundary
+    <span style="color: #af00ff;">andl</span>    $~3,<span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"TELL"</span>,4,,TELL
+    <span style="color: #af00ff;">mov</span>     $1,<span style="color: #af5f00;">%ebx</span>         # 1st param: stdout
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edx</span>            # 3rd param: length of string
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # 2nd param: address of string
+    <span style="color: #af00ff;">mov</span>     $__NR_write,<span style="color: #af5f00;">%eax</span>    # write syscall
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-2">
+<h2 id="unnumbered-20">QUIT</h2>
+<div class="outline-text-2" id="text-unnumbered-20">
+<p>
+QUIT - первая функция Forth, вызываемая почти сразу после того, как система Forth
+"загружается". Как объяснялось ранее, QUIT никуда не "уходит". Она выполняет некоторую
+инициализацию (в частности, он очищает возвращаемый стек), и вызывает INTERPRET в цикле
+для интерпретации команд. Причина, по которой он называется QUIT, заключается в том,
+что вы можете вызвать его из собственных слов Forth, чтобы "выйти" из вашей программы и
+начать снова работать в режиме приема команд от пользователя.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_quit"># QUIT must not return (ie. must not call EXIT).
+<span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"QUIT"</span>,4,,QUIT
+    <span style="color: #af00ff;">.int</span> RZ,RSPSTORE    # R0 RSP!, clear the return stack
+    <span style="color: #af00ff;">.int</span> INTERPRET      # interpret the next word
+    <span style="color: #af00ff;">.int</span> BRANCH,-8      # and loop (indefinitely)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-2">
+<h2 id="unnumbered-21">INTERPRET</h2>
+<div class="outline-text-2" id="text-unnumbered-21">
+<p>
+INTERPRET является REPL (см.: <a href="http://en.wikipedia.org/wiki/REPL">http://en.wikipedia.org/wiki/REPL</a>) внутри Forth.
+</p>
+
+<p>
+Этот интерпретатор довольно прост, но помните, что в Forth вы всегда можете
+переопределить его более мощным!
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_interpret"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"INTERPRET"</span>,9,,INTERPRET
+    <span style="color: #af00ff;">call</span>    _WORD           # Returns <span style="color: #af5f00;">%ecx</span> = length, <span style="color: #af5f00;">%edi</span> = pointer to word.
+
+    # Is it in the dictionary?
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, interpret_is_lit  # Not a literal number (not yet anyway ...)
+    <span style="color: #af00ff;">call</span>    _FIND           # Returns <span style="color: #af5f00;">%eax</span> = pointer to header or 0 if not found.
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>      # Found?
+    <span style="color: #af00ff;">jz</span>  1f
+
+    # In the dictionary.  Is it an IMMEDIATE codeword?
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%edi</span>      # <span style="color: #af5f00;">%edi</span> = dictionary entry
+    <span style="color: #af00ff;">movb</span>    4(<span style="color: #af5f00;">%edi</span>), <span style="color: #af5f00;">%al</span>    # Get name+flags.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ax</span>             # Just save it for now.
+    <span style="color: #af00ff;">call</span>    _TCFA           # Convert dictionary entry (in <span style="color: #af5f00;">%edi</span>) to codeword pointer.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ax</span>
+    <span style="color: #af00ff;">andb</span>    $F_IMMED, <span style="color: #af5f00;">%al</span>   # Is IMMED flag set?
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%edi</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">jnz</span>     4f              # If IMMED, jump straight to executing.
+
+    <span style="color: #af00ff;">jmp</span> 2f
+
+<span style="color: #0000ff;">1</span>:
+    # Not in the dictionary (not a word) so assume it's a literal number.
+    <span style="color: #af00ff;">incl</span>    interpret_is_lit
+    <span style="color: #af00ff;">call</span>    _NUMBER         # Returns the parsed number in <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ecx</span> &gt; 0 if error
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%ecx</span>, <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">jnz</span>     6f
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">mov</span>     $LIT, <span style="color: #af5f00;">%eax</span>      # The word is LIT
+
+<span style="color: #0000ff;">2</span>:
+    # Are we compiling or executing?
+    <span style="color: #af00ff;">movl</span>    var_STATE, <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">jz</span>  4f                  # Jump if executing.
+
+    # Compiling - just append the word to the current dictionary definition.
+    <span style="color: #af00ff;">call</span>    _COMMA
+    <span style="color: #af00ff;">mov</span>     interpret_is_lit, <span style="color: #af5f00;">%ecx</span> # Was it a literal?
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%ecx</span>, <span style="color: #af5f00;">%ecx</span>
+    <span style="color: #af00ff;">jz</span>  3f
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%eax</span>      # Yes, so LIT is followed by a number.
+    <span style="color: #af00ff;">call</span>    _COMMA
+<span style="color: #0000ff;">3</span>:
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">4</span>:
+    # Executing - run it!
+    <span style="color: #af00ff;">mov</span>     interpret_is_lit, <span style="color: #af5f00;">%ecx</span> # Literal?
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%ecx</span>, <span style="color: #af5f00;">%ecx</span>      # Literal?
+    <span style="color: #af00ff;">jnz</span>     5f
+
+    # Not a literal, execute it now.  This never returns, but the codeword will
+    # eventually call NEXT which will reenter the loop in QUIT.
+    <span style="color: #af00ff;">jmp</span>     *(<span style="color: #af5f00;">%eax</span>)
+
+<span style="color: #0000ff;">5</span>:
+    # Executing a literal, which means push it on the stack.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%ebx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">6</span>:
+    # Parse error (not a known word or a number in the current BASE).
+    # Print an error message followed by up to 40 characters of context.
+    <span style="color: #af00ff;">mov</span>     $2, <span style="color: #af5f00;">%ebx</span>        # 1st param: stderr
+    <span style="color: #af00ff;">mov</span>     $errmsg, <span style="color: #af5f00;">%ecx</span>   # 2nd param: error message
+    <span style="color: #af00ff;">mov</span>     $errmsgend-errmsg, <span style="color: #af5f00;">%edx</span> # 3rd param: length of string
+    <span style="color: #af00ff;">mov</span>     $__NR_write, <span style="color: #af5f00;">%eax</span>    # write syscall
+    <span style="color: #af00ff;">int</span>     $0x80
+
+    <span style="color: #af00ff;">mov</span>     (currkey), <span style="color: #af5f00;">%ecx</span> # the error occurred just before currkey position
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%ecx</span>, <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">sub</span>     $buffer, <span style="color: #af5f00;">%edx</span>   # <span style="color: #af5f00;">%edx</span> = currkey - buffer (length in buffer before currkey)
+    <span style="color: #af00ff;">cmp</span>     $40, <span style="color: #af5f00;">%edx</span>       # if &gt; 40, then print only 40 characters
+    <span style="color: #af00ff;">jle</span>     7f
+    <span style="color: #af00ff;">mov</span>     $40, <span style="color: #af5f00;">%edx</span>
+<span style="color: #0000ff;">7</span>:
+    <span style="color: #af00ff;">sub</span>     <span style="color: #af5f00;">%edx</span>, <span style="color: #af5f00;">%ecx</span>      # <span style="color: #af5f00;">%ecx</span> = start of area to print, <span style="color: #af5f00;">%edx</span> = length
+    <span style="color: #af00ff;">mov</span>     $__NR_write, <span style="color: #af5f00;">%eax</span>    # write syscall
+    <span style="color: #af00ff;">int</span>     $0x80
+
+    <span style="color: #af00ff;">mov</span>     $errmsgnl, <span style="color: #af5f00;">%ecx</span> # newline
+    <span style="color: #af00ff;">mov</span>     $1, <span style="color: #af5f00;">%edx</span>
+    <span style="color: #af00ff;">mov</span>     $__NR_write, <span style="color: #af5f00;">%eax</span>    # write syscall
+    <span style="color: #af00ff;">int</span>     $0x80
+
+    <span style="color: #af00ff;">NEXT</span>
+
+    <span style="color: #af00ff;">.section</span> .rodata
+<span style="color: #0000ff;">errmsg</span>:  .ascii <span style="color: #87005f;">"PARSE ERROR: "</span>
+<span style="color: #0000ff;">errmsgend</span>:
+<span style="color: #0000ff;">errmsgnl</span>:    .ascii <span style="color: #87005f;">"\n"</span>
+
+    <span style="color: #af00ff;">.data</span>                   # NB: easier to fit in the .data section
+    <span style="color: #af00ff;">.align</span> 4
+<span style="color: #0000ff;">interpret_is_lit</span>:
+    <span style="color: #af00ff;">.int</span> 0                  # Flag used to record if reading a literal
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-22" class="outline-2">
+<h2 id="unnumbered-22">ODDS и ENDS</h2>
+<div class="outline-text-2" id="text-unnumbered-22">
+<p>
+CHAR помещает код ASCII первого символа следующего слова в стек. Например, <code>CHAR A</code>
+кладет 65 в стек.
+</p>
+
+<p>
+EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
+в коде Forth для получения более подробной информации.
+</p>
+
+<p>
+SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См.
+список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3
+параметров syscall, а также номер системного вызова.
+</p>
+
+<p>
+В этом Forth SYSCALL0 должен быть последним словом во встроенном (ассемблерном)
+словаре, потому что мы инициализируем переменную LATEST, чтобы указать на нее. Это
+означает, что если вы хотите расширить ассемблерную часть, вы должны поместить новые
+слова перед SYSCALL0 или изменить способ инициализации LATEST.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_sys"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CHAR"</span>,4,,CHAR
+    <span style="color: #af00ff;">call</span>    _WORD           # Returns <span style="color: #af5f00;">%ecx</span> = length, <span style="color: #af5f00;">%edi</span> = pointer to word.
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%edi</span>), <span style="color: #af5f00;">%al</span>     # Get the first character of the word.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # Push it onto the stack.
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EXECUTE"</span>,7,,EXECUTE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>            # Get xt into <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">jmp</span>     *(<span style="color: #af5f00;">%eax</span>)         # and jump to it.
+    # After xt runs its NEXT will continue executing the current word.
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SYSCALL3"</span>,8,,SYSCALL3
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>            # System call number (see &lt;asm/unistd.h&gt;)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>            # First parameter.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # Second parameter
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%edx</span>            # Third parameter
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # Result (negative for -errno)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SYSCALL2"</span>,8,,SYSCALL2
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>            # System call number (see &lt;asm/unistd.h&gt;)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>            # First parameter.
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ecx</span>            # Second parameter
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # Result (negative for -errno)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SYSCALL1"</span>,8,,SYSCALL1
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>            # System call number (see &lt;asm/unistd.h&gt;)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%ebx</span>            # First parameter.
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # Result (negative for -errno)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SYSCALL0"</span>,8,,SYSCALL0
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%eax</span>            # System call number (see &lt;asm/unistd.h&gt;)
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%eax</span>            # Result (negative for -errno)
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-23" class="outline-2">
+<h2 id="unnumbered-23">Сегмент данных</h2>
+<div class="outline-text-2" id="text-unnumbered-23">
+<p>
+Здесь мы настраиваем сегмент данных Linux, используемый для пользовательских
+определений и по-разному известный как "data segment", "user memory" или "user
+definitions area". Это область памяти, которая растет вверх и хранит как вновь
+определенные слова Forth, так и глобальные переменные различного рода.
+</p>
+
+<p>
+Это полностью аналогично "кучe" в языке Си, за исключением того, что не существует
+обобщенного «malloc» и «free» (но, как и все в Forth, написать такие функции просто
+было бы простым вопросом программирования). Вместо этого в обычном использовании
+сегмент данных просто растет вверх, когда к нему добавляются/определяются новые слова
+Forth.
+</p>
+
+<p>
+Cуществуют различные "возможности" тулчейна GNU, которые делают настройку сегмента
+данных более сложной, чем это действительно необходимо. Одним из них является
+GNU-компоновщик, который вставляет случайный "build ID" сегмент . Другим является
+рандомизация адресного пространства (ASLR), что означает, что мы не можем определить,
+где ядро поместит сегмент данных (или, например, стека).
+</p>
+
+<p>
+Поэтому запись этой ассемблерной процедуры <code>setup_data_segment</code> немного сложнее, чем
+это действительно должно быть. Мы спрашиваем ядро Linux, где начинается сегмент данных,
+используя для этого системный вызов brk(2), затем просим зарезервировать некоторое
+начальное пространство (также используя brk(2)).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="setup_data_segment">    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af00ff;">.set</span> INITIAL_DATA_SEGMENT_SIZE,65536
+<span style="color: #0000ff;">setup_data_segment</span>:
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%ebx</span>, <span style="color: #af5f00;">%ebx</span>      # Call brk(0)
+    <span style="color: #af00ff;">movl</span>    $__NR_brk, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, var_HERE  # Initialise HERE to point at beginning of data segment.
+    <span style="color: #af00ff;">addl</span>    $INITIAL_DATA_SEGMENT_SIZE, <span style="color: #af5f00;">%eax</span>  # Reserve nn bytes of memory for initial data segment.
+    <span style="color: #af00ff;">movl</span>    <span style="color: #af5f00;">%eax</span>, <span style="color: #af5f00;">%ebx</span>      # Call brk(HERE+INITIAL_DATA_SEGMENT_SIZE)
+    <span style="color: #af00ff;">movl</span>    $__NR_brk, <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">int</span>     $0x80
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="sys_ret_stack">    <span style="color: #af00ff;">.bss</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">Forth return stack. */</span>
+    <span style="color: #af00ff;">.set</span> RETURN_STACK_SIZE,8192
+    <span style="color: #af00ff;">.align</span> 4096
+<span style="color: #0000ff;">return_stack</span>:
+    <span style="color: #af00ff;">.space</span> RETURN_STACK_SIZE
+<span style="color: #0000ff;">return_stack_top</span>:           # Initial top of return stack.
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="sys_input_buffer">    <span style="color: #af0000;">/* </span><span style="color: #af0000;">This is used as a temporary input buffer when reading from files or the terminal. */</span>
+    <span style="color: #af00ff;">.set</span> BUFFER_SIZE,4096
+    <span style="color: #af00ff;">.align</span> 4096
+<span style="color: #0000ff;">buffer</span>:
+    <span style="color: #af00ff;">.space</span> BUFFER_SIZE
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

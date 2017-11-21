@@ -1,0 +1,1745 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Построение виртуальной машины</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" src="http://orgmode.org/mathjax/MathJax.js"></script>
+<script type="text/javascript">
+<!--/*--><![CDATA[/*><!--*/
+    MathJax.Hub.Config({
+        // Only one of the two following lines, depending on user settings
+        // First allows browser-native MathML display, second forces HTML/CSS
+        //  config: ["MMLorHTML.js"], jax: ["input/TeX"],
+            jax: ["input/TeX", "output/HTML-CSS"],
+        extensions: ["tex2jax.js","TeX/AMSmath.js","TeX/AMSsymbols.js",
+                     "TeX/noUndefined.js"],
+        tex2jax: {
+            inlineMath: [ ["\\(","\\)"] ],
+            displayMath: [ ['$$','$$'], ["\\[","\\]"], ["\\begin{displaymath}","\\end{displaymath}"] ],
+            skipTags: ["script","noscript","style","textarea","pre","code"],
+            ignoreClass: "tex2jax_ignore",
+            processEscapes: false,
+            processEnvironments: true,
+            preview: "TeX"
+        },
+        showProcessingMessages: true,
+        displayAlign: "center",
+        displayIndent: "2em",
+
+        "HTML-CSS": {
+             scale: 100,
+             availableFonts: ["STIX","TeX"],
+             preferredFont: "TeX",
+             webFont: "TeX",
+             imageFont: "TeX",
+             showMathMenu: true,
+        },
+        MMLorHTML: {
+             prefer: {
+                 MSIE:    "MML",
+                 Firefox: "MML",
+                 Opera:   "HTML",
+                 other:   "HTML"
+             }
+        }
+    });
+/*]]>*///-->
+</script>
+</head>
+<body>
+<div id="content">
+<h1 class="title">Построение виртуальной машины</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Бенчмарк</a></li>
+<li><a href="#unnumbered-3">Простейшие виртуальные машины</a>
+<ul>
+<li><a href="#unnumbered-4">Архитектура VM</a></li>
+<li><a href="#unnumbered-5">Описание набора инструкций</a></li>
+<li><a href="#unnumbered-6">Переключаемый интерпретатор</a>
+<ul>
+<li><a href="#unnumbered-7">Чтение кода операции</a></li>
+<li><a href="#unnumbered-8">Распознавание операции</a></li>
+<li><a href="#unnumbered-9">Исполнение операций</a></li>
+<li><a href="#unnumbered-10">Предварительное декодирование (pre-decoding)</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-11">Шитый (threaded) код</a>
+<ul>
+<li><a href="#unnumbered-12">Компилятор — заклятый друг</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-13">Процедурный (subroutined)</a></li>
+<li><a href="#unnumbered-14">Процедурный с хвостовой рекурсией (tailrecursive)</a></li>
+<li><a href="#unnumbered-15">Рудиментарный двоичный транслятор (binary translation)</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-16">Заключение</a></li>
+<li><a href="#unnumbered-17">Литература</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Интро</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+В этой статье построена простая стековая виртуальная машина на основе интерпретатора
+байтода, реализованного на языке Си. Для нее написана программа, и приведен небольшой
+бенчмарк.
+</p>
+
+<p>
+По мотивам источников:
+</p>
+<ul class="org-ul">
+<li><a href="https://habrahabr.ru/company/intel/blog/261665/">https://habrahabr.ru/company/intel/blog/261665/</a>
+</li>
+<li><a href="https://habrahabr.ru/company/intel/blog/202926/">https://habrahabr.ru/company/intel/blog/202926/</a>
+</li>
+<li><a href="https://github.com/grigory-rechistov/interpreters-comparison/">https://github.com/grigory-rechistov/interpreters-comparison/</a>
+</li>
+<li><a href="https://habrahabr.ru/company/intel/blog/254419/">https://habrahabr.ru/company/intel/blog/254419/</a>
+</li>
+<li><a href="https://habrahabr.ru/company/intel/blog/254027/">https://habrahabr.ru/company/intel/blog/254027/</a>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Бенчмарк</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Для сравнения производительности нужна была программа, написанная для этой ВМ. Она
+должна была быть достаточно длинной, с нетривиальным потоком управления, не
+использовать чрезмерно ввод-вывод, т.е. быть вычислительно-сложной. И при этом быть
+достаточно простой, чтобы такой рассеянный человек, как я, смог бы отладить её в
+машинных кодах даже без нормально работающего симулятора. В результате получилось то,
+что я назвал Primes.
+</p>
+
+<p>
+Primes выводит на экран все простые числа, содержащиеся на отрезке от 2 до 100000. Её
+код для ВМ содержится в массиве Primes, одинаково объявленном во всех примерах.
+Primes
+</p>
+
+<p>
+Для сравнения производительности нужна была программа, написанная для этой ВМ. Она
+должна была быть достаточно длинной, с нетривиальным потоком управления, не
+использовать чрезмерно ввод-вывод, т.е. быть вычислительно-сложной. И при этом быть
+достаточно простой, чтобы такой рассеянный человек, как я, смог бы отладить её в
+машинных кодах даже без нормально работающего симулятора. В результате получилось то,
+что я назвал Primes.
+</p>
+
+<p>
+Primes выводит на экран все простые числа, содержащиеся на отрезке от 2 до 100000. Её
+код для ВМ содержится в массиве Primes, одинаково объявленном во всех примерах.
+Primes
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">const</span> <span style="color: #008700;">Instr_t</span> <span style="color: #af5f00;">Primes</span>[PROGRAM_SIZE] = {
+    Instr_Push, 100000, <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax (maximal number to test)</span>
+    Instr_Push, 2,      <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c (minimal number to test)</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">back: </span><span style="color: #af0000;">*/</span>
+    Instr_Over,         <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, nmax</span>
+    Instr_Over,         <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, nmax, c</span>
+    Instr_Sub,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, c-nmax</span>
+    Instr_JE, +23, <span style="color: #af0000;">/* </span><span style="color: #af0000;">end </span><span style="color: #af0000;">*/</span> <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c</span>
+    Instr_Push, 2,       <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">back2: </span><span style="color: #af0000;">*/</span>
+    Instr_Over,         <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c</span>
+    Instr_Over,         <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c, divisor</span>
+    Instr_Swap,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, divisor, c</span>
+    Instr_Sub,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c-divisor</span>
+    Instr_JE, +9, <span style="color: #af0000;">/* </span><span style="color: #af0000;">print_prime </span><span style="color: #af0000;">*/</span> <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor</span>
+    Instr_Over,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c</span>
+    Instr_Over,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c, divisor</span>
+    Instr_Swap,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, divisor, c</span>
+    Instr_Mod,           <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c mod divisor</span>
+    Instr_JE, +5, <span style="color: #af0000;">/* </span><span style="color: #af0000;">not_prime </span><span style="color: #af0000;">*/</span> <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor</span>
+    Instr_Inc,           <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor+1</span>
+    Instr_Jump, -15, <span style="color: #af0000;">/* </span><span style="color: #af0000;">back2 </span><span style="color: #af0000;">*/</span>  <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">print_prime: </span><span style="color: #af0000;">*/</span>
+    Instr_Over,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor, c</span>
+    Instr_Print,         <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c, divisor</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">not_prime </span><span style="color: #af0000;">*/</span>
+    Instr_Drop,          <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c</span>
+    Instr_Inc,           <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c+1</span>
+    Instr_Jump, -28, <span style="color: #af0000;">/* </span><span style="color: #af0000;">back </span><span style="color: #af0000;">*/</span>   <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">end: </span><span style="color: #af0000;">*/</span>
+    Instr_Halt           <span style="color: #af0000;">// </span><span style="color: #af0000;">nmax, c (== nmax)</span>
+};
+</pre>
+</div>
+
+<p>
+В моих запусках она исполнялась от половины до трёх минут. Её алгоритм приблизительно
+(с поправкой на стековую архитектуру) соответствует программе, содержащейся в файле
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C"><span style="color: #008700;">int</span> <span style="color: #0000ff;">main</span>() {
+    <span style="color: #af00ff;">for</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span> = 2; i &lt; 100000; i++) {
+        <span style="color: #008700;">bool</span> <span style="color: #af5f00;">is_prime</span> = <span style="color: #008787;">true</span>;
+        <span style="color: #af00ff;">for</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">divisor</span> = 2; divisor &lt; i; divisor++) {
+            <span style="color: #af00ff;">if</span> (i % divisor == 0) {
+                is_prime = <span style="color: #008787;">false</span>;
+                <span style="color: #af00ff;">break</span>;
+            }
+        }
+        <span style="color: #af00ff;">if</span> (is_prime)
+            printf(<span style="color: #87005f;">"[%d]\n"</span>, i);
+    }
+    <span style="color: #af00ff;">return</span> 0;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Простейшие виртуальные машины</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+</div><div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Архитектура VM</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Ширина машинного слова - 32 бита. Все операнды и инструкции - это знаковые или
+беззнаковые 32-битные целые числа.
+</p>
+
+<p>
+Три состояния процессора: Running - активное исполнение инструкций; Halted - останов
+после исполнение Halt, соответствует нормальному завершению программы; Break - останов
+после любой ненормальной, неподдерживаемой или вызвавшей нестандартное состояние
+инструкции, обозначает ошибку в программе. Другими словами, ВМ начинает работать в
+состоянии Running. Заканчивает она работу в состоянии Halted, если в процессе работы не
+произошло никаких непредвиденных событий и исполнение достигло инструкции Halt. Если
+произошло деление на ноль, выход за границы кода, переполнение или опустошение стека,
+или что-то ещё, что мне не захотелось поддерживать при реализации, она останавливается
+в режиме Break.
+</p>
+
+<p>
+Все регистры - неявные, а всего их два. PC - указатель текущей команды. SP - указатель
+вершины стека. В начале работы PC=0, SP=-1.
+</p>
+
+<p>
+Стек параметров глубиной 32 беззнаковых целых слова. SP указывает на текущий элемент,
+или же равен -1, если стек пуст.
+</p>
+
+<p>
+Программная память ёмкостью в 512 слов, доступная только на чтение. При выходе за
+границы (0; 511) процессор останавливается в состоянии Break.
+</p>
+
+<p>
+Инструкции могут иметь ноль или один явный операнд (imm). В первом случае они имеют
+длину в одно слово, во втором - два.
+</p>
+
+<p>
+Описание всех машинных инструкций.
+</p>
+
+<p>
+Исполнение любой инструкции, не определённой в архитектуре явно, эквивалентно
+исполнению Break.
+</p>
+
+<p>
+Для нужд отладки процессор содержит 64-битный регистр steps, увеличивающийся на единицу
+после каждой исполненной инструкции ВМ. Программы позволяют задать предел числа шагов,
+после которого симуляция прерывается. По умолчанию он равен LLONG<sub>MAX</sub>.
+</p>
+
+<p>
+После завершения симуляции программы выводят состояние процессора и стека на экран.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-3">
+<h3 id="unnumbered-5">Описание набора инструкций</h3>
+<div class="outline-text-3" id="text-unnumbered-5">
+<pre class="example">
+Break = 0x0000 - перевести процессор в состояние Break. Так как неинициализированная программная память заполнена нулями, любой случайный переход «мимо кода» приводит к остановке.
+Nop = 0x0001 - пустая команда, не изменяющая стек и SP.
+Halt = 0x0002 - перевести процессор в состояние Halted.
+Push = 0x0003 imm - поместить константу imm на вершину стека.
+Print = 0x0004 - снять с вершины стека значение и распечатать его в десятичном виде.
+JNE = 0x0005 imm - снять с вершины стека значение, и, если оно не равно нулю, прибавить imm к PC. imm при этом трактуется как число со знаком.
+Swap = 0x0006 - переставить местами вершину стека и следующий за ний элемент.
+Dup = 0x0007 - поместить на вершину стека копию самого верхнего элемента.
+JE = 0x0008 imm - снять с вершины стека значение, и, если оно равно нулю, прибавить imm к PC. imm при этом трактуется как число со знаком.
+Inc = 0x0009 - прибавить к вершине стека единицу.
+Add = 0x000a - сложить два верхних элемента стека. Снять их со стека и поместить результат как вершину.
+Sub = 0x000b - вычесть из верхнего элемента стека следующий за ним. Снять их со стека и поместить результат на вершину.
+Mul = 0x000c - перемножить два верхних элемента стека. Снять их со стека и поместить результат как вершину.
+Rand = 0x000d - поместить на вершину стека случайное число.
+Dec = 0x000e - вычесть из вершины стека единицу.
+Drop = 0x000f - снять с вершины стека число и «выбросить» его.
+Over = 0x0010 - поместить на вершину стека копию элемента, являющегося вторым в стеке после вершины.
+Mod = 0x0011 - поделить верхний элемент стека на следующий за ним. Снять их со стека и поместить остаток от деления на вершину.
+Jump = 0x0012 imm - прибавить imm к PC. imm при этом трактуется как число со знаком.
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-3">
+<h3 id="unnumbered-6">Переключаемый интерпретатор</h3>
+<div class="outline-text-3" id="text-unnumbered-6">
+<p>
+Базовый цикл:
+</p>
+<ul class="org-ul">
+<li>считать код операции
+</li>
+<li>распознать операцию
+</li>
+<li>исполнить операцию
+</li>
+<li>повторить
+</li>
+</ul>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-4">
+<h4 id="unnumbered-7">Чтение кода операции</h4>
+<div class="outline-text-4" id="text-unnumbered-7">
+<p>
+Функция <code>fetch</code> считывает код операции, находящийся по адресу PC (program counter). Так
+как интерпретатор моделирует системную VM, необходимо быть готовым к выходу PC за
+границы памяти: за проверку отвечает <code>fetch_checked</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">static</span> <span style="color: #af00ff;">inline</span> <span style="color: #008700;">Instr_t</span> <span style="color: #0000ff;">fetch</span>(<span style="color: #af00ff;">const</span> <span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>) {
+    assert(pcpu);
+    assert(pcpu-&gt;pc &lt; PROGRAM_SIZE);
+    <span style="color: #af00ff;">return</span> pcpu-&gt;pmem[pcpu-&gt;pc];
+};
+
+<span style="color: #af00ff;">static</span> <span style="color: #af00ff;">inline</span> <span style="color: #008700;">Instr_t</span> <span style="color: #0000ff;">fetch_checked</span>(<span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>) {
+    <span style="color: #af00ff;">if</span> (!(pcpu-&gt;pc &lt; PROGRAM_SIZE)) {
+        printf(<span style="color: #87005f;">"PC out of bounds\n"</span>);
+        pcpu-&gt;state = Cpu_Break;
+        <span style="color: #af00ff;">return</span> Instr_Break;
+    }
+    <span style="color: #af00ff;">return</span> fetch(pcpu);
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-4">
+<h4 id="unnumbered-8">Распознавание операции</h4>
+<div class="outline-text-4" id="text-unnumbered-8">
+<p>
+[TODO:gmm] Здесь можно было бы применить ESIL для независимости от архитектуры
+</p>
+
+<p>
+Функция decode() должна завершить начатое в fetch() — полностью определить
+характеристики команды. В нашем случае это её длина (1 или 2) и значение литерального
+операнда для тех инструкций, у которых он есть. Кроме того, по принятым соглашениям все
+неизвестные опкоды считаются эквивалентными Break. Всё это выясняется в результате
+работы одного оператора switch.
+</p>
+
+<p>
+Особенность обработки «длинных» инструкций с операндом: они требуют дополнительного
+чтения памяти команд по адресу PC+1, который также необходимо проконтролировать на
+выход за границы.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">static</span> <span style="color: #af00ff;">inline</span> <span style="color: #008700;">decode_t</span> <span style="color: #0000ff;">decode</span>(<span style="color: #008700;">Instr_t</span> <span style="color: #af5f00;">raw_instr</span>, <span style="color: #af00ff;">const</span> <span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>) {
+    assert(pcpu);
+    <span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">result</span> = {0};
+    result.opcode = raw_instr;
+    <span style="color: #af00ff;">switch</span> (raw_instr) {
+    <span style="color: #af00ff;">case</span> Instr_Nop:
+    <span style="color: #af00ff;">case</span> Instr_Halt:
+    <span style="color: #af00ff;">case</span> Instr_Print:
+    <span style="color: #af00ff;">case</span> Instr_Swap:
+    <span style="color: #af00ff;">case</span> Instr_Dup:
+    <span style="color: #af00ff;">case</span> Instr_Inc:
+    <span style="color: #af00ff;">case</span> Instr_Add:
+    <span style="color: #af00ff;">case</span> Instr_Sub:
+    <span style="color: #af00ff;">case</span> Instr_Mul:
+    <span style="color: #af00ff;">case</span> Instr_Rand:
+    <span style="color: #af00ff;">case</span> Instr_Dec:
+    <span style="color: #af00ff;">case</span> Instr_Drop:
+    <span style="color: #af00ff;">case</span> Instr_Over:
+    <span style="color: #af00ff;">case</span> Instr_Mod:
+        result.length = 1;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Push:
+    <span style="color: #af00ff;">case</span> Instr_JNE:
+    <span style="color: #af00ff;">case</span> Instr_JE:
+    <span style="color: #af00ff;">case</span> Instr_Jump:
+        result.length = 2;
+        <span style="color: #af00ff;">if</span> (!(pcpu-&gt;pc+1 &lt; PROGRAM_SIZE)) {
+            printf(<span style="color: #87005f;">"PC+1 out of bounds\n"</span>);
+            pcpu-&gt;state = Cpu_Break;
+            <span style="color: #af00ff;">break</span>;
+        }
+        result.immediate = (<span style="color: #008700;">int32_t</span>)pcpu-&gt;pmem[pcpu-&gt;pc+1];
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Break:
+    <span style="color: #af00ff;">default</span>: <span style="color: #af0000;">/* </span><span style="color: #af0000;">Undefined instructions equal to Break </span><span style="color: #af0000;">*/</span>
+        result.length = 1;
+        result.opcode = Instr_Break;
+        <span style="color: #af00ff;">break</span>;
+    }
+    <span style="color: #af00ff;">return</span> result;
+}
+</pre>
+</div>
+
+<p>
+Для более реалистичных архитектур процедура декодирования в программной ВМ несколько
+сложнее: придётся искать по дереву префиксов, то есть проходить через серию вложенных
+switch. Но я думаю, что общую идею передать удалось.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-4">
+<h4 id="unnumbered-9">Исполнение операций</h4>
+<div class="outline-text-4" id="text-unnumbered-9">
+<p>
+Наконец, исполнение — по коду операции, полученного из decode(), переходим на сервисную
+процедуру (service routine) — блок кода, ответственный за семантику конкретной гостевой
+инструкции.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">tmp1</span> = 0, <span style="color: #af5f00;">tmp2</span> = 0;
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">Execute - a big switch </span><span style="color: #af0000;">*/</span>
+<span style="color: #af00ff;">switch</span>(decoded.opcode) {
+<span style="color: #af00ff;">case</span> Instr_Nop:
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">Do nothing </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Halt:
+    cpu.state = Cpu_Halted;
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Push:
+    push(&amp;cpu, decoded.immediate);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Print:
+    tmp1 = pop(&amp;cpu); BAIL_ON_ERROR();
+    printf(<span style="color: #87005f;">"[%d]\n"</span>, tmp1);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Swap:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Dup:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp1);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Over:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp2);
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Inc:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1+1);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Add:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 + tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Sub:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 - tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Mod:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp2 == 0) {
+        cpu.state = Cpu_Break;
+        <span style="color: #af00ff;">break</span>;
+    }
+    push(&amp;cpu, tmp1 % tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Mul:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 * tmp2);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Rand:
+    tmp1 = rand();
+    push(&amp;cpu, tmp1);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Dec:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1-1);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Drop:
+    (<span style="color: #008700;">void</span>)pop(&amp;cpu);
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_JE:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp1 == 0)
+        cpu.pc += decoded.immediate;
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_JNE:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp1 != 0)
+        cpu.pc += decoded.immediate;
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Jump:
+    cpu.pc += decoded.immediate;
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">case</span> Instr_Break:
+    cpu.state = Cpu_Break;
+    <span style="color: #af00ff;">break</span>;
+<span style="color: #af00ff;">default</span>:
+    assert(<span style="color: #87005f;">"Unreachable"</span> &amp;&amp; <span style="color: #008787;">false</span>);
+    <span style="color: #af00ff;">break</span>;
+}
+</pre>
+</div>
+
+<p>
+Здесь и далее BAIL<sub>ON</sub><sub>ERROR</sub> служит для перехвата возможных исключений, возникших в ходе
+выполнения отдельных команд:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #5f5f87;">#define</span> <span style="color: #0000ff;">BAIL_ON_ERROR</span>() <span style="color: #af00ff;">if</span> (cpu.state != Cpu_Running) <span style="color: #af00ff;">break</span>;
+</pre>
+</div>
+
+<p>
+К сожалению, это Си, и использовать нормальный try-catch не получится (однако погодите,
+ближе к концу статьи будет кое-что похожее на него).
+</p>
+
+<p>
+Наблюдательный читатель может удивиться — зачем используются два switch: в decode() и в
+main(), — ведь они вызываются один за другим и управляются одной и той же величиной, то
+есть могут быть объединены. Необходимость такого разделения станет понятна в следующей
+секции, где мы избавимся от необходимости постоянно вызывать decode().
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-4">
+<h4 id="unnumbered-10">Предварительное декодирование (pre-decoding)</h4>
+<div class="outline-text-4" id="text-unnumbered-10">
+<p>
+Первое, от чего следует избавиться — это декодирование на каждом шаге симуляции (файл
+predecoded.c). В самом деле, содержимое программы не меняется в процессе работы, или
+меняется очень нечасто: при загрузке новых приложений или динамических библиотек,
+изредка самим приложением (JIT-программа, дописывающая свои куски). В нашей ВМ вообще
+нет возможности изменить программу в процессе выполнения, и этим надо воспользоваться.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">static</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">predecode_program</span>(<span style="color: #af00ff;">const</span> <span style="color: #008700;">Instr_t</span> *<span style="color: #af5f00;">prog</span>, <span style="color: #008700;">decode_t</span> *<span style="color: #af5f00;">dec</span>, <span style="color: #008700;">int</span> <span style="color: #af5f00;">len</span>) {
+    assert(prog);
+    assert(dec);
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">The program is short, so we can decode it as a whole.</span>
+<span style="color: #af0000;">       Otherwise, some sort of lazy decoding will be required </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">for</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i &lt; len; i++) {
+        dec[i] = decode_at_address(prog, i);
+    }
+}
+</pre>
+</div>
+
+
+<p>
+Поскольку в памяти программ этой ВМ всего 512 слов, нам доступна возможность
+декодировать её всю сразу и сохранить результат в массиве, индексированном значением
+PC. В реальных ВМ с объёмами гостевой памяти 2³²–2⁶⁴ байт этот трюк не прошёл
+бы. Пришлось бы использовать структуру а-ля кэш с вытеснением, который в ограниченном
+объёме хозяйской памяти хранил бы рабочее множество соответствий «PC → decode<sub>t</sub>». При
+этом приходилось бы вносить новые записи в кэш декодированных инструкций при
+симуляции. Однако и в этом случае был бы выигрыш в скорости. При повторном исполнении
+недавно выполненных инструкций их не пришлось бы заново декодировать.
+</p>
+
+<p>
+Ну а так — вызовем predecode<sub>program</sub>() до исполнения:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded_cache</span>[PROGRAM_SIZE];
+predecode_program(cpu.pmem, decoded_cache, PROGRAM_SIZE);
+
+<span style="color: #af00ff;">while</span> (cpu.state == Cpu_Running &amp;&amp; cpu.steps &lt; steplimit) {
+    <span style="color: #af00ff;">if</span> (!(cpu.pc &lt; PROGRAM_SIZE)) {
+        printf(<span style="color: #87005f;">"PC out of bounds\n"</span>);
+        cpu.state = Cpu_Break;
+        <span style="color: #af00ff;">break</span>;
+    }
+
+    <span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded</span> = decoded_cache[cpu.pc];
+    <span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">tmp1</span> = 0, <span style="color: #af5f00;">tmp2</span> = 0;
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">Execute - a big switch </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">switch</span>(decoded.opcode) {
+    <span style="color: #af00ff;">case</span> Instr_Nop:
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">Do nothing </span><span style="color: #af0000;">*/</span>
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Halt:
+        cpu.state = Cpu_Halted;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Push:
+        push(&amp;cpu, decoded.immediate);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Print:
+        tmp1 = pop(&amp;cpu); BAIL_ON_ERROR();
+        printf(<span style="color: #87005f;">"[%d]\n"</span>, tmp1);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Swap:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1);
+        push(&amp;cpu, tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Dup:
+        tmp1 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1);
+        push(&amp;cpu, tmp1);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Over:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp2);
+        push(&amp;cpu, tmp1);
+        push(&amp;cpu, tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Inc:
+        tmp1 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1+1);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Add:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1 + tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Sub:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1 - tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Mod:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        <span style="color: #af00ff;">if</span> (tmp2 == 0) {
+            cpu.state = Cpu_Break;
+            <span style="color: #af00ff;">break</span>;
+        }
+        push(&amp;cpu, tmp1 % tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Mul:
+        tmp1 = pop(&amp;cpu);
+        tmp2 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1 * tmp2);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Rand:
+        tmp1 = rand();
+        push(&amp;cpu, tmp1);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Dec:
+        tmp1 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        push(&amp;cpu, tmp1-1);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Drop:
+        (<span style="color: #008700;">void</span>)pop(&amp;cpu);
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_JE:
+        tmp1 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        <span style="color: #af00ff;">if</span> (tmp1 == 0)
+            cpu.pc += decoded.immediate;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_JNE:
+        tmp1 = pop(&amp;cpu);
+        BAIL_ON_ERROR();
+        <span style="color: #af00ff;">if</span> (tmp1 != 0)
+            cpu.pc += decoded.immediate;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Jump:
+        cpu.pc += decoded.immediate;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">case</span> Instr_Break:
+        cpu.state = Cpu_Break;
+        <span style="color: #af00ff;">break</span>;
+    <span style="color: #af00ff;">default</span>:
+        assert(<span style="color: #87005f;">"Unreachable"</span> &amp;&amp; <span style="color: #008787;">false</span>);
+        <span style="color: #af00ff;">break</span>;
+    }
+    cpu.pc += decoded.length; <span style="color: #af0000;">/* </span><span style="color: #af0000;">Advance PC </span><span style="color: #af0000;">*/</span>
+    cpu.steps++;
+}
+</pre>
+</div>
+
+<p>
+Два замечания.
+</p>
+<ul class="org-ul">
+<li>Предварительное декодирование приводит к тому, что на этапе исполнения команд не
+выполняется фаза Fetch. При этом возникает риск некорректной симуляции архитектурных
+эффектов, с ней связанных, таких как срабатывание аппаратных точек останова. Эта
+проблема решаема аккуратным слежением за введённым кэшем.
+</li>
+<li>В отличие от системных ВМ, в языковых ВМ, которые обычно имеют очень простую
+структуру команд, фазы fetch и decode тривиальны. Поэтому для них подобное
+кэширование неприменимо.
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-11" class="outline-3">
+<h3 id="unnumbered-11">Шитый (threaded) код</h3>
+<div class="outline-text-3" id="text-unnumbered-11">
+<p>
+Необходимо помочь предсказателю переходов. При этом, конечно, неплохо бы знать, как он
+работает, в деталях. За неимением (или нежеланием обращаться к) деталям используем
+общие соображения. Вспомним, что предсказатель использует адрес самой инструкции для
+ассоциации с ней истории переходов. Вот бы удалось «размазать» единственный jmp по
+нескольким местам; с каждым из них будет связана своя локальная история, которая, можно
+надеяться, будет менее хаотичной для совершения адекватных предсказаний.
+</p>
+
+<p>
+Суть решения: после исполнения текущей сервисной процедуры не возвращаться в общую
+точку (switch), а переходить сразу на сервисную процедуру следующей инструкции.
+</p>
+
+<p>
+Плохая новость №1 — для перехода по метке придётся использовать оператор goto. Да, да,
+знаю, goto это плохо, мкей, я и сам писал об этом. Ради скорости — во все тяжкие. В
+коде ВМ это будет спрятано в макроcе DISPATCH:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #5f5f87;">#define</span> <span style="color: #0000ff;">DISPATCH</span>() <span style="color: #af00ff;">do</span> {\
+        <span style="color: #af00ff;">goto</span> *service_routines[decoded.opcode];   \
+    } <span style="color: #af00ff;">while</span>(0);
+</pre>
+</div>
+
+<p>
+Плохая новость №2: придётся использовать нестандартное (отсутствующее в стандарте Си)
+расширение языка GCC — оператор взятия адреса метки &amp;&amp;:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">const</span> <span style="color: #008700;">void</span>* <span style="color: #af5f00;">service_routines</span>[] = {
+    &amp;&amp;sr_Break, &amp;&amp;sr_Nop, &amp;&amp;sr_Halt, &amp;&amp;sr_Push, &amp;&amp;sr_Print,
+    &amp;&amp;sr_Jne, &amp;&amp;sr_Swap, &amp;&amp;sr_Dup, &amp;&amp;sr_Je, &amp;&amp;sr_Inc,
+    &amp;&amp;sr_Add, &amp;&amp;sr_Sub, &amp;&amp;sr_Mul, &amp;&amp;sr_Rand, &amp;&amp;sr_Dec,
+    &amp;&amp;sr_Drop, &amp;&amp;sr_Over, &amp;&amp;sr_Mod, &amp;&amp;sr_Jump, <span style="color: #008787;">NULL</span>
+};
+</pre>
+</div>
+
+<p>
+Данный нестандартный оператор поддерживается компиляторами GCC и ICC для языка Си (но,
+насколько мне известно, не для C++).
+</p>
+
+<p>
+В результате главный «цикл» (который на самом деле не делает ни одной итерации)
+интерпретатора выглядит вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded</span> = {0};
+DISPATCH();
+<span style="color: #af00ff;">do</span> {
+<span style="color: #008787;">sr_Nop</span>:
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">Do nothing </span><span style="color: #af0000;">*/</span>
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Halt</span>:
+    cpu.state = Cpu_Halted;
+    ADVANCE_PC();
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">No need to dispatch after Halt </span><span style="color: #af0000;">*/</span>
+<span style="color: #008787;">sr_Push</span>:
+    push(&amp;cpu, decoded.immediate);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Print</span>:
+    tmp1 = pop(&amp;cpu); BAIL_ON_ERROR();
+    printf(<span style="color: #87005f;">"[%d]\n"</span>, tmp1);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Swap</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp2);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Dup</span>:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp1);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Over</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp2);
+    push(&amp;cpu, tmp1);
+    push(&amp;cpu, tmp2);
+    ADVANCE_PC();
+
+    DISPATCH();
+<span style="color: #008787;">sr_Inc</span>:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1+1);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Add</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 + tmp2);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Sub</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 - tmp2);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Mod</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp2 == 0) {
+        cpu.state = Cpu_Break;
+        <span style="color: #af00ff;">break</span>;
+    }
+    push(&amp;cpu, tmp1 % tmp2);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Mul</span>:
+    tmp1 = pop(&amp;cpu);
+    tmp2 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1 * tmp2);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Rand</span>:
+    tmp1 = rand();
+    push(&amp;cpu, tmp1);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Dec</span>:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    push(&amp;cpu, tmp1-1);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Drop</span>:
+    (<span style="color: #008700;">void</span>)pop(&amp;cpu);
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Je</span>:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp1 == 0)
+        cpu.pc += decoded.immediate;
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Jne</span>:
+    tmp1 = pop(&amp;cpu);
+    BAIL_ON_ERROR();
+    <span style="color: #af00ff;">if</span> (tmp1 != 0)
+        cpu.pc += decoded.immediate;
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Jump</span>:
+    cpu.pc += decoded.immediate;
+    ADVANCE_PC();
+    DISPATCH();
+<span style="color: #008787;">sr_Break</span>:
+    cpu.state = Cpu_Break;
+    ADVANCE_PC();
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">No need to dispatch after Break </span><span style="color: #af0000;">*/</span>
+} <span style="color: #af00ff;">while</span>(cpu.state == Cpu_Running);
+</pre>
+</div>
+
+<p>
+Симуляция начинается с первого DISPATCH и затем происходит как чехарда прыжков между
+сервисными процедурами. Число хозяйских инструкций косвенных переходов в коде выросло,
+и каждый их них теперь имеет ассоциированную историю для пары гостевых
+инструкций. Вероятность неудачного предсказания при этом падает (в {4} утверждается,
+что с 100% до 50%).
+</p>
+
+<p>
+Данная техника имеет название шитый код, по-английски — threaded code; учтите, что
+современный термин «thread — поток» появился значительно позже и не имеет отношения к
+рассматриваемой теме.
+Данная оптимизация и в наше время используется во вполне популярных
+проектах. Процитирую пост Utter<sub>step</sub> habrahabr.ru/post/261575 от 1 июля сего года:
+</p>
+
+<p>
+Vamsi Parasa из команды оптимизации серверных скриптовых языков Intel предложил
+патч &lt;&#x2026;&gt;, переводящий блок switch, отвечающий за обработку Python-байткода, на
+использование computed goto, как это уже сделано в Python 3. Как объяснял Eli
+Bendersky, в таком огромном switch-блоке, как в блоке разбора байткода в CPython
+(состоящем из более чем 2000(!) строк), это даёт ускорение порядка 15-20%. Это
+происходит по двум причинам: computed goto, в отличие от switch-case, не производит
+граничных проверок, необходимых для оператора switch по стандарту C99, и, что,
+возможно, более важно, CPU может лучше прогнозировать ветвления в таких ситуациях
+&lt;&#x2026;&gt;
+</p>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-4">
+<h4 id="unnumbered-12">Компилятор — заклятый друг</h4>
+<div class="outline-text-4" id="text-unnumbered-12">
+<p>
+Однако при измерении скорости интерпретатора, получаемого из threaded.c с флагами
+компиляции по умолчанию (программа threaded-notune), я получил неожиданный
+результат. Скорость работы программы оказалась на 10%–20% ниже switched. Анализ в VTune
+показал, что причина тормозов всё та же — 100% Branch Mispredict на одном из косвенных
+переходов внутри DISPATCH
+</p>
+
+<p>
+Однако что-то здесь не так — для всех остальных DISPATCH вообще нет никакой
+статистики. Более того, VTune не показывает для них ассемблерный код. Проверка
+дизассемблированием с помощью objdump подтвердила подозрения — во всём теле main() был
+только один косвенный переход, связанный c переходом на сервисные процедуры:
+</p>
+
+<p>
+$ objdump -d threaded-notune| grep 'jmpq\s*\*%rdx'
+  4006c8:       ff e2                   jmpq   *%rdx
+  400ae7:       ff e2                   jmpq   *%rdx
+</p>
+
+
+<p>
+(Второй jmpq по адресу 400ae7 — из функции register<sub>tm</sub><sub>clones</sub>, — не относится к
+делу). Что же получается — компилятор GCC в результате процесса оптимизации услужливо
+схлопнул все DISPATCH в один, фактически заново построив переключаемый интерпретатор!
+</p>
+
+<p>
+Тут началась моя борьба с компилятором. Я потратил достаточно много времени, чтобы
+заставить GCC генерировать код с независимыми косвенными переходами для каждой
+сервисной процедуры.
+</p>
+
+<ul class="org-ul">
+<li><p>
+Проверил разные уровни оптимизации. Правильный код получался только при -Og, уровни
+оптимизаций с -O1 по -O3 схлопывали DISPATCH.
+Пытался заменить goto на ассемблерную вставку и тем самым спрятать от компилятора
+сам факт перехода по метке:
+</p>
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #5f5f87;">#define</span> <span style="color: #0000ff;">DISPATCH</span>() \
+<span style="color: #af00ff;">__asm__</span> __volatile__(<span style="color: #87005f;">"mov    (%0, %1, 8), %%rcx\n"</span> \
+                     <span style="color: #87005f;">"jmpq   *%%rcx\n"</span> \
+                     :: <span style="color: #87005f;">"r"</span>(&amp;service_routines), <span style="color: #87005f;">"r"</span>((<span style="color: #008700;">uint64_t</span>)decoded.opcode):
+                     <span style="color: #87005f;">"%rcx"</span>);
+</pre>
+</div>
+</li>
+<li><p>
+В этом случае компилятор всё равно объединял похожие блоки кода. При этом все метки
+(sr<sub>Add</sub>, sr<sub>Nop</sub> и т.д.) стали указывать в одно и то же место, и все значения в
+массиве service<sub>routines</sub> стали одинаковыми. Программа перестала корректно работать.
+Попробовал вывести заполнение массива service<sub>routines</sub> из-под контроля компилятора,
+чтобы он не смог передвигать метки: сделал содержимое неопределённым и лишь потом
+заполнял массив. Игры с неопределённым поведением не могли закончиться хорошо. На
+этот раз GCC законно посчитал весь код после первого DISPATCH недостижимым и
+полностью удалил его!
+</p>
+
+<p>
+Если ничто другое не помогает, прочтите, наконец, инструкцию.
+Аксиома Кана
+</p>
+</li>
+</ul>
+
+
+
+<p>
+Итак, грубая сила не помогла. Пришлось всё-таки читать документацию и пытаться понять,
+какая оптимизация мешает моему замыслу. На третьем экране списка опций оптимизаций я
+увидел следующее:
+</p>
+
+<p>
+Please note the warning under -fgcse about invoking -O2 on programs that use
+computed gotos.
+&lt;&#x2026;&gt;
+Note: When compiling a program using computed gotos, a GCC extension, you may get
+better run-time performance if you disable the global common subexpression
+elimination pass by adding -fno-gcse to the command line.
+</p>
+
+
+
+<p>
+Попалась! Это оптимизация -fgcse превращала код threaded в ассемблерное
+спагетти. Похоже, что с подобной проблемой сталкивались и другие, см. например,
+комментарий к посту «Fast interpreter using gcc's computed goto»:
+</p>
+
+<p>
+I have the same problem as Philip. With G++ the compiler seems to go though
+incredible contortions to preserve a single indirect jump. Even going so far as to
+combine jumps from separate jump tables — with a series of direct jumps. This seems
+utterly bewildering behaviour as it specially breaks the performance gain having a
+jmp \*%eax for each interpreter leg.
+</p>
+
+
+
+<p>
+После выяснения вопроса с -fno-gcse генерируемый код стал больше похож на то, что
+требовалось:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c">$ objdump -d threaded| grep <span style="color: #87005f;">'jmpq\s*\*%rdx'</span>
+4006c8:       ff e2                   jmpq   *%rdx
+40070d:       ff e2                   jmpq   *%rdx
+40084e:       ff e2                   jmpq   *%rdx
+4008bd:       ff e2                   jmpq   *%rdx
+40093d:       ff e2                   jmpq   *%rdx
+4009b1:       ff e2                   jmpq   *%rdx
+400a3b:       ff e2                   jmpq   *%rdx
+400aa2:       ff e2                   jmpq   *%rdx
+400b15:       ff e2                   jmpq   *%rdx
+400b89:       ff e2                   jmpq   *%rdx
+400c0b:       ff e2                   jmpq   *%rdx
+400c80:       ff e2                   jmpq   *%rdx
+400cd8:       ff e2                   jmpq   *%rdx
+400d3f:       ff e2                   jmpq   *%rdx
+400d90:       ff e2                   jmpq   *%rdx
+400dea:       ff e2                   jmpq   *%rdx
+400e44:       ff e2                   jmpq   *%rdx
+400e8c:       ff e2                   jmpq   *%rdx
+400f97:       ff e2                   jmpq   *%rdx
+</pre>
+</div>
+
+<p>
+Ещё раз о том, за счёт чего должно возникнуть ускорение. С помощью реорганизации кода
+мы развязали один узел в исполнении всех симулируемых инструкций, заменив его на более
+мелкие узлы локальных переходов между парами инструкций. Наверное, эту идею можно
+развить и дальше — помочь предсказателю переходов правильно запоминать историю
+исполнения троек, четвёрок и т.д. за счёт соответствующего «разбухания» кода. Например,
+иметь по две копии всех сервисных процедур, и внутри DISPATCH выбирать только одну из
+них, в зависимости от кода предыдущей инструкции и её адреса, или какого-то другого
+критерия. Однако оставлю это в качестве упражнения заинтересовавшимся исследователям.
+</p>
+
+<p>
+После выключения неудачной оптимизации скорость threaded стала получше. Насколько —
+описано в конце статьи. А сейчас перейдём к следующему типу интерпретатора.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-3">
+<h3 id="unnumbered-13">Процедурный (subroutined)</h3>
+<div class="outline-text-3" id="text-unnumbered-13">
+<p>
+Но что это я всё про goto и прочие гадости. Пора вспомнить про нормальный и
+общепринятый способ организации программ — процедурный механизм (файл
+subroutined.c). Оформим код каждой сервисной процедуры в виде функции типа
+service<sub>routine</sub><sub>t</sub>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">typedef</span> <span style="color: #008700;">void</span> (*<span style="color: #008700;">service_routine_t</span>)(<span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>, <span style="color: #008700;">decode_t</span>* <span style="color: #af5f00;">pdecode</span>);
+</pre>
+</div>
+
+<p>
+Пример сервисной процедуры:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">void</span> <span style="color: #0000ff;">sr_Dec</span>(<span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>, <span style="color: #008700;">decode_t</span> *<span style="color: #af5f00;">pdecoded</span>) {
+    <span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">tmp1</span> = pop(pcpu);
+    BAIL_ON_ERROR();
+    push(pcpu, tmp1-1);
+}
+</pre>
+</div>
+
+<p>
+Инициализация массива service<sub>routines</sub> теперь использует стандартный оператор взятия
+адреса функции:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">service_routine_t</span> <span style="color: #af5f00;">service_routines</span>[] = {
+    &amp;sr_Break, &amp;sr_Nop, &amp;sr_Halt, &amp;sr_Push, &amp;sr_Print,
+    &amp;sr_Jne, &amp;sr_Swap, &amp;sr_Dup, &amp;sr_Je, &amp;sr_Inc,
+    &amp;sr_Add, &amp;sr_Sub, &amp;sr_Mul, &amp;sr_Rand, &amp;sr_Dec,
+    &amp;sr_Drop, &amp;sr_Over, &amp;sr_Mod, &amp;sr_Jump
+};
+</pre>
+</div>
+
+<p>
+Сам главный цикл интерпретации теперь выглядит гораздо более компактно. На каждой его
+итерации исполняется функция по адресу, соответствующему опкоду операции.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">while</span> (cpu.state == Cpu_Running &amp;&amp; cpu.steps &lt; steplimit) {
+    <span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded</span> = fetch_decode(&amp;cpu);
+    <span style="color: #af00ff;">if</span> (cpu.state != Cpu_Running) <span style="color: #af00ff;">break</span>;
+    service_routines[decoded.opcode](&amp;cpu, &amp;decoded); <span style="color: #af0000;">/* </span><span style="color: #af0000;">Call the SR </span><span style="color: #af0000;">*/</span>
+    cpu.pc += decoded.length; <span style="color: #af0000;">/* </span><span style="color: #af0000;">Advance PC </span><span style="color: #af0000;">*/</span>
+    cpu.steps++;
+}
+</pre>
+</div>
+
+<p>
+Однако анализ в VTune показывает всю ту же проблему — плохое предсказание для переходов
+для единственного косвенного перехода при вызове функции
+</p>
+
+<p>
+Пока что непонятно, будет ли subroutined работать быстрее switched. Конечно, можно
+применить предварительное декодирование — оставлю это в качестве упражнения. Мы же
+попытаемся на основе subroutined сделать сшитый интерпретатор. При этом «тот, кто нам
+мешает — тот нам поможет!». Я говорю о компиляторе.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14">Процедурный с хвостовой рекурсией (tailrecursive)</h3>
+<div class="outline-text-3" id="text-unnumbered-14">
+<p>
+Прошу читателей обратить внимание на код файла tailrecursive.c. По сравнению с
+subroutined.c в нём произошли следующие изменения.
+Каждая сервисная процедура теперь заканчивается вызовом fetch<sub>decode</sub>() для следующей за
+ней инструкции и макросом DISPATCH():
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">void</span> <span style="color: #0000ff;">sr_Dec</span>(<span style="color: #008700;">cpu_t</span> *<span style="color: #af5f00;">pcpu</span>, <span style="color: #008700;">decode_t</span> *<span style="color: #af5f00;">pdecoded</span>) {
+    <span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">tmp1</span> = pop(pcpu);
+    BAIL_ON_ERROR();
+    push(pcpu, tmp1-1);
+    ADVANCE_PC();
+    *pdecoded = fetch_decode(pcpu);
+    DISPATCH();
+}
+</pre>
+</div>
+
+<p>
+Код макроса DISPATCH:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #5f5f87;">#define</span> <span style="color: #0000ff;">DISPATCH</span>() service_routines[pdecoded-&gt;opcode](pcpu, pdecoded);
+</pre>
+</div>
+
+<p>
+То есть каждая процедура в конце вызывают процедуру, эмулирующую следующую инструкцию,
+и затем завершается. Код main(), в котором вроде бы должен происходить цикл
+интерпретации, выглядит не менее странно:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded</span> = fetch_decode(&amp;cpu);
+service_routines[decoded.opcode](&amp;cpu, &amp;decoded);
+</pre>
+</div>
+
+<p>
+И всё. То есть просто вызывается сервисная процедура для первой гостевой
+инструкции. Она же, как мы видели, в конце своей работы вызывает процедуру для
+следующей инструкции, та — для третьей…
+</p>
+
+<p>
+Но постойте, как это может работать?! Ведь, углубляясь в симуляцию, мы получим растущий
+стек вызовов, который вмиг переполнится, и программа упадёт. Однако этого не
+происходит.
+</p>
+
+<p>
+Причина в том, что переход в вызываемую процедуру происходит перед самым выходом из
+вызывающей — так называемый хвостовой вызов. При этом никакого контекста для вызывающей
+процедуры хранить не требуется — она фактически завершилась. Поэтому и на стеке
+сохранять ничего не обязательно. Достаточно умный компилятор заменит финальный call на
+jmp, при этом стек вызовов не увеличится.
+</p>
+
+<p>
+В GCC за такую оптимизацию отвечает флаг -foptimize-sibling-calls (включенный, начиная
+с -O1). Если её выключить (программа tailrecursive-noopt), то симуляция работает, но
+быстро падает. У меня она не добежала до 90000 инструкции:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c">$ ./tailrecursive-noopt 90000 &gt; /dev/null
+Segmentation fault (<span style="color: #008700;">core</span> <span style="color: #af5f00;">dumped</span>)
+</pre>
+</div>
+
+<p>
+Анализ tailrecursive в VTune показал следующее. Во-первых, верхние места в списке
+«горячего» кода заняли fetch(<sub>decode</sub>) и decode:
+</p>
+
+<p>
+Видимо, дальнейшим шагом должна быть оптимизация (избавление от) декодирования.
+</p>
+
+<p>
+Во-вторых, компилятор действительно оптимизировал хвостовые вызовы, заменив call на
+jmpq. Например, вот код функции sr<sub>Swap</sub>(), вызывающей множество Branch Mispredict:
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15">Рудиментарный двоичный транслятор (binary translation)</h3>
+<div class="outline-text-3" id="text-unnumbered-15">
+<p>
+Для тех отважных читателей, что добрались до этого места, я подготовил ещё одну
+реализацию ВМ (файл translated.c). Формально эта программа не относится к классу
+интерпретаторов: в ней присутствует генерация машинного кода, соответствующего входной
+гостевой программе (трансляция). Однако, как мы увидим, translated недалеко ушла от
+интерпретаторов. Так, в ней тоже присутствует фаза предварительного декодирования, а
+исполнение, как и в шитом коде, прыгает от одной сервисной процедуры к другой.
+</p>
+
+<p>
+Есть и важное отличие. Весь приведённый ранее код — это Си, и он может быть
+скомпилирован и запущен на любой POSIX-платформе.
+</p>
+
+<p>
+translated же явно завязан на хозяйскую архитектуру Intel 64 (x86<sub>64</sub>, AMD64, x64&#x2026;), и
+не заработает ни на какой другой. Потребуется существенная модификация функции
+translate<sub>program</sub>() и ещё нескольких мест.
+</p>
+
+<p>
+Этот транслятор «рудиментарный», так как его автор поленился сделать капсулы
+по-человечески. Он служит лишь иллюстративным целям. Я описал два способа построения
+двоичных трансляторов в этой статье: <a href="http://habrahabr.ru/company/intel/blog/254027/">http://habrahabr.ru/company/intel/blog/254027/</a>
+</p>
+
+<p>
+Разберём самые важные места в коде программы.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #5f5f87;">#if</span><span style="color: #5f5f87;">n</span><span style="color: #5f5f87;">def</span> __x86_64__
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">The program generates machine code, only specific platforms are supported </span><span style="color: #af0000;">*/</span>
+<span style="color: #5f5f87;">#error</span> <span style="color: #87005f;">This program is designed to compile only on Intel64/AMD64 platform.</span>
+<span style="color: #5f5f87;">#error</span> <span style="color: #87005f;">Sorry.</span>
+<span style="color: #5f5f87;">#endif</span>
+</pre>
+</div>
+
+<p>
+Прибиваем гвоздями pcpu к R15
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af0000;">/* </span><span style="color: #af0000;">Global pointer to be accessible from generated code.</span>
+<span style="color: #af0000;">   Uses GNU extension to statically occupy host R15 register. </span><span style="color: #af0000;">*/</span>
+<span style="color: #af00ff;">register</span> <span style="color: #008700;">cpu_t</span> * <span style="color: #0000ff;">pcpu</span> <span style="color: #af00ff;">asm</span>(<span style="color: #87005f;">"r15"</span>);
+</pre>
+</div>
+
+<p>
+Для ускорения доступа к самой часто используемой структуре cpu<sub>t</sub>, хранящей
+архитектурное состояние моделируемого процессора, статически выделяется хозяйский
+регистр R15. Для этого используется нестандартное GNU-расширение, и поэтому программа
+компилируется с флагом -std=gnu11 (смотри Makefile), тогда как все остальные — с флагом
+-std=c11.
+</p>
+
+<p>
+Область для генерированного кода
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">char</span> <span style="color: #af5f00;">gen_code</span>[JIT_CODE_SIZE] <span style="color: #af00ff;">__attribute__</span> ((section (<span style="color: #87005f;">".text#"</span>)))
+    <span style="color: #af00ff;">__attribute__</span> ((aligned(4096)));
+</pre>
+</div>
+
+<p>
+Массив gen<sub>code</sub> получил два атрибута. Во-первых, адрес его начала должен быть выровнен
+на размер страницы. Во-вторых, я размещаю его в секции кода (.text), а не в секции
+данных (.data), где вообще-то место нормальным переменным. Поскольку мы будем в него
+писать код, лучше, чтобы он был поближе к остальному коду программы. Однако писать в
+gen<sub>code</sub> пока что нельзя — секция .text по умолчанию защищена от записи.
+</p>
+
+<p>
+Вход и выход из сгенерированного кода
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">static</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">enter_generated_code</span>(<span style="color: #008700;">void</span>* <span style="color: #af5f00;">addr</span>) {
+    <span style="color: #af00ff;">__asm__</span> __volatile__ ( <span style="color: #87005f;">"jmp *%0"</span>::<span style="color: #87005f;">"r"</span>(addr):);
+}
+
+<span style="color: #af00ff;">static</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">exit_generated_code</span>() {
+    longjmp(return_buf, 1);
+}
+</pre>
+</div>
+
+<p>
+Вход в транслированный код происходит простым прыжком на начало требуемого блока внутри
+массива gen<sub>code</sub>. Выход сделан через longjmp() — определённый в стандарте Си механизм
+нелокального goto (как будто обычного goto было мало). Эта штука позволяет выпрыгнуть
+из функции в любую другую из цепочки вызвавших её, в место, помеченное с помощью
+setjmp() c тем же значением аргумента (return<sub>buf</sub>).
+</p>
+
+<p>
+Данный механизм довольно полезен при написании двоичного транслятора, так как упрощает
+логику обработки исключительных ситуаций. exit<sub>generated</sub><sub>code</sub>() вызывается всюду в
+коде, где необходимо сигнализировать о переходе в состояния Halted/Break, а также при
+нелинейном изменении PC. Признаться, я, похоже, хватил лишнего — разбросал longjmp по
+всему коду.
+</p>
+
+<p>
+Код сервисных процедур
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #008700;">void</span> <span style="color: #0000ff;">sr_Drop</span>() {
+    (<span style="color: #008700;">void</span>)pop(pcpu);
+    ADVANCE_PC(1);
+}
+
+<span style="color: #008700;">void</span> <span style="color: #0000ff;">sr_Je</span>(<span style="color: #008700;">int32_t</span> <span style="color: #af5f00;">immediate</span>) {
+    <span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">tmp1</span> = pop(pcpu);
+    <span style="color: #af00ff;">if</span> (tmp1 == 0)
+        pcpu-&gt;pc += immediate;
+    ADVANCE_PC(2);
+    <span style="color: #af00ff;">if</span> (tmp1 == 0) <span style="color: #af0000;">/* </span><span style="color: #af0000;">Non-sequential PC change </span><span style="color: #af0000;">*/</span>
+        exit_generated_code();
+}
+</pre>
+</div>
+
+<p>
+Процедуры для инструкций ВМ, не имеющих операнда (например, Drop), оперируют только
+глобально определённым pcpu. Процедуры для инструкций с операндом (например, Je)
+получают его в первом аргументе. Если сгенерированный код будет вызывать их, то он
+должен соблюдать ABI хозяйской системы. В случае System V ABI (используемого в Linux)
+первый аргумент — это регистр RDI.
+</p>
+
+<p>
+Код translate<sub>program</sub>()
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af00ff;">static</span> <span style="color: #008700;">void</span> <span style="color: #0000ff;">translate_program</span>(<span style="color: #af00ff;">const</span> <span style="color: #008700;">Instr_t</span> *<span style="color: #af5f00;">prog</span>,
+                              <span style="color: #008700;">char</span> *<span style="color: #af5f00;">out_code</span>, <span style="color: #008700;">void</span> **<span style="color: #af5f00;">entrypoints</span>, <span style="color: #008700;">int</span> <span style="color: #af5f00;">len</span>) {
+    assert(prog);
+    assert(out_code);
+    assert(entrypoints);
+
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">An IA-32 instruction "MOV RDI, imm32" is used to pass a parameter</span>
+<span style="color: #af0000;">       to a function invoked by a following CALL. </span><span style="color: #af0000;">*/</span>
+<span style="color: #5f5f87;">#ifdef</span> __CYGWIN__ <span style="color: #af0000;">/* </span><span style="color: #af0000;">Win64 ABI, use RCX instead of RDI </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">const</span> <span style="color: #008700;">char</span> <span style="color: #af5f00;">mov_template_code</span>[]= {0x48, 0xc7, 0xc1, 0x00, 0x00, 0x00, 0x00};
+<span style="color: #5f5f87;">    #else</span>
+    <span style="color: #af00ff;">const</span> <span style="color: #008700;">char</span> <span style="color: #af5f00;">mov_template_code</span>[]= {0x48, 0xc7, 0xc7, 0x00, 0x00, 0x00, 0x00};
+<span style="color: #5f5f87;">    #endif</span>
+    <span style="color: #af00ff;">const</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">mov_template_size</span> = <span style="color: #af00ff;">sizeof</span>(mov_template_code);
+
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">An IA-32 instruction "CALL rel32" is used as a trampoline to invoke</span>
+<span style="color: #af0000;">       service routines. A template for it is "call .+0x00000005" </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">const</span> <span style="color: #008700;">char</span> <span style="color: #af5f00;">call_template_code</span>[] = { 0xe8, 0x00, 0x00, 0x00, 0x00 };
+    <span style="color: #af00ff;">const</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">call_template_size</span> = <span style="color: #af00ff;">sizeof</span>(call_template_code);
+
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span> = 0; <span style="color: #af0000;">/* </span><span style="color: #af0000;">Address of current guest instruction </span><span style="color: #af0000;">*/</span>
+    <span style="color: #008700;">char</span>* <span style="color: #af5f00;">cur</span> = out_code; <span style="color: #af0000;">/* </span><span style="color: #af0000;">Where to put new code </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">The program is short, so we can translate it as a whole.</span>
+<span style="color: #af0000;">       Otherwise, some sort of lazy decoding will be required </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">while</span> (i &lt; len) {
+        <span style="color: #008700;">decode_t</span> <span style="color: #af5f00;">decoded</span> = decode_at_address(prog, i);
+        entrypoints[i] = (<span style="color: #008700;">void</span>*) cur;
+
+        <span style="color: #af00ff;">if</span> (decoded.length == 2) { <span style="color: #af0000;">/* </span><span style="color: #af0000;">Guest instruction has an immediate </span><span style="color: #af0000;">*/</span>
+            assert(cur + mov_template_size - out_code &lt; JIT_CODE_SIZE);
+            memcpy(cur, mov_template_code, mov_template_size);
+            <span style="color: #af0000;">/* </span><span style="color: #af0000;">Patch template with correct immediate value </span><span style="color: #af0000;">*/</span>
+            memcpy(cur + 3, &amp;decoded.immediate, 4);
+            cur += mov_template_size;
+        }
+
+        assert(cur + call_template_size - out_code &lt; JIT_CODE_SIZE);
+        memcpy(cur, call_template_code, call_template_size);
+        <span style="color: #008700;">intptr_t</span> <span style="color: #af5f00;">offset</span> = (<span style="color: #008700;">intptr_t</span>)service_routines[decoded.opcode]
+            - (<span style="color: #008700;">intptr_t</span>)cur - call_template_size;
+        <span style="color: #af00ff;">if</span> (offset != (<span style="color: #008700;">intptr_t</span>)(<span style="color: #008700;">int32_t</span>)offset) {
+            fprintf(stderr, <span style="color: #87005f;">"Offset to service routine for opcode %d"</span>
+                    <span style="color: #87005f;">" does not fit in 32 bits. Cannot generate code for it, sorry"</span>,
+                    decoded.opcode);
+            exit(2);
+        }
+        <span style="color: #008700;">uint32_t</span> <span style="color: #af5f00;">offset32</span> = (<span style="color: #008700;">uint32_t</span>)offset;
+        <span style="color: #af0000;">/* </span><span style="color: #af0000;">Patch template with correct offset </span><span style="color: #af0000;">*/</span>
+        memcpy(cur + 1, &amp;offset, 4);
+        i += decoded.length;
+        cur += call_template_size;
+    }
+}
+</pre>
+</div>
+
+<p>
+Самый сложный блок программы требует подробного рассмотрения. В результате работы этой
+функции по содержимому гостевой программы prog длиной len должны быть заполнены два
+массива: out<sub>code</sub> — хозяйским гостевым кодом, симулирующим последовательность
+инструкций из prog, и массив указателей entrypoints на начала индивидуальных капсул
+внутри out<sub>code</sub>.
+</p>
+
+<p>
+Каждая гостевая инструкция декодируется, после чего транслируется в одну или две
+хозяйских инструкции. Для гостевых инструкций без операндов это «call rel32», для
+инструкций с операндом — пара «mov imm, %rdi; call rel32». RDI здесь, потому что
+вызываемые процедуры ожидают увидеть в нём свой аргумент.
+</p>
+
+<p>
+rel32 — это 32-битное смещение адреса вызываемой функции по отношению к текущей
+инструкции. Для каждой новой инструкции CALL оно разное, поэтому оно каждый раз
+высчитывается (offset32) относительно текущего положения.
+</p>
+
+<p>
+Почему я использовал здесь относительные адреса, а не абсолютные? Потому что хозяйская
+система использует 64-битные адреса, и для передачи 64 бит в CALL потребовалась бы ещё
+одна инструкция и ещё один регистр. Из-за этого gen<sub>code</sub> размещён в секции кода — чтобы
+все смещения умещались в 32 бита. Ведь секция данных может быть помещена очень далеко
+от кода.
+</p>
+
+<p>
+Заметьте, что как код шаблонов (mov<sub>template</sub><sub>code</sub> и call<sub>template</sub><sub>code</sub>), так и
+последующие манипуляции с ними (вызовы memcpy()) зависят способа кодирования хозяйских
+инструкций. При портировании translated на другую архитектуру их придётся исправить в
+первую очередь.
+</p>
+
+<p>
+Результат трансляции программы Primes, полученный с помощью GDB в момент окончания
+работы translate<sub>program</sub>():
+</p>
+
+<p>
+Хозяйский код для Primes
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c">(<span style="color: #008700;">gdb</span>) <span style="color: #008700;">disassemble</span> <span style="color: #af5f00;">gen_code</span>, <span style="color: #af5f00;">gen_code</span>+4096
+    Dump of assembler code from 0x403000 to 0x404000:
+    0x0000000000403000 &lt;gen_code+0&gt;:     mov    $0x186a0,%rdi
+    0x0000000000403007 &lt;gen_code+7&gt;:     callq  0x4020c0 &lt;sr_Push&gt;
+    0x000000000040300c &lt;gen_code+12&gt;:    mov    $0x2,%rdi
+    0x0000000000403013 &lt;gen_code+19&gt;:    callq  0x4020c0 &lt;sr_Push&gt;
+    0x0000000000403018 &lt;gen_code+24&gt;:    callq  0x4029a0 &lt;sr_Over&gt;
+    0x000000000040301d &lt;gen_code+29&gt;:    callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403022 &lt;gen_code+34&gt;:    callq  0x402720 &lt;sr_Sub&gt;
+    0x0000000000403027 &lt;gen_code+39&gt;:    mov    $0x17,%rdi
+    0x000000000040302e &lt;gen_code+46&gt;:    callq  0x4021a0 &lt;sr_Je&gt;
+    0x0000000000403033 &lt;gen_code+51&gt;:    mov    $0x2,%rdi
+    0x000000000040303a &lt;gen_code+58&gt;:    callq  0x4020c0 &lt;sr_Push&gt;
+    0x000000000040303f &lt;gen_code+63&gt;:    callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403044 &lt;gen_code+68&gt;:    callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403049 &lt;gen_code+73&gt;:    callq  0x4027e0 &lt;sr_Swap&gt;
+    0x000000000040304e &lt;gen_code+78&gt;:    callq  0x402720 &lt;sr_Sub&gt;
+    0x0000000000403053 &lt;gen_code+83&gt;:    mov    $0x9,%rdi
+    0x000000000040305a &lt;gen_code+90&gt;:    callq  0x4021a0 &lt;sr_Je&gt;
+    0x000000000040305f &lt;gen_code+95&gt;:    callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403064 &lt;gen_code+100&gt;:   callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403069 &lt;gen_code+105&gt;:   callq  0x4027e0 &lt;sr_Swap&gt;
+    0x000000000040306e &lt;gen_code+110&gt;:   callq  0x4028c0 &lt;sr_Mod&gt;
+    0x0000000000403073 &lt;gen_code+115&gt;:   mov    $0x5,%rdi
+    0x000000000040307a &lt;gen_code+122&gt;:   callq  0x4021a0 &lt;sr_Je&gt;
+    0x000000000040307f &lt;gen_code+127&gt;:   callq  0x402300 &lt;sr_Inc&gt;
+    0x0000000000403084 &lt;gen_code+132&gt;:   mov    $0xfffffffffffffff1,%rdi
+    0x000000000040308b &lt;gen_code+139&gt;:   callq  0x402080 &lt;sr_Jump&gt;
+    0x0000000000403090 &lt;gen_code+144&gt;:   callq  0x4029a0 &lt;sr_Over&gt;
+    0x0000000000403095 &lt;gen_code+149&gt;:   callq  0x402460 &lt;sr_Print&gt;
+    0x000000000040309a &lt;gen_code+154&gt;:   callq  0x4022a0 &lt;sr_Drop&gt;
+    0x000000000040309f &lt;gen_code+159&gt;:   callq  0x402300 &lt;sr_Inc&gt;
+    0x00000000004030a4 &lt;gen_code+164&gt;:   mov    $0xffffffffffffffe4,%rdi
+    0x00000000004030ab &lt;gen_code+171&gt;:   callq  0x402080 &lt;sr_Jump&gt;
+    0x00000000004030b0 &lt;gen_code+176&gt;:   callq  0x402060 &lt;sr_Halt&gt;
+    0x00000000004030b5 &lt;gen_code+181&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    0x00000000004030ba &lt;gen_code+186&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    0x00000000004030bf &lt;gen_code+191&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    0x00000000004030c4 &lt;gen_code+196&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    0x00000000004030c9 &lt;gen_code+201&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    0x00000000004030ce &lt;gen_code+206&gt;:   callq  0x4020a0 &lt;sr_Break&gt;
+    &lt;...&gt;
+</pre>
+</div>
+
+<p>
+Ещё раз отмечу: на момент начала работы translated этого кода не существовало.
+Конечно, вместо того, чтобы без конца их вызывать, правильнее было бы подставить тела
+самих сервисных процедур в out<sub>code</sub>. При этом было бы сэкономлено время на входах и
+выходах в функции. Но пришлось бы что-то делать с прологами-эпилогами процедур,
+т.е. учиться инлайнить код за спиной у компилятора. Я оставлю это упражнение читателям,
+желающим поглубже разобраться с вопросами кодогенерации.
+</p>
+
+<p>
+Наконец, изучим происходящее в main() внутри translate:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c"><span style="color: #af0000;">/* </span><span style="color: #af0000;">Code section is protected from writes by default, un-protect it </span><span style="color: #af0000;">*/</span>
+<span style="color: #af00ff;">if</span> (mprotect(gen_code, JIT_CODE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC)) {
+    perror(<span style="color: #87005f;">"mprotect"</span>);
+    exit(2);
+}
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">Pre-populate resulting code buffer with INT3 (machine code 0xCC).</span>
+<span style="color: #af0000;">   This will help to catch jumps to wrong locations </span><span style="color: #af0000;">*/</span>
+memset(gen_code, 0xcc, JIT_CODE_SIZE);
+<span style="color: #008700;">void</span>* <span style="color: #af5f00;">entrypoints</span>[PROGRAM_SIZE] = {0}; <span style="color: #af0000;">/* </span><span style="color: #af0000;">a map of guest PCs to capsules </span><span style="color: #af0000;">*/</span>
+
+translate_program(cpu.pmem, gen_code, entrypoints, PROGRAM_SIZE);
+
+setjmp(return_buf); <span style="color: #af0000;">/* </span><span style="color: #af0000;">Will get here from generated code. </span><span style="color: #af0000;">*/</span>
+
+<span style="color: #af00ff;">while</span> (cpu.state == Cpu_Running &amp;&amp; cpu.steps &lt; steplimit) {
+    <span style="color: #af00ff;">if</span> (cpu.pc &gt; PROGRAM_SIZE) {
+        cpu.state = Cpu_Break;
+        <span style="color: #af00ff;">break</span>;
+    }
+    enter_generated_code(entrypoints[cpu.pc]); <span style="color: #af0000;">/* </span><span style="color: #af0000;">Will not return </span><span style="color: #af0000;">*/</span>
+}
+</pre>
+</div>
+
+<p>
+Во-первых, обязательно необходимо разрешить запись в gen<sub>code</sub>. Это делается с помощью
+системного вызова mprotect(). Затем на всякий случай заполним gen<sub>code</sub> целиком
+однобайтовой инструкцией INT3 — 0xcc. Если при исполнении сгенерированного кода что-то
+пойдёт не так, и управление передадут на незаполненный участок массива, сразу
+произойдёт прерывание, что облегчит отладку.
+Затем транслируем программу и устанавливаем точку возврата с помощью setjmp(). Именно
+сюда, на начало цикла while(), будет возвращаться исполнение.
+</p>
+
+<p>
+Цикл while каждый раз будет передавать управление, используя в качестве адреса значения
+из отображения entrypoints для текущего PC. Возможно, возник вопрос — а зачем вообще
+выходить из gen<sub>code</sub> до окончания работы сгенерированного кода?
+</p>
+
+<p>
+Обратите своё внимание ещё раз на листинг gen<sub>code</sub> выше. В нём нет ни одной инструкции
+ветвления — все MOV и CALL исполнятся последовательно. Однако в исходной программе были
+циклы!
+Трансляция гостевых инструкций переходов — это сложный момент: смещения адресов
+гостевого кода в общем случае нелинейным образом связаны со смещениями между капсулами
+кода хозяйского. Я обошёл эту сложность, используя следующий трюк. Все сервисные
+процедуры, изменившие PC нелинейным образом (т.е. Jump, JE, JNE), обязаны вызывать
+exit<sub>generated</sub><sub>code</sub>(). И уже внешний код, используя сохранённые значения в entrypoints,
+заново зайдёт в гостевой код по правильному адресу. Для остальных, «обычных» сервисных
+процедур, longjmp не нужен — они просто проваливаются на следующую по коду процедуру.
+</p>
+
+<p>
+У меня есть идея, как обойтись без longjmp внутри процедур для JNE, JE и Jump. Можно
+узнать следующую точку входа из entrypoints сразу внутри процедуры, и поместить
+дополнительное значение адреса возврата RIP на стеке так, чтобы при выходе из текущей
+процедуры оказаться не в вызывавшей её функции, а сразу в нужной процедуре! Ещё одно
+упражнение для пытливого читателя — реализовать эту идею.
+</p>
+
+<p>
+Узкие места изменились. Теперь VTune обозначил главной проблемой «Front End Bound».
+В верх списка попали сервисные процедуры, что можно в некоторой мере считать
+успехом.
+</p>
+
+<p>
+Сравниваемые варианты программ.
+</p>
+
+<p>
+switched — переключаемый интерпретатор.
+threaded — шитый интерпретатор.
+predecoded — переключаемый интерпретатор с предварительным декодированием.
+subroutined — процедурный интерпретатор.
+threaded-cached — шитый с предварительным декодированием интерпретатор.
+tailrecursive — процедурный интерпретатор с оптимизированными хвостовыми вызовами.
+translated — двоичный транслятор.
+native — реализация алгоритма Primes на Си. Не совсем честно сравнивать статичную
+программу с реализациями ВМ, способной исполнить произвольный код. Тем не менее, в
+сравнении native участвует, чтобы показать потенциал к возможному ускорению.
+</p>
+
+<p>
+По результатам бенчмарков predecoded работает лишь чуть быстрее switched. По
+непонятным мне причинам простой threaded так и остался медленнее switched. А вот
+сочетание предварительного декодирования с шитым кодом, threaded-cached, дало заметный
+прирост. Удивительно хорошо показали себя процедурный интерпретатор subroutined и
+процедурный с хвостовыми оптимизациями tailrecursive. Ожидаемо было и то, что
+translated обошёл все интерпретаторы.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-2">
+<h2 id="unnumbered-16">Заключение</h2>
+<div class="outline-text-2" id="text-unnumbered-16">
+<p>
+Как и ожидалось, различные техники построения интерпретаторов различаются по
+скорости. Однако нельзя заранее, только из структуры кода ВМ, сделать выводы о том,
+какой из вариантов будет быстрее на практике. Более того, различные техники можно
+комбинировать, но возникающие при этом эффекты не суммируются: посмотрите, как
+изменялась производительность при использовании только предварительного декодирования
+или шитого кода, и какой эффект получился от их совместного использования.
+Немалую, и не всегда положительную, роль при этом играет компилятор. В зависимости от
+применённых им оптимизаций очень простая схема интерпретации может показать себя
+хорошо, а вот супернавороченная оказаться в хвосте списка.
+Статья написана, совесть моя перед самим собой чиста, пора и в отпуск. Спасибо за
+внимание!
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-2">
+<h2 id="unnumbered-17">Литература</h2>
+<div class="outline-text-2" id="text-unnumbered-17">
+<ul class="org-ul">
+<li>Баранов С. Н., Ноздрунов Н. Р. Язык Форт и его реализации. 1988 Издательство
+«Машиностроение» 2.1. Шитый код и его разновидности
+</li>
+<li>www.netlib.narod.ru/library/book0001/ch02<sub>01.htm</sub>
+</li>
+<li>M. Anton Ertl. 2007. Speed of various interpreter dispatch techniques V2
+</li>
+<li>www.complang.tuwien.ac.at/forth/threading
+</li>
+<li>James E. Smith and Ravi Nair. Virtual machines – Versatile Platforms for Systems
+and Processes. Elsevier, 2005. ISBN 978-1-55860-910-5.
+</li>
+<li>M. Anton Ertl and David Gregg. The structure and performance of efficient
+interpreters - Journal of Instruction-Level Parallelism 5 (2003), pp. 1–25. www.jilp.org/vol5/v5paper12.pdf
+</li>
+<li>Terrence Parr. Language Implementation Patterns — The Pragmatic Bookshelf, 2010. ISBN-10: 1-934356-45-X ISBN-13: 978-1-934356-45-6
+</li>
+</ul>
+</div>
+</div>
+</div>
+</body>
+</html>
