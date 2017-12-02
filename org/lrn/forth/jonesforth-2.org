@@ -3118,8 +3118,6 @@ ALLOT:
 Теперь мы можем аллоцировать память для структуры и сохранить указатель на нее,
 например в константу вот так:
 
-
-
 #+BEGIN_SRC forth
   0  \ Начальное смещение
   4 CHARS FIELD ALFA      \ Создана константа ALFA со значением 0
@@ -3135,53 +3133,60 @@ ALLOT:
   1337 FOO-ADDR BETA !
 #+END_SRC
 
-----------------
+Окей, как насчет вложенных структур? Мы бы хотели определить слова, котороые бы
+позволили написать что-то вроде:
 
+#+NAME: forth_struct_test
 #+BEGIN_SRC forth
+  STRUCT point \ -- a-addr 0 ; -- length-of-point
+      1 CELLS FIELD p.x             \ -- a-addr cell
+      1 CELLS FIELD p.y             \ -- a-addr cell*2
+  END-STRUCT
 
-  : STRUCTURE   ( "name" -- xx offset )
-      CREATE
-      HERE    ( leave the address of the following sizeof-comma )
-      0 DUP , ( initial size is zero and left on the stack )
-    DOES>     ( has the address of the sizeof-comma )
-      CREATE  ( make a variable )
-      @ ALLOT ( and make the variable that long )
-  ;
+  STRUCT rect    \ -- a-addr 0 ; -- length-of-rect
+      point FIELD r.top-left        \ -- a-addr cell*2
+      point FIELD r.bottom-right    \ -- a-addr cell*4
+  END-STRUCT
+#+END_SRC
 
-  : ENDSTRUCTURE ( xx offset -- )
-      SWAP !    ( store the last endoffset into the sizeof-comma )
-  ;
+Для этого нужно, чтобы вызываемое имя структуры (например point) оставляло на стеке ее
+размер. Мы можем достичь этого, если STRUCT будет работать наподобии MAKE-CONST т.е.
+создавать константу, хранящую размер структуры. Однако, на этом этапе мы не знаем ее
+размер, поэтому для начала можем вкомпилить в константу нулевой размер. Кроме того,
+чтобы следующие вызовы FIELD отработали правильно слово STRUCT должно оставить
+начальное смещение 0 в стеке. А перед ним можно оставить в стеке текущее значение HERE,
+чтобы потом слово END-STRUCT могло изменить константу 0 на реальный рассчитанный размер
+структуры.
 
-  : SIZEOF ( "name" -- size )
-      ' >BODY @ ( get the sizeof ... some implementations need also >DOES )
-      STATE @ IF [COMPILE] LITERAL THEN
-  ; IMMEDIATE
-
-  : NEWFIELD ( offset field_size "name" -- offset' )
-      CREATE
-      OVER , ( store the current end_offset )
-      +      ( increase the end_offset by the field_size )
-    DOES>
-      @ +    ( add the memorized offset of the field)
+#+NAME: forth_struct
+#+BEGIN_SRC forth
+  : STRUCT ( -- addr 0 ; -- size )
+      WORD     \ прочтем слово с stdin
+      CREATE   \ создадим заголовок слова
+      0 ,      \ вместо codeword вкомпилим заглушку-ноль
+      HERE @   \ оставим  для END-STRUCT в стеке адрес, на который указывает HERE
+      0        \ оставим в стеке ноль в качестве начального размера структуры для FIELD
+      0 ,      \ скомпилируем ноль в param-field дочернего слова как заглушку размера структуры
+    DOES>      \ завершение "создающей" части, начало части "действия"
+      @        \ прочесть значение из param-field дочернего слова,
+               \ разыменовать для получения содержимого
   ;
 #+END_SRC
 
-В качестве примера использьзования такой структуры мы могли бы вычислить длину списка,
-проходя по всем его элементам:
+Таким образом, после выполнения STRUCT у нас создана константа, а в стеке лежит адрес
+той ячейки, которую надо будет поменять когда размер структуры будет вычислен. Поверх
+него в стеке лежит начальное смещение первого поля - т.е. ноль.
 
+После того как все слова FIELD отработают на вершине стека будет лежать размер всей
+структуры, а под ним адрес поля в константе, которое нам нужно поменять. Это значит,
+что все что остается сделать слову END-STRUCT - это записать значение по адресу:
+
+#+NAME: forth_end_struct
 #+BEGIN_SRC forth
-  : LENGTH-OF-LINKED-LIST  ( list -- n )
-      \ list  - это указатель на первый элемент связного списка
-      \ n     - это длина списка
-      0 BEGIN ( list1 n1 )
-          OVER
-      WHILE   ( list1 n1 )
-              1+ SWAP ->prev_pointer @ SWAP
-      REPEAT
-      SWAP DROP
+  : END-STRUCT ( addr size -- )
+      SWAP ! \ сохранить размер по адресу
   ;
 #+END_SRC
-
 
 ** Приветствие
 
@@ -3211,149 +3216,155 @@ ALLOT:
 #+NAME: forth_part
 #+BEGIN_SRC forth :tangle src/src/jonesforth.f :noweb tangle :exports code :padline no :comments none
 
-<<forth_divmod>>
+  <<forth_divmod>>
 
-<<forth_symbol_constants>>
+  <<forth_symbol_constants>>
 
-<<forth_negate>>
+  <<forth_negate>>
 
-<<forth_booleans>>
+  <<forth_booleans>>
 
-<<forth_literal>>
+  <<forth_literal>>
 
-<<forth_literal_colon>>
+  <<forth_literal_colon>>
 
-<<forth_literal_others>>
+  <<forth_literal_others>>
 
-<<forth_compile>>
+  <<forth_compile>>
 
-<<forth_recurse>>
+  <<forth_recurse>>
 
-<<forth_if>>
+  <<forth_if>>
 
-<<forth_begin_until>>
+  <<forth_begin_until>>
 
-<<forth_again>>
+  <<forth_again>>
 
-<<forth_while_repeat>>
+  <<forth_while_repeat>>
 
-<<forth_unless>>
+  <<forth_unless>>
 
-<<forth_parens>>
+  <<forth_parens>>
 
-<<forth_nip_tuck_pick_spaces_decimal_hex>>
+  <<forth_nip_tuck_pick_spaces_decimal_hex>>
 
-<<forth_u_print>>
+  <<forth_u_print>>
 
-<<forth_stack_print>>
+  <<forth_stack_print>>
 
-<<forth_uwidth_udotr>>
+  <<forth_uwidth_udotr>>
 
-<<forth_dotr>>
+  <<forth_dotr>>
 
-<<forth_dotr_with_trailing>>
+  <<forth_dotr_with_trailing>>
 
-<<forth_udot_with_trailing>>
+  <<forth_udot_with_trailing>>
 
-<<forth_enigma>>
+  <<forth_enigma>>
 
-<<forth_within>>
+  <<forth_within>>
 
-<<forth_depth>>
+  <<forth_depth>>
 
-<<forth_aligned>>
+  <<forth_aligned>>
 
-<<forth_align>>
+  <<forth_align>>
 
-<<forth_strings>>
+  <<forth_strings>>
 
-<<forth_dotstring>>
+  <<forth_dotstring>>
 
-<<forth_constant>>
+  <<forth_constant>>
 
-<<forth_allot>>
+  <<forth_allot>>
 
-<<forth_cells>>
+  <<forth_cells>>
 
-<<forth_variable>>
+  <<forth_variable>>
 
-<<forth_to>>
+  <<forth_to>>
 
-<<forth_to_plus>>
+  <<forth_to_plus>>
 
-<<forth_id_dot>>
+  <<forth_id_dot>>
 
-<<forth_hidden_immediate_question>>
+  <<forth_hidden_immediate_question>>
 
-<<forth_words>>
+  <<forth_words>>
 
-<<forth_forget>>
+  <<forth_forget>>
 
-<<forth_dump>>
+  <<forth_dump>>
 
-<<forth_case>>
+  <<forth_case>>
 
-<<forth_cfa>>
+  <<forth_cfa>>
 
-<<forth_see>>
+  <<forth_see>>
 
-<<forth_noname>>
+  <<forth_noname>>
 
-<<forth_exceptions>>
+  <<forth_exceptions>>
 
-<<forth_zerostrings>>
+  <<forth_zerostrings>>
 
-<<forth_argc>>
+  <<forth_argc>>
 
-<<forth_argv>>
+  <<forth_argv>>
 
-<<forth_environ>>
+  <<forth_environ>>
 
-<<forth_bye>>
+  <<forth_bye>>
 
-<<forth_unused>>
+  <<forth_unused>>
 
-<<forth_morecore>>
+  <<forth_morecore>>
 
-<<forth_files>>
+  <<forth_files>>
 
-<<forth_asm>>
+  <<forth_asm>>
 
-<<forth_docon>>
+  <<forth_docon>>
 
-<<forth_inlining_asm>>
+  <<forth_inlining_asm>>
 
-<<forth_welcome>>
+  <<forth_welcome>>
 
-<<forth_all>>
+  <<forth_all>>
 
-<<forth_docon>>
+  <<forth_docon>>
 
-\ <<forth_defconst>>
+  \ <<forth_defconst>>
 
 
 
 
-<<forth_sub_semi_code>>
+  <<forth_sub_semi_code>>
 
-<<forth_semi_code>>
+  <<forth_semi_code>>
 
-<<forth_endcode>>
+  <<forth_endcode>>
 
-\ <<forth_defconst_2>>
+  \ <<forth_defconst_2>>
 
-\ <<forth_push1337>>
+  \ <<forth_push1337>>
 
 
 
-<<forth_does>>
+  <<forth_does>>
 
-\ <<forth_make_const>>
+  \ <<forth_make_const>>
 
-<<forth_field>>
+  <<forth_field>>
 
-<<forth_field_test>>
+  \ <<forth_field_test>>
 
-LATEST @ @ @ 200 DUMP
+  <<forth_struct>>
+
+  <<forth_end_struct>>
+
+  <<forth_struct_test>>
+
+  LATEST @ @ @ 200 DUMP
 
 #+END_SRC

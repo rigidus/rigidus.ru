@@ -1097,12 +1097,38 @@ HEX
     DOFIELD
 ;
 
-0  \ Начальное смещение
-4 CHARS FIELD ALFA      \ Создана константа ALFA со значением 0
-3 CELLS FIELD BETA      \ Создана константа BETA со значением 4 [0+4]
-2 CELLS FIELD GAMMA     \ Создана константа GAMMA со значением 16 [4+(3*4)] (0x10)
-\ В стеке осталось значение 24 [16+(2*4)] - это размер всей структуры (0x18)
-\ Сохраним его в константу
-CONSTANT FOO-SIZE
+\ 0  \ Начальное смещение
+\ 4 CHARS FIELD ALFA      \ Создана константа ALFA со значением 0
+\ 3 CELLS FIELD BETA      \ Создана константа BETA со значением 4 [0+4]
+\ 2 CELLS FIELD GAMMA     \ Создана константа GAMMA со значением 16 [4+(3*4)] (0x10)
+\ \ В стеке осталось значение 24 [16+(2*4)] - это размер всей структуры (0x18)
+\ \ Сохраним его в константу
+\ CONSTANT FOO-SIZE
+
+: STRUCT ( -- addr 0 ; -- size )
+    WORD     \ прочтем слово с stdin
+    CREATE   \ создадим заголовок слова
+    0 ,      \ вместо codeword вкомпилим заглушку-ноль
+    HERE @   \ оставим  для END-STRUCT в стеке адрес, на который указывает HERE
+    0        \ оставим в стеке ноль в качестве начального размера структуры для FIELD
+    0 ,      \ скомпилируем ноль в param-field дочернего слова как заглушку размера структуры
+  DOES>      \ завершение "создающей" части, начало части "действия"
+    @        \ прочесть значение из param-field дочернего слова,
+             \ разыменовать для получения содержимого
+;
+
+: END-STRUCT ( addr size -- )
+    SWAP ! \ сохранить размер по адресу
+;
+
+STRUCT point \ -- a-addr 0 ; -- length-of-point
+    1 CELLS FIELD p.x             \ -- a-addr cell
+    1 CELLS FIELD p.y             \ -- a-addr cell*2
+END-STRUCT
+
+STRUCT rect    \ -- a-addr 0 ; -- length-of-rect
+    point FIELD r.top-left        \ -- a-addr cell*2
+    point FIELD r.bottom-right    \ -- a-addr cell*4
+END-STRUCT
 
 LATEST @ @ @ 200 DUMP
