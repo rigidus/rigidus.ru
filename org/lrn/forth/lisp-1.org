@@ -1,0 +1,51 @@
+* First
+
+#+BEGIN_SRC lisp
+  (defun evcond (lst env)
+    (cond ((null lst)                     nil)
+          ((myeval (car (car lst)) env)   (myeval (car (cdr (car lst))) env))
+          (t                              (evcond (cdr lst) env))))
+
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2)) alist)
+          ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+          (t (cons (cons (car lst1) (car lst2)) (mypairlis (cdr lst1) (cdr lst2) alist)))))
+
+                                          ;(defun mypairlis (lst1 lst2 alist)
+                                          ;  (cond ((and (null lst1) (null lst2)) alist)
+                                          ;        ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+                                          ;        (t (mypairlis (cdr lst1) (cdr lst2) (cons (cons (car lst1) (car lst2)) alist)))))
+
+  (defun evlis (lst env)
+    (cond ((null lst) nil)
+          (t (cons (myeval (car lst) env) (evlis (cdr lst) env)))))
+
+  (defun myeval (lst env)
+    (cond ((numberp lst)           lst)
+          ((equal (car lst) '+)     (+ (myeval (cadr lst) env)
+                                       (myeval (caddr lst) env)))
+          ((equal (car lst) '*)     (* (myeval (cadr lst) env)
+                                       (myeval (caddr lst) env)))
+          ((equal (car lst) 'quote) (cadr lst))
+          ((equal (car lst) 'car)   (car (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'cdr)   (cdr (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'cons)  (cons (myeval (car (cdr lst)) env) (myeval (car (cddr lst)) env)))
+          ((equal (car lst) 'null)  (null (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'if)    (if (myeval (car (cdr lst)) env)
+                                        (myeval (car (cdr (cdr lst))) env)
+                                        (myeval (car (cdr (cdr (cdr lst)))) env)))
+          ((equal (car lst) 'cond)  (evcond (cdr lst) env))
+          ;; ((equal (car lst) ')
+          ))
+
+
+  (print (myeval '(car (quote (1 2 3))) nil))
+
+  (print (myeval '(cond ((null '()) 42) (42 666)) nil))
+
+  (print (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))) ;; -> (( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+
+  (print (myeval '((lambda (x y) (+ x y)) 42 13) nil))
+
+  (print (evlis '((+ 1 2) (* 2 3) 42) nil)) ; -> (3 6 42)
+#+END_SRC
