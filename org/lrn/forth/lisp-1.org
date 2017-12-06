@@ -20,22 +20,50 @@
     (cond ((null lst) nil)
           (t (cons (myeval (car lst) env) (evlis (cdr lst) env)))))
 
+  (defun evprogn (lst env)
+    (cond ((null lst) nil)
+          ((null (cdr lst)) (myeval (car lst) env))
+          (t (myeval (car lst) env)
+             (evprogn (cdr lst) env))))
+
+  (defun evletstar (varpairs exp env)
+    (cond ((null varpairs) (myeval exp env))
+          (t (evletstar (cdr varpairs)
+                        exp
+                        (cons (cons (car (car varpairs))
+                                    (myeval (car (cdr (car varpairs))) env))
+                              env)))))
+
   (defun myeval (lst env)
-    (cond ((numberp lst)           lst)
-          ((equal (car lst) '+)     (+ (myeval (cadr lst) env)
-                                       (myeval (caddr lst) env)))
-          ((equal (car lst) '*)     (* (myeval (cadr lst) env)
-                                       (myeval (caddr lst) env)))
-          ((equal (car lst) 'quote) (cadr lst))
-          ((equal (car lst) 'car)   (car (myeval (car (cdr lst)) env)))
-          ((equal (car lst) 'cdr)   (cdr (myeval (car (cdr lst)) env)))
-          ((equal (car lst) 'cons)  (cons (myeval (car (cdr lst)) env) (myeval (car (cddr lst)) env)))
-          ((equal (car lst) 'null)  (null (myeval (car (cdr lst)) env)))
-          ((equal (car lst) 'if)    (if (myeval (car (cdr lst)) env)
-                                        (myeval (car (cdr (cdr lst))) env)
-                                        (myeval (car (cdr (cdr (cdr lst)))) env)))
-          ((equal (car lst) 'cond)  (evcond (cdr lst) env))
-          ;; ((equal (car lst) ')
+    (cond ((numberp lst)                    lst)
+          ((symbolp lst)                    (cdr (assoc lst env)))
+          ((equal (car lst) '+)             (+ (myeval (cadr lst) env)
+                                               (myeval (caddr lst) env)))
+          ((equal (car lst) '*)             (* (myeval (cadr lst) env)
+                                               (myeval (caddr lst) env)))
+          ((equal (car lst) 'quote)         (cadr lst))
+          ((equal (car lst) 'car)           (car (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'cdr)           (cdr (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'cons)          (cons (myeval (car (cdr lst)) env) (myeval (car (cddr lst)) env)))
+          ((equal (car lst) 'null)          (null (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'if)            (if (myeval (car (cdr lst)) env)
+                                                (myeval (car (cdr (cdr lst))) env)
+                                                (myeval (car (cdr (cdr (cdr lst)))) env)))
+          ((equal (car lst) 'cond)          (evcond (cdr lst) env))
+          ((equal (car lst) 'let)           (evprogn (cdr (cdr lst)) ; implicit progn
+                                                     (pairlis (mapcar #'car  (car (cdr lst)))
+                                                              (evlis (mapcar #'cadr (car (cdr lst)))
+                                                                     env)
+                                                              env)))
+          ((equal (car lst) 'progn)          (evprogn (cdr lst) env))
+          ((equal (car lst) 'print)          (print (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'let*)           (evletstar (car (cdr lst))
+                                                        (car (cdr (cdr lst)))
+                                                        env))
+          ((equal (car (car lst)) 'lambda)   (myeval (car (cddr (car lst)))
+                                                     (pairlis (car (cdr (car lst)))
+                                                              (evlis (cdr lst) env)
+                                                              env)))
           ))
 
 
@@ -48,4 +76,308 @@
   (print (myeval '((lambda (x y) (+ x y)) 42 13) nil))
 
   (print (evlis '((+ 1 2) (* 2 3) 42) nil)) ; -> (3 6 42)
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(progn (print (+ 1 4))
+                   2)
+                 nil))
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (print x)
+                   (print y)
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(let* ((x 42) (y x))
+                   y)
+                 nil))
 #+END_SRC
+
+#+BEGIN_SRC lisp
+  (defparameter *glob-env* nil)
+
+  (defun evcond (lst env)
+    (cond ((null lst)                     nil)
+          ((myeval (car (car lst)) env)   (myeval (car (cdr (car lst))) env))
+          (t                              (evcond (cdr lst) env))))
+
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2)) alist)
+          ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+          (t (cons (cons (car lst1) (car lst2)) (mypairlis (cdr lst1) (cdr lst2) alist)))))
+
+                                          ;(defun mypairlis (lst1 lst2 alist)
+                                          ;  (cond ((and (null lst1) (null lst2)) alist)
+                                          ;        ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+                                          ;        (t (mypairlis (cdr lst1) (cdr lst2) (cons (cons (car lst1) (car lst2)) alist)))))
+
+  (defun evlis (lst env)
+    (cond ((null lst) nil)
+          (t (cons (myeval (car lst) env) (evlis (cdr lst) env)))))
+
+  (defun evprogn (lst env)
+    (cond ((null lst) nil)
+          ((null (cdr lst)) (myeval (car lst) env))
+          (t (myeval (car lst) env)
+             (evprogn (cdr lst) env))))
+
+  (defun evletstar (varpairs exp env)
+    (cond ((null varpairs) (myeval exp env))
+          (t (evletstar (cdr varpairs)
+                        exp
+                        (cons (cons (car (car varpairs))
+                                    (myeval (car (cdr (car varpairs))) env))
+                              env)))))
+
+  (defun myapply (fn args env)
+    (cond ((equal fn '+)             (+ (car args) (cadr args)))
+          ((equal fn '*)             (* (car args) (cadr args)))
+          ((equal fn 'car)           (car (car args)))
+          ((equal fn 'cdr)           (cdr (car args)))
+          ((equal fn 'cons)          (cons (car args) (car (cdr args))))
+          ((equal fn 'null)          (null (car args)))
+          ((symbolp fn)              (let ((it (lookup fn env)))
+                                       (if (null it)
+                                           (error (format nil "fn-404: ~A" fn))
+                                           (myapply (cdr it) args env))))
+          ((equal (car fn) 'lambda)  (myeval (car (cddr fn))
+                                             (pairlis (car (cdr fn))
+                                                      args
+                                                      env)))))
+
+  (defun lookup (symb env)
+    (let ((it (assoc symb env)))
+      (if (not (null it))
+          it
+          (assoc symb *glob-env*))))
+
+  (defun myeval (lst env)
+    (cond ((numberp lst)                    lst)
+          ((symbolp lst)                    (cdr (lookup lst env)))
+          ((equal (car lst) 'quote)         (cadr lst))
+          ((equal (car lst) 'if)            (if (myeval (car (cdr lst)) env)
+                                                (myeval (car (cdr (cdr lst))) env)
+                                                (myeval (car (cdr (cdr (cdr lst)))) env)))
+          ((equal (car lst) 'cond)          (evcond (cdr lst) env))
+          ((equal (car lst) 'let)           (evprogn (cdr (cdr lst)) ; implicit progn
+                                                     (pairlis (mapcar #'car  (car (cdr lst)))
+                                                              (evlis (mapcar #'cadr (car (cdr lst)))
+                                                                     env)
+                                                              env)))
+          ((equal (car lst) 'progn)         (evprogn (cdr lst) env))
+          ((equal (car lst) 'print)         (print (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'let*)          (evletstar (car (cdr lst))
+                                                       (car (cdr (cdr lst)))
+                                                       env))
+          ((equal (car lst) 'defun)         (progn
+                                              (push (cons (cadr lst)
+                                                          `(lambda ,(caddr lst)
+                                                             ,(cadddr lst)))
+                                                    ,*glob-env*)
+                                              (cadr lst)))
+          ((equal (car lst) 'setq)          (let ((it (lookup (cadr lst) env))
+                                                  (val (myeval (caddr lst) env)))
+                                              (if (null it)
+                                                  (push (cons (cadr lst) val)
+                                                        ,*glob-env*)
+                                                  (rplacd it val))
+                                              val))
+          ((equal (car lst) 'lambda)        lst)
+          (t                                (myapply (car lst) (evlis (cdr lst) env) env))))
+
+  (defun repl ()
+    (princ "microlisp>")
+    (princ (myeval (read) nil))
+    (terpri)
+    (finish-output)
+    (repl))
+
+  (print (myeval '(car (quote (1 2 3))) nil))
+
+  (print (myeval '(cond ((null '()) 42) (42 666)) nil))
+
+  (print (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77))))
+  ;; -> (( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+
+  (print (myeval '((lambda (x y) (+ x y)) 42 13) nil))
+
+  (print (evlis '((+ 1 2) (* 2 3) 42) nil)) ; -> (3 6 42)
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(progn (print (+ 1 4))
+                   2)
+                 nil))
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (print x)
+                   (print y)
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(let* ((x 42) (y x))
+                   y)
+                 nil))
+
+  (repl)
+#+END_SRC
+
+#+BEGIN_SRC lisp
+  (defparameter *glob-env* nil)
+
+  (defstruct closure
+    body
+    env
+    args)
+
+  (defun evcond (lst env)
+    (cond ((null lst)                     nil)
+          ((myeval (car (car lst)) env)   (myeval (car (cdr (car lst))) env))
+          (t                              (evcond (cdr lst) env))))
+
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2)) alist)
+          ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+          (t (cons (cons (car lst1) (car lst2)) (mypairlis (cdr lst1) (cdr lst2) alist)))))
+
+                                          ;(defun mypairlis (lst1 lst2 alist)
+                                          ;  (cond ((and (null lst1) (null lst2)) alist)
+                                          ;        ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+                                          ;        (t (mypairlis (cdr lst1) (cdr lst2) (cons (cons (car lst1) (car lst2)) alist)))))
+
+  (defun evlis (lst env)
+    (cond ((null lst) nil)
+          (t (cons (myeval (car lst) env) (evlis (cdr lst) env)))))
+
+  (defun evprogn (lst env)
+    (cond ((null lst) nil)
+          ((null (cdr lst)) (myeval (car lst) env))
+          (t (myeval (car lst) env)
+             (evprogn (cdr lst) env))))
+
+  (defun evletstar (varpairs exp env)
+    (cond ((null varpairs) (myeval exp env))
+          (t (evletstar (cdr varpairs)
+                        exp
+                        (cons (cons (car (car varpairs))
+                                    (myeval (car (cdr (car varpairs))) env))
+                              env)))))
+
+  (defun myapply (fn args)
+    (cond ((equal fn '+)             (+ (car args) (cadr args)))
+          ((equal fn '*)             (* (car args) (cadr args)))
+          ((equal fn 'car)           (car (car args)))
+          ((equal fn 'cdr)           (cdr (car args)))
+          ((equal fn 'cons)          (cons (car args) (car (cdr args))))
+          ((equal fn 'null)          (null (car args)))
+          ((closure-p fn)            (myeval (closure-body fn)
+                                             (pairlis (closure-args fn)
+                                                      args
+                                                      (closure-env fn))))))
+
+  (defun lookup (symb env)
+    (let ((it (assoc symb env)))
+      (if (not (null it))
+          it
+          (assoc symb *glob-env*))))
+
+  (defun myeval (lst env)
+    (cond ((numberp lst)                    lst)
+          ((member lst
+                   '(+ * car cdr cons null))        lst)
+          ((symbolp lst)                    (cdr (lookup lst env)))
+          ((equal (car lst) 'quote)         (cadr lst))
+          ((equal (car lst) 'if)            (if (myeval (car (cdr lst)) env)
+                                                (myeval (car (cdr (cdr lst))) env)
+                                                (myeval (car (cdr (cdr (cdr lst)))) env)))
+          ((equal (car lst) 'cond)          (evcond (cdr lst) env))
+          ((equal (car lst) 'let)           (evprogn (cdr (cdr lst)) ; implicit progn
+                                                     (pairlis (mapcar #'car  (car (cdr lst)))
+                                                              (evlis (mapcar #'cadr (car (cdr lst)))
+                                                                     env)
+                                                              env)))
+          ((equal (car lst) 'progn)         (evprogn (cdr lst) env))
+          ((equal (car lst) 'print)         (print (myeval (car (cdr lst)) env)))
+          ((equal (car lst) 'let*)          (evletstar (car (cdr lst))
+                                                       (car (cdr (cdr lst)))
+                                                       env))
+          ((equal (car lst) 'defun)         (progn
+                                              (push (cons (cadr lst)
+                                                          (make-closure :body (cadddr lst) :env env :args (caddr lst)))
+                                                    ,*glob-env*)
+                                              (cadr lst)))
+          ((equal (car lst) 'setq)          (let ((it (lookup (cadr lst) env))
+                                                  (val (myeval (caddr lst) env)))
+                                              (if (null it)
+                                                  (push (cons (cadr lst) val)
+                                                        ,*glob-env*)
+                                                  (rplacd it val))
+                                              val))
+          ((equal (car lst) 'lambda)        (make-closure :body (caddr lst) :env env :args (cadr lst)))
+          (t                                (myapply (myeval (car lst) env)
+                                                     (evlis (cdr lst) env)))))
+
+  (defun repl ()
+    (princ "microlisp>")
+    (princ (myeval (read) nil))
+    (terpri)
+    (finish-output)
+    (repl))
+
+  (print (myeval '(car (quote (1 2 3))) nil))
+
+  (print (myeval '(cond ((null '()) 42) (42 666)) nil))
+
+  (print (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77))))
+  ;; -> (( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+
+  (print (myeval '((lambda (x y) (+ x y)) 42 13) nil))
+
+  (print (evlis '((+ 1 2) (* 2 3) 42) nil)) ; -> (3 6 42)
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(progn (print (+ 1 4))
+                   2)
+                 nil))
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (print x)
+                   (print y)
+                   (cons x y))
+                 nil))
+
+  (print (myeval '(let* ((x 42) (y x))
+                   y)
+                 nil))
+
+  (repl)
+#+END_SRC
+
+Dynamic scope - переменные видны из места вызова функции
+Static scop - из места создания функции
+
+CPS преобразование, чтобы не было нехвостовых вызовов
+
+обработка ошибока
+
+block/return catch/trow
+
+defunctionalization VM
+
+trampolines (sec-машина) - избавление от рекурсии, можно реализовать в форт
+
+secd-машина
