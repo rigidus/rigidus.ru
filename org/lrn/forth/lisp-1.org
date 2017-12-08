@@ -1,5 +1,7 @@
 * First
 
+book: purely functuonal data structures
+
 #+BEGIN_SRC lisp
   (defun evcond (lst env)
     (cond ((null lst)                     nil)
@@ -381,3 +383,224 @@ defunctionalization VM
 trampolines (sec-машина) - избавление от рекурсии, можно реализовать в форт
 
 secd-машина
+
+#+BEGIN_SRC lisp
+
+  (defun assoc (key alist)
+    (cond ((null alist) nil))
+    ((equal key (caar alist)) (car alist))
+    (t (assoc (cdr alist))))
+
+                                          ; semipredicate problem
+  (defun assoc-2 (key alist cont errcont)
+    (cond ((null alist)              (funcall errcont key alist))
+          ((equal key (caar alist))  (funcall cont (cdar alist)))
+          (t (assoc-2 (cdr alist) cont errcont))))
+
+
+  (let ((it (assoc ....)))
+    (if it
+        ....
+        ....))
+                                          ; defunctionalization
+
+  (assoc 'f a (lambda (x) ....) (lambda () ....))
+
+  (defun fact (n)
+    (cond ((equal n 1) 1)
+          (t (* n (fact (- n 1))))))
+
+  (defun fact-2 (n cont)
+    (cond ((equal n 1) (funcall cont 1))
+          (t (fact-2 (- n 1) (lambda (x)
+                               (funcall cont (* n x)))))))
+
+  ;; (fact-2 5 #'identity)
+
+  (defun fib (n)
+    (cond ((equal n 1) 1)
+          ((equal n 2) 1)
+          (t (+ (fib (- n 1))
+                (fib (- n 2))))))
+
+  (defun fib-2 (n cont)
+    (cond ((equal n 1) (funcall cont 1))
+          ((equal n 2) (funcall cont 1))
+          (t (fib-2 (- n 1) (lambda (x)
+                              (fib-2 (- n 2) (lambda (y)
+                                               (funcall cont (+ x y)))))))))
+
+
+  (defparameter *glob-env* nil)
+
+  (defstruct closure
+    body
+    env
+    args)
+
+
+  (defun evcond (lst env cont)
+    (cond ((null lst)   (funcall cont nil))
+          (t            (myeval (caar lst) env
+                                (lambda (x)
+                                  (if x
+                                      (myeval (cadar lst) env cont)
+                                      (evcond (cdr lst) env cont)))))))
+
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2)) alist)
+          ((or  (null lst1) (null lst2)) (error 'mypairlis-error))
+          (t (cons (cons (car lst1) (car lst2)) (mypairlis (cdr lst1) (cdr lst2) alist)))))
+
+
+  ;; менее эффекривный но более понятный вариант evlis
+  (defun evlis (fn unevaled evaled env cont)
+    (cond ((null unevaled) (myapply fn evaled cont))
+          (t (myeval (car unevaled) env
+                     (lambda (x)
+                       (evlis fn (cdr unevaled) (append evaled (list x)) env cont))))))
+
+
+  ;; более эффективный вариант evlis
+  (defun evlis (fn unevaled evaled env cont)
+    (cond ((null unevaled) (myapply fn (reverse evaled) cont))
+          (t (myeval (car unevaled) env
+                     (lambda (x)
+                       (evlis fn (cdr unevaled) (cons x evaled) env cont))))))
+
+
+  (defun evprogn (lst env cont)
+    (cond ((null lst) (funcall cont nil))
+          ((null (cdr lst)) (myeval (car lst) env cont))
+          (t (myeval (car lst) env (lambda (x)
+                                     (evprogn (cdr lst) env cont))))))
+
+
+  (defun evletstar (varpairs exp env cont)
+    (cond ((null varpairs) (myeval exp env cont))
+          (t (myeval (car (cdr (car varpairs))) env
+                     (lambda (x)
+                       (evletstar (cdr varpairs)
+                                  exp
+                                  (acons (caar varpairs) x env)
+                                  cont))))))
+
+
+  (defun myapply (fn args cont)
+    (cond ((equal fn '+)             (funcall cont (+ (car args) (cadr args))))
+          ((equal fn '*)             (funcall cont (* (car args) (cadr args))))
+          ((equal fn 'car)           (funcall cont (car (car args))))
+          ((equal fn 'cdr)           (funcall cont (cdr (car args))))
+          ((equal fn 'cons)          (funcall cont (cons (car args) (car (cdr args)))))
+          ((equal fn 'null)          (funcall cont (null (car args))))
+          ((equal fn 'print)         (funcall cont (print (car args))))
+          ((closure-p fn)            (myeval (closure-body fn)
+                                             (pairlis (closure-args fn)
+                                                      args
+                                                      (closure-env fn))
+                                             cont))))
+
+  (defun lookup (symb env cont errcont)
+    (assoc-2 symb env cont
+             (lambda (key env)
+               (assoc-2 symb *glob-env* cont
+                        (lambda (key env)
+                          (funcall errcont (format nil "err: variable ~A is unbound" key)))))))
+
+  (let ((it (assoc symb env)))
+    (if (not (null it))
+        it
+        (assoc symb *glob-env*))))
+
+
+  (defun evlet (vars exps evald-exps exp env cont)
+    (cond ((null exps)                      (myeval exp (pairlis vars (reverse evald-exps) env) cont))
+          (t (myeval (car exps) env
+                     (lambda (x)
+                       (evlet vars (cdr exps) (cons x evald-exps) exp env cont))))))
+
+
+  (defun myeval (exp env errcont cont)
+    (cond ((numberp exp)                    (funcall cont exp))
+          ((member exp
+                   '(+ * car cdr cons null print))        (funcall cont exp))
+          ((equal 't exp)                   (funcall cont 't))
+          ((equal 'nil exp)                 (funcall cont 'nil))
+          ((symbolp exp)                    (lookup exp env cont errcont))
+          ((equal (car exp) 'quote)         (funcall cont (cadr exp)))
+          ((equal (car exp) 'if)            (myeval (car (cdr exp)) env
+                                                    (lambda (x)
+                                                      (if x
+                                                          (myeval (car (cdr (cdr exp))) env cont)
+                                                          (myeval (car (cdr (cdr (cdr exp)))) env cont)))))
+          ((equal (car exp) 'cond)          (evcond (cdr exp) env cont))
+          ((equal (car exp) 'let)           (evlet (mapcar #'car (cadr exp))
+                                                   (mapcar #'cadr (cadr exp))
+                                                   nil
+                                                   (caddr exp)
+                                                   env
+                                                   cont))
+          ((equal (car exp) 'progn)         (evprogn (cdr exp) env cont))
+          ((equal (car exp) 'let*)          (evletstar (car (cdr exp))
+                                                       (car (cdr (cdr exp)))
+                                                       env
+                                                       cont))
+          ((equal (car exp) 'defun)         (progn
+                                              (push (cons (cadr exp)
+                                                          (make-closure :body (cadddr exp) :env env :args (caddr exp)))
+                                                    ,*glob-env*)
+                                              (funcall cont (cadr exp))))
+          ((equal (car exp) 'setq)          (myeval (caddr exp) env
+                                                    (lambda (val)
+                                                      (let ((it (lookup (cadr exp) env)))
+                                                        (if (null it)
+                                                            (push (cons (cadr exp) val)
+                                                                  ,*glob-env*)
+                                                            (rplacd it val))
+                                                        (funcall cont val)))))
+          ((equal (car exp) 'lambda)        (funcall cont (make-closure :body (caddr exp) :env env :args (cadr exp))))
+          (t                                (myeval (car exp) env
+                                                    (lambda (x)
+                                                      (evlis x (cdr exp) nil env cont))))))
+
+
+  (defun repl ()
+    (princ "microlisp>")
+    (princ (myeval (read) nil #'identity))
+    (terpri)
+    (finish-output)
+    (repl))
+
+  (print (myeval '(car (quote (1 2 3))) nil #'identity))
+
+  (print (myeval '(cond ((null '()) 42) (42 666)) nil #'identity))
+
+  (print (myeval '((lambda (x y) (+ x y)) 42 13) nil #'identity))
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (cons x y))
+                 nil
+                 #'identity))
+
+  (print (myeval '(progn (print (+ 1 4))
+                   2)
+                 nil
+                 #'identity))
+
+  (print (myeval '(let ((x (+ 1 2))
+                        (y 42))
+                   (print x)
+                   (print y)
+                   (cons x y))
+                 nil
+                 #'identity))
+
+  (print (myeval '(let* ((x 42) (y x))
+                   y)
+                 nil
+                 #'identity))
+
+  (repl)
+
+#+END_SRC
