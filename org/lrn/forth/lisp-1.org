@@ -384,7 +384,7 @@ trampolines (sec-машина) - избавление от рекурсии, м�
 
 secd-машина
 
-#+BEGIN_SRC lisp
+#+BEGIN_SRC lisp :tangle hello5.lisp
   ;; test function ok
   (defun ok (x)
     (format t "~%ok: ~A" x)
@@ -467,45 +467,59 @@ secd-машина
 
   ;; менее эффективный но более понятный вариант evlis
   (defun evlis (fn unevaled evaled env errcont cont)
-    (cond ((null unevaled) (myapply fn evaled errcont cont))
-          (t (myeval (car unevaled) env errcont
-                     (lambda (x)
-                       (evlis fn (cdr unevaled) (append evaled (list x)) env errcont cont))))))
+    (cond ((null unevaled)  (myapply fn evaled errcont cont))
+          (t                (myeval (car unevaled) env errcont
+                                    (lambda (x)
+                                      (evlis fn (cdr unevaled) (append evaled (list x)) env errcont cont))))))
 
 
   ;; более эффективный вариант evlis
   (defun evlis (fn unevaled evaled env errcont cont)
-    (cond ((null unevaled) (myapply fn (reverse evaled) errcont cont))
-          (t (myeval (car unevaled) env errcont
-                     (lambda (x)
-                       (evlis fn (cdr unevaled) (cons x evaled) env errcont cont))))))
+    (cond ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+          (t                (myeval (car unevaled) env errcont
+                                    (lambda (x)
+                                      (evlis fn (cdr unevaled) (cons x evaled) env errcont cont))))))
 
   ;; test for evlis
   (assert (equal 4 (evlis '+ '(1 (+ 1 2)) nil nil #'err #'ok)))
 
 
+  ;; evprogn
   (defun evprogn (lst env errcont cont)
-    (cond ((null lst) (funcall cont nil))
-          ((null (cdr lst)) (myeval (car lst) env errcont cont))
-          (t (myeval (car lst) env errcont
-                     (lambda (x)
-                       (evprogn (cdr lst) env errcont cont))))))
+    (cond ((null lst)         (funcall cont nil))
+          ((null (cdr lst))   (myeval (car lst) env errcont cont))
+          (t                  (myeval (car lst) env errcont
+                                      (lambda (x)
+                                        (evprogn (cdr lst) env errcont cont))))))
 
   ;; test for evprogn
-  (assert (eqaul 2 (evprogn '(1 2) nil #'err #'ok)))
+  (assert (equal 2 (evprogn '(1 2) nil #'err #'ok)))
 
 
   ;; evletstar
   (defun evletstar (varpairs exp env errcont cont)
-    (cond ((null varpairs) (myeval exp env errcont cont))
-          (t (myeval (car (cdr (car varpairs))) env errcont
-                     (lambda (x)
-                       (evletstar (cdr varpairs) exp
-                                  (acons (caar varpairs) x env)
-                                  errcont cont))))))
+    (cond ((null varpairs)  (evprogn exp env errcont cont))
+          (t                (myeval (cadar varpairs) env errcont
+                                    (lambda (x)
+                                      (evletstar (cdr varpairs) exp
+                                                 (acons (caar varpairs) x env)
+                                                 errcont cont))))))
 
   ;; test for evletstar
-  (assert (equal 2 (evletstar '((a 1) (b a)) '(+ a b) nil  #'err #'ok)))
+  (assert (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil  #'err #'ok)))
+
+
+  ;; evlet
+  (defun evlet (vars exps evald-exps exp env errcont cont)
+    (cond ((null exps)  (evprogn exp
+                                 (pairlis vars (reverse evald-exps) env)
+                                 errcont cont))
+          (t            (myeval (car exps) env errcont
+                                (lambda (x)
+                                  (evlet vars (cdr exps) (cons x evald-exps) exp env errcont cont))))))
+
+  ;; test for evlet
+  (assert (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil #'err #'ok)))
 
 
   ;; myapply
@@ -517,6 +531,8 @@ secd-машина
           ((equal fn 'cons)          (funcall cont (cons (car args) (car (cdr args)))))
           ((equal fn 'null)          (funcall cont (null (car args))))
           ((equal fn 'print)         (funcall cont (print (car args))))
+          ((equal fn 'or)            (funcall cont (or  (car args) (cadr args))))
+          ((equal fn 'and)           (funcall cont (and (car args) (cadr args))))
           ((closure-p fn)            (myeval (closure-body fn)
                                              (pairlis (closure-args fn)
                                                       args
@@ -524,22 +540,11 @@ secd-машина
                                              errcont
                                              cont))))
 
-  ;; evlet
-  (defun evlet (vars exps evald-exps exp env errcont cont)
-    (cond ((null exps)                      (myeval exp (pairlis vars (reverse evald-exps) env) errcont cont))
-          (t (myeval (car exps) env errcont
-                     (lambda (x)
-                       (evlet vars (cdr exps) (cons x evald-exps) exp env errcont cont))))))
-
-  ;; test for evlet
-  (assert (equal 3 (evlet '(a b) '(1 2) nil '(+ a b) nil #'err #'ok)))
-
-
   ;; myeval
   (defun myeval (exp env errcont cont)
     (cond ((numberp exp)                    (funcall cont exp))
-          ((member exp '(+ * car cdr cons
-                         null print))       (funcall cont exp))
+          ((member exp '(+ * car cdr cons null print or and))
+                                            (funcall cont exp))
           ((equal 't exp)                   (funcall cont 't))
           ((equal 'nil exp)                 (funcall cont 'nil))
           ((symbolp exp)                    (lookup exp env errcont cont))
@@ -553,12 +558,15 @@ secd-машина
           ((equal (car exp) 'let)           (evlet (mapcar #'car (cadr exp))
                                                    (mapcar #'cadr (cadr exp))
                                                    nil
-                                                   (caddr exp)
+                                                   (cddr exp)
                                                    env
                                                    errcont
                                                    cont))
           ((equal (car exp) 'progn)         (evprogn (cdr exp) env errcont cont))
-          ((equal (car exp) 'let*)          (evletstar (cadr exp) (caddr exp) env errcont cont))
+          ((equal (car exp) 'let*)          (evletstar (cadr exp)
+                                                       (cddr exp)
+                                                       env
+                                                       errcont cont))
           ((equal (car exp) 'defun)         (progn
                                               (push (cons (cadr exp)
                                                           (make-closure :body (cadddr exp) :env env :args (caddr exp)))
@@ -573,11 +581,9 @@ secd-машина
                                                             (rplacd it val))
                                                         (funcall cont val)))))
           ((equal (car exp) 'lambda)        (funcall cont (make-closure :body (caddr exp) :env env :args (cadr exp))))
-          (t                                   (myeval (car exp) env errcont
-                                                       (lambda (x)
-                                                         (evlis  x  (cdr exp) nil env errcont cont)))
-           )))
-
+          (t                                (myeval (car exp) env errcont
+                                                    (lambda (x)
+                                                      (evlis  x  (cdr exp) nil env errcont cont))))))
 
   ;; test number eval
   (assert (equal 123 (myeval 123 nil #'err #'ok)))
@@ -605,13 +611,6 @@ secd-машина
   (assert (equal 2 (myeval '(if nil 1 2)  nil #'err #'ok)))
 
 
-  (defun repl ()
-    (princ "microlisp>")
-    (princ (myeval (read) nil #'identity))
-    (terpri)
-    (finish-output)
-    (repl))
-
   (assert (equal 1 (myeval '(car (quote (1 2 3))) nil #'err #'ok)))
   (assert (equal 42 (myeval '(cond ((null '()) 42) (42 666)) nil #'err #'ok)))
   (assert (equal 55 (myeval '((lambda (x y) (+ x y)) 42 13) nil #'err #'ok)))
@@ -634,5 +633,27 @@ secd-машина
                               y)
                             nil #'err #'ok)))
 
-  (repl)
+  (assert (equal 84 (myeval '(let* ((x 42) (y (* 2 x)))
+                              y)
+                            nil #'err #'ok)))
+
+  (assert (equal 42 (myeval '(let* ((x 42) (y (* 2 x)))
+                              y
+                              x)
+                            nil #'err #'ok)))
+
+  (assert (equal 42 (myeval '(let ((x 42) (y 777))
+                              y
+                              x)
+                            nil #'err #'ok)))
+
+
+  (defun repl ()
+    (princ "microlisp>")
+    (princ (myeval (read) nil #'identity))
+    (terpri)
+    (finish-output)
+    (repl))
+
+  ;; (repl)
 #+END_SRC
