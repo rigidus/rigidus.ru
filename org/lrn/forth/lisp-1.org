@@ -522,6 +522,50 @@ secd-машина
   (assert (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil #'err #'ok)))
 
 
+
+
+
+  (defmacro foo (a b) `(* (+ ,a ,b) (+ ,a ,a)))
+
+  (let ((target (macro-function 'or)))
+    (if (compiled-function-p target)
+        (disassemble target)
+        (function-lambda-expression target)))
+
+  (defmacro -or (&optional first &rest rest)
+    (if (null rest)
+        first
+        (let ((g (gensym)))
+          `(let ((,g ,first))
+             (if ,g
+                 ,g
+                 (-or ,@rest))))))
+
+  (defmacro or* (&body body)
+    (cond ((null body)       'nil)
+          ((null (cdrbody))  (car body))
+          (t                 (let ((temp (gensym)))
+                               `(let ((,temp ,(carbody)))
+                                  (if ,temp ,temp
+                                      (or* ,@(cdrbody))))))))
+
+  ;; (or* a b) expands into
+  ;; (let ((#:g24 a))
+  ;;   (if #:g24 #:g24 b))
+
+
+  (defmacro -and (&rest args)
+    (cond ((null args)  t)
+          ((cdr args)   `(if ,(car args) (-and ,@(cdr args))))
+          (t            (car args))))
+
+
+  (defmacro and* (a b)
+    `(let ((temp2 ,b) (temp1 ,a))
+       (if (not temp1) nil
+           (if (not temp2) nil temp2))))
+
+
   ;; myapply
   (defun myapply (fn args errcont cont)
     (cond ((equal fn '+)             (funcall cont (+ (car args) (cadr args))))
