@@ -2,18 +2,36 @@
 
 * План работ
 
+Начнем с реализации системы, которая позволит вычислять списковые формы.
+
 Важнейшая часть интерпретатора Лисп - функция, называемая ~eval~, принимает на вход
 список, представляющий собой программу, а на выходе возвращает результат её исполнения.
 
-Так как мы пишем интерпретатор лиспа на лиспе, то наша функция будет называться
+Так как мы пишем интерпретатор Lisp на лиспе, то наша функция будет называться
 ~myeval~.
 
 Для того, чтобы писать минимально осмысленные, программмы мы должны реализовать базовый
-набор примитивов:
-- вычисление самовычисляемых форм, таких как числа
-- вычисление значений символов
-- plus (+)
-- multiple (*)
+набор примитивов (pure lisp):
+- cons
+- car
+- cdr
+- null
+- consp
+- define
+- lambda
+- functionp
+- numberp
+- eq
+- сравнение чисел (=)
+- if (или cond)
+
+Имея функцию сравнения на равенстрво чисел и функции ~car~ и ~cdr~ можно определить
+функцию, которая сравнивает списки, состоящие из чисел.  Поэтому база сранений - ~eq~
+(сравнение символов) и ~=~.
+
+В целях тренировки (на первом этапе) мы реализуем несколько отличающийся набор:
+- вычисление самовычисляемых форм, таких как числа (и nil)
+- арифметические вычисления: + (add) и * (mul)
 - quote
 - car
 - cdr
@@ -23,29 +41,18 @@
 - cond
 - progn
 - print
-- let
-- let*
-- lambda
-
-Кроме того, мы должны поддерживать модель вычисления с окружениями. Для этого нам нужно
-уметь добавлять в окружение переменные и искать в окружении значения этих переменных.
+- list
+- and
+- or
 
 Можно построить ~myeval~ с помощью ~cond~, тогда его структура будет такой:
 
-#+NAME: myeval
 #+BEGIN_SRC lisp
-  (defun myeval (lst env)
+  (defun myeval (lst)
     (cond
-      <<myeval_cond>>
+      ;; Какие-то действия в зависимости от того какая форма
+      ;; ...
       (t (error 'unknown-form))))
-#+END_SRC
-
-В блок ~myeval_cond~ добавляются все обработчики разных случаев, которые зависят от
-начальных элементов формы ~lst~. В параметре ~env~ передается окружение, которое у нас
-будет реализовано как ассоциативный список вида:
-
-#+BEGIN_SRC lisp
-  ((a . 1) (b . 42) (c . somesymbol))
 #+END_SRC
 
 * Самовычисляемые формы
@@ -53,44 +60,33 @@
 Первые случаи, которые мы можем реализовать - это самовычисляемые формы, такие,
 например, как числа, которые вычисляются сами в себя:
 
-#+NAME: myeval_cond
+#+NAME: number_0
 #+BEGIN_SRC lisp
+  ((null lst)                  nil)
   ((numberp lst)               lst)
 #+END_SRC
 
-* Вычисление символов
-
-Если мы встречаем символ, то мы должны найти его в нашем окружении. Мы можем достичь
-этого следующим образом:
-
-#+NAME: myeval_cond
-#+BEGIN_SRC lisp
-  ((symbolp lst)               (cdr (assoc lst env)))
-#+END_SRC
-
-* Встроенные функции
+* Встроенные функции арифметики
 
 Теперь мы можем сделать функции сложения и умножения. Для простоты они будут принимать
 только два аргумента (не так как в Common Lisp), но и первый и второй аргумент будет
 рекурсивно вычислен:
 
-#+NAME: myeval_cond
+#+NAME: ariph_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) '+)        (+ (myeval (cadr lst) env)
-                                  (myeval (caddr lst) env)))
-  ((equal (car lst) '*)        (* (myeval (cadr lst) env)
-                                  (myeval (caddr lst) env)))
+  ((equal (car lst) '+)        (+ (myeval (cadr lst))
+                                  (myeval (caddr lst))))
+  ((equal (car lst) '*)        (* (myeval (cadr lst))
+                                  (myeval (caddr lst))))
 #+END_SRC
 
 Теперь мы можем протестировать то, что у нас получилось:
 
-#+NAME: tests
+#+NAME: ariph_0_test
 #+BEGIN_SRC lisp
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+  (assert (equal 7 (myeval 7)))
+  (assert (equal 3 (myeval '(+ 1 2))))
+  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)))))
 #+END_SRC
 
 * Цитирование
@@ -98,82 +94,82 @@
 Следующая важная вещь - специальная форма QUOTE. Она возвращает свое содержимое без
 вычисления:
 
-#+NAME: myeval_cond
+#+NAME: quote_0
 #+BEGIN_SRC lisp
   ((equal (car lst) 'quote)    (cadr lst))
 #+END_SRC
 
 Протестируем её:
 
-#+NAME: tests
+#+NAME: quote_0_test
 #+BEGIN_SRC lisp
-  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)))))
 #+END_SRC
 
 * Работа с CONS-ячейками
 
 Теперь определим CAR и CDR:
 
-#+NAME: myeval_cond
+#+NAME: car_cdr_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'car)      (car (myeval (cadr lst) env)))
-  ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst) env)))
+  ((equal (car lst) 'car)      (car (myeval (cadr lst))))
+  ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst))))
 #+END_SRC
 
 Мы пока не можем протестировать их работу, потому что у нас нет CONS. Исправим это:
 
-#+NAME: myeval_cond
+#+NAME: cons_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'cons)     (cons (myeval (cadr lst) env)
-                                     (myeval (caddr lst) env)))
+  ((equal (car lst) 'cons)     (cons (myeval (cadr lst))
+                                     (myeval (caddr lst))))
 #+END_SRC
 
 Теперь можно протестировать создание cons-ячеек и получение правой и левой части ячейки
 
-#+NAME: tests
+#+NAME: car_cdr_cons_test
 #+BEGIN_SRC lisp
-  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
-  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
-  (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
-  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
-  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+  (assert (equal '(1 . 2) (myeval '(cons 1 2))))
+  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
+  (assert (equal 2 (myeval '(car (cons 2 3)))))
+  (assert (equal 3 (myeval '(cdr (cons 2 3)))))
+  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))))))
+  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))))))
 #+END_SRC
 
 * NULL-предикат
 
 Следующий этап - функция проверки на пустой список:
 
-#+NAME: myeval_cond
+#+NAME: null_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'null)     (null (myeval (cadr lst) env)))
+  ((equal (car lst) 'null)     (null (myeval (cadr lst))))
 #+END_SRC
 
-[TODO:gmm] В нашем первом интерпретаторе мы, по-видимому, не определяем ~NIL~ и Т?
+Тест:
 
 #+NAME: tests
 #+BEGIN_SRC lisp
-  (assert (equal T (myeval '(null ()) nil)))
+  (assert (equal T (myeval '(null ()))))
 #+END_SRC
 
-* Условное выполнение IF
+* Условное выполнение (IF)
 
 Теперь мы можем создать IF. Он принимает три аргумента и в зависимости от результата
 вычисления первого вычисляет второй или третий:
 
-#+NAME: myeval_cond
+#+NAME: if_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
-                                   (myeval (caddr lst) env)
-                                   (myeval (cadddr lst) env)))
+  ((equal (car lst) 'if)       (if (myeval (cadr lst))
+                                   (myeval (caddr lst))
+                                   (myeval (cadddr lst))))
 #+END_SRC
 
 Проверим, правильно ли вычисляется IF:
 
-#+NAME: tests
+#+NAME: if_0_test
 #+BEGIN_SRC lisp
-  (assert (equal 2 (myeval '(if () 1 2) nil)))
-  (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
+  (assert (equal 2 (myeval '(if () 1 2))))
+  (assert (equal 1 (myeval '(if (null ()) 1 2))))
 #+END_SRC
 
 * COND
@@ -182,329 +178,199 @@
 реализации потребуется вспомогательная функция, которая будет рекурсивно исполнять
 аргументы COND. Назовем ее EVCOND:
 
-#+NAME: helpers
+#+NAME: evcond_0
 #+BEGIN_SRC lisp
-  (defun evcond (lst env)
+  (defun evcond (lst)
     (cond ((null lst)               nil)
-          ((myeval (caar lst) env)  (myeval (cadar lst) env))
-          (t                        (evcond (cdr lst) env))))
+          ((myeval (caar lst))      (myeval (cadar lst)))
+          (t                        (evcond (cdr lst)))))
 #+END_SRC
 
 С использованием EVCOND определить COND довольно просто:
 
-#+NAME: myeval_cond
+#+NAME: cond_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+  ((equal (car lst) 'cond)     (evcond (cdr lst)))
 #+END_SRC
 
 Протестируем правильность работы COND:
 
-#+NAME: tests
+#+NAME: cond_0_test
 #+BEGIN_SRC lisp
   (assert (equal 2 (myeval '(cond
                              (() 1)
-                             (1 2))
-                           nil)))
+                             (1 2)))))
 #+END_SRC
 
 * PROGN
 
 Далее нам понадобится PROGN. Снова будем использовать вспомогательную функцию EVPROGN:
 
-#+NAME: helpers
+#+NAME: evprogn_0
 #+BEGIN_SRC lisp
-  (defun evprogn (lst env)
+  (defun evprogn (lst)
     (cond ((null lst)        nil)
-          ((null (cdr lst))  (myeval (car lst) env))
-          (t                 (myeval (car lst) env)
-                             (evprogn (cdr lst) env))))
+          ((null (cdr lst))  (myeval (car lst)))
+          (t                 (myeval (car lst))
+                             (evprogn (cdr lst)))))
 #+END_SRC
 
 с ее помощью определим PROGN:
 
-#+NAME: myeval_cond
+#+NAME: progn_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+  ((equal (car lst) 'progn)    (evprogn (cdr lst)))
 #+END_SRC
 
 И проверим:
 
 #+NAME: tests
 #+BEGIN_SRC lisp
-  (assert (equal 3 (myeval '(progn 1 2 3) nil)))
+  (assert (equal 3 (myeval '(progn 1 2 3))))
 #+END_SRC
 
 * PRINT
 
 Для того, чтобы иметь возможность отладочной печати, определим PRINT:
 
-#+NAME: myeval_cond
+#+NAME: print_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'print)    (print (myeval (car (cdr lst)) env)))
+  ((equal (car lst) 'print)    (print (myeval (cadr lst))))
 #+END_SRC
 
-* LET
+* LIST
 
-Теперь мы можем заняться более сложной частью - работой с окружениями. Чтобы добавить
-переменную в окружение нам понадобятся две вспомогательных функции. Первая из них:
-EVLIS (Evaluate List). Она рекурсивно испольняет список, полученный в первом аргументе,
-применяя к результатам исполнения CONS, чтобы получить список результатов:
+List - это функция, которая вычисляет свои аргументы и формирует из результатов
+вычисления список. Для ее определения нам понадобится вспомогательная функция
+EVLIS. Она рекурсивно испольняет список, полученный в первом аргументе, применяя к
+результатам исполнения CONS, чтобы получить список результатов:
 
-#+NAME: helpers
+#+NAME: evlis_0
 #+BEGIN_SRC lisp
-  (defun evlis (lst env)
+  (defun evlis (lst)
     (cond ((null lst) nil)
-          (t (cons (myeval (car lst) env)
-                   (evlis (cdr lst) env)))))
+          (t (cons (myeval (car lst))
+                   (evlis (cdr lst))))))
 #+END_SRC
 
 Протестируем ~evlis~:
 
-#+NAME: tests
+#+NAME: evlis_0_test
 #+BEGIN_SRC lisp
   (assert (equal '(3 6 42)
-                 (evlis '((+ 1 2) (* 2 3) 42) nil)))
-
+                 (evlis '((+ 1 2) (* 2 3) 42))))
 #+END_SRC
 
-Вторая вспомогательная функция: PAIRLIS. Мы будем использовать ее для работы с
-окружениями. Она принимает список ключей ~lst1~, список значений ~lst2~ и ассоциативный
-список результатов ~alist~. В процессе своей работы из первых двух списков она
-формирует пары "ключ-значение" и добавляет их в ~alist~. Мы можем добавлять пары в
-начало или в в конец ~alist~. Этот вариант добавляет пары в конец:
+Теперь мы можем определить LIST:
 
+#+NAME: list_0
 #+BEGIN_SRC lisp
-  (defun mypairlis (lst1 lst2 alist)
-   (cond ((and (null lst1) (null lst2))  alist)
-         ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
-         (t                               (mypairlis (cdr lst1)
-                                                     (cdr lst2)
-                                                     (cons (cons (car lst1)
-                                                                 (car lst2))
-                                                           alist)))))
+  ((equal (car lst) 'list)     (evlis (cdr lst)))
 #+END_SRC
 
-Но мы остановились на варианте, который добавляет пары в начало [TODO:gmm] Почему?
+Протестируем ~list~
 
-#+NAME: helpers
+#+NAME: list_0_test
 #+BEGIN_SRC lisp
-  (defun mypairlis (lst1 lst2 alist)
-    (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
-          (t                              (cons (cons (car lst1)
-                                                      (car lst2))
-                                                (mypairlis (cdr lst1)
-                                                           (cdr lst2)
-                                                           alist)))))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ 1 2) (* 2 3) 42))))
 #+END_SRC
 
-Протестируем ~mypairlis~:
-
-#+NAME: tests
-#+BEGIN_SRC lisp
-  (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
-                 (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
-
-#+END_SRC
-
-Имея эти функции мы можем определить LET:
-
-#+NAME: myeval_cond
-#+BEGIN_SRC lisp
-  ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                        (pairlis (mapcar #'car
-                                                         (car (cdr lst)))
-                                                 (evlis (mapcar #'cadr
-                                                                (car (cdr lst)))
-                                                        env)
-                                                 env)))
-#+END_SRC
-
-и проверить его:
-
-#+NAME: tests
-#+BEGIN_SRC lisp
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b)) nil)))
-#+END_SRC
-
-* LET*
-
-Определение LET* потребует одну дополнительную функцию, которую назовем EVLETSTAR. Она
-принимает три аргумента. Первый, ~varpairs~, представляет собой пары "ключ-значение",
-которые на каждом шаге по одной будут добавлены в окружение ~env~. Второй параметр,
-~EXP~, представляет собой тело выражения, которое должно быть вычислено, когда все
-varpairs будут добавлены в окончательное окружение.
-
-#+NAME: helpers
-#+BEGIN_SRC lisp
-  (defun evletstar (varpairs exp env)
-    (cond ((null varpairs)  (myeval exp env))
-          (t                (evletstar (cdr varpairs)
-                                       exp
-                                       (cons (cons (caar varpairs)
-                                                   (myeval (cadar varpairs) env))
-                                             env)))))
-#+END_SRC
-
-Теперь мы можем определить LET*:
-
-#+NAME: myeval_cond
-#+BEGIN_SRC lisp
-  ((equal (car lst) 'let*)     (evletstar (cadr lst)
-                                          (caddr lst)
-                                          env))
-#+END_SRC
-
-и протестировать его:
-
-#+NAME: tests
-#+BEGIN_SRC lisp
-  (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
-                                            (b 2)
-                                            (c (+ a b)))
-                                      (cons c (cons a b))) nil)))
-#+END_SRC
-
-* LAMBDA
-
-Последняя форма, которую мы реализуем - LAMBDA. В нашем интерпретаторе она вычисляется
-при вызове, являясь первым аргументом вычисляемого списка: ~((lambda (x) (cons x x))
-42)~ Кроме того, LAMBDA формирует свое окружение из своих параметров:
-
-#+NAME: myeval_cond
-#+BEGIN_SRC lisp
-  ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
-                                       (pairlis (cadar lst)
-                                                (evlis (cdr lst) env)
-                                                env)))
-#+END_SRC
-
-Проверим работу LAMBDA:
-
-#+NAME: tests
-#+BEGIN_SRC lisp
-  (assert (equal '(42 . 42) (myeval '((lambda (x)
-                                        (cons x x))
-                                      42) nil)))
-  (assert (equal '(42 . 17) (myeval '((lambda (x y)
-                                        (cons x y))
-                                      42 17) nil)))
-#+END_SRC
+* TODO AND
+* TODO OR
+* Итоги
 
 Соберем простой интерпретатор из ~myeval~ и вспомогательных функций и запишем его файл:
 
 #+NAME: simple
-#+BEGIN_SRC lisp :tangle simple.lisp :noweb tangle :exports code :padline no :comments none
-  <<helpers>>
+#+BEGIN_SRC lisp :tangle lisp-0.lisp :noweb tangle :exports code :padline no :comments none
+  <<evcond_0>>
+  <<evprogn_0>>
+  <<evlis_0>>
+  (defun myeval (lst)
+    (cond
+      <<number_0>>
+      <<symbol_0>>
+      <<ariph_0>>
+      <<quote_0>>
+      <<car_cdr_0>>
+      <<cons_0>>
+      <<null_0>>
+      <<if_0>>
+      <<cond_0>>
+      <<progn_0>>
+      <<print_0>>
+      <<list_0>>
+      (t (error 'unknown-form))))
 
-  <<myeval>>
-
-  <<tests>>
+  <<ariph_0_test>>
+  <<quote_0_test>>
+  <<car_cdr_cons_test>>
+  <<if_0_test>>
+  <<cond_0_test>>
+  <<evlis_0_test>>
+  <<list_0_test>>
 #+END_SRC
 
-* Итоги
 
 Мы должны получить следующий результат:
 
-#+BEGIN_SRC lisp
-  (defun evcond (lst env)
-    (cond ((null lst)               nil)
-          ((myeval (caar lst) env)  (myeval (cadar lst) env))
-          (t                        (evcond (cdr lst) env))))
-  (defun evprogn (lst env)
-    (cond ((null lst)        nil)
-          ((null (cdr lst))  (myeval (car lst) env))
-          (t                 (myeval (car lst) env)
-                             (evprogn (cdr lst) env))))
-  (defun evlis (lst env)
-    (cond ((null lst) nil)
-          (t (cons (myeval (car lst) env)
-                   (evlis (cdr lst) env)))))
-  (defun mypairlis (lst1 lst2 alist)
-    (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
-          (t                              (cons (cons (car lst1)
-                                                      (car lst2))
-                                                (mypairlis (cdr lst1)
-                                                           (cdr lst2)
-                                                           alist)))))
-  (defun evletstar (varpairs exp env)
-    (cond ((null varpairs)  (myeval exp env))
-          (t                (evletstar (cdr varpairs)
-                                       exp
-                                       (cons (cons (caar varpairs)
-                                                   (myeval (cadar varpairs) env))
-                                             env)))))
 
-  (defun myeval (lst env)
+#+BEGIN_SRC lisp
+  (defun evcond (lst)
+    (cond ((null lst)               nil)
+          ((myeval (caar lst))      (myeval (cadar lst)))
+          (t                        (evcond (cdr lst)))))
+  (defun evprogn (lst)
+    (cond ((null lst)        nil)
+          ((null (cdr lst))  (myeval (car lst)))
+          (t                 (myeval (car lst))
+                             (evprogn (cdr lst)))))
+  (defun evlis (lst)
+    (cond ((null lst) nil)
+          (t (cons (myeval (car lst))
+                   (evlis (cdr lst))))))
+  (defun myeval (lst)
     (cond
+      ((null lst)                  nil)
       ((numberp lst)               lst)
-      ((symbolp lst)               (cdr (assoc lst env)))
-      ((equal (car lst) '+)        (+ (myeval (cadr lst) env)
-                                      (myeval (caddr lst) env)))
-      ((equal (car lst) '*)        (* (myeval (cadr lst) env)
-                                      (myeval (caddr lst) env)))
+
+      ((equal (car lst) '+)        (+ (myeval (cadr lst))
+                                      (myeval (caddr lst))))
+      ((equal (car lst) '*)        (* (myeval (cadr lst))
+                                      (myeval (caddr lst))))
       ((equal (car lst) 'quote)    (cadr lst))
-      ((equal (car lst) 'car)      (car (myeval (cadr lst) env)))
-      ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst) env)))
-      ((equal (car lst) 'cons)     (cons (myeval (cadr lst) env)
-                                         (myeval (caddr lst) env)))
-      ((equal (car lst) 'null)     (null (myeval (cadr lst) env)))
-      ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
-                                       (myeval (caddr lst) env)
-                                       (myeval (cadddr lst) env)))
-      ((equal (car lst) 'cond)     (evcond (cdr lst) env))
-      ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
-      ((equal (car lst) 'print)    (print (myeval (car (cdr lst)) env)))
-      ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                            (pairlis (mapcar #'car
-                                                             (car (cdr lst)))
-                                                     (evlis (mapcar #'cadr
-                                                                    (car (cdr lst)))
-                                                            env)
-                                                     env)))
-      ((equal (car lst) 'let*)     (evletstar (cadr lst)
-                                              (caddr lst)
-                                              env))
-      ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
-                                           (pairlis (cadar lst)
-                                                    (evlis (cdr lst) env)
-                                                    env)))
+      ((equal (car lst) 'car)      (car (myeval (cadr lst))))
+      ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst))))
+      ((equal (car lst) 'cons)     (cons (myeval (cadr lst))
+                                         (myeval (caddr lst))))
+      ((equal (car lst) 'null)     (null (myeval (cadr lst))))
+      ((equal (car lst) 'if)       (if (myeval (cadr lst))
+                                       (myeval (caddr lst))
+                                       (myeval (cadddr lst))))
+      ((equal (car lst) 'cond)     (evcond (cdr lst)))
+      ((equal (car lst) 'progn)    (evprogn (cdr lst)))
+      ((equal (car lst) 'print)    (print (myeval (car (cdr lst)))))
+      ((equal (car lst) 'list)     (evlis (cdr lst)))
       (t (error 'unknown-form))))
 
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
-  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
-  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
-  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
-  (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
-  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
-  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal T (myeval '(null ()) nil)))
-  (assert (equal 2 (myeval '(if () 1 2) nil)))
-  (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
+  (assert (equal 7 (myeval 7)))
+  (assert (equal 3 (myeval '(+ 1 2))))
+  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)))))
+  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)))))
+  (assert (equal '(1 . 2) (myeval '(cons 1 2))))
+  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
+  (assert (equal 2 (myeval '(car (cons 2 3)))))
+  (assert (equal 3 (myeval '(cdr (cons 2 3)))))
+  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))))))
+  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))))))
+  (assert (equal 2 (myeval '(if () 1 2))))
+  (assert (equal 1 (myeval '(if (null ()) 1 2))))
   (assert (equal 2 (myeval '(cond
                              (() 1)
-                             (1 2))
-                           nil)))
-  (assert (equal 3 (myeval '(progn 1 2 3) nil)))
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b)) nil)))
-  (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
-                                            (b 2)
-                                            (c (+ a b)))
-                                      (cons c (cons a b))) nil)))
-  (assert (equal '(42 . 42) (myeval '((lambda (x)
-                                        (cons x x))
-                                      42) nil)))
-  (assert (equal '(42 . 17) (myeval '((lambda (x y)
-                                        (cons x y))
-                                      42 17) nil)))
+                             (1 2)))))
+  (assert (equal '(3 6 42)
+                 (evlis '((+ 1 2) (* 2 3) 42))))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ 1 2) (* 2 3) 42))))
 #+END_SRC
