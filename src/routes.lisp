@@ -78,7 +78,6 @@
 (restas:mount-module -lrn/asm- (#:restas.directory-publisher)
   (:url "/lrn/asm")
   (:render-method (make-instance 'orgmode-handler))
-
   (restas.directory-publisher:*directory*
    (merge-pathnames (make-pathname :directory '(:relative "www/lrn/asm"))
                     *base-dir*)))
@@ -86,9 +85,15 @@
 (restas:mount-module -lrn/forth- (#:restas.directory-publisher)
   (:url "/lrn/forth")
   (:render-method (make-instance 'orgmode-handler))
-
   (restas.directory-publisher:*directory*
    (merge-pathnames (make-pathname :directory '(:relative "www/lrn/forth"))
+                    *base-dir*)))
+
+(restas:mount-module -lrn/lisp- (#:restas.directory-publisher)
+  (:url "/lrn/lisp")
+  (:render-method (make-instance 'orgmode-handler))
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/lisp"))
                     *base-dir*)))
 
 (restas:mount-module -lrn/java- (#:restas.directory-publisher)
