@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">План работ</a></li>
+<li><a href="#unnumbered-2">Глобальное окружение</a></li>
+<li><a href="#unnumbered-3">MyApply</a>
+<ul>
+<li><a href="#unnumbered-4">Встроенные функции арифметики</a></li>
+<li><a href="#unnumbered-5">Работа с CONS-ячейками</a></li>
+<li><a href="#unnumbered-6">NULL-предикат</a></li>
+<li><a href="#unnumbered-7">Вычисление символов-функций</a></li>
+<li><a href="#unnumbered-8">LAMBDA</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-9">MyEval</a>
+<ul>
+<li><a href="#unnumbered-10">Самовычисляемые формы</a></li>
+<li><a href="#unnumbered-11">Вычисление символов</a></li>
+<li><a href="#unnumbered-12">Цитирование</a></li>
+<li><a href="#unnumbered-13">Условное выполнение IF</a></li>
+<li><a href="#unnumbered-14">COND</a></li>
+<li><a href="#unnumbered-15">LET</a></li>
+<li><a href="#unnumbered-16">PROGN</a></li>
+<li><a href="#unnumbered-17">PRINT</a></li>
+<li><a href="#unnumbered-18">LIST</a></li>
+<li><a href="#unnumbered-19">LET*</a></li>
+<li><a href="#unnumbered-20">DEFUN</a></li>
+<li><a href="#unnumbered-21">SETQ</a></li>
+<li><a href="#unnumbered-22">LAMBDA</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-23">Repl</a></li>
+<li><a href="#unnumbered-24">Итоги</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">План работ</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Цель этого этапа:
+</p>
+
+<p>
+На этом этапе мы получим глобальное динамическое окружение и разделим MYEVAL на MYEVAL и
+MYAPPLY.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Глобальное окружение</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Создадим переменную, которая будет хранить глобальное окружение. Нам понадобится
+<code>lookup</code>. Это функция, которая возвращает значение переменной, переданной ей.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="lookup_2">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env)
+  (<span style="color: #af00ff;">let</span> ((it (assoc symb env)))
+    (<span style="color: #af00ff;">if</span> (not (null it))
+        it
+        (assoc symb *glob-env*))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">MyApply</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Мы вынесем в APPLY все функции и вычисление значений символов, а также lambda.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args env)
+  (<span style="color: #af00ff;">cond</span>
+    &lt;&lt;myapply_ariph_2&gt;&gt;
+    &lt;&lt;myapply_car_cdr_cons_2&gt;&gt;
+    &lt;&lt;myapply_null_2&gt;&gt;
+    &lt;&lt;myapply_func_symb_2&gt;&gt;
+    &lt;&lt;myapply_lambda_2&gt;&gt;
+    ))
+</pre>
+</div>
+
+<p>
+И отдельно вынесем тесты:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_2_test">&lt;&lt;myapply_ariph_2_test&gt;&gt;
+&lt;&lt;myapply_car_cdr_cons_2_test&gt;&gt;
+&lt;&lt;myapply_null_2_test&gt;&gt;
+&lt;&lt;myapply_func_symb_2_test&gt;&gt;
+&lt;&lt;myapply_lambda_2_test&gt;&gt;
+</pre>
+</div>
+
+<p>
+В подразделах находятся функции для MYAPPLY, в них сделаны косметические изменения,
+чтобы соответствовать именам параметров в месте, где они будут вызываны. Тесты остаются
+без изменений.
+</p>
+
+<p>
+Добавлено вычисление символов-функций, так, чтобы использовать <code>lookup</code> в глобальном
+окружении.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Встроенные функции арифметики</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_ariph_2">((equal fn '+)               (+ (car args) (cadr args)))
+((equal fn '*)               (* (car args) (cadr args)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_ariph_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 7 (myeval 7 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(+ 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval 'a '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-3">
+<h3 id="unnumbered-5">Работа с CONS-ячейками</h3>
+<div class="outline-text-3" id="text-unnumbered-5">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_car_cdr_cons_2">((equal fn 'car)             (caar args))
+((equal fn 'cdr)             (cdar args))
+((equal fn 'cons)            (cons (car args) (cadr args)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_car_cdr_cons_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(car (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(cdr (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-3">
+<h3 id="unnumbered-6">NULL-предикат</h3>
+<div class="outline-text-3" id="text-unnumbered-6">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_null_2">((equal fn 'null)            (null (car args)))
+</pre>
+</div>
+
+<p>
+Добавляем тесты, проверящие символ в окружении, равный nil и не nil
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_null_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-3">
+<h3 id="unnumbered-7">Вычисление символов-функций</h3>
+<div class="outline-text-3" id="text-unnumbered-7">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_func_symb_2">((symbolp fn)                (<span style="color: #af00ff;">let</span> ((it (lookup fn env)))
+                               (<span style="color: #af00ff;">if</span> (null it)
+                                   (<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"fn-404: ~A"</span> fn))
+                                   (myapply (cdr it) args env))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_func_symb_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
+                                         (beta . 7)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-3">
+<h3 id="unnumbered-8">LAMBDA</h3>
+<div class="outline-text-3" id="text-unnumbered-8">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_lambda_2">((equal (car fn) 'lambda)    (myeval (car (cddr fn))
+                                     (pairlis (car (cdr fn))
+                                              args
+                                              env)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_lambda_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 42) (myeval '((<span style="color: #af00ff;">lambda</span> (x)
+                                      (cons x x))
+                                    42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 17) (myeval '((<span style="color: #af00ff;">lambda</span> (x y)
+                                      (cons x y))
+                                    42 17) nil)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-2">
+<h2 id="unnumbered-9">MyEval</h2>
+<div class="outline-text-2" id="text-unnumbered-9">
+<p>
+Большинство компонентов <code>myeval</code> остаются без изменений. Но, теперь, имея глобальное
+окружение мы можем определить <code>defun</code> и <code>setq</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_2">&lt;&lt;myeval_evcond_2&gt;&gt;
+&lt;&lt;myeval_evprogn_2&gt;&gt;
+&lt;&lt;myeval_evlis_2&gt;&gt;
+&lt;&lt;myeval_mypairlis_2&gt;&gt;
+&lt;&lt;myeval_evletstar_2&gt;&gt;
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
+  (<span style="color: #af00ff;">cond</span>
+    &lt;&lt;myeval_number_2&gt;&gt;
+    &lt;&lt;myeval_symb_2&gt;&gt;
+    &lt;&lt;myeval_quote_2&gt;&gt;
+    &lt;&lt;myeval_if_2&gt;&gt;
+    &lt;&lt;myeval_cond_2&gt;&gt;
+    &lt;&lt;myeval_let_2&gt;&gt;
+    &lt;&lt;myeval_progn_2&gt;&gt;
+    &lt;&lt;myeval_print_2&gt;&gt;
+    &lt;&lt;myeval_list_2&gt;&gt;
+    &lt;&lt;myeval_letstar_2&gt;&gt;
+    &lt;&lt;myeval_defun_2&gt;&gt;
+    &lt;&lt;myeval_setq_2&gt;&gt;
+    &lt;&lt;myeval_lambda_2&gt;&gt;
+    (t
+     (myapply (car lst)
+              (evlis (cdr lst) env)
+              env))))
+</pre>
+</div>
+
+<p>
+Также определим тесты
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_2_test">&lt;&lt;myeval_symb_2_test&gt;&gt;
+&lt;&lt;myeval_quote_2_test&gt;&gt;
+&lt;&lt;myeval_if_2_test&gt;&gt;
+&lt;&lt;myeval_cond_2_test&gt;&gt;
+&lt;&lt;myeval_let_2_test&gt;&gt;
+&lt;&lt;myeval_progn_2_test&gt;&gt;
+&lt;&lt;myeval_list_2_test&gt;&gt;
+&lt;&lt;myeval_letstar_2_test&gt;&gt;
+&lt;&lt;myeval_defun_2_test&gt;&gt;
+&lt;&lt;myeval_setq_2_test&gt;&gt;
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-3">
+<h3 id="unnumbered-10">Самовычисляемые формы</h3>
+<div class="outline-text-3" id="text-unnumbered-10">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_number_2">((null lst)                  nil)
+((numberp lst)               lst)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-3">
+<h3 id="unnumbered-11">Вычисление символов</h3>
+<div class="outline-text-3" id="text-unnumbered-11">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_symb_2">((symbolp lst)               (cdr (assoc lst env)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_symb_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-3">
+<h3 id="unnumbered-12">Цитирование</h3>
+<div class="outline-text-3" id="text-unnumbered-12">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_quote_2">((equal (car lst) 'quote)    (cadr lst))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_quote_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-3">
+<h3 id="unnumbered-13">Условное выполнение IF</h3>
+<div class="outline-text-3" id="text-unnumbered-13">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_if_2">((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
+                                 (myeval (caddr lst) env)
+                                 (myeval (cadddr lst) env)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_if_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> () 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> (null ()) 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . 1)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14">COND</h3>
+<div class="outline-text-3" id="text-unnumbered-14">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evcond_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)               nil)
+        ((myeval (caar lst) env)  (myeval (cadar lst) env))
+        (t                        (evcond (cdr lst) env))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_cond_2">((equal (car lst) 'cond)     (evcond (cdr lst) env))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_cond_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (() 1)
+                           (1 2))
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                         (a 1)
+                         (b 2))
+                       '((a . ()) (b . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . 1) (b . ())))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15">LET</h3>
+<div class="outline-text-3" id="text-unnumbered-15">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_mypairlis_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_mypairlis_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+               (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_let_2">((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
+                                      (pairlis (mapcar #'car
+                                                       (car (cdr lst)))
+                                               (evlis (mapcar #'cadr
+                                                              (car (cdr lst)))
+                                                      env)
+                                               env)))
+</pre>
+</div>
+
+<p>
+и проверить его:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_let_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(<span style="color: #af00ff;">let</span> ((a 1)
+                                       (b 2))
+                                  (cons a b)) nil)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-3">
+<h3 id="unnumbered-16">PROGN</h3>
+<div class="outline-text-3" id="text-unnumbered-16">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evprogn_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        nil)
+        ((null (cdr lst))  (myeval (car lst) env))
+        (t                 (myeval (car lst) env)
+                           (evprogn (cdr lst) env))))
+</pre>
+</div>
+
+<p>
+Без изменений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_progn_2">((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+</pre>
+</div>
+
+<p>
+Добавляем тесты в окружении
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_progn_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> 1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-3">
+<h3 id="unnumbered-17">PRINT</h3>
+<div class="outline-text-3" id="text-unnumbered-17">
+<p>
+Без изменений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_print_2">((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-18" class="outline-3">
+<h3 id="unnumbered-18">LIST</h3>
+<div class="outline-text-3" id="text-unnumbered-18">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlis_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
+        (t           (cons (myeval (car lst) env)
+                     (evlis (cdr lst) env)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlis_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (evlis '((+ 1 2) (* 2 3) 42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+</pre>
+</div>
+
+<p>
+LIST определяем почти без изменений:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_list_2">((equal (car lst) 'list)     (evlis (cdr lst) env))
+</pre>
+</div>
+
+<p>
+Протестируем <code>list</code> (добавляя тесты в окружении)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_list_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-19" class="outline-3">
+<h3 id="unnumbered-19">LET*</h3>
+<div class="outline-text-3" id="text-unnumbered-19">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evletstar_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env)
+  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (myeval exp env))
+        (t                (evletstar (cdr varpairs)
+                                     exp
+                                     (cons (cons (caar varpairs)
+                                                 (myeval (cadar varpairs) env))
+                                           env)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_letstar_2">((equal (car lst) 'let*)     (evletstar (cadr lst)
+                                        (caddr lst)
+                                        env))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_letstar_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 1 . 2) (myeval '(<span style="color: #af00ff;">let*</span> ((a 1)
+                                          (b 2)
+                                          (c (+ a b)))
+                                    (cons c (cons a b))) nil)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-3">
+<h3 id="unnumbered-20">DEFUN</h3>
+<div class="outline-text-3" id="text-unnumbered-20">
+<p>
+<code>defun</code> определяем, добавляя в глобальное окружение переменную, содержащую
+lambda-функцию. В соответствии со стандартом <code>defun</code> возвращает имя функции при
+успешном выполнении.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_defun_2">((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
+                               (push (cons (cadr lst)
+                                           `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
+                                              ,(cadddr lst)))
+                                     ,*glob-env*)
+                               (cadr lst)))
+</pre>
+</div>
+
+<p>
+Необходимо протестировать <code>defun</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_defun_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA LAMBDA (X) (* X X)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
+                 (<span style="color: #af00ff;">prog1</span> *glob-env*
+                   (setf *glob-env* nil)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-3">
+<h3 id="unnumbered-21">SETQ</h3>
+<div class="outline-text-3" id="text-unnumbered-21">
+<p>
+<code>setq</code> добавляет переменную в глобальное окружение, если <code>lookup</code> не смог ее
+найти. Иначе он заменяет ее значение.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_setq_2">((equal (car lst) 'setq)     (<span style="color: #af00ff;">let</span> ((it (lookup (cadr lst) env))
+                                   (val (myeval (caddr lst) env)))
+                               (<span style="color: #af00ff;">if</span> (null it)
+                                   (push (cons (cadr lst) val)
+                                         ,*glob-env*)
+                                   (rplacd it val))
+                               val))
+</pre>
+</div>
+
+<p>
+TODO: Необходимо протестировать <code>setq</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_setq_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
+                           (setq alfa 1)
+                           alfa)
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA . 1))
+             (<span style="color: #af00ff;">progn</span>
+               (setf *glob-env* nil)
+               (myeval '(setq alfa 1) nil)
+               (<span style="color: #af00ff;">prog1</span> *glob-env*
+                 (setf *glob-env* nil)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">LAMBDA</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
+<p>
+[TODO:gmm] - тут я не уверен что правильно
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_lambda_2">((equal (car lst) 'lambda)   lst)
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-23" class="outline-2">
+<h2 id="unnumbered-23">Repl</h2>
+<div class="outline-text-2" id="text-unnumbered-23">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="repl_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
+  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (princ (myeval (read) nil))
+  (terpri)
+  (finish-output)
+  (repl))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-24" class="outline-2">
+<h2 id="unnumbered-24">Итоги</h2>
+<div class="outline-text-2" id="text-unnumbered-24">
+<div class="org-src-container">
+
+<pre class="src src-lisp">&lt;&lt;lookup_2&gt;&gt;
+
+&lt;&lt;myapply_2&gt;&gt;
+
+&lt;&lt;myeval_2&gt;&gt;
+
+&lt;&lt;myapply_2_test&gt;&gt;
+
+&lt;&lt;myeval_2_test&gt;&gt;
+
+&lt;&lt;repl_2&gt;&gt;
+</pre>
+</div>
+
+<p>
+Получиться должен вот такой результат:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env)
+  (<span style="color: #af00ff;">let</span> ((it (assoc symb env)))
+    (<span style="color: #af00ff;">if</span> (not (null it))
+        it
+        (assoc symb *glob-env*))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args env)
+  (<span style="color: #af00ff;">cond</span>
+    ((equal fn '+)               (+ (car args) (cadr args)))
+    ((equal fn '*)               (* (car args) (cadr args)))
+    ((equal fn 'car)             (caar args))
+    ((equal fn 'cdr)             (cdar args))
+    ((equal fn 'cons)            (cons (car args) (cadr args)))
+    ((equal fn 'null)            (null (car args)))
+    ((symbolp fn)                (<span style="color: #af00ff;">let</span> ((it (lookup fn env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"fn-404: ~A"</span> fn))
+                                       (myapply (cdr it) args env))))
+    ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
+                                         (pairlis (car (cdr fn))
+                                                  args
+                                                  env)))
+    ))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)               nil)
+        ((myeval (caar lst) env)  (myeval (cadar lst) env))
+        (t                        (evcond (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        nil)
+        ((null (cdr lst))  (myeval (car lst) env))
+        (t                 (myeval (car lst) env)
+                           (evprogn (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
+        (t           (cons (myeval (car lst) env)
+                           (evlis (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env)
+  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (myeval exp env))
+        (t                (evletstar (cdr varpairs)
+                                     exp
+                                     (cons (cons (caar varpairs)
+                                                 (myeval (cadar varpairs) env))
+                                           env)))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
+  (<span style="color: #af00ff;">cond</span>
+    ((null lst)                  nil)
+    ((numberp lst)               lst)
+    ((symbolp lst)               (cdr (assoc lst env)))
+    ((equal (car lst) 'quote)    (cadr lst))
+    ((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
+                                     (myeval (caddr lst) env)
+                                     (myeval (cadddr lst) env)))
+    ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+    ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
+                                          (pairlis (mapcar #'car
+                                                           (car (cdr lst)))
+                                                   (evlis (mapcar #'cadr
+                                                                  (car (cdr lst)))
+                                                          env)
+                                                   env)))
+    ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+    ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+    ((equal (car lst) 'list)     (evlis (cdr lst) env))
+    ((equal (car lst) 'let*)     (evletstar (cadr lst)
+                                            (caddr lst)
+                                            env))
+    ((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
+                                   (push (cons (cadr lst)
+                                               `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
+                                                  ,(cadddr lst)))
+                                         *glob-env*)
+                                   (cadr lst)))
+    ((equal (car lst) 'setq)     (<span style="color: #af00ff;">let</span> ((it (lookup (cadr lst) env))
+                                       (val (myeval (caddr lst) env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (push (cons (cadr lst) val)
+                                             *glob-env*)
+                                       (rplacd it val))
+                                   val))
+    ((equal (car lst) 'lambda)   lst)
+    (t
+     (myapply (car lst)
+              (evlis (cdr lst) env)
+              env))))
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 7 (myeval 7 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(+ 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval 'a '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(car (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(cdr (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
+                                         (beta . 7)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 42) (myeval '((<span style="color: #af00ff;">lambda</span> (x)
+                                      (cons x x))
+                                    42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 17) (myeval '((<span style="color: #af00ff;">lambda</span> (x y)
+                                      (cons x y))
+                                    42 17) nil)))
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> () 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> (null ()) 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (() 1)
+                           (1 2))
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . ()) (b . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . 1) (b . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(<span style="color: #af00ff;">let</span> ((a 1)
+                                       (b 2))
+                                  (cons a b)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> 1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 1 . 2) (myeval '(<span style="color: #af00ff;">let*</span> ((a 1)
+                                          (b 2)
+                                          (c (+ a b)))
+                                    (cons c (cons a b))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA LAMBDA (X) (* X X)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
+                 (<span style="color: #af00ff;">prog1</span> *glob-env*
+                   (setf *glob-env* nil)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
+                           (setq alfa 1)
+                           alfa)
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA . 1))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (myeval '(setq alfa 1) nil)
+                 (<span style="color: #af00ff;">prog1</span> *glob-env*
+                   (setf *glob-env* nil)))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
+  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (princ (myeval (read) nil))
+  (terpri)
+  (finish-output)
+  (repl))
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>
