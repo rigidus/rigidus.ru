@@ -2,10 +2,8 @@
 
 * План работ
 
-Цель этого этапа:
-
-На этом этапе мы получим глобальное динамическое окружение и разделим MYEVAL на MYEVAL и
-MYAPPLY.
+На этом этапе мы добавим к динамическому окружению глобальное и разделим MYEVAL на
+MYEVAL и MYAPPLY.
 
 * Глобальное окружение
 
@@ -23,29 +21,6 @@ MYAPPLY.
           (assoc symb *glob-env*))))
 #+END_SRC
 
-Чтобы сделать лексическое окружение, нужно создать структуру замыкания:
-
-#+NAME: closure_2
-#+BEGIN_SRC lisp
-  (defstruct closure
-    body
-    env
-    args)
-#+END_SRC
-
-Когда замыкание попадает в функцию ~myapply~ мы должны сделать ~myeval~ над его телом в
-правильном окружении:
-
-#+NAME: myapply_closure_2
-#+BEGIN_SRC lisp
-  ((closure-p fn)              (myeval (closure-body fn)
-                                       (pairlis (closure-args fn)
-                                                args
-                                                (closure-env fn))))
-#+END_SRC
-
-Этим куском кода мы заменяем обработку ~lambda~ внутри ~myapply~.
-
 * MyApply
 
 Мы вынесем в APPLY все функции и вычисление значений символов, а также lambda.
@@ -58,7 +33,7 @@ MYAPPLY.
       <<myapply_car_cdr_cons_2>>
       <<myapply_null_2>>
       <<myapply_func_symb_2>>
-      <<myapply_closure_2>>
+      <<myapply_lambda_2>>
       ))
 #+END_SRC
 
@@ -97,7 +72,7 @@ MYAPPLY.
   (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
 #+END_SRC
 
-** Работа с CONS-ячейками и NULL
+** Работа с CONS-ячейками
 
 #+NAME: myapply_car_cdr_cons_2
 #+BEGIN_SRC lisp
@@ -151,7 +126,7 @@ MYAPPLY.
                                            (beta . 7)))))
 #+END_SRC
 
-** CANCEL LAMBDA
+** LAMBDA
 
 #+NAME: myapply_lambda_2
 #+BEGIN_SRC lisp
@@ -202,7 +177,7 @@ MYAPPLY.
       (t
        (myapply (car lst)
                 (evlis (cdr lst) env)
-                              env))))
+                env))))
 #+END_SRC
 
 Также определим тесты
@@ -231,11 +206,9 @@ MYAPPLY.
 
 ** Вычисление символов
 
-Теперь  мы вычисляем значение символа обращаясь к ~lookup~
-
 #+NAME: myeval_symb_2
 #+BEGIN_SRC lisp
-  ((symbolp lst)               (cdr (lookup lst env)))
+  ((symbolp lst)               (cdr (assoc lst env)))
 #+END_SRC
 
 #+NAME: myeval_symb_2_test
@@ -326,8 +299,10 @@ MYAPPLY.
 #+NAME: myeval_let_2
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                        (pairlis (mapcar #'car (cadr lst))
-                                                 (evlis (mapcar #'cadr (cadr lst))
+                                        (pairlis (mapcar #'car
+                                                         (car (cdr lst)))
+                                                 (evlis (mapcar #'cadr
+                                                                (car (cdr lst)))
                                                         env)
                                                  env)))
 #+END_SRC
@@ -448,25 +423,31 @@ lambda-функцию. В соответствии со стандартом ~de
 
 #+NAME: myeval_defun_2
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'defun)         (progn
-                                      (push (cons (cadr lst)
-                                                  (make-closure :body (cadddr lst)
-                                                                :env env
-                                                                :args (caddr lst)))
-                                            ,*glob-env*)
-                                      (cadr lst)))
+  ((equal (car lst) 'defun)    (progn
+                                 (push (cons (cadr lst)
+                                             `(lambda ,(caddr lst)
+                                                ,(cadddr lst)))
+                                       ,,*glob-env*)
+                                 (cadr lst)))
 #+END_SRC
 
 Необходимо протестировать ~defun~:
 
 #+NAME: myeval_defun_2_test
 #+BEGIN_SRC lisp
-  (assert (equal '((ALFA LAMBDA (X) (* X X)))
-                 (progn
-                   (setf *glob-env* nil)
-                   (myeval '(defun alfa (x) (* x x)) nil)
-                   (prog1 *glob-env*
-                     (setf *glob-env* nil)))))
+  ;; (assert (equal 49 (progn
+  ;;                     (setf *glob-env* nil)
+  ;;                     (prog1 (myeval '(progn
+  ;;                                      (defun alfa (x) (* x x))
+  ;;                                      ;; (setq beta 7)
+  ;;                                      ;; (alfa beta))
+  ;;                                    nil)
+  ;;                                    (setf *glob-env* nil)))))
+  ;; )
+
+  ;; (setf *glob-env* nil)
+  ;; (myeval '(defun alfa (x) (* x x)) nil)
+  ;; (myeval (list (cdr (lookup 'alfa nil)) 8) nil)
 #+END_SRC
 
 ** SETQ
@@ -480,7 +461,7 @@ lambda-функцию. В соответствии со стандартом ~de
                                      (val (myeval (caddr lst) env)))
                                  (if (null it)
                                      (push (cons (cadr lst) val)
-                                           ,*glob-env*)
+                                           ,,*glob-env*)
                                      (rplacd it val))
                                  val))
 #+END_SRC
@@ -489,25 +470,25 @@ TODO: Необходимо протестировать ~setq~
 
 #+NAME: myeval_setq_2_test
 #+BEGIN_SRC lisp
-  (assert (equal 1 (myeval '(let ((alfa 2))
-                             (setq alfa 1)
-                             alfa)
-                           nil)))
-  (assert (equal '((ALFA . 1))
-               (progn
-                 (setf *glob-env* nil)
-                 (myeval '(setq alfa 1) nil)
-                 (prog1 *glob-env*
-                   (setf *glob-env* nil)))))
+  ;; (assert (equal 1 (myeval '(let ((alfa 2))
+  ;;                            (setq alfa 1)
+  ;;                            alfa)
+  ;;                          nil)))
+  ;; (assert (equal '((ALFA . 1))
+  ;;              (progn
+  ;;                (setf *glob-env* nil)
+  ;;                (myeval '(setq alfa 1) nil)
+  ;;                (prog1 *glob-env*
+  ;;                  (setf *glob-env* nil)))))
 #+END_SRC
 
 ** LAMBDA
 
-При обработке формы, начинающейся с вызова ~lambda~ мы должны создать замыкание:
+[TODO:gmm] - тут я не уверен что правильно
 
 #+NAME: myeval_lambda_2
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
+  ((equal (car lst) 'lambda)   lst)
 #+END_SRC
 
 * Repl
@@ -526,8 +507,6 @@ TODO: Необходимо протестировать ~setq~
 
 #+BEGIN_SRC lisp :tangle lisp-2.lisp :noweb tangle :exports code :padline no :comments none
   <<lookup_2>>
-
-  <<closure_2>>
 
   <<myapply_2>>
 
@@ -551,11 +530,6 @@ TODO: Необходимо протестировать ~setq~
           it
           (assoc symb *glob-env*))))
 
-  (defstruct closure
-    body
-    env
-    args)
-
   (defun myapply (fn args env)
     (cond
       ((equal fn '+)               (+ (car args) (cadr args)))
@@ -568,10 +542,10 @@ TODO: Необходимо протестировать ~setq~
                                      (if (null it)
                                          (error (format nil "fn-404: ~A" fn))
                                          (myapply (cdr it) args env))))
-      ((closure-p fn)              (myeval (closure-body fn)
-                                           (pairlis (closure-args fn)
+      ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
+                                           (pairlis (car (cdr fn))
                                                     args
-                                                    (closure-env fn))))
+                                                    env)))
       ))
 
   (defun evcond (lst env)
@@ -607,15 +581,17 @@ TODO: Необходимо протестировать ~setq~
     (cond
       ((null lst)                  nil)
       ((numberp lst)               lst)
-      ((symbolp lst)               (cdr (lookup lst env)))
+      ((symbolp lst)               (cdr (assoc lst env)))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
                                        (myeval (caddr lst) env)
                                        (myeval (cadddr lst) env)))
       ((equal (car lst) 'cond)     (evcond (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                            (pairlis (mapcar #'car (cadr lst))
-                                                     (evlis (mapcar #'cadr (cadr lst))
+                                            (pairlis (mapcar #'car
+                                                             (car (cdr lst)))
+                                                     (evlis (mapcar #'cadr
+                                                                    (car (cdr lst)))
                                                             env)
                                                      env)))
       ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
@@ -624,13 +600,12 @@ TODO: Необходимо протестировать ~setq~
       ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                               (caddr lst)
                                               env))
-      ((equal (car lst) 'defun)         (progn
-                                          (push (cons (cadr lst)
-                                                      (make-closure :body (cadddr lst)
-                                                                    :env env
-                                                                    :args (caddr lst)))
-                                                ,*glob-env*)
-                                          (cadr lst)))
+      ((equal (car lst) 'defun)    (progn
+                                     (push (cons (cadr lst)
+                                                 `(lambda ,(caddr lst)
+                                                    ,(cadddr lst)))
+                                           ,*glob-env*)
+                                     (cadr lst)))
       ((equal (car lst) 'setq)     (let ((it (lookup (cadr lst) env))
                                          (val (myeval (caddr lst) env)))
                                      (if (null it)
@@ -638,7 +613,7 @@ TODO: Необходимо протестировать ~setq~
                                                ,*glob-env*)
                                          (rplacd it val))
                                      val))
-      ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
+      ((equal (car lst) 'lambda)   lst)
       (t
        (myapply (car lst)
                 (evlis (cdr lst) env)
@@ -661,14 +636,15 @@ TODO: Необходимо протестировать ~setq~
   (assert (equal T (myeval '(null ()) nil)))
   (assert (equal T (myeval '(null a) '((a . ())))))
   (assert (equal NIL (myeval '(null a) '((a . 1)))))
-  ;; (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
-  ;;                                          (beta . 7)))))
-  ;; (assert (equal '(42 . 42) (myeval '((lambda (x)
-  ;;                                       (cons x x))
-  ;;                                     42) nil)))
-  ;; (assert (equal '(42 . 17) (myeval '((lambda (x y)
-  ;;                                       (cons x y))
-  ;;                                     42 17) nil)))
+  (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
+                                           (beta . 7)))))
+  (assert (equal '(42 . 42) (myeval '((lambda (x)
+                                        (cons x x))
+                                      42) nil)))
+  (assert (equal '(42 . 17) (myeval '((lambda (x y)
+                                        (cons x y))
+                                      42 17) nil)))
+
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
   (assert (equal 2 (myeval '(if () 1 2) nil)))
@@ -701,22 +677,29 @@ TODO: Необходимо протестировать ~setq~
                                             (b 2)
                                             (c (+ a b)))
                                       (cons c (cons a b))) nil)))
-  ;; (assert (equal '((ALFA LAMBDA (X) (* X X)))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(defun alfa (x) (* x x)) nil)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
-  (assert (equal 1 (myeval '(let ((alfa 2))
-                             (setq alfa 1)
-                             alfa)
-                           nil)))
-  (assert (equal '((ALFA . 1))
-                 (progn
-                   (setf *glob-env* nil)
-                   (myeval '(setq alfa 1) nil)
-                   (prog1 *glob-env*
-                     (setf *glob-env* nil)))))
+  ;; (assert (equal 49 (progn
+  ;;                     (setf *glob-env* nil)
+  ;;                     (prog1 (myeval '(progn
+  ;;                                      (defun alfa (x) (* x x))
+  ;;                                      ;; (setq beta 7)
+  ;;                                      ;; (alfa beta))
+  ;;                                    nil)
+  ;;                                    (setf *glob-env* nil)))))
+  ;; )
+
+  ;; (setf *glob-env* nil)
+  ;; (myeval '(defun alfa (x) (* x x)) nil)
+  ;; (myeval (list (cdr (lookup 'alfa nil)) 8) nil)
+  ;; (assert (equal 1 (myeval '(let ((alfa 2))
+  ;;                            (setq alfa 1)
+  ;;                            alfa)
+  ;;                          nil)))
+  ;; (assert (equal '((ALFA . 1))
+  ;;              (progn
+  ;;                (setf *glob-env* nil)
+  ;;                (myeval '(setq alfa 1) nil)
+  ;;                (prog1 *glob-env*
+  ;;                  (setf *glob-env* nil)))))
 
   (defun repl ()
     (princ "microlisp>")
