@@ -19,10 +19,10 @@
 <li><a href="#unnumbered-3">MyApply</a>
 <ul>
 <li><a href="#unnumbered-4">Встроенные функции арифметики</a></li>
-<li><a href="#unnumbered-5">Работа с CONS-ячейками</a></li>
+<li><a href="#unnumbered-5">Работа с CONS-ячейками и NULL</a></li>
 <li><a href="#unnumbered-6">NULL-предикат</a></li>
 <li><a href="#unnumbered-7">Вычисление символов-функций</a></li>
-<li><a href="#unnumbered-8">LAMBDA</a></li>
+<li><a href="#unnumbered-8"><span class="done nilCANCEL">CANCEL</span> LAMBDA</a></li>
 </ul>
 </li>
 <li><a href="#unnumbered-9">MyEval</a>
@@ -81,6 +81,37 @@ MYAPPLY.
         (assoc symb *glob-env*))))
 </pre>
 </div>
+
+<p>
+Чтобы сделать лексическое окружение, нужно создать структуру замыкания:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="closure_2">(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">closure</span>
+  body
+  env
+  args)
+</pre>
+</div>
+
+<p>
+Когда замыкание попадает в функцию <code>myapply</code> мы должны сделать <code>myeval</code> над его телом в
+правильном окружении:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_closure_2">((closure-p fn)              (myeval (closure-body fn)
+                                     (pairlis (closure-args fn)
+                                              args
+                                              (closure-env fn))))
+</pre>
+</div>
+
+<p>
+Этим куском кода мы заменяем обработку <code>lambda</code> внутри <code>myapply</code>.
+</p>
 </div>
 </div>
 
@@ -99,7 +130,7 @@ MYAPPLY.
     &lt;&lt;myapply_car_cdr_cons_2&gt;&gt;
     &lt;&lt;myapply_null_2&gt;&gt;
     &lt;&lt;myapply_func_symb_2&gt;&gt;
-    &lt;&lt;myapply_lambda_2&gt;&gt;
+    &lt;&lt;myapply_closure_2&gt;&gt;
     ))
 </pre>
 </div>
@@ -153,7 +184,7 @@ MYAPPLY.
 </div>
 
 <div id="outline-container-unnumbered-5" class="outline-3">
-<h3 id="unnumbered-5">Работа с CONS-ячейками</h3>
+<h3 id="unnumbered-5">Работа с CONS-ячейками и NULL</h3>
 <div class="outline-text-3" id="text-unnumbered-5">
 <div class="org-src-container">
 
@@ -224,7 +255,7 @@ MYAPPLY.
 </div>
 
 <div id="outline-container-unnumbered-8" class="outline-3">
-<h3 id="unnumbered-8">LAMBDA</h3>
+<h3 id="unnumbered-8"><span class="done CANCEL">CANCEL</span> LAMBDA</h3>
 <div class="outline-text-3" id="text-unnumbered-8">
 <div class="org-src-container">
 
@@ -283,7 +314,7 @@ MYAPPLY.
     (t
      (myapply (car lst)
               (evlis (cdr lst) env)
-              env))))
+                            env))))
 </pre>
 </div>
 
@@ -322,9 +353,13 @@ MYAPPLY.
 <div id="outline-container-unnumbered-11" class="outline-3">
 <h3 id="unnumbered-11">Вычисление символов</h3>
 <div class="outline-text-3" id="text-unnumbered-11">
+<p>
+Теперь  мы вычисляем значение символа обращаясь к <code>lookup</code>
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_symb_2">((symbolp lst)               (cdr (assoc lst env)))
+<pre class="src src-lisp" id="myeval_symb_2">((symbolp lst)               (cdr (lookup lst env)))
 </pre>
 </div>
 
@@ -438,10 +473,8 @@ MYAPPLY.
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_let_2">((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
-                                      (pairlis (mapcar #'car
-                                                       (car (cdr lst)))
-                                               (evlis (mapcar #'cadr
-                                                              (car (cdr lst)))
+                                      (pairlis (mapcar #'car (cadr lst))
+                                               (evlis (mapcar #'cadr (cadr lst))
                                                       env)
                                                env)))
 </pre>
@@ -604,12 +637,13 @@ lambda-функцию. В соответствии со стандартом <co
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_defun_2">((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
-                               (push (cons (cadr lst)
-                                           `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
-                                              ,(cadddr lst)))
-                                     ,*glob-env*)
-                               (cadr lst)))
+<pre class="src src-lisp" id="myeval_defun_2">((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
+                                    (push (cons (cadr lst)
+                                                (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
+                                                              <span style="color: #5f5f87;">:env</span> env
+                                                              <span style="color: #5f5f87;">:args</span> (caddr lst)))
+                                          *glob-env*)
+                                    (cadr lst)))
 </pre>
 </div>
 
@@ -644,7 +678,7 @@ lambda-функцию. В соответствии со стандартом <co
                                    (val (myeval (caddr lst) env)))
                                (<span style="color: #af00ff;">if</span> (null it)
                                    (push (cons (cadr lst) val)
-                                         ,*glob-env*)
+                                         *glob-env*)
                                    (rplacd it val))
                                val))
 </pre>
@@ -675,12 +709,12 @@ TODO: Необходимо протестировать <code>setq</code>
 <h3 id="unnumbered-22">LAMBDA</h3>
 <div class="outline-text-3" id="text-unnumbered-22">
 <p>
-[TODO:gmm] - тут я не уверен что правильно
+При обработке формы, начинающейся с вызова <code>lambda</code> мы должны создать замыкание:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_lambda_2">((equal (car lst) 'lambda)   lst)
+<pre class="src src-lisp" id="myeval_lambda_2">((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
 </pre>
 </div>
 </div>
@@ -710,6 +744,8 @@ TODO: Необходимо протестировать <code>setq</code>
 
 <pre class="src src-lisp">&lt;&lt;lookup_2&gt;&gt;
 
+&lt;&lt;closure_2&gt;&gt;
+
 &lt;&lt;myapply_2&gt;&gt;
 
 &lt;&lt;myeval_2&gt;&gt;
@@ -736,6 +772,11 @@ TODO: Необходимо протестировать <code>setq</code>
         it
         (assoc symb *glob-env*))))
 
+(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">closure</span>
+  body
+  env
+  args)
+
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args env)
   (<span style="color: #af00ff;">cond</span>
     ((equal fn '+)               (+ (car args) (cadr args)))
@@ -748,10 +789,10 @@ TODO: Необходимо протестировать <code>setq</code>
                                    (<span style="color: #af00ff;">if</span> (null it)
                                        (<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"fn-404: ~A"</span> fn))
                                        (myapply (cdr it) args env))))
-    ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
-                                         (pairlis (car (cdr fn))
+    ((closure-p fn)              (myeval (closure-body fn)
+                                         (pairlis (closure-args fn)
                                                   args
-                                                  env)))
+                                                  (closure-env fn))))
     ))
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
@@ -787,17 +828,15 @@ TODO: Необходимо протестировать <code>setq</code>
   (<span style="color: #af00ff;">cond</span>
     ((null lst)                  nil)
     ((numberp lst)               lst)
-    ((symbolp lst)               (cdr (assoc lst env)))
+    ((symbolp lst)               (cdr (lookup lst env)))
     ((equal (car lst) 'quote)    (cadr lst))
     ((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
                                      (myeval (caddr lst) env)
                                      (myeval (cadddr lst) env)))
     ((equal (car lst) 'cond)     (evcond (cdr lst) env))
     ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
-                                          (pairlis (mapcar #'car
-                                                           (car (cdr lst)))
-                                                   (evlis (mapcar #'cadr
-                                                                  (car (cdr lst)))
+                                          (pairlis (mapcar #'car (cadr lst))
+                                                   (evlis (mapcar #'cadr (cadr lst))
                                                           env)
                                                    env)))
     ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
@@ -806,12 +845,13 @@ TODO: Необходимо протестировать <code>setq</code>
     ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                             (caddr lst)
                                             env))
-    ((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
-                                   (push (cons (cadr lst)
-                                               `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
-                                                  ,(cadddr lst)))
-                                         *glob-env*)
-                                   (cadr lst)))
+    ((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
+                                        (push (cons (cadr lst)
+                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
+                                                                  <span style="color: #5f5f87;">:env</span> env
+                                                                  <span style="color: #5f5f87;">:args</span> (caddr lst)))
+                                              *glob-env*)
+                                        (cadr lst)))
     ((equal (car lst) 'setq)     (<span style="color: #af00ff;">let</span> ((it (lookup (cadr lst) env))
                                        (val (myeval (caddr lst) env)))
                                    (<span style="color: #af00ff;">if</span> (null it)
@@ -819,7 +859,7 @@ TODO: Необходимо протестировать <code>setq</code>
                                              *glob-env*)
                                        (rplacd it val))
                                    val))
-    ((equal (car lst) 'lambda)   lst)
+    ((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
     (t
      (myapply (car lst)
               (evlis (cdr lst) env)
@@ -842,15 +882,14 @@ TODO: Необходимо протестировать <code>setq</code>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
-                                         (beta . 7)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 42) (myeval '((<span style="color: #af00ff;">lambda</span> (x)
-                                      (cons x x))
-                                    42) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 17) (myeval '((<span style="color: #af00ff;">lambda</span> (x y)
-                                      (cons x y))
-                                    42 17) nil)))
-
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))</span>
+<span style="color: #af0000;">;;                                          </span><span style="color: #af0000;">(beta . 7)))))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '(42 . 42) (myeval '((lambda (x)</span>
+<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(cons x x))</span>
+<span style="color: #af0000;">;;                                     </span><span style="color: #af0000;">42) nil)))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '(42 . 17) (myeval '((lambda (x y)</span>
+<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(cons x y))</span>
+<span style="color: #af0000;">;;                                     </span><span style="color: #af0000;">42 17) nil)))</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> () 1 2) nil)))
@@ -883,12 +922,12 @@ TODO: Необходимо протестировать <code>setq</code>
                                           (b 2)
                                           (c (+ a b)))
                                     (cons c (cons a b))) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA LAMBDA (X) (* X X)))
-               (<span style="color: #af00ff;">progn</span>
-                 (setf *glob-env* nil)
-                 (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
-                 (<span style="color: #af00ff;">prog1</span> *glob-env*
-                   (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '((ALFA LAMBDA (X) (* X X)))</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(progn</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(setf *glob-env* nil)</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(myeval '(defun alfa (x) (* x x)) nil)</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(prog1 *glob-env*</span>
+<span style="color: #af0000;">;;                    </span><span style="color: #af0000;">(setf *glob-env* nil)))))</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
                            (setq alfa 1)
                            alfa)
