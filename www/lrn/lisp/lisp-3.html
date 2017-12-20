@@ -896,7 +896,220 @@ microlisp&gt;
 
 <div class="org-src-container">
 
-<pre class="src src-lisp"></pre>
+<pre class="src src-lisp">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">function-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYAPPLY: function not found: ~A"</span>
+             (fn condition)))))
+
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">variable-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((variable <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:variable</span>  <span style="color: #5f5f87;">:reader</span> variable))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYEVAL: variable not found: ~A"</span>
+             (variable condition)))))
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
+   (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env)
+  (<span style="color: #af00ff;">let</span> ((it (assoc symb env)))
+    (<span style="color: #af00ff;">if</span> (not (null it))
+        it
+        (assoc symb *glob-env*))))
+
+(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">closure</span>
+  body
+  env
+  args)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args env)
+  (<span style="color: #af00ff;">cond</span>
+    ((equal fn '+)               (+ (car args) (cadr args)))
+    ((equal fn '*)               (* (car args) (cadr args)))
+    ((equal fn 'car)             (caar args))
+    ((equal fn 'cdr)             (cdar args))
+    ((equal fn 'cons)            (cons (car args) (cadr args)))
+    ((equal fn 'null)            (null (car args)))
+    ((symbolp fn)                (<span style="color: #af00ff;">let</span> ((it (lookup fn env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (<span style="color: #ff0000; font-weight: bold;">error</span> 'function-not-found-error <span style="color: #5f5f87;">:fn</span> fn)
+                                       (myapply (cdr it) args env))))
+    ((closure-p fn)              (myeval (closure-body fn)
+                                         (pairlis (closure-args fn)
+                                                  args
+                                                  (closure-env fn))))
+    ))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)               nil)
+        ((myeval (caar lst) env)  (myeval (cadar lst) env))
+        (t                        (evcond (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        nil)
+        ((null (cdr lst))  (myeval (car lst) env))
+        (t                 (myeval (car lst) env)
+                           (evprogn (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
+        (t           (cons (myeval (car lst) env)
+                           (evlis (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env)
+  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (myeval exp env))
+        (t                (evletstar (cdr varpairs)
+                                     exp
+                                     (cons (cons (caar varpairs)
+                                                 (myeval (cadar varpairs) env))
+                                           env)))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
+  (<span style="color: #af00ff;">cond</span>
+    ((null lst)                  nil)
+    ((equal t lst)               t)
+    ((member lst '(+ * car cdr cons null))  lst)
+    ((numberp lst)               lst)
+    ((symbolp lst)               (<span style="color: #af00ff;">let</span> ((it (lookup lst env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (<span style="color: #ff0000; font-weight: bold;">error</span> 'variable-not-found-error <span style="color: #5f5f87;">:variable</span> lst)
+                                       (cdr it))))
+    ((equal (car lst) 'quote)    (cadr lst))
+    ((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
+                                     (myeval (caddr lst) env)
+                                     (myeval (cadddr lst) env)))
+    ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+    ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
+                                          (pairlis (mapcar #'car (cadr lst))
+                                                   (evlis (mapcar #'cadr (cadr lst))
+                                                          env)
+                                                   env)))
+    ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+    ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+    ((equal (car lst) 'list)     (evlis (cdr lst) env))
+    ((equal (car lst) 'let*)     (evletstar (cadr lst)
+                                            (caddr lst)
+                                            env))
+    ((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
+                                        (push (cons (cadr lst)
+                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
+                                                                  <span style="color: #5f5f87;">:env</span> env
+                                                                  <span style="color: #5f5f87;">:args</span> (caddr lst)))
+                                              *glob-env*)
+                                        (cadr lst)))
+    ((equal (car lst) 'setq)     (<span style="color: #af00ff;">let</span> ((it (lookup (cadr lst) env))
+                                       (val (myeval (caddr lst) env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (push (cons (cadr lst) val)
+                                             *glob-env*)
+                                       (rplacd it val))
+                                   val))
+    ((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
+    (t
+     (myapply (car lst)
+              (evlis (cdr lst) env)
+              env))))
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 7 (myeval 7 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(+ 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval 'a '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(car (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(cdr (cons 2 3)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
+                                         (beta . 7)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal "error"</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(handler-case (myeval '(alfa beta) '((beta . 7)))</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(FUNCTION-NOT-FOUND-ERROR (condition) "error"))))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">TODO : &#1085;&#1091;&#1078;&#1077;&#1085; &#1090;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; closure &#1074; apply</span>
+
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval 'T nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval 'NIL nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 999 (myeval 999 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span>
+               (<span style="color: #af00ff;">handler-case</span> (myeval 'b nil)
+                 (VARIABLE-NOT-FOUND-ERROR (condition) <span style="color: #87005f;">"error"</span>))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> () 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> (null ()) 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> a 1 2) '((a . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (() 1)
+                           (1 2))
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . ()) (b . 1)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . 1) (b . ())))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(<span style="color: #af00ff;">let</span> ((a 1)
+                                       (b 2))
+                                  (cons a b)) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> 1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 1 . 2) (myeval '(<span style="color: #af00ff;">let*</span> ((a 1)
+                                          (b 2)
+                                          (c (+ a b)))
+                                    (cons c (cons a b))) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA LAMBDA (X) (* X X)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
+                 (<span style="color: #af00ff;">prog1</span> *glob-env*
+                   (setf *glob-env* nil)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
+                           (setq alfa 1)
+                           alfa)
+                         nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA . 1))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (myeval '(setq alfa 1) nil)
+                 (<span style="color: #af00ff;">prog1</span> *glob-env*
+                   (setf *glob-env* nil)))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
+  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (princ (myeval (read) nil))
+  (terpri)
+  (finish-output)
+  (repl))
+</pre>
 </div>
 </div>
 </div>
