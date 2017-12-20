@@ -175,7 +175,7 @@ MYEVAL и MYAPPLY.
       <<myeval_setq_2>>
       <<myeval_lambda_2>>
       (t
-       (myapply (car lst)
+       (myapply (myeval (car lst) env)
                 (evlis (cdr lst) env)
                 env))))
 #+END_SRC
@@ -184,6 +184,7 @@ MYEVAL и MYAPPLY.
 
 #+NAME: myeval_2_test
 #+BEGIN_SRC lisp
+  <<myeval_number_2_test>>
   <<myeval_symb_2_test>>
   <<myeval_quote_2_test>>
   <<myeval_if_2_test>>
@@ -198,21 +199,40 @@ MYEVAL и MYAPPLY.
 
 ** Самовычисляемые формы
 
+Добавляем в самовычисляемые формы ~car~ ~cdr~ ~cons~ и ~null~, потому что ниже мы
+добавим рекурсивное вычисление форм в конец ~cond~ в ~myeval~.
+
 #+NAME: myeval_number_2
 #+BEGIN_SRC lisp
   ((null lst)                  nil)
+  ((equal t lst)               t)
+  ((member lst '(+ * car cdr cons null))  lst)
   ((numberp lst)               lst)
 #+END_SRC
 
+#+NAME: myeval_number_2_test
+#+BEGIN_SRC lisp
+  (assert (equal T (myeval 'T nil)))
+  (assert (equal NIL (myeval 'NIL nil)))
+  (assert (equal 999 (myeval 999 nil)))
+#+END_SRC
+
+
 ** Вычисление символов
+
+Обрабатываем ситуацию несвязанных переменных
 
 #+NAME: myeval_symb_2
 #+BEGIN_SRC lisp
-  ((symbolp lst)               (cdr (assoc lst env)))
+  ((symbolp lst)               (let ((it (lookup lst env)))
+                                 (if (null it)
+                                     (error 'unbound-variable (format nil "var-404: ~A" lst))
+                                     (cdr it))))
 #+END_SRC
 
 #+NAME: myeval_symb_2_test
 #+BEGIN_SRC lisp
+  ;; нужен тест для проверки неопределенной переменной
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
 #+END_SRC
 
@@ -299,10 +319,8 @@ MYEVAL и MYAPPLY.
 #+NAME: myeval_let_2
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                        (pairlis (mapcar #'car
-                                                         (car (cdr lst)))
-                                                 (evlis (mapcar #'cadr
-                                                                (car (cdr lst)))
+                                        (pairlis (mapcar #'car (cadr lst))
+                                                 (evlis (mapcar #'cadr (cadr lst))
                                                         env)
                                                  env)))
 #+END_SRC
@@ -427,7 +445,7 @@ lambda-функцию. В соответствии со стандартом ~de
                                  (push (cons (cadr lst)
                                              `(lambda ,(caddr lst)
                                                 ,(cadddr lst)))
-                                       ,,*glob-env*)
+                                       ,*glob-env*)
                                  (cadr lst)))
 #+END_SRC
 
@@ -435,19 +453,13 @@ lambda-функцию. В соответствии со стандартом ~de
 
 #+NAME: myeval_defun_2_test
 #+BEGIN_SRC lisp
-  ;; (assert (equal 49 (progn
-  ;;                     (setf *glob-env* nil)
-  ;;                     (prog1 (myeval '(progn
-  ;;                                      (defun alfa (x) (* x x))
-  ;;                                      ;; (setq beta 7)
-  ;;                                      ;; (alfa beta))
-  ;;                                    nil)
-  ;;                                    (setf *glob-env* nil)))))
-  ;; )
-
-  ;; (setf *glob-env* nil)
-  ;; (myeval '(defun alfa (x) (* x x)) nil)
-  ;; (myeval (list (cdr (lookup 'alfa nil)) 8) nil)
+  (assert (equal 49 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun alfa (x) (* x x))
+                                       (alfa 7))
+                                     nil)
+                        (setf *glob-env* nil)))))
 #+END_SRC
 
 ** SETQ
@@ -470,21 +482,19 @@ TODO: Необходимо протестировать ~setq~
 
 #+NAME: myeval_setq_2_test
 #+BEGIN_SRC lisp
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;              (progn
-  ;;                (setf *glob-env* nil)
-  ;;                (myeval '(setq alfa 1) nil)
-  ;;                (prog1 *glob-env*
-  ;;                  (setf *glob-env* nil)))))
+  (assert (equal 49 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun alfa (x) (* x x))
+                                       (setq beta 7)
+                                       (alfa beta))
+                                     nil)
+                        (setf *glob-env* nil)))))
 #+END_SRC
 
 ** LAMBDA
 
-[TODO:gmm] - тут я не уверен что правильно
+В динамическом окружении мы вычисляем лямбду в саму себя
 
 #+NAME: myeval_lambda_2
 #+BEGIN_SRC lisp
@@ -581,17 +591,15 @@ TODO: Необходимо протестировать ~setq~
     (cond
       ((null lst)                  nil)
       ((numberp lst)               lst)
-      ((symbolp lst)               (cdr (assoc lst env)))
+      ((symbolp lst)               (cdr (lookup lst env)))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
                                        (myeval (caddr lst) env)
                                        (myeval (cadddr lst) env)))
       ((equal (car lst) 'cond)     (evcond (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                            (pairlis (mapcar #'car
-                                                             (car (cdr lst)))
-                                                     (evlis (mapcar #'cadr
-                                                                    (car (cdr lst)))
+                                            (pairlis (mapcar #'car (cadr lst))
+                                                     (evlis (mapcar #'cadr (cadr lst))
                                                             env)
                                                      env)))
       ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
@@ -677,29 +685,21 @@ TODO: Необходимо протестировать ~setq~
                                             (b 2)
                                             (c (+ a b)))
                                       (cons c (cons a b))) nil)))
-  ;; (assert (equal 49 (progn
-  ;;                     (setf *glob-env* nil)
-  ;;                     (prog1 (myeval '(progn
-  ;;                                      (defun alfa (x) (* x x))
-  ;;                                      ;; (setq beta 7)
-  ;;                                      ;; (alfa beta))
-  ;;                                    nil)
-  ;;                                    (setf *glob-env* nil)))))
-  ;; )
-
-  ;; (setf *glob-env* nil)
-  ;; (myeval '(defun alfa (x) (* x x)) nil)
-  ;; (myeval (list (cdr (lookup 'alfa nil)) 8) nil)
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;              (progn
-  ;;                (setf *glob-env* nil)
-  ;;                (myeval '(setq alfa 1) nil)
-  ;;                (prog1 *glob-env*
-  ;;                  (setf *glob-env* nil)))))
+  (assert (equal 49 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun alfa (x) (* x x))
+                                       (alfa 7))
+                                     nil)
+                        (setf *glob-env* nil)))))
+  (assert (equal 49 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun alfa (x) (* x x))
+                                       (setq beta 7)
+                                       (alfa beta))
+                                     nil)
+                        (setf *glob-env* nil)))))
 
   (defun repl ()
     (princ "microlisp>")

@@ -2,15 +2,121 @@
 
 * План работ
 
-Цель этого этапа:
+Цель этого этапа - создание лексического окружения. Так мы решаем funarg-problem,
+проблему функционального аргумента.
 
-На этом этапе мы получим глобальное динамическое окружение и разделим MYEVAL на MYEVAL и
-MYAPPLY.
+funarg problem возникает, когда тело определяемой функции ссылается на
+идентификаторы, которые определены в окружении, где функция определяется, в то время
+как мы бы хотели, чтобы ссылки вели на окружение, в котором функция вызывается.
 
-* Глобальное окружение
+#+BEGIN_SRC lisp
+  (let ((dv 1))
+    (defun test ()
+      dv))
 
-Создадим переменную, которая будет хранить глобальное окружение. Нам понадобится
-~lookup~. Это функция, которая возвращает значение переменной, переданной ей.
+  (test)
+#+END_SRC
+
+
+
+Есть 2 типа этой проблемы:
+- downward - когда в функцию передается функуция
+- upward - когда функция возвращается из функции
+
+
+
+Пример, который сочетает оба варианта:
+
+#+NAME: funarg_2
+#+BEGIN_SRC lisp
+  (defun compose (f g)
+    (lambda (x) (f (g x))))
+
+  (funcall (compose #'car #'cdr) '(1 2 3 4))
+#+END_SRC
+
+Когда мы возвращаем лямбду мы теряем окружение (динамическое окружение осталось в месте
+определения) и у нас нет никакого способа применить ~f~ к (g x)
+
+Если мы вычислим лексическог окружение, то лямбда возвратит замыкание, где у нас будут
+связанные ~f~ и ~g~
+
+Upward-funarg probleb
+
+#+BEGIN_SRC lisp
+  microlisp>  0: (MYEVAL (((LAMBDA (X) (LAMBDA (Y) X)) 1) 2) NIL)
+  1: (MYEVAL ((LAMBDA (X) (LAMBDA (Y) X)) 1) NIL)
+    2: (MYEVAL (LAMBDA (X) (LAMBDA (Y) X)) NIL)                 ; вычисляем car формы
+    2: MYEVAL returned (LAMBDA (X) (LAMBDA (Y) X))             ; lambda вычисляется в себя
+    2: (MYEVAL 1 NIL)                                          ; вычисляем первый аргумет 1
+    2: MYEVAL returned 1                                       ; числа самовычислимы
+    2: (MYAPPLY (LAMBDA (X) (LAMBDA (Y) X)) (1) NIL)           ; применяем первую лямбду
+      3: (MYEVAL (LAMBDA (Y) X) ((X . 1)))                    ; тело первой лямбды -- вторая лямбда  -> тут будет замыкание
+      3: MYEVAL returned (LAMBDA (Y) X)                       ; лямбда вычисляется в себя
+    2: MYAPPLY returned (LAMBDA (Y) X)
+  1: MYEVAL returned (LAMBDA (Y) X)
+  1: (MYEVAL 2 NIL)                                           ; вычисляем второй аргумент
+  1: MYEVAL returned 2                                        ; он самовычислим
+  1: (MYAPPLY (LAMBDA (Y) X) (2) NIL)                         ; применяем лямбду (вторую), но обрати внимание на окружение
+    2: (MYEVAL X ((Y . 2)))                                   ; окуржение ((x . 1)) пропало
+
+  (defun mymapcar (fn lst)
+    (cond ((null lst) nil)
+          (t (cons (funcall fn (car lst))
+                   (mymapcar fn (cdr lst))))))
+
+
+  (defun mymapcar (fn lst)
+    (cond ((null lst) nil)
+          (t (cons (fn (car lst))
+                   (mymapcar fn (cdr lst))))))
+
+
+  (defun foo (lst)
+      (mymapcar (lambda (i) (cons i lst)) '(1 2 3)))
+
+  (foo '(a b c))
+
+  ->
+  ((1 a b c
+  2 a b c
+  3 a b c))
+
+
+  (defun mymapcar (fn lst)
+    (cond ((null lst) nil)
+          (t (cons (funcall fn (car lst))
+                   (mymapcar fn (cdr lst))))))
+  STYLE-WARNING: redefining COMMON-LISP-USER::MYMAPCAR in DEFUN
+
+  MYMAPCAR
+  (defun foo (lst)
+    (mymapcar (lambda (i) (cons i lst)) '(1 2 3)))
+  STYLE-WARNING: redefining COMMON-LISP-USER::FOO in DEFUN
+
+  FOO
+  ,* (foo '(a b c))
+
+  ((1 A B C) (2 A B C) (3 A B C))
+  ,* (repl)
+  0
+  microlisp>0
+  (defun mymapcar (fn lst)
+    (cond ((null lst) nil)
+          (t (cons (fn (car lst))
+                   (mymapcar fn (cdr lst))))))
+  microlisp>MYMAPCAR
+  (defun foo (lst)
+    (mymapcar (lambda (i) (cons i lst)) '(1 2 3)))
+  microlisp>FOO
+  (foo '(a b c))
+  microlisp>((1 1 2 3) (2 2 3) (3 3))
+#+END_SRC
+
+* Окружения и MyApply
+
+Это глобальное окружение, которое было сделано на предыдущем этапе и функция поиска в
+нем, тут ничего не поменялось.
 
 #+NAME: lookup_2
 #+BEGIN_SRC lisp
@@ -33,8 +139,7 @@ MYAPPLY.
     args)
 #+END_SRC
 
-Когда замыкание попадает в функцию ~myapply~ мы должны сделать ~myeval~ над его телом в
-правильном окружении:
+Когда нам нужно передать лямбду в функцию ~apply~ мы будем оборачивать ее в замыкание:
 
 #+NAME: myapply_closure_2
 #+BEGIN_SRC lisp
@@ -45,10 +150,6 @@ MYAPPLY.
 #+END_SRC
 
 Этим куском кода мы заменяем обработку ~lambda~ внутри ~myapply~.
-
-* MyApply
-
-Мы вынесем в APPLY все функции и вычисление значений символов, а также lambda.
 
 #+NAME: myapply_2
 #+BEGIN_SRC lisp
@@ -70,15 +171,9 @@ MYAPPLY.
   <<myapply_car_cdr_cons_2_test>>
   <<myapply_null_2_test>>
   <<myapply_func_symb_2_test>>
-  <<myapply_lambda_2_test>>
+  ;; TODO : нужен тест для closure в apply
+  <<myapply_closure_2_test>>
 #+END_SRC
-
-В подразделах находятся функции для MYAPPLY, в них сделаны косметические изменения,
-чтобы соответствовать именам параметров в месте, где они будут вызываны. Тесты остаются
-без изменений.
-
-Добавлено вычисление символов-функций, так, чтобы использовать ~lookup~ в глобальном
-окружении.
 
 ** Встроенные функции арифметики
 
@@ -235,11 +330,15 @@ MYAPPLY.
 
 #+NAME: myeval_symb_2
 #+BEGIN_SRC lisp
-  ((symbolp lst)               (cdr (lookup lst env)))
+  ((symbolp lst)               (let ((it (lookup lst env)))
+                                 (if (null it)
+                                     (error 'unbound-variable (format nil "var-404: ~A" lst))
+                                     (cdr it))))
 #+END_SRC
 
 #+NAME: myeval_symb_2_test
 #+BEGIN_SRC lisp
+  ;; нужен тест для проверки неопределенной переменной
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
 #+END_SRC
 
@@ -524,7 +623,7 @@ TODO: Необходимо протестировать ~setq~
 
 * Итоги
 
-#+BEGIN_SRC lisp :tangle lisp-2.lisp :noweb tangle :exports code :padline no :comments none
+#+BEGIN_SRC lisp :tangle lisp-3.lisp :noweb tangle :exports code :padline no :comments none
   <<lookup_2>>
 
   <<closure_2>>

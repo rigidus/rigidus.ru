@@ -17,10 +17,11 @@
     (cond
       ;; Какие-то действия в зависимости от того какая форма
       ;; ...
-      (t (error 'unknown-form))))
+      (t (error 'eval-unknown-form-error :form lst :env env))))
 #+END_SRC
 
-Соотвественно все вызовы ~myeval~ изменяются, чтобы использовать ~env~
+Соотвественно все вызовы ~myeval~ изменяются, чтобы использовать ~env~. Кроме того мы
+добавим классы ошибок, чтобы упростить отладку.
 
 * Самовычисляемые формы
 
@@ -29,7 +30,15 @@
 #+NAME: number_1
 #+BEGIN_SRC lisp
   ((null lst)                  nil)
+  ((equal t lst)               t)
   ((numberp lst)               lst)
+#+END_SRC
+
+#+NAME: number_1_test
+#+BEGIN_SRC lisp
+  (assert (equal T (myeval 'T nil)))
+  (assert (equal NIL (myeval 'NIL nil)))
+  (assert (equal 999 (myeval 999 nil)))
 #+END_SRC
 
 * Встроенные функции арифметики
@@ -45,7 +54,7 @@
 #+END_SRC
 
 К старым тестам (изменным, чтобы принимать пустое окружение) добавляем новые, которые
-используют окружение, которое пока мы формируем вручную
+используют окружение в виде ассоциативного списка, которое пока мы формируем вручную.
 
 #+NAME: ariph_1_test
 #+BEGIN_SRC lisp
@@ -74,7 +83,7 @@
 
 * Работа с CONS-ячейками
 
-Добавляем параметр
+Добавляем параметр ~env~ в вызовы ~myeval~
 
 #+NAME: car_cdr_cons_1
 #+BEGIN_SRC lisp
@@ -113,7 +122,10 @@
 #+NAME: null_1_test
 #+BEGIN_SRC lisp
   (assert (equal T (myeval '(null ()) nil)))
+  (assert (equal T (myeval '(null nil) nil)))
+  (assert (equal NIL (myeval '(null T) nil)))
   (assert (equal T (myeval '(null a)) '((a . ()))))
+  (assert (equal NIL (myeval '(null a)) '((a . T))))
   (assert (equal NIL (myeval '(null a)) '((a . 1))))
 #+END_SRC
 
@@ -289,12 +301,12 @@ LIST определяем почти без изменений:
 #+BEGIN_SRC lisp
   (defun mypairlis (lst1 lst2 alist)
    (cond ((and (null lst1) (null lst2))  alist)
-         ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
-         (t                               (mypairlis (cdr lst1)
-                                                     (cdr lst2)
-                                                     (cons (cons (car lst1)
-                                                                 (car lst2))
-                                                           alist)))))
+         ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
+         (t                              (mypairlis (cdr lst1)
+                                                    (cdr lst2)
+                                                    (cons (cons (car lst1)
+                                                                (car lst2))
+                                                          alist)))))
 #+END_SRC
 
 Вариант с хвостовой рекурсией будет эффективнее. Кроме того есть различие в семантике,
@@ -303,9 +315,17 @@ LIST определяем почти без изменений:
 
 #+NAME: mypairlis_1
 #+BEGIN_SRC lisp
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
           (t                              (cons (cons (car lst1)
                                                       (car lst2))
                                                 (mypairlis (cdr lst1)
@@ -319,6 +339,12 @@ LIST определяем почти без изменений:
 #+BEGIN_SRC lisp
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
 
 Имея эти функции мы можем определить LET:
@@ -411,6 +437,8 @@ varpairs будут добавлены в окончательное окруж�
 * TODO OR
 * Итоги
 
+Добавляем обработку ошибок, чтобы получать более ясные сообщения при отладке.
+
 Соберем простой интерпретатор из ~myeval~ и вспомогательных функций и запишем его файл:
 
 #+NAME: simple
@@ -420,6 +448,14 @@ varpairs будут добавлены в окончательное окруж�
   <<evlis_1>>
   <<mypairlis_1>>
   <<evletstar_1>>
+  (define-condition eval-unknown-form-error (error)
+    ((form :initarg :form  :reader form)
+     (env  :initarg :env   :reader env))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"
+               (form condition) (env condition)))))
+
   (defun myeval (lst env)
     (cond
       <<number_1>>
@@ -436,9 +472,10 @@ varpairs будут добавлены в окончательное окруж�
       <<let_1>>
       <<letstar_1>>
       <<lambda_1>>
-      (t (error 'unknown-form))))
+      (t (errort 'eval-unknown-form-error :form lst :env env))))
 
   <<symb_1_test>>
+  <<number_1_test>>
   <<ariph_1_test>>
   <<quote_1_test>>
   <<car_cdr_cons_1_test>>
