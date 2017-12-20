@@ -352,12 +352,10 @@ LIST определяем почти без изменений:
 #+NAME: let_1
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                        (pairlis (mapcar #'car
-                                                         (car (cdr lst)))
-                                                 (evlis (mapcar #'cadr
-                                                                (car (cdr lst)))
-                                                        env)
-                                                 env)))
+                                        (mypairlis (mapcar #'car (cadr lst))
+                                                   (evlis (mapcar #'cadr (cadr lst))
+                                                          env)
+                                                   env)))
 #+END_SRC
 
 и проверить его:
@@ -416,9 +414,9 @@ varpairs будут добавлены в окончательное окруж�
 #+NAME: lambda_1
 #+BEGIN_SRC lisp
   ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
-                                       (pairlis (cadar lst)
-                                                (evlis (cdr lst) env)
-                                                env)))
+                                       (mypairlis (cadar lst)
+                                                  (evlis (cdr lst) env)
+                                                  env)))
 #+END_SRC
 
 Проверим работу LAMBDA:
@@ -502,12 +500,20 @@ varpairs будут добавлены в окончательное окруж�
           (t                 (myeval (car lst) env)
                              (evprogn (cdr lst) env))))
   (defun evlis (lst env)
-    (cond ((null lst) nil)
-          (t (cons (myeval (car lst) env)
-                   (evlis (cdr lst) env)))))
+    (cond ((null lst)  nil)
+          (t           (cons (myeval (car lst) env)
+                             (evlis (cdr lst) env)))))
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
           (t                              (cons (cons (car lst1)
                                                       (car lst2))
                                                 (mypairlis (cdr lst1)
@@ -520,9 +526,18 @@ varpairs будут добавлены в окончательное окруж�
                                        (cons (cons (caar varpairs)
                                                    (myeval (cadar varpairs) env))
                                              env)))))
+  (define-condition eval-unknown-form-error (error)
+    ((form :initarg :form  :reader form)
+     (env  :initarg :env   :reader env))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"
+               (form condition) (env condition)))))
+
   (defun myeval (lst env)
     (cond
       ((null lst)                  nil)
+      ((equal t lst)               t)
       ((numberp lst)               lst)
       ((symbolp lst)               (cdr (assoc lst env)))
       ((equal (car lst) '+)        (+ (myeval (cadr lst) env)
@@ -543,22 +558,23 @@ varpairs будут добавлены в окончательное окруж�
       ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
       ((equal (car lst) 'list)     (evlis (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                            (pairlis (mapcar #'car
-                                                             (car (cdr lst)))
-                                                     (evlis (mapcar #'cadr
-                                                                    (car (cdr lst)))
-                                                            env)
-                                                     env)))
+                                            (mypairlis (mapcar #'car (cadr lst))
+                                                       (evlis (mapcar #'cadr (cadr lst))
+                                                              env)
+                                                       env)))
       ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                               (caddr lst)
                                               env))
       ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
-                                           (pairlis (cadar lst)
-                                                    (evlis (cdr lst) env)
-                                                    env)))
-      (t (error 'unknown-form))))
+                                           (mypairlis (cadar lst)
+                                                      (evlis (cdr lst) env)
+                                                      env)))
+      (t (errort 'eval-unknown-form-error :form lst :env env))))
 
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+  (assert (equal T (myeval 'T nil)))
+  (assert (equal NIL (myeval 'NIL nil)))
+  (assert (equal 999 (myeval 999 nil)))
   (assert (equal 7 (myeval 7 nil)))
   (assert (equal 3 (myeval '(+ 1 2) nil)))
   (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
@@ -601,6 +617,12 @@ varpairs будут добавлены в окончательное окруж�
                          '((a . 1) (b . 2) (c . 3) (d . 4)))))
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
   (assert (equal '(1 . 2) (myeval '(let ((a 1)
                                          (b 2))
                                     (cons a b)) nil)))

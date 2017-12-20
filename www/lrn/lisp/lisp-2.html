@@ -19,10 +19,10 @@
 <li><a href="#unnumbered-3">MyApply</a>
 <ul>
 <li><a href="#unnumbered-4">Встроенные функции арифметики</a></li>
-<li><a href="#unnumbered-5">Работа с CONS-ячейками и NULL</a></li>
+<li><a href="#unnumbered-5">Работа с CONS-ячейками</a></li>
 <li><a href="#unnumbered-6">NULL-предикат</a></li>
 <li><a href="#unnumbered-7">Вычисление символов-функций</a></li>
-<li><a href="#unnumbered-8"><span class="done nilCANCEL">CANCEL</span> LAMBDA</a></li>
+<li><a href="#unnumbered-8">LAMBDA</a></li>
 </ul>
 </li>
 <li><a href="#unnumbered-9">MyEval</a>
@@ -52,12 +52,12 @@
 <h2 id="unnumbered-1">План работ</h2>
 <div class="outline-text-2" id="text-unnumbered-1">
 <p>
-Цель этого этапа:
+На этом этапе мы добавим к динамическому окружению глобальное и разделим MYEVAL на
+MYEVAL и MYAPPLY.
 </p>
 
 <p>
-На этом этапе мы получим глобальное динамическое окружение и разделим MYEVAL на MYEVAL и
-MYAPPLY.
+Кроме того мы отделим классы ошибок от всего остального кода
 </p>
 </div>
 </div>
@@ -81,37 +81,6 @@ MYAPPLY.
         (assoc symb *glob-env*))))
 </pre>
 </div>
-
-<p>
-Чтобы сделать лексическое окружение, нужно создать структуру замыкания:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="closure_2">(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">closure</span>
-  body
-  env
-  args)
-</pre>
-</div>
-
-<p>
-Когда замыкание попадает в функцию <code>myapply</code> мы должны сделать <code>myeval</code> над его телом в
-правильном окружении:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myapply_closure_2">((closure-p fn)              (myeval (closure-body fn)
-                                     (pairlis (closure-args fn)
-                                              args
-                                              (closure-env fn))))
-</pre>
-</div>
-
-<p>
-Этим куском кода мы заменяем обработку <code>lambda</code> внутри <code>myapply</code>.
-</p>
 </div>
 </div>
 
@@ -130,7 +99,7 @@ MYAPPLY.
     &lt;&lt;myapply_car_cdr_cons_2&gt;&gt;
     &lt;&lt;myapply_null_2&gt;&gt;
     &lt;&lt;myapply_func_symb_2&gt;&gt;
-    &lt;&lt;myapply_closure_2&gt;&gt;
+    &lt;&lt;myapply_lambda_2&gt;&gt;
     ))
 </pre>
 </div>
@@ -184,7 +153,7 @@ MYAPPLY.
 </div>
 
 <div id="outline-container-unnumbered-5" class="outline-3">
-<h3 id="unnumbered-5">Работа с CONS-ячейками и NULL</h3>
+<h3 id="unnumbered-5">Работа с CONS-ячейками</h3>
 <div class="outline-text-3" id="text-unnumbered-5">
 <div class="org-src-container">
 
@@ -236,11 +205,30 @@ MYAPPLY.
 <div id="outline-container-unnumbered-7" class="outline-3">
 <h3 id="unnumbered-7">Вычисление символов-функций</h3>
 <div class="outline-text-3" id="text-unnumbered-7">
+<p>
+Добавим ошибку, если функция не найдена в окружении
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="errors_2">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">function-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYAPPLY: function not found: ~A"</span>
+             (fn condition)))))
+</pre>
+</div>
+
+<p>
+И будем сигнализировать ее в этой ситуации
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myapply_func_symb_2">((symbolp fn)                (<span style="color: #af00ff;">let</span> ((it (lookup fn env)))
                                (<span style="color: #af00ff;">if</span> (null it)
-                                   (<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"fn-404: ~A"</span> fn))
+                                   (<span style="color: #ff0000; font-weight: bold;">error</span> 'function-not-found-error <span style="color: #5f5f87;">:fn</span> fn)
                                    (myapply (cdr it) args env))))
 </pre>
 </div>
@@ -249,13 +237,16 @@ MYAPPLY.
 
 <pre class="src src-lisp" id="myapply_func_symb_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
                                          (beta . 7)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal "error"</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(handler-case (myeval '(alfa beta) '((beta . 7)))</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(FUNCTION-NOT-FOUND-ERROR (condition) "error"))))</span>
 </pre>
 </div>
 </div>
 </div>
 
 <div id="outline-container-unnumbered-8" class="outline-3">
-<h3 id="unnumbered-8"><span class="done CANCEL">CANCEL</span> LAMBDA</h3>
+<h3 id="unnumbered-8">LAMBDA</h3>
 <div class="outline-text-3" id="text-unnumbered-8">
 <div class="org-src-container">
 
@@ -312,9 +303,9 @@ MYAPPLY.
     &lt;&lt;myeval_setq_2&gt;&gt;
     &lt;&lt;myeval_lambda_2&gt;&gt;
     (t
-     (myapply (car lst)
+     (myapply (myeval (car lst) env)
               (evlis (cdr lst) env)
-                            env))))
+              env))))
 </pre>
 </div>
 
@@ -324,7 +315,8 @@ MYAPPLY.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_2_test">&lt;&lt;myeval_symb_2_test&gt;&gt;
+<pre class="src src-lisp" id="myeval_2_test">&lt;&lt;myeval_number_2_test&gt;&gt;
+&lt;&lt;myeval_symb_2_test&gt;&gt;
 &lt;&lt;myeval_quote_2_test&gt;&gt;
 &lt;&lt;myeval_if_2_test&gt;&gt;
 &lt;&lt;myeval_cond_2_test&gt;&gt;
@@ -341,10 +333,25 @@ MYAPPLY.
 <div id="outline-container-unnumbered-10" class="outline-3">
 <h3 id="unnumbered-10">Самовычисляемые формы</h3>
 <div class="outline-text-3" id="text-unnumbered-10">
+<p>
+Добавляем в самовычисляемые формы <code>car</code> <code>cdr</code> <code>cons</code> и <code>null</code>, потому что ниже мы
+добавим рекурсивное вычисление форм в конец <code>cond</code> в <code>myeval</code>.
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_number_2">((null lst)                  nil)
+((equal t lst)               t)
+((member lst '(+ * car cdr cons null))  lst)
 ((numberp lst)               lst)
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_number_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval 'T nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval 'NIL nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 999 (myeval 999 nil)))
 </pre>
 </div>
 </div>
@@ -354,18 +361,40 @@ MYAPPLY.
 <h3 id="unnumbered-11">Вычисление символов</h3>
 <div class="outline-text-3" id="text-unnumbered-11">
 <p>
-Теперь  мы вычисляем значение символа обращаясь к <code>lookup</code>
+Добавим ошибку, если функция не найдена в окружении
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_symb_2">((symbolp lst)               (cdr (lookup lst env)))
+<pre class="src src-lisp" id="errors_2">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">variable-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((variable <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:variable</span>  <span style="color: #5f5f87;">:reader</span> variable))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYEVAL: variable not found: ~A"</span>
+             (variable condition)))))
+</pre>
+</div>
+
+<p>
+Теперь  мы вычисляем значение символа обращаясь к <code>lookup</code> и сигнализируем ошибку, если
+не смогли найти символ даже в глобальном окружении.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_symb_2">((symbolp lst)               (<span style="color: #af00ff;">let</span> ((it (lookup lst env)))
+                               (<span style="color: #af00ff;">if</span> (null it)
+                                   (<span style="color: #ff0000; font-weight: bold;">error</span> 'variable-not-found-error <span style="color: #5f5f87;">:variable</span> lst)
+                                   (cdr it))))
 </pre>
 </div>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_symb_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span>
+               (<span style="color: #af00ff;">handler-case</span> (myeval 'b nil)
+                 (VARIABLE-NOT-FOUND-ERROR (condition) <span style="color: #87005f;">"error"</span>))))
 </pre>
 </div>
 </div>
@@ -450,11 +479,28 @@ MYAPPLY.
 <div id="outline-container-unnumbered-15" class="outline-3">
 <h3 id="unnumbered-15">LET</h3>
 <div class="outline-text-3" id="text-unnumbered-15">
+<p>
+Вынесем <code>mypairlis-error</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="errors_2">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
+   (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+</pre>
+</div>
+
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_mypairlis_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
-        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error))
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
         (t                              (cons (cons (car lst1)
                                                     (car lst2))
                                               (mypairlis (cdr lst1)
@@ -463,12 +509,24 @@ MYAPPLY.
 </pre>
 </div>
 
+<p>
+Добавим тесты, которые проверяют возникновение ошибок, когда мы пытаемся обратиться к
+переменной, которой нет в окружении.
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_mypairlis_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span>
+               (<span style="color: #af00ff;">handler-case</span> (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #87005f;">"error"</span>))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span>
+               (<span style="color: #af00ff;">handler-case</span> (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #87005f;">"error"</span>))))
 </pre>
 </div>
+
 
 <div class="org-src-container">
 
@@ -637,13 +695,12 @@ lambda-функцию. В соответствии со стандартом <co
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_defun_2">((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
-                                    (push (cons (cadr lst)
-                                                (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
-                                                              <span style="color: #5f5f87;">:env</span> env
-                                                              <span style="color: #5f5f87;">:args</span> (caddr lst)))
-                                          *glob-env*)
-                                    (cadr lst)))
+<pre class="src src-lisp" id="myeval_defun_2">((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
+                               (push (cons (cadr lst)
+                                           `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
+                                              ,(cadddr lst)))
+                                     *glob-env*)
+                               (cadr lst)))
 </pre>
 </div>
 
@@ -653,12 +710,13 @@ lambda-функцию. В соответствии со стандартом <co
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_defun_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA LAMBDA (X) (* X X)))
-               (<span style="color: #af00ff;">progn</span>
-                 (setf *glob-env* nil)
-                 (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
-                 (<span style="color: #af00ff;">prog1</span> *glob-env*
-                   (setf *glob-env* nil)))))
+<pre class="src src-lisp" id="myeval_defun_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (<span style="color: #af00ff;">progn</span>
+                    (setf *glob-env* nil)
+                    (<span style="color: #af00ff;">prog1</span> (myeval '(<span style="color: #af00ff;">progn</span>
+                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x))
+                                     (alfa 7))
+                                   nil)
+                      (setf *glob-env* nil)))))
 </pre>
 </div>
 </div>
@@ -690,16 +748,14 @@ TODO: Необходимо протестировать <code>setq</code>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_setq_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
-                           (setq alfa 1)
-                           alfa)
-                         nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA . 1))
-             (<span style="color: #af00ff;">progn</span>
-               (setf *glob-env* nil)
-               (myeval '(setq alfa 1) nil)
-               (<span style="color: #af00ff;">prog1</span> *glob-env*
-                 (setf *glob-env* nil)))))
+<pre class="src src-lisp" id="myeval_setq_2_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (<span style="color: #af00ff;">progn</span>
+                    (setf *glob-env* nil)
+                    (<span style="color: #af00ff;">prog1</span> (myeval '(<span style="color: #af00ff;">progn</span>
+                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x))
+                                     (setq beta 7)
+                                     (alfa beta))
+                                   nil)
+                      (setf *glob-env* nil)))))
 </pre>
 </div>
 </div>
@@ -709,12 +765,12 @@ TODO: Необходимо протестировать <code>setq</code>
 <h3 id="unnumbered-22">LAMBDA</h3>
 <div class="outline-text-3" id="text-unnumbered-22">
 <p>
-При обработке формы, начинающейся с вызова <code>lambda</code> мы должны создать замыкание:
+В динамическом окружении мы вычисляем лямбду в саму себя
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_lambda_2">((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
+<pre class="src src-lisp" id="myeval_lambda_2">((equal (car lst) 'lambda)   lst)
 </pre>
 </div>
 </div>
@@ -742,9 +798,9 @@ TODO: Необходимо протестировать <code>setq</code>
 <div class="outline-text-2" id="text-unnumbered-24">
 <div class="org-src-container">
 
-<pre class="src src-lisp">&lt;&lt;lookup_2&gt;&gt;
+<pre class="src src-lisp">&lt;&lt;errors_2&gt;&gt;
 
-&lt;&lt;closure_2&gt;&gt;
+&lt;&lt;lookup_2&gt;&gt;
 
 &lt;&lt;myapply_2&gt;&gt;
 
@@ -764,18 +820,34 @@ TODO: Необходимо протестировать <code>setq</code>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
+<pre class="src src-lisp">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">function-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYAPPLY: function not found: ~A"</span>
+             (fn condition)))))
+
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">variable-not-found-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((variable <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:variable</span>  <span style="color: #5f5f87;">:reader</span> variable))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYEVAL: variable not found: ~A"</span>
+             (variable condition)))))
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
+   (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env)
   (<span style="color: #af00ff;">let</span> ((it (assoc symb env)))
     (<span style="color: #af00ff;">if</span> (not (null it))
         it
         (assoc symb *glob-env*))))
-
-(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">closure</span>
-  body
-  env
-  args)
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args env)
   (<span style="color: #af00ff;">cond</span>
@@ -787,12 +859,12 @@ TODO: Необходимо протестировать <code>setq</code>
     ((equal fn 'null)            (null (car args)))
     ((symbolp fn)                (<span style="color: #af00ff;">let</span> ((it (lookup fn env)))
                                    (<span style="color: #af00ff;">if</span> (null it)
-                                       (<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"fn-404: ~A"</span> fn))
+                                       (<span style="color: #ff0000; font-weight: bold;">error</span> 'function-not-found-error <span style="color: #5f5f87;">:fn</span> fn)
                                        (myapply (cdr it) args env))))
-    ((closure-p fn)              (myeval (closure-body fn)
-                                         (pairlis (closure-args fn)
+    ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
+                                         (pairlis (car (cdr fn))
                                                   args
-                                                  (closure-env fn))))
+                                                  env)))
     ))
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
@@ -810,7 +882,7 @@ TODO: Необходимо протестировать <code>setq</code>
                            (evlis (cdr lst) env)))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
-        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error))
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
         (t                              (cons (cons (car lst1)
                                                     (car lst2))
                                               (mypairlis (cdr lst1)
@@ -827,8 +899,13 @@ TODO: Необходимо протестировать <code>setq</code>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
   (<span style="color: #af00ff;">cond</span>
     ((null lst)                  nil)
+    ((equal t lst)               t)
+    ((member lst '(+ * car cdr cons null))  lst)
     ((numberp lst)               lst)
-    ((symbolp lst)               (cdr (lookup lst env)))
+    ((symbolp lst)               (<span style="color: #af00ff;">let</span> ((it (lookup lst env)))
+                                   (<span style="color: #af00ff;">if</span> (null it)
+                                       (<span style="color: #ff0000; font-weight: bold;">error</span> 'variable-not-found-error <span style="color: #5f5f87;">:variable</span> lst)
+                                       (cdr it))))
     ((equal (car lst) 'quote)    (cadr lst))
     ((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
                                      (myeval (caddr lst) env)
@@ -845,13 +922,12 @@ TODO: Необходимо протестировать <code>setq</code>
     ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                             (caddr lst)
                                             env))
-    ((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
-                                        (push (cons (cadr lst)
-                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
-                                                                  <span style="color: #5f5f87;">:env</span> env
-                                                                  <span style="color: #5f5f87;">:args</span> (caddr lst)))
-                                              *glob-env*)
-                                        (cadr lst)))
+    ((equal (car lst) 'defun)    (<span style="color: #af00ff;">progn</span>
+                                   (push (cons (cadr lst)
+                                               `(<span style="color: #af00ff;">lambda</span> ,(caddr lst)
+                                                  ,(cadddr lst)))
+                                         *glob-env*)
+                                   (cadr lst)))
     ((equal (car lst) 'setq)     (<span style="color: #af00ff;">let</span> ((it (lookup (cadr lst) env))
                                        (val (myeval (caddr lst) env)))
                                    (<span style="color: #af00ff;">if</span> (null it)
@@ -859,9 +935,9 @@ TODO: Необходимо протестировать <code>setq</code>
                                              *glob-env*)
                                        (rplacd it val))
                                    val))
-    ((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
+    ((equal (car lst) 'lambda)   lst)
     (t
-     (myapply (car lst)
+     (myapply (myeval (car lst) env)
               (evlis (cdr lst) env)
               env))))
 
@@ -882,15 +958,25 @@ TODO: Необходимо протестировать <code>setq</code>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))</span>
-<span style="color: #af0000;">;;                                          </span><span style="color: #af0000;">(beta . 7)))))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '(42 . 42) (myeval '((lambda (x)</span>
-<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(cons x x))</span>
-<span style="color: #af0000;">;;                                     </span><span style="color: #af0000;">42) nil)))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '(42 . 17) (myeval '((lambda (x y)</span>
-<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(cons x y))</span>
-<span style="color: #af0000;">;;                                     </span><span style="color: #af0000;">42 17) nil)))</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (myeval '(alfa beta) '((alfa . (<span style="color: #af00ff;">lambda</span> (x) (* x x)))
+                                         (beta . 7)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal "error"</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(handler-case (myeval '(alfa beta) '((beta . 7)))</span>
+<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(FUNCTION-NOT-FOUND-ERROR (condition) "error"))))</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 42) (myeval '((<span style="color: #af00ff;">lambda</span> (x)
+                                      (cons x x))
+                                    42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(42 . 17) (myeval '((<span style="color: #af00ff;">lambda</span> (x y)
+                                      (cons x y))
+                                    42 17) nil)))
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval 'T nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval 'NIL nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 999 (myeval 999 nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span>
+               (<span style="color: #af00ff;">handler-case</span> (myeval 'b nil)
+                 (VARIABLE-NOT-FOUND-ERROR (condition) <span style="color: #87005f;">"error"</span>))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #af00ff;">if</span> () 1 2) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">if</span> (null ()) 1 2) nil)))
@@ -922,22 +1008,21 @@ TODO: Необходимо протестировать <code>setq</code>
                                           (b 2)
                                           (c (+ a b)))
                                     (cons c (cons a b))) nil)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '((ALFA LAMBDA (X) (* X X)))</span>
-<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(progn</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(setf *glob-env* nil)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(myeval '(defun alfa (x) (* x x)) nil)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(prog1 *glob-env*</span>
-<span style="color: #af0000;">;;                    </span><span style="color: #af0000;">(setf *glob-env* nil)))))</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #af00ff;">let</span> ((alfa 2))
-                           (setq alfa 1)
-                           alfa)
-                         nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((ALFA . 1))
-               (<span style="color: #af00ff;">progn</span>
-                 (setf *glob-env* nil)
-                 (myeval '(setq alfa 1) nil)
-                 (<span style="color: #af00ff;">prog1</span> *glob-env*
-                   (setf *glob-env* nil)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (<span style="color: #af00ff;">progn</span>
+                    (setf *glob-env* nil)
+                    (<span style="color: #af00ff;">prog1</span> (myeval '(<span style="color: #af00ff;">progn</span>
+                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x))
+                                     (alfa 7))
+                                   nil)
+                      (setf *glob-env* nil)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 49 (<span style="color: #af00ff;">progn</span>
+                    (setf *glob-env* nil)
+                    (<span style="color: #af00ff;">prog1</span> (myeval '(<span style="color: #af00ff;">progn</span>
+                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x))
+                                     (setq beta 7)
+                                     (alfa beta))
+                                   nil)
+                      (setf *glob-env* nil)))))
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
   (princ <span style="color: #87005f;">"microlisp&gt;"</span>)

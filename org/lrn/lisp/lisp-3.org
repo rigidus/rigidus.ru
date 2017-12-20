@@ -9,63 +9,85 @@ funarg problem возникает, когда тело определяемой 
 идентификаторы, которые определены в окружении, где функция определяется, в то время
 как мы бы хотели, чтобы ссылки вели на окружение, в котором функция вызывается.
 
-#+BEGIN_SRC lisp
-  (let ((dv 1))
-    (defun test ()
-      dv))
-
-  (test)
-#+END_SRC
-
-
-
 Есть 2 типа этой проблемы:
 - downward - когда в функцию передается функуция
 - upward - когда функция возвращается из функции
 
+В качестве примера возьмем такой код:
 
+#+BEGIN_SRC lisp
+  ;; Создадим функцию F, которая возвращает функцию в замыкании по X
+  (setq f (lambda (x)
+             (lambda (y)
+               (+ x y))))
 
-Пример, который сочетает оба варианта:
+  ;; С помощью F создадим функцию G
+  (setq g (funcall f 5))
 
-#+NAME: funarg_2
+  ;; В этой функции X ссылается на 10, но после возврата из FUNCALL окружение, где X=10
+  ;; уже не существует
+
+  ;; тут при вызове Y=10, а X ссылается на несуществующее окружение
+  (funcall g 10)
+
+  ;; Чтобы получить верный ответ (15) нужно сохранять окружение в момент создания замыкания
+  ;; тогда даже такой код будет давать 15
+  (let ((x 30))
+    (funcall g 10))
+
+  ;; Однако я не понимаю UPWARD это или DOWNWARD и почему
+#+END_SRC
+
+Еще один интересный пример:
+
+#+NAME: funarg_3
 #+BEGIN_SRC lisp
   (defun compose (f g)
-    (lambda (x) (f (g x))))
+    (lambda (x) (funcall f (funcall g x))))
 
   (funcall (compose #'car #'cdr) '(1 2 3 4))
 #+END_SRC
 
-Когда мы возвращаем лямбду мы теряем окружение (динамическое окружение осталось в месте
-определения) и у нас нет никакого способа применить ~f~ к (g x)
+Когда мы возвращаем лямбду мы теряем окружение (динамическое окружение, содержащее ~f~
+и ~g~ осталось в месте где лямбда определялась) и у нас нет никакого способа применить
+~f~ к ~(funcall g x)~.
 
-Если мы вычислим лексическог окружение, то лямбда возвратит замыкание, где у нас будут
-связанные ~f~ и ~g~
+Нам нужно уметь замыкать окружение лексически, тогда лямбда возвратит замыкание, где у
+нас будут связанные ~f~ и ~g~.
 
 Upward-funarg probleb
 
 #+BEGIN_SRC lisp
-  microlisp>  0: (MYEVAL (((LAMBDA (X) (LAMBDA (Y) X)) 1) 2) NIL)
-  1: (MYEVAL ((LAMBDA (X) (LAMBDA (Y) X)) 1) NIL)
-    2: (MYEVAL (LAMBDA (X) (LAMBDA (Y) X)) NIL)                 ; вычисляем car формы
-    2: MYEVAL returned (LAMBDA (X) (LAMBDA (Y) X))             ; lambda вычисляется в себя
-    2: (MYEVAL 1 NIL)                                          ; вычисляем первый аргумет 1
-    2: MYEVAL returned 1                                       ; числа самовычислимы
-    2: (MYAPPLY (LAMBDA (X) (LAMBDA (Y) X)) (1) NIL)           ; применяем первую лямбду
-      3: (MYEVAL (LAMBDA (Y) X) ((X . 1)))                    ; тело первой лямбды -- вторая лямбда  -> тут будет замыкание
-      3: MYEVAL returned (LAMBDA (Y) X)                       ; лямбда вычисляется в себя
-    2: MYAPPLY returned (LAMBDA (Y) X)
-  1: MYEVAL returned (LAMBDA (Y) X)
-  1: (MYEVAL 2 NIL)                                           ; вычисляем второй аргумент
-  1: MYEVAL returned 2                                        ; он самовычислим
-  1: (MYAPPLY (LAMBDA (Y) X) (2) NIL)                         ; применяем лямбду (вторую), но обрати внимание на окружение
-    2: (MYEVAL X ((Y . 2)))                                   ; окуржение ((x . 1)) пропало
+  ;; Трассируем такой код:
+  (((lambda (x)
+      (lambda (y) x))
+    1)
+   2)
 
+  0: (MYEVAL (((LAMBDA (X) (LAMBDA (Y) X)) 1) 2) NIL)
+    1: (MYEVAL ((LAMBDA (X) (LAMBDA (Y) X)) 1) NIL)
+      2: (MYEVAL (LAMBDA (X) (LAMBDA (Y) X)) NIL)       ;; вычисляем car формы
+      2: MYEVAL returned (LAMBDA (X) (LAMBDA (Y) X))    ;; lambda вычисляется в себя
+      2: (MYEVAL 1 NIL)                                 ;; вычисляем первый аргумет 1
+      2: MYEVAL returned 1                              ;; числа самовычислимы
+      2: (MYAPPLY (LAMBDA (X) (LAMBDA (Y) X)) (1) NIL)  ;; применяем первую лямбду
+        3: (MYEVAL (LAMBDA (Y) X) ((X . 1)))            ;; тело первой лямбды -- вторая лямбда  -> тут будет замыкание
+        3: MYEVAL returned (LAMBDA (Y) X)               ;; лямбда вычисляется в себя
+      2: MYAPPLY returned (LAMBDA (Y) X)
+    1: MYEVAL returned (LAMBDA (Y) X)
+    1: (MYEVAL 2 NIL)                                   ;; вычисляем второй аргумент
+    1: MYEVAL returned 2                                ;; он самовычислим
+    1: (MYAPPLY (LAMBDA (Y) X) (2) NIL)                 ;; применяем лямбду (вторую), но обрати внимание на окружение
+      2: (MYEVAL X ((Y . 2)))                           ;; окуржение ((x . 1)) пропало
+
+  ;; CL-вариант
   (defun mymapcar (fn lst)
     (cond ((null lst) nil)
           (t (cons (funcall fn (car lst))
                    (mymapcar fn (cdr lst))))))
 
 
+  ;; MICROLISP-вариант
   (defun mymapcar (fn lst)
     (cond ((null lst) nil)
           (t (cons (fn (car lst))
@@ -77,40 +99,13 @@ Upward-funarg probleb
 
   (foo '(a b c))
 
-  ->
-  ((1 a b c
-  2 a b c
-  3 a b c))
+  CL-USER>
+  ((1 a b c)
+   (2 a b c)
+   (3 a b c))
 
-
-  (defun mymapcar (fn lst)
-    (cond ((null lst) nil)
-          (t (cons (funcall fn (car lst))
-                   (mymapcar fn (cdr lst))))))
-  STYLE-WARNING: redefining COMMON-LISP-USER::MYMAPCAR in DEFUN
-
-  MYMAPCAR
-  (defun foo (lst)
-    (mymapcar (lambda (i) (cons i lst)) '(1 2 3)))
-  STYLE-WARNING: redefining COMMON-LISP-USER::FOO in DEFUN
-
-  FOO
-  ,* (foo '(a b c))
-
-  ((1 A B C) (2 A B C) (3 A B C))
-  ,* (repl)
-  0
-  microlisp>0
-  (defun mymapcar (fn lst)
-    (cond ((null lst) nil)
-          (t (cons (fn (car lst))
-                   (mymapcar fn (cdr lst))))))
-  microlisp>MYMAPCAR
-  (defun foo (lst)
-    (mymapcar (lambda (i) (cons i lst)) '(1 2 3)))
-  microlisp>FOO
-  (foo '(a b c))
-  microlisp>((1 1 2 3) (2 2 3) (3 3))
+  microlisp>
+  ((1 1 2 3) (2 2 3) (3 3))
 #+END_SRC
 
 * Окружения и MyApply
@@ -118,7 +113,7 @@ Upward-funarg probleb
 Это глобальное окружение, которое было сделано на предыдущем этапе и функция поиска в
 нем, тут ничего не поменялось.
 
-#+NAME: lookup_2
+#+NAME: lookup_3
 #+BEGIN_SRC lisp
   (defparameter *glob-env* nil)
 
@@ -131,7 +126,7 @@ Upward-funarg probleb
 
 Чтобы сделать лексическое окружение, нужно создать структуру замыкания:
 
-#+NAME: closure_2
+#+NAME: closure_3
 #+BEGIN_SRC lisp
   (defstruct closure
     body
@@ -141,7 +136,7 @@ Upward-funarg probleb
 
 Когда нам нужно передать лямбду в функцию ~apply~ мы будем оборачивать ее в замыкание:
 
-#+NAME: myapply_closure_2
+#+NAME: myapply_closure_3
 #+BEGIN_SRC lisp
   ((closure-p fn)              (myeval (closure-body fn)
                                        (pairlis (closure-args fn)
@@ -151,39 +146,39 @@ Upward-funarg probleb
 
 Этим куском кода мы заменяем обработку ~lambda~ внутри ~myapply~.
 
-#+NAME: myapply_2
+#+NAME: myapply_3
 #+BEGIN_SRC lisp
   (defun myapply (fn args env)
     (cond
-      <<myapply_ariph_2>>
-      <<myapply_car_cdr_cons_2>>
-      <<myapply_null_2>>
-      <<myapply_func_symb_2>>
-      <<myapply_closure_2>>
+      <<myapply_ariph_3>>
+      <<myapply_car_cdr_cons_3>>
+      <<myapply_null_3>>
+      <<myapply_func_symb_3>>
+      <<myapply_closure_3>>
       ))
 #+END_SRC
 
 И отдельно вынесем тесты:
 
-#+NAME: myapply_2_test
+#+NAME: myapply_3_test
 #+BEGIN_SRC lisp
-  <<myapply_ariph_2_test>>
-  <<myapply_car_cdr_cons_2_test>>
-  <<myapply_null_2_test>>
-  <<myapply_func_symb_2_test>>
+  <<myapply_ariph_3_test>>
+  <<myapply_car_cdr_cons_3_test>>
+  <<myapply_null_3_test>>
+  <<myapply_func_symb_3_test>>
   ;; TODO : нужен тест для closure в apply
-  <<myapply_closure_2_test>>
+  <<myapply_closure_3_test>>
 #+END_SRC
 
 ** Встроенные функции арифметики
 
-#+NAME: myapply_ariph_2
+#+NAME: myapply_ariph_3
 #+BEGIN_SRC lisp
   ((equal fn '+)               (+ (car args) (cadr args)))
   ((equal fn '*)               (* (car args) (cadr args)))
 #+END_SRC
 
-#+NAME: myapply_ariph_2_test
+#+NAME: myapply_ariph_3_test
 #+BEGIN_SRC lisp
   (assert (equal 7 (myeval 7 nil)))
   (assert (equal 3 (myeval '(+ 1 2) nil)))
@@ -192,16 +187,16 @@ Upward-funarg probleb
   (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
 #+END_SRC
 
-** Работа с CONS-ячейками и NULL
+** Работа с CONS-ячейками
 
-#+NAME: myapply_car_cdr_cons_2
+#+NAME: myapply_car_cdr_cons_3
 #+BEGIN_SRC lisp
   ((equal fn 'car)             (caar args))
   ((equal fn 'cdr)             (cdar args))
   ((equal fn 'cons)            (cons (car args) (cadr args)))
 #+END_SRC
 
-#+NAME: myapply_car_cdr_cons_2_test
+#+NAME: myapply_car_cdr_cons_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
@@ -216,14 +211,12 @@ Upward-funarg probleb
 
 ** NULL-предикат
 
-#+NAME: myapply_null_2
+#+NAME: myapply_null_3
 #+BEGIN_SRC lisp
   ((equal fn 'null)            (null (car args)))
 #+END_SRC
 
-Добавляем тесты, проверящие символ в окружении, равный nil и не nil
-
-#+NAME: myapply_null_2_test
+#+NAME: myapply_null_3_test
 #+BEGIN_SRC lisp
   (assert (equal T (myeval '(null ()) nil)))
   (assert (equal T (myeval '(null a) '((a . ())))))
@@ -232,23 +225,42 @@ Upward-funarg probleb
 
 ** Вычисление символов-функций
 
-#+NAME: myapply_func_symb_2
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition function-not-found-error (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: function not found: ~A"
+               (fn condition)))))
+
+#+END_SRC
+
+
+#+NAME: myapply_func_symb_3
 #+BEGIN_SRC lisp
   ((symbolp fn)                (let ((it (lookup fn env)))
                                  (if (null it)
-                                     (error (format nil "fn-404: ~A" fn))
+                                     (error 'function-not-found-error :fn fn)
                                      (myapply (cdr it) args env))))
 #+END_SRC
 
-#+NAME: myapply_func_symb_2_test
+
+#+NAME: myapply_func_symb_3_test
 #+BEGIN_SRC lisp
   (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
                                            (beta . 7)))))
+  ;; (assert (equal "error"
+  ;;                (handler-case (myeval '(alfa beta) '((beta . 7)))
+  ;;                  (FUNCTION-NOT-FOUND-ERROR (condition) "error"))))
 #+END_SRC
 
 ** CANCEL LAMBDA
 
-#+NAME: myapply_lambda_2
+Этот код больше не используется, и будет удален в следующем файле. Вместо него мы
+создаем замыкания
+
+#+NAME: myapply_lambda_3
 #+BEGIN_SRC lisp
   ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
                                        (pairlis (car (cdr fn))
@@ -256,7 +268,7 @@ Upward-funarg probleb
                                                 env)))
 #+END_SRC
 
-#+NAME: myapply_lambda_2_test
+#+NAME: myapply_lambda_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(42 . 42) (myeval '((lambda (x)
                                         (cons x x))
@@ -268,102 +280,118 @@ Upward-funarg probleb
 
 * MyEval
 
-Большинство компонентов ~myeval~ остаются без изменений. Но, теперь, имея глобальное
-окружение мы можем определить ~defun~ и ~setq~.
-
-#+NAME: myeval_2
+#+NAME: myeval_3
 #+BEGIN_SRC lisp
-  <<myeval_evcond_2>>
-  <<myeval_evprogn_2>>
-  <<myeval_evlis_2>>
-  <<myeval_mypairlis_2>>
-  <<myeval_evletstar_2>>
+  <<myeval_evcond_3>>
+  <<myeval_evprogn_3>>
+  <<myeval_evlis_3>>
+  <<myeval_mypairlis_3>>
+  <<myeval_evletstar_3>>
 
   (defun myeval (lst env)
     (cond
-      <<myeval_number_2>>
-      <<myeval_symb_2>>
-      <<myeval_quote_2>>
-      <<myeval_if_2>>
-      <<myeval_cond_2>>
-      <<myeval_let_2>>
-      <<myeval_progn_2>>
-      <<myeval_print_2>>
-      <<myeval_list_2>>
-      <<myeval_letstar_2>>
-      <<myeval_defun_2>>
-      <<myeval_setq_2>>
-      <<myeval_lambda_2>>
+      <<myeval_number_3>>
+      <<myeval_symb_3>>
+      <<myeval_quote_3>>
+      <<myeval_if_3>>
+      <<myeval_cond_3>>
+      <<myeval_let_3>>
+      <<myeval_progn_3>>
+      <<myeval_print_3>>
+      <<myeval_list_3>>
+      <<myeval_letstar_3>>
+      <<myeval_defun_3>>
+      <<myeval_setq_3>>
+      <<myeval_lambda_3>>
       (t
        (myapply (car lst)
                 (evlis (cdr lst) env)
                               env))))
 #+END_SRC
 
-Также определим тесты
 
-#+NAME: myeval_2_test
+#+NAME: myeval_3_test
 #+BEGIN_SRC lisp
-  <<myeval_symb_2_test>>
-  <<myeval_quote_2_test>>
-  <<myeval_if_2_test>>
-  <<myeval_cond_2_test>>
-  <<myeval_let_2_test>>
-  <<myeval_progn_2_test>>
-  <<myeval_list_2_test>>
-  <<myeval_letstar_2_test>>
-  <<myeval_defun_2_test>>
-  <<myeval_setq_2_test>>
+  <<myeval_number_3_test>>
+  <<myeval_symb_3_test>>
+  <<myeval_quote_3_test>>
+  <<myeval_if_3_test>>
+  <<myeval_cond_3_test>>
+  <<myeval_let_3_test>>
+  <<myeval_progn_3_test>>
+  <<myeval_list_3_test>>
+  <<myeval_letstar_3_test>>
+  <<myeval_defun_3_test>>
+  <<myeval_setq_3_test>>
 #+END_SRC
 
 ** Самовычисляемые формы
 
-#+NAME: myeval_number_2
+#+NAME: myeval_number_3
 #+BEGIN_SRC lisp
   ((null lst)                  nil)
+  ((equal t lst)               t)
+  ((member lst '(+ * car cdr cons null))  lst)
   ((numberp lst)               lst)
+#+END_SRC
+
+#+NAME: myeval_number_3_test
+#+BEGIN_SRC lisp
+  (assert (equal T (myeval 'T nil)))
+  (assert (equal NIL (myeval 'NIL nil)))
+  (assert (equal 999 (myeval 999 nil)))
 #+END_SRC
 
 ** Вычисление символов
 
-Теперь  мы вычисляем значение символа обращаясь к ~lookup~
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition variable-not-found-error (error)
+    ((variable :initarg :variable  :reader variable))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: variable not found: ~A"
+               (variable condition)))))
+#+END_SRC
 
-#+NAME: myeval_symb_2
+#+NAME: myeval_symb_3
 #+BEGIN_SRC lisp
   ((symbolp lst)               (let ((it (lookup lst env)))
                                  (if (null it)
-                                     (error 'unbound-variable (format nil "var-404: ~A" lst))
+                                     (error 'variable-not-found-error :variable lst)
                                      (cdr it))))
 #+END_SRC
 
-#+NAME: myeval_symb_2_test
+#+NAME: myeval_symb_3_test
 #+BEGIN_SRC lisp
-  ;; нужен тест для проверки неопределенной переменной
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+  (assert (equal "error"
+                 (handler-case (myeval 'b nil)
+                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
 #+END_SRC
 
 ** Цитирование
 
-#+NAME: myeval_quote_2
+#+NAME: myeval_quote_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'quote)    (cadr lst))
 #+END_SRC
 
-#+NAME: myeval_quote_2_test
+#+NAME: myeval_quote_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
 #+END_SRC
 
 ** Условное выполнение IF
 
-#+NAME: myeval_if_2
+#+NAME: myeval_if_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
                                    (myeval (caddr lst) env)
                                    (myeval (cadddr lst) env)))
 #+END_SRC
 
-#+NAME: myeval_if_2_test
+#+NAME: myeval_if_3_test
 #+BEGIN_SRC lisp
   (assert (equal 2 (myeval '(if () 1 2) nil)))
   (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
@@ -373,7 +401,7 @@ Upward-funarg probleb
 
 ** COND
 
-#+NAME: myeval_evcond_2
+#+NAME: myeval_evcond_3
 #+BEGIN_SRC lisp
   (defun evcond (lst env)
     (cond ((null lst)               nil)
@@ -381,12 +409,12 @@ Upward-funarg probleb
           (t                        (evcond (cdr lst) env))))
 #+END_SRC
 
-#+NAME: myeval_cond_2
+#+NAME: myeval_cond_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'cond)     (evcond (cdr lst) env))
 #+END_SRC
 
-#+NAME: myeval_cond_2_test
+#+NAME: myeval_cond_3_test
 #+BEGIN_SRC lisp
   (assert (equal 2 (myeval '(cond
                              (() 1)
@@ -404,11 +432,23 @@ Upward-funarg probleb
 
 ** LET
 
-#+NAME: myeval_mypairlis_2
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+#+END_SRC
+
+
+#+NAME: myeval_mypairlis_3
 #+BEGIN_SRC lisp
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
           (t                              (cons (cons (car lst1)
                                                       (car lst2))
                                                 (mypairlis (cdr lst1)
@@ -416,13 +456,21 @@ Upward-funarg probleb
                                                            alist)))))
 #+END_SRC
 
-#+NAME: myeval_mypairlis_2_test
+
+#+NAME: myeval_mypairlis_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
 
-#+NAME: myeval_let_2
+
+#+NAME: myeval_let_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                         (pairlis (mapcar #'car (cadr lst))
@@ -431,9 +479,8 @@ Upward-funarg probleb
                                                  env)))
 #+END_SRC
 
-и проверить его:
 
-#+NAME: myeval_let_2_test
+#+NAME: myeval_let_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(1 . 2) (myeval '(let ((a 1)
                                          (b 2))
@@ -442,7 +489,7 @@ Upward-funarg probleb
 
 ** PROGN
 
-#+NAME: myeval_evprogn_2
+#+NAME: myeval_evprogn_3
 #+BEGIN_SRC lisp
   (defun evprogn (lst env)
     (cond ((null lst)        nil)
@@ -451,16 +498,14 @@ Upward-funarg probleb
                              (evprogn (cdr lst) env))))
 #+END_SRC
 
-Без изменений
 
-#+NAME: myeval_progn_2
+#+NAME: myeval_progn_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
 #+END_SRC
 
-Добавляем тесты в окружении
 
-#+NAME: myeval_progn_2_test
+#+NAME: myeval_progn_3_test
 #+BEGIN_SRC lisp
   (assert (equal 3 (myeval '(progn 1 2 3) nil)))
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
@@ -470,14 +515,14 @@ Upward-funarg probleb
 
 Без изменений
 
-#+NAME: myeval_print_2
+#+NAME: myeval_print_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
 #+END_SRC
 
 ** LIST
 
-#+NAME: myeval_evlis_2
+#+NAME: myeval_evlis_3
 #+BEGIN_SRC lisp
   (defun evlis (lst env)
     (cond ((null lst)  nil)
@@ -485,7 +530,7 @@ Upward-funarg probleb
                        (evlis (cdr lst) env)))))
 #+END_SRC
 
-#+NAME: myeval_evlis_2_test
+#+NAME: myeval_evlis_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42) nil)))
@@ -493,16 +538,14 @@ Upward-funarg probleb
                  (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
 #+END_SRC
 
-LIST определяем почти без изменений:
 
-#+NAME: myeval_list_2
+#+NAME: myeval_list_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'list)     (evlis (cdr lst) env))
 #+END_SRC
 
-Протестируем ~list~ (добавляя тесты в окружении)
 
-#+NAME: myeval_list_2_test
+#+NAME: myeval_list_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
@@ -513,7 +556,7 @@ LIST определяем почти без изменений:
 
 ** LET*
 
-#+NAME: myeval_evletstar_2
+#+NAME: myeval_evletstar_3
 #+BEGIN_SRC lisp
   (defun evletstar (varpairs exp env)
     (cond ((null varpairs)  (myeval exp env))
@@ -524,14 +567,14 @@ LIST определяем почти без изменений:
                                              env)))))
 #+END_SRC
 
-#+NAME: myeval_letstar_2
+#+NAME: myeval_letstar_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                           (caddr lst)
                                           env))
 #+END_SRC
 
-#+NAME: myeval_letstar_2_test
+#+NAME: myeval_letstar_3_test
 #+BEGIN_SRC lisp
   (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
                                             (b 2)
@@ -541,11 +584,10 @@ LIST определяем почти без изменений:
 
 ** DEFUN
 
-~defun~ определяем, добавляя в глобальное окружение переменную, содержащую
-lambda-функцию. В соответствии со стандартом ~defun~ возвращает имя функции при
-успешном выполнении.
+При создании функции мы создаем замыкание, в которое кладем тело функции, текущее
+окружение и аргументы функции.
 
-#+NAME: myeval_defun_2
+#+NAME: myeval_defun_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'defun)         (progn
                                       (push (cons (cadr lst)
@@ -558,7 +600,7 @@ lambda-функцию. В соответствии со стандартом ~de
 
 Необходимо протестировать ~defun~:
 
-#+NAME: myeval_defun_2_test
+#+NAME: myeval_defun_3_test
 #+BEGIN_SRC lisp
   (assert (equal '((ALFA LAMBDA (X) (* X X)))
                  (progn
@@ -570,10 +612,7 @@ lambda-функцию. В соответствии со стандартом ~de
 
 ** SETQ
 
-~setq~ добавляет переменную в глобальное окружение, если ~lookup~ не смог ее
-найти. Иначе он заменяет ее значение.
-
-#+NAME: myeval_setq_2
+#+NAME: myeval_setq_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'setq)     (let ((it (lookup (cadr lst) env))
                                      (val (myeval (caddr lst) env)))
@@ -584,9 +623,7 @@ lambda-функцию. В соответствии со стандартом ~de
                                  val))
 #+END_SRC
 
-TODO: Необходимо протестировать ~setq~
-
-#+NAME: myeval_setq_2_test
+#+NAME: myeval_setq_3_test
 #+BEGIN_SRC lisp
   (assert (equal 1 (myeval '(let ((alfa 2))
                              (setq alfa 1)
@@ -604,14 +641,14 @@ TODO: Необходимо протестировать ~setq~
 
 При обработке формы, начинающейся с вызова ~lambda~ мы должны создать замыкание:
 
-#+NAME: myeval_lambda_2
+#+NAME: myeval_lambda_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
 #+END_SRC
 
 * Repl
 
-#+NAME: repl_2
+#+NAME: repl_3
 #+BEGIN_SRC lisp
   (defun repl ()
     (princ "microlisp>")
@@ -624,203 +661,25 @@ TODO: Необходимо протестировать ~setq~
 * Итоги
 
 #+BEGIN_SRC lisp :tangle lisp-3.lisp :noweb tangle :exports code :padline no :comments none
-  <<lookup_2>>
+  <<errors_3>>
 
-  <<closure_2>>
+  <<lookup_3>>
 
-  <<myapply_2>>
+  <<closure_3>>
 
-  <<myeval_2>>
+  <<myapply_3>>
 
-  <<myapply_2_test>>
+  <<myeval_3>>
 
-  <<myeval_2_test>>
+  <<myapply_3_test>>
 
-  <<repl_2>>
+  <<myeval_3_test>>
+
+  <<repl_3>>
 #+END_SRC
 
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
-  (defparameter *glob-env* nil)
 
-  (defun lookup (symb env)
-    (let ((it (assoc symb env)))
-      (if (not (null it))
-          it
-          (assoc symb *glob-env*))))
-
-  (defstruct closure
-    body
-    env
-    args)
-
-  (defun myapply (fn args env)
-    (cond
-      ((equal fn '+)               (+ (car args) (cadr args)))
-      ((equal fn '*)               (* (car args) (cadr args)))
-      ((equal fn 'car)             (caar args))
-      ((equal fn 'cdr)             (cdar args))
-      ((equal fn 'cons)            (cons (car args) (cadr args)))
-      ((equal fn 'null)            (null (car args)))
-      ((symbolp fn)                (let ((it (lookup fn env)))
-                                     (if (null it)
-                                         (error (format nil "fn-404: ~A" fn))
-                                         (myapply (cdr it) args env))))
-      ((closure-p fn)              (myeval (closure-body fn)
-                                           (pairlis (closure-args fn)
-                                                    args
-                                                    (closure-env fn))))
-      ))
-
-  (defun evcond (lst env)
-    (cond ((null lst)               nil)
-          ((myeval (caar lst) env)  (myeval (cadar lst) env))
-          (t                        (evcond (cdr lst) env))))
-  (defun evprogn (lst env)
-    (cond ((null lst)        nil)
-          ((null (cdr lst))  (myeval (car lst) env))
-          (t                 (myeval (car lst) env)
-                             (evprogn (cdr lst) env))))
-  (defun evlis (lst env)
-    (cond ((null lst)  nil)
-          (t           (cons (myeval (car lst) env)
-                             (evlis (cdr lst) env)))))
-  (defun mypairlis (lst1 lst2 alist)
-    (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
-          (t                              (cons (cons (car lst1)
-                                                      (car lst2))
-                                                (mypairlis (cdr lst1)
-                                                           (cdr lst2)
-                                                           alist)))))
-  (defun evletstar (varpairs exp env)
-    (cond ((null varpairs)  (myeval exp env))
-          (t                (evletstar (cdr varpairs)
-                                       exp
-                                       (cons (cons (caar varpairs)
-                                                   (myeval (cadar varpairs) env))
-                                             env)))))
-
-  (defun myeval (lst env)
-    (cond
-      ((null lst)                  nil)
-      ((numberp lst)               lst)
-      ((symbolp lst)               (cdr (lookup lst env)))
-      ((equal (car lst) 'quote)    (cadr lst))
-      ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
-                                       (myeval (caddr lst) env)
-                                       (myeval (cadddr lst) env)))
-      ((equal (car lst) 'cond)     (evcond (cdr lst) env))
-      ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                            (pairlis (mapcar #'car (cadr lst))
-                                                     (evlis (mapcar #'cadr (cadr lst))
-                                                            env)
-                                                     env)))
-      ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
-      ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-      ((equal (car lst) 'list)     (evlis (cdr lst) env))
-      ((equal (car lst) 'let*)     (evletstar (cadr lst)
-                                              (caddr lst)
-                                              env))
-      ((equal (car lst) 'defun)         (progn
-                                          (push (cons (cadr lst)
-                                                      (make-closure :body (cadddr lst)
-                                                                    :env env
-                                                                    :args (caddr lst)))
-                                                ,*glob-env*)
-                                          (cadr lst)))
-      ((equal (car lst) 'setq)     (let ((it (lookup (cadr lst) env))
-                                         (val (myeval (caddr lst) env)))
-                                     (if (null it)
-                                         (push (cons (cadr lst) val)
-                                               ,*glob-env*)
-                                         (rplacd it val))
-                                     val))
-      ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
-      (t
-       (myapply (car lst)
-                (evlis (cdr lst) env)
-                env))))
-
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
-  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
-  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
-  (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
-  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
-  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
-  (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
-  (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
-  (assert (equal T (myeval '(null ()) nil)))
-  (assert (equal T (myeval '(null a) '((a . ())))))
-  (assert (equal NIL (myeval '(null a) '((a . 1)))))
-  ;; (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
-  ;;                                          (beta . 7)))))
-  ;; (assert (equal '(42 . 42) (myeval '((lambda (x)
-  ;;                                       (cons x x))
-  ;;                                     42) nil)))
-  ;; (assert (equal '(42 . 17) (myeval '((lambda (x y)
-  ;;                                       (cons x y))
-  ;;                                     42 17) nil)))
-  (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
-  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
-  (assert (equal 2 (myeval '(if () 1 2) nil)))
-  (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
-  (assert (equal 2 (myeval '(if a 1 2) '((a . ())))))
-  (assert (equal 1 (myeval '(if a 1 2) '((a . 1)))))
-  (assert (equal 2 (myeval '(cond
-                             (() 1)
-                             (1 2))
-                           nil)))
-  (assert (equal 2 (myeval '(cond
-                             (a 1)
-                             (b 2))
-                           '((a . ()) (b . 1)))))
-  (assert (equal 1 (myeval '(cond
-                             (a 1)
-                             (b 2))
-                           '((a . 1) (b . ())))))
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b)) nil)))
-  (assert (equal 3 (myeval '(progn 1 2 3) nil)))
-  (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
-  (assert (equal '(3 6 42)
-                 (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
-  (assert (equal '(3 6 42)
-                 (myeval '(list (+ a b) (* b c) 42)
-                         '((a . 1) (b . 2) (c . 3) (d . 4)))))
-  (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
-                                            (b 2)
-                                            (c (+ a b)))
-                                      (cons c (cons a b))) nil)))
-  ;; (assert (equal '((ALFA LAMBDA (X) (* X X)))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(defun alfa (x) (* x x)) nil)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
-  (assert (equal 1 (myeval '(let ((alfa 2))
-                             (setq alfa 1)
-                             alfa)
-                           nil)))
-  (assert (equal '((ALFA . 1))
-                 (progn
-                   (setf *glob-env* nil)
-                   (myeval '(setq alfa 1) nil)
-                   (prog1 *glob-env*
-                     (setf *glob-env* nil)))))
-
-  (defun repl ()
-    (princ "microlisp>")
-    (princ (myeval (read) nil))
-    (terpri)
-    (finish-output)
-    (repl))
 #+END_SRC

@@ -5,6 +5,8 @@
 На этом этапе мы добавим к динамическому окружению глобальное и разделим MYEVAL на
 MYEVAL и MYAPPLY.
 
+Кроме того мы отделим классы ошибок от всего остального кода
+
 * Глобальное окружение
 
 Создадим переменную, которая будет хранить глобальное окружение. Нам понадобится
@@ -112,11 +114,26 @@ MYEVAL и MYAPPLY.
 
 ** Вычисление символов-функций
 
+Добавим ошибку, если функция не найдена в окружении
+
+#+NAME: errors_2
+#+BEGIN_SRC lisp
+  (define-condition function-not-found-error (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: function not found: ~A"
+               (fn condition)))))
+
+#+END_SRC
+
+И будем сигнализировать ее в этой ситуации
+
 #+NAME: myapply_func_symb_2
 #+BEGIN_SRC lisp
   ((symbolp fn)                (let ((it (lookup fn env)))
                                  (if (null it)
-                                     (error (format nil "fn-404: ~A" fn))
+                                     (error 'function-not-found-error :fn fn)
                                      (myapply (cdr it) args env))))
 #+END_SRC
 
@@ -124,6 +141,9 @@ MYEVAL и MYAPPLY.
 #+BEGIN_SRC lisp
   (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
                                            (beta . 7)))))
+  ;; (assert (equal "error"
+  ;;                (handler-case (myeval '(alfa beta) '((beta . 7)))
+  ;;                  (FUNCTION-NOT-FOUND-ERROR (condition) "error"))))
 #+END_SRC
 
 ** LAMBDA
@@ -217,23 +237,37 @@ MYEVAL и MYAPPLY.
   (assert (equal 999 (myeval 999 nil)))
 #+END_SRC
 
-
 ** Вычисление символов
 
-Обрабатываем ситуацию несвязанных переменных
+Добавим ошибку, если функция не найдена в окружении
+
+#+NAME: errors_2
+#+BEGIN_SRC lisp
+  (define-condition variable-not-found-error (error)
+    ((variable :initarg :variable  :reader variable))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: variable not found: ~A"
+               (variable condition)))))
+#+END_SRC
+
+Теперь  мы вычисляем значение символа обращаясь к ~lookup~ и сигнализируем ошибку, если
+не смогли найти символ даже в глобальном окружении.
 
 #+NAME: myeval_symb_2
 #+BEGIN_SRC lisp
   ((symbolp lst)               (let ((it (lookup lst env)))
                                  (if (null it)
-                                     (error 'unbound-variable (format nil "var-404: ~A" lst))
+                                     (error 'variable-not-found-error :variable lst)
                                      (cdr it))))
 #+END_SRC
 
 #+NAME: myeval_symb_2_test
 #+BEGIN_SRC lisp
-  ;; нужен тест для проверки неопределенной переменной
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+  (assert (equal "error"
+                 (handler-case (myeval 'b nil)
+                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
 #+END_SRC
 
 ** Цитирование
@@ -298,11 +332,25 @@ MYEVAL и MYAPPLY.
 
 ** LET
 
+Вынесем ~mypairlis-error~
+
+#+NAME: errors_2
+#+BEGIN_SRC lisp
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+#+END_SRC
+
+
 #+NAME: myeval_mypairlis_2
 #+BEGIN_SRC lisp
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
           (t                              (cons (cons (car lst1)
                                                       (car lst2))
                                                 (mypairlis (cdr lst1)
@@ -310,11 +358,21 @@ MYEVAL и MYAPPLY.
                                                            alist)))))
 #+END_SRC
 
+Добавим тесты, которые проверяют возникновение ошибок, когда мы пытаемся обратиться к
+переменной, которой нет в окружении.
+
 #+NAME: myeval_mypairlis_2_test
 #+BEGIN_SRC lisp
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
+
 
 #+NAME: myeval_let_2
 #+BEGIN_SRC lisp
@@ -473,7 +531,7 @@ lambda-функцию. В соответствии со стандартом ~de
                                      (val (myeval (caddr lst) env)))
                                  (if (null it)
                                      (push (cons (cadr lst) val)
-                                           ,,*glob-env*)
+                                           ,*glob-env*)
                                      (rplacd it val))
                                  val))
 #+END_SRC
@@ -516,6 +574,8 @@ TODO: Необходимо протестировать ~setq~
 * Итоги
 
 #+BEGIN_SRC lisp :tangle lisp-2.lisp :noweb tangle :exports code :padline no :comments none
+  <<errors_2>>
+
   <<lookup_2>>
 
   <<myapply_2>>
@@ -532,6 +592,27 @@ TODO: Необходимо протестировать ~setq~
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
+  (define-condition function-not-found-error (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: function not found: ~A"
+               (fn condition)))))
+
+  (define-condition variable-not-found-error (error)
+    ((variable :initarg :variable  :reader variable))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: variable not found: ~A"
+               (variable condition)))))
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+
   (defparameter *glob-env* nil)
 
   (defun lookup (symb env)
@@ -550,7 +631,7 @@ TODO: Необходимо протестировать ~setq~
       ((equal fn 'null)            (null (car args)))
       ((symbolp fn)                (let ((it (lookup fn env)))
                                      (if (null it)
-                                         (error (format nil "fn-404: ~A" fn))
+                                         (error 'function-not-found-error :fn fn)
                                          (myapply (cdr it) args env))))
       ((equal (car fn) 'lambda)    (myeval (car (cddr fn))
                                            (pairlis (car (cdr fn))
@@ -573,7 +654,7 @@ TODO: Необходимо протестировать ~setq~
                              (evlis (cdr lst) env)))))
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error))
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
           (t                              (cons (cons (car lst1)
                                                       (car lst2))
                                                 (mypairlis (cdr lst1)
@@ -590,8 +671,13 @@ TODO: Необходимо протестировать ~setq~
   (defun myeval (lst env)
     (cond
       ((null lst)                  nil)
+      ((equal t lst)               t)
+      ((member lst '(+ * car cdr cons null))  lst)
       ((numberp lst)               lst)
-      ((symbolp lst)               (cdr (lookup lst env)))
+      ((symbolp lst)               (let ((it (lookup lst env)))
+                                     (if (null it)
+                                         (error 'variable-not-found-error :variable lst)
+                                         (cdr it))))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
                                        (myeval (caddr lst) env)
@@ -623,7 +709,7 @@ TODO: Необходимо протестировать ~setq~
                                      val))
       ((equal (car lst) 'lambda)   lst)
       (t
-       (myapply (car lst)
+       (myapply (myeval (car lst) env)
                 (evlis (cdr lst) env)
                 env))))
 
@@ -646,6 +732,9 @@ TODO: Необходимо протестировать ~setq~
   (assert (equal NIL (myeval '(null a) '((a . 1)))))
   (assert (equal 49 (myeval '(alfa beta) '((alfa . (lambda (x) (* x x)))
                                            (beta . 7)))))
+  ;; (assert (equal "error"
+  ;;                (handler-case (myeval '(alfa beta) '((beta . 7)))
+  ;;                  (FUNCTION-NOT-FOUND-ERROR (condition) "error"))))
   (assert (equal '(42 . 42) (myeval '((lambda (x)
                                         (cons x x))
                                       42) nil)))
@@ -653,7 +742,13 @@ TODO: Необходимо протестировать ~setq~
                                         (cons x y))
                                       42 17) nil)))
 
+  (assert (equal T (myeval 'T nil)))
+  (assert (equal NIL (myeval 'NIL nil)))
+  (assert (equal 999 (myeval 999 nil)))
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+  (assert (equal "error"
+                 (handler-case (myeval 'b nil)
+                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
   (assert (equal 2 (myeval '(if () 1 2) nil)))
   (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
