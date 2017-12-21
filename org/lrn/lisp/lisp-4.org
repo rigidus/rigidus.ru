@@ -2,64 +2,7 @@
 
 * First
 
-closure нужно, чтобы сделать лексическое окружение. Динамическое легко на основе только
-ассоциативных списков получается.
-
 book: purely functuonal data structures
-
-dynamic environment
-
-#+BEGIN_SRC lisp
-  (defparameter *glob-env* nil)
-
-  (defun myapply (fn args)
-    (cond ((equal fn '+)             (+ (car args) (cadr args)))
-          ((equal fn '*)             (* (car args) (cadr args)))
-          ((equal fn 'car)           (car (car args)))
-          ((equal fn 'cdr)           (cdr (car args)))
-          ((equal fn 'cons)          (cons (car args) (car (cdr args))))
-          ((equal fn 'null)          (null (car args)))
-          ((closure-p fn)            (myeval (closure-body fn)
-                                             (pairlis (closure-args fn)
-                                                      args
-                                                      (closure-env fn))))))
-
-  (defun myeval (lst env)
-    (cond ((numberp lst)                    lst)
-          ((member lst
-                   '(+ * car cdr cons null))        lst)
-          ((symbolp lst)                    (cdr (lookup lst env)))
-          ((equal (car lst) 'quote)         (cadr lst))
-          ((equal (car lst) 'if)            (if (myeval (car (cdr lst)) env)
-                                                (myeval (car (cdr (cdr lst))) env)
-                                                (myeval (car (cdr (cdr (cdr lst)))) env)))
-          ((equal (car lst) 'cond)          (evcond (cdr lst) env))
-          ((equal (car lst) 'let)           (evprogn (cdr (cdr lst)) ; implicit progn
-                                                     (pairlis (mapcar #'car  (car (cdr lst)))
-                                                              (evlis (mapcar #'cadr (car (cdr lst)))
-                                                                     env)
-                                                              env)))
-          ((equal (car lst) 'progn)         (evprogn (cdr lst) env))
-          ((equal (car lst) 'print)         (print (myeval (car (cdr lst)) env)))
-          ((equal (car lst) 'let*)          (evletstar (car (cdr lst))
-                                                       (car (cdr (cdr lst)))
-                                                       env))
-          ((equal (car lst) 'defun)         (progn
-                                              (push (cons (cadr lst)
-                                                          (make-closure :body (cadddr lst) :env env :args (caddr lst)))
-                                                    ,*glob-env*)
-                                              (cadr lst)))
-          ((equal (car lst) 'setq)          (let ((it (lookup (cadr lst) env))
-                                                  (val (myeval (caddr lst) env)))
-                                              (if (null it)
-                                                  (push (cons (cadr lst) val)
-                                                        ,*glob-env*)
-                                                  (rplacd it val))
-                                              val))
-          ((equal (car lst) 'lambda)        (make-closure :body (caddr lst) :env env :args (cadr lst)))
-          (t                                (myapply (myeval (car lst) env)
-                                                     (evlis (cdr lst) env)))))
-#+END_SRC
 
 Dynamic scope - переменные видны из места вызова функции
 Static scop - из места создания функции
