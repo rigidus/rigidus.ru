@@ -39,6 +39,7 @@
 <li><a href="#unnumbered-19">COND</a></li>
 <li><a href="#unnumbered-20">LET</a></li>
 <li><a href="#unnumbered-21">PROGN</a></li>
+<li><a href="#unnumbered-22">LIST</a></li>
 <li><a href="#unnumbered-23">LET*</a></li>
 <li><a href="#unnumbered-24">DEFUN</a></li>
 <li><a href="#unnumbered-25">SETQ</a></li>
@@ -837,6 +838,348 @@ cps
 
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> 1 2 3) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">LIST</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
+<p>
+Теперь нам надо переписать <code>evlis</code> в cps-style. Но прежде чем начать это делать, стоит
+рассмотреть, как преобразовать обычную рекурсию в хвостовую.
+</p>
+
+<p>
+В качестве примера возьмем факториал:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact</span> (n)
+  (<span style="color: #af00ff;">cond</span> ((equal 0 n)  1)
+        (t            (* n (fact (- n 1))))))
+</pre>
+</div>
+
+<p>
+Этот факториал не хвосторекурсивный, потому что последним выполненным вызовом будет
+умножение. Если бы последний вызов было бы <code>fact</code>, то мы могли бы использовать
+оптимизацию хвостовой рекурсии, что само по позволяет сделат более эффективный код.
+</p>
+
+<p>
+Мы можем использовать параметр-аккумулятор, чтобы преобразовать нехвостовую рекурсию в
+хвостовую. Тогда наш факториал будет таким:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact-tail-call</span> (n <span style="color: #008700;">&amp;optional</span> (acc 1))
+  (<span style="color: #af00ff;">cond</span> ((equal 0 n)  acc)
+        (t            (fact-tail-call (- n 1)
+                                      (* n acc)))))
+</pre>
+</div>
+
+<p>
+Здесь мы протягиваем в параметре-аккумуляторе результаты вычисления, которые в
+предыдущем случае у нас были в возвращаемом значении. Таким образом возвращаемое
+значение не является для нас важным до тех пор, пока мы не достигнем базы рекурсии,
+т.е. пока <code>n</code> не станет равным нулю.
+</p>
+
+<p>
+Технически, мы можем построить эквивалентный цикл для этого кода (надо будет
+попробовать, кстати, сделать это полностью автоматически нужен будет code walker?)
+</p>
+
+<p>
+Теперь перепишем хвосторекурсивный факториал в cps-стиле:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact-tail-call-cps</span> (n cont)
+  (<span style="color: #af00ff;">cond</span> ((equal n 1)  (funcall cont 1))
+        (t            (fact-tail-call-cps (- n 1)
+                                          (<span style="color: #af00ff;">lambda</span> (x)
+                                            (funcall cont (* n x)))))))
+</pre>
+</div>
+
+<p>
+Здесь вместо аккумулятора мы передаем продолжение. Это продолжение представлят собой
+лямбду, которая вызывает продолжение-параметр. Это продолжение-параметр вызывается с
+аргументом, который представляет собой собственно вычисление (n * x). По-видимому, это
+такой довольно интересный способ отложить вычисления до тех пор пока мы не достигнем
+базы рекурсии.
+</p>
+
+<p>
+В самом деле, при вызове <code>(fact-tail-call-cps 3 #'(lambda (x) x))</code>, когда мы достигнем
+базы рекурсии будет выполнено это:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(funcall (<span style="color: #af00ff;">lambda</span> (x)
+           (funcall (<span style="color: #af00ff;">lambda</span> (x)
+                      (funcall (<span style="color: #af00ff;">lambda</span> (x)
+                                 x)
+                               (* 3 x)))
+                    (* 2 x)))
+         1)
+</pre>
+</div>
+
+<p>
+Это уже не может быть оправдано эффективностью, так как на каждом шаге рекурсии мы
+создаем оборачивающую лямбду. Поэтому я не очень понимаю, чем может быть обусловлен
+такой подход [TODO:gmm] Технически мы могли бы суперкомпилировать созданную цепочку
+лямб, но на практике (и с т.з. производительности), это, возможно, ничем не отличается
+от того чтобы просто энфорсить вычисление как мы это делаем сейчас.
+</p>
+
+<hr >
+
+<p>
+Второй пример будет чуть сложнее - числа фибоначчи:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fib</span> (n)
+  (<span style="color: #af00ff;">cond</span> ((equal n 1)  1)
+        ((equal n 2)  1)
+        (t            (+ (fib (- n 1))
+                         (fib (- n 2))))))
+</pre>
+</div>
+
+<p>
+Преобразум вызов в хвосторекурсивный, используя аккумулятор
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc</span> (n <span style="color: #008700;">&amp;optional</span> (acc 1))
+  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  acc)
+        ((equal 2 n)  acc)
+        (t            (ftc (- n 1)
+                           (+ acc
+                              (ftc (- n 2) 1))))))
+</pre>
+</div>
+
+<p>
+Теперь перепишем в cps-стиле:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps</span> (n cont)
+  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  (funcall cont 1))
+        ((equal 2 n)  (funcall cont 1))
+        (t            (ftc-cps (- n 1)
+                               (<span style="color: #af00ff;">lambda</span> (x)
+                                 (funcall cont
+                                          (+ x
+                                             (ftc-cps (- n 2)
+                                                      (<span style="color: #af00ff;">lambda</span> (x) x)))))))))
+</pre>
+</div>
+
+<p>
+Честно говоря я сам не понял как я это сделал и почему на конце там <code>(lambda (x)
+x)</code>. [TODO:gmm] Ну, то есть это такой способ возвратить число из вызова <code>(ftc-cps (-
+n 2) ...)</code>, чтобы потом сложить его с <code>x</code>. Можно в целом еще более приблизиться, если
+использьзовать параметр по умолчанию:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps-d</span> (n <span style="color: #008700;">&amp;optional</span> (cont (<span style="color: #af00ff;">lambda</span> (x) x)))
+  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  (funcall cont 1))
+        ((equal 2 n)  (funcall cont 1))
+        (t            (ftc-cps-d (- n 1)
+                                 (<span style="color: #af00ff;">lambda</span> (x)
+                                   (funcall cont
+                                            (+ x
+                                               (ftc-cps-d (- n 2)))))))))
+</pre>
+</div>
+
+<p>
+А вот, по-видимому, правильный вариант. Он может быть получен формальным выделением из
+<code>ftc</code> "следующей исполняющейся части" и формированием из нее продожения.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps-2</span> (n cont)
+  (<span style="color: #af00ff;">cond</span> ((equal n 1)  (funcall cont 1))
+        ((equal n 2)  (funcall cont 1))
+        (t            (ftc-cps-2 (- n 1)
+                                 (<span style="color: #af00ff;">lambda</span> (x)
+                                   (ftc-cps-2 (- n 2)
+                                              (<span style="color: #af00ff;">lambda</span> (y)
+                                                (funcall cont (+ x y)))))))))
+</pre>
+</div>
+
+<hr >
+
+<p>
+Еще один пример, но этот раз для списка - функция, которая проходит по списку удваивая
+каждый элемент:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mul2</span> (lst)
+  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
+        (t           (cons (* 2 (car lst))
+                           (mul2 (cdr lst))))))
+</pre>
+</div>
+
+<p>
+Воспользовавшись тем же подходом получим ее хвосторекурсивный вариант:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mul2</span> (lst <span style="color: #008700;">&amp;optional</span> (acc nil))
+  (<span style="color: #af00ff;">cond</span> ((null lst)  (reverse acc))
+        (t           (mul2 (cdr lst)
+                           (cons (* 2 (car lst)) acc)))))
+</pre>
+</div>
+
+<p>
+Он обладает небольшим отличием, которое заключается в том, что в целях эффективности
+база рекурсии переворачивает аккумулированный список, чтобы шаг рекурсии мог добавлять
+элементы в начало списка-аккумулятора - это более эффективно.
+</p>
+
+<p>
+Можно смотреть на процесс обработки списка как на перемещение головы списка <code>lst</code> в
+голову <code>acc</code>. Мы могли бы переименовать <code>lst</code> в "список еще невычесленных форм"
+<code>unevaled</code>, а <code>acc</code> в "список уже вычисленных форм" <code>evaled</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mul2</span> (unevaled <span style="color: #008700;">&amp;optional</span> (evaled nil))
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 (cdr unevaled)
+                                (cons (* 2 (car unevaled)) evaled)))))
+</pre>
+</div>
+
+<p>
+Следующим шагом можно отделить функцию, которая обрабатывает элементы списка. Зададим
+ее как параметр:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mul2</span> (fn unevaled <span style="color: #008700;">&amp;optional</span> (evaled nil))
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 fn
+                                (cdr unevaled)
+                                (cons (funcall fn (car unevaled))
+                                      evaled)))))
+</pre>
+</div>
+
+<p>
+По сути мы получили универсальную функцию-маппер, которая умеет обрабатывать список. Мы
+можем сделать опциональный параметр обязательным и заставить ее рекурсивно обрабатывать
+подсписки. [TODO:gmm] Однако добавить рекурсивную обработку подсписков у меня не
+получается..
+</p>
+
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mul2</span> (fn unevaled evaled)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 fn
+                                (cdr unevaled)
+                                (cons (funcall fn (car unevaled))
+                                      evaled)))))
+</pre>
+</div>
+
+<p>
+&#x2026;&#x2026;&#x2026;&#x2026;&#x2026;&#x2026;&#x2026;&#x2026;..
+</p>
+
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlis_4"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1084;&#1077;&#1085;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1085;&#1086; &#1073;&#1086;&#1083;&#1077;&#1077; &#1087;&#1086;&#1085;&#1103;&#1090;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn evaled errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #af00ff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (append evaled (list x))
+                                           env errcont cont))))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1086;&#1083;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #af00ff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlis_3_test">(trace evlis)
+
+(evlis '+ '(1 (+ 1 2)) nil nil #'err #'ok)
+
+(evlis 'list '(1 (+ 1 2) 5) nil nil #'err #'ok)
+
+(list 3 1)
+
+(myeval '(list 1 2 3) nil #'err #'ok)
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">test for evlis</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 4 (evlis '+ '(1 (+ 1 2)) nil nil #'err #'ok)))
+
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (evlis #'+ '(1 (+ 1 2) (* 2 3) 42) nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_list_4">((equal (car exp) 'list)     (evlis 'list (cdr exp) nil env errcont cont))
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_list_3_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4)))))
 </pre>
 </div>
 </div>
