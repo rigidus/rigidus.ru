@@ -56,8 +56,45 @@
 <h2 id="unnumbered-1">План работ</h2>
 <div class="outline-text-2" id="text-unnumbered-1">
 <p>
-Цель этого этапа - решение semipredicate problem, проблемы полупредикатов.
+Цель этого этапа: преобразовать наш интерпретатор так, чтобы он был написан в стиле
+передачи продолжений, сontinuation-passing style, CPS.
 </p>
+
+<p>
+Зачем мы это делаем? Сейчас мы имеем рекурсивный интерпретатор, который использует
+рекурсию, когда выполняет оценку (<code>eval</code>) программмы. Нам надо получить нерекурсивный
+(итеративный, циклический) интерпретатор, иначе:
+</p>
+<ul class="org-ul">
+<li>нам придется пользоваться стеком хост-языка, чтобы обрабатывать рекурсивный <code>eval</code>
+</li>
+<li>мы не сможем написать отладчик с точками останова, шагом исполнения и.т.п. потому что
+рекурсивный интерпретатор нельзя остановить в определенный момент.
+</li>
+<li>мы не сможем сделать механизм обработки ошибок, такой как catch/trow и сложные
+структуры управления потоком управления.
+</li>
+</ul>
+
+<p>
+Поэтому нам надо удалить рекурсию из интерпретатора. Есть два способа подойти к этой
+проблеме:
+</p>
+<ul class="org-ul">
+<li>CPS-преобразование
+</li>
+<li>Реализация SECD-машины
+</li>
+</ul>
+
+<p>
+SECD-машину мы будем реализовывать несколько позже, а сейчас сосредоточимся на
+CPS-преобразовании. Оно дает нам несколько бесплатных бонусов, напримимер:
+</p>
+<ul class="org-ul">
+<li>решение semipredicate problem, проблемы полупредикатов.
+</li>
+</ul>
 
 <p>
 Полупредикаты - это предикаты, у которых может быть три возможных вида возвращаемых
@@ -1235,6 +1272,140 @@ Calculus". Там было все реализовано правильно, т�
 <p>
 Как добавление fn элиминирует лишние продолжения?
 </p>
+
+
+<p>
+что делает эвлист - вычисляет аргументы функции
+</p>
+
+<p>
+потом мы взяли последний эвлис который я написал
+</p>
+
+<p>
+и сделали соответствующую часть евала:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env errcont cont)
+  (<span style="color: #af00ff;">cond</span>
+    &lt;&lt;myeval_number_4&gt;&gt;
+    &lt;&lt;myeval_symb_4&gt;&gt;
+    &lt;&lt;myeval_quote_4&gt;&gt;
+    &lt;&lt;myeval_if_4&gt;&gt;
+    &lt;&lt;myeval_cond_4&gt;&gt;
+    &lt;&lt;myeval_let_4&gt;&gt;
+    &lt;&lt;myeval_progn_4&gt;&gt;
+
+    &lt;&lt;myeval_letstar_4&gt;&gt;
+    &lt;&lt;myeval_defun_4&gt;&gt;
+    &lt;&lt;myeval_setq_4&gt;&gt;
+    &lt;&lt;myeval_lambda_4&gt;&gt;
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #af00ff;">lambda</span> (x)
+               (evlis (cdr exp) nil env errcont
+                      (<span style="color: #af00ff;">lambda</span> (y)   <span style="color: #af0000;">; y -- &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1092;&#1086;&#1088;&#1084;</span>
+                        (myapply x y errcont cont))))))))
+</pre>
+</div>
+
+<p>
+и здесь есть продолжение, которое не является шагом вычисления в интерпретаторе
+</p>
+
+<p>
+как пример интерпретатор <a href="https://gist.github.com/fogus/3698078">https://gist.github.com/fogus/3698078</a> в нем есть 3
+продолжения, одно из которых является лишним и чтобы его не делать перед
+cps-преобразованием мы выполнили хвосторекурсивное преобразование с аккумулятором, что
+дало нам возможность получить более хороший результат - с двумя продолжениями вместо
+трех.
+</p>
+
+<p>
+Если взять евлис и преобразовать его в цпс то получится вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis-orig-cps</span> (lst env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null lst) nil)
+        (t (myeval (car lst) env errcont
+                   (<span style="color: #af00ff;">lambda</span> (x)    <span style="color: #af0000;">; &#1088;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090; &#1092;&#1086;&#1088;&#1084;&#1099; (car lst)</span>
+                     (evlis (cdr lst) env errcont
+                            (<span style="color: #af00ff;">lambda</span> (y)  <span style="color: #af0000;">; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1074;&#1099;&#1095;. &#1092;&#1086;&#1088;&#1084;</span>
+                              (funcall cont (cons x y)))))))))
+</pre>
+</div>
+
+<p>
+А если перед этим сделать его хвосторекурсивным с аккумулятором и только потом
+преобразовать в цпс - то получится так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (funcall cont (reverse evaled)))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #af00ff;">lambda</span> (x)
+                                    (evlis (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env errcont cont)
+  (<span style="color: #af00ff;">cond</span>
+    &lt;&lt;myeval_number_4&gt;&gt;
+    &lt;&lt;myeval_symb_4&gt;&gt;
+    &lt;&lt;myeval_quote_4&gt;&gt;
+    &lt;&lt;myeval_if_4&gt;&gt;
+    &lt;&lt;myeval_cond_4&gt;&gt;
+    &lt;&lt;myeval_let_4&gt;&gt;
+    &lt;&lt;myeval_progn_4&gt;&gt;
+
+    &lt;&lt;myeval_letstar_4&gt;&gt;
+    &lt;&lt;myeval_defun_4&gt;&gt;
+    &lt;&lt;myeval_setq_4&gt;&gt;
+    &lt;&lt;myeval_lambda_4&gt;&gt;
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #af00ff;">lambda</span> (x)
+               (evlis (cdr exp) nil env errcont
+                      (<span style="color: #af00ff;">lambda</span> (y)   <span style="color: #af0000;">; y -- &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1092;&#1086;&#1088;&#1084;</span>
+                                            (myapply x y errcont cont))))))))
+</pre>
+</div>
+
+<p>
+Нужно преобразовать evlis так чтобы продожение в myeval где комментарий "y &#x2013; список форм" исчезло
+</p>
+
+<p>
+Для этого мы переместим функционал аплая - применение функции к аргументам прямо в
+евлис, передав ему функцию, которую будем аплаить. тогда выйдет вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">&#1082;&#1091;&#1089;&#1086;&#1082; myeval:
+(myeval (car exp) env errcont
+        (<span style="color: #af00ff;">lambda</span> (x)
+          (evlis x (cdr exp) nil env errcont cont))))
+
+&#1101;&#1074;&#1083;&#1080;&#1089;:
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #af00ff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+
 
 
 
