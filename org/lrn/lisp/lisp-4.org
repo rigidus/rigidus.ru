@@ -637,6 +637,8 @@ cps
           (t            (fact-tail-call-cps (- n 1)
                                             (lambda (x)
                                               (funcall cont (* n x)))))))
+  (defun fact-tail-call-cps-start (n)
+    (fact-tail-call-cps n (lambda (x) x)))
 #+END_SRC
 
 Здесь вместо аккумулятора мы передаем продолжение. Это продолжение представлят собой
@@ -676,56 +678,40 @@ cps
                            (fib (- n 2))))))
 #+END_SRC
 
-Преобразум вызов в хвосторекурсивный, используя аккумуляторы
+Преобразум вызов в хвосторекурсивный, используя аккумуляторы. С помощью них мы можем
+уменьшить количество вложенных вызовов, если применим такую стратегию вычилений:
+
+В первом параметре ~n~ будем декрементировать шаг вычисления, в последнем параметре на
+каждом шаге будем передавать сумму аккумуляторов, а в предпоследнем - предыдущее
+значение суммы.
+
+Таким образом в последнем параметре при каждом вызове начнет накапливаться
+последовательность сумм, а в предпоследнем - так же последовательность сумм, но со
+сдвигом на шаг назад.
+
+Когда счетчик ~n~ достаточно уменьшится мы сможем просто возвратить последний
+параметр. Таким образом время вычисления из экспоненциального превращается в линейное.
 
 #+BEGIN_SRC lisp
   (defun ftc (n &optional (acc1 1) (acc2 1))
-    (cond ((or (equal 1 n) (equal 2 n))  acc1)
-          (t                             (ftc (- n 1)  (+ acc1 acc2)  acc1))))
+    (cond ((or (equal 1 n)
+               (equal 2 n))  acc2)
+          (t                 (ftc (- n 1) acc2 (+ acc1 acc2)))))
 #+END_SRC
 
 Теперь перепишем в cps-стиле:
 
 #+BEGIN_SRC lisp
   (defun ftc-cps (n cont)
-    (cond ((equal 1 n)  (funcall cont 1))
-          ((equal 2 n)  (funcall cont 1))
+    (cond ((equal 1 n)  (funcall cont 1 1))
+          ((equal 2 n)  (funcall cont 1 1))
           (t            (ftc-cps (- n 1)
-                                 (lambda (x)
-                                   (funcall cont
-                                            (+ x
-                                               (ftc-cps (- n 2)
-                                                        (lambda (x) x)))))))))
-#+END_SRC
+                                 (lambda (acc1 acc2)
+                                   (funcall cont acc2 (+ acc1 acc2)))))))
 
-Честно говоря я сам не понял как я это сделал и почему на конце там ~(lambda (x)
-x)~. [TODO:gmm] Ну, то есть это такой способ возвратить число из вызова ~(ftc-cps (-
-n 2) ...)~, чтобы потом сложить его с ~x~. Можно в целом еще более приблизиться, если
-использьзовать параметр по умолчанию:
-
-#+BEGIN_SRC lisp
-  (defun ftc-cps-d (n &optional (cont (lambda (x) x)))
-    (cond ((equal 1 n)  (funcall cont 1))
-          ((equal 2 n)  (funcall cont 1))
-          (t            (ftc-cps-d (- n 1)
-                                   (lambda (x)
-                                     (funcall cont
-                                              (+ x
-                                                 (ftc-cps-d (- n 2)))))))))
-#+END_SRC
-
-А вот, по-видимому, правильный вариант. Он может быть получен формальным выделением из
-~ftc~ "следующей исполняющейся части" и формированием из нее продожения.
-
-#+BEGIN_SRC lisp
-  (defun ftc-cps-2 (n cont)
-    (cond ((equal n 1)  (funcall cont 1))
-          ((equal n 2)  (funcall cont 1))
-          (t            (ftc-cps-2 (- n 1)
-                                   (lambda (x)
-                                     (ftc-cps-2 (- n 2)
-                                                (lambda (y)
-                                                  (funcall cont (+ x y)))))))))
+  (defun ftc-cps-start (n)
+    (ftc-cps n (lambda (acc1 acc2)
+                 acc2)))
 #+END_SRC
 
 ----------------

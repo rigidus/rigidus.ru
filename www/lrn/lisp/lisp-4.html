@@ -905,6 +905,8 @@ cps
         (t            (fact-tail-call-cps (- n 1)
                                           (<span style="color: #af00ff;">lambda</span> (x)
                                             (funcall cont (* n x)))))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact-tail-call-cps-start</span> (n)
+  (fact-tail-call-cps n (<span style="color: #af00ff;">lambda</span> (x) x)))
 </pre>
 </div>
 
@@ -958,14 +960,33 @@ cps
 </div>
 
 <p>
-Преобразум вызов в хвосторекурсивный, используя аккумуляторы
+Преобразум вызов в хвосторекурсивный, используя аккумуляторы. С помощью них мы можем
+уменьшить количество вложенных вызовов, если применим такую стратегию вычилений:
+</p>
+
+<p>
+В первом параметре <code>n</code> будем декрементировать шаг вычисления, в последнем параметре на
+каждом шаге будем передавать сумму аккумуляторов, а в предпоследнем - предыдущее
+значение суммы.
+</p>
+
+<p>
+Таким образом в последнем параметре при каждом вызове начнет накапливаться
+последовательность сумм, а в предпоследнем - так же последовательность сумм, но со
+сдвигом на шаг назад.
+</p>
+
+<p>
+Когда счетчик <code>n</code> достаточно уменьшится мы сможем просто возвратить последний
+параметр. Таким образом время вычисления из экспоненциального превращается в линейное.
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc</span> (n <span style="color: #008700;">&amp;optional</span> (acc1 1) (acc2 1))
-  (<span style="color: #af00ff;">cond</span> ((or (equal 1 n) (equal 2 n))  acc1)
-        (t                             (ftc (- n 1)  (+ acc1 acc2)  acc1))))
+  (<span style="color: #af00ff;">cond</span> ((or (equal 1 n)
+             (equal 2 n))  acc2)
+        (t                 (ftc (- n 1) acc2 (+ acc1 acc2)))))
 </pre>
 </div>
 
@@ -976,52 +997,15 @@ cps
 <div class="org-src-container">
 
 <pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps</span> (n cont)
-  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  (funcall cont 1))
-        ((equal 2 n)  (funcall cont 1))
+  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  (funcall cont 1 1))
+        ((equal 2 n)  (funcall cont 1 1))
         (t            (ftc-cps (- n 1)
-                               (<span style="color: #af00ff;">lambda</span> (x)
-                                 (funcall cont
-                                          (+ x
-                                             (ftc-cps (- n 2)
-                                                      (<span style="color: #af00ff;">lambda</span> (x) x)))))))))
-</pre>
-</div>
+                               (<span style="color: #af00ff;">lambda</span> (acc1 acc2)
+                                 (funcall cont acc2 (+ acc1 acc2)))))))
 
-<p>
-Честно говоря я сам не понял как я это сделал и почему на конце там <code>(lambda (x)
-x)</code>. [TODO:gmm] Ну, то есть это такой способ возвратить число из вызова <code>(ftc-cps (-
-n 2) ...)</code>, чтобы потом сложить его с <code>x</code>. Можно в целом еще более приблизиться, если
-использьзовать параметр по умолчанию:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps-d</span> (n <span style="color: #008700;">&amp;optional</span> (cont (<span style="color: #af00ff;">lambda</span> (x) x)))
-  (<span style="color: #af00ff;">cond</span> ((equal 1 n)  (funcall cont 1))
-        ((equal 2 n)  (funcall cont 1))
-        (t            (ftc-cps-d (- n 1)
-                                 (<span style="color: #af00ff;">lambda</span> (x)
-                                   (funcall cont
-                                            (+ x
-                                               (ftc-cps-d (- n 2)))))))))
-</pre>
-</div>
-
-<p>
-А вот, по-видимому, правильный вариант. Он может быть получен формальным выделением из
-<code>ftc</code> "следующей исполняющейся части" и формированием из нее продожения.
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps-2</span> (n cont)
-  (<span style="color: #af00ff;">cond</span> ((equal n 1)  (funcall cont 1))
-        ((equal n 2)  (funcall cont 1))
-        (t            (ftc-cps-2 (- n 1)
-                                 (<span style="color: #af00ff;">lambda</span> (x)
-                                   (ftc-cps-2 (- n 2)
-                                              (<span style="color: #af00ff;">lambda</span> (y)
-                                                (funcall cont (+ x y)))))))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ftc-cps-start</span> (n)
+  (ftc-cps n (<span style="color: #af00ff;">lambda</span> (acc1 acc2)
+               acc2)))
 </pre>
 </div>
 
