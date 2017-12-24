@@ -870,32 +870,55 @@ cps
 
 <p>
 Мы можем использовать параметр-аккумулятор, чтобы преобразовать нехвостовую рекурсию в
-хвостовую. Тогда наш факториал будет таким:
+хвостовую. Этот аккумулятор будет накапливать результат вычисления, который ранее был в
+возвращаемом значении. Тогда нам уже не нужно использовать возвращаемое значение при
+шаге вычисления и мы можем сделать рекурсию хвостовой.
+</p>
+
+<p>
+Тогда наш факториал будет таким:
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact-tail-call</span> (n <span style="color: #008700;">&amp;optional</span> (acc 1))
   (<span style="color: #af00ff;">cond</span> ((equal 0 n)  acc)
-       (t             (fact-tail-call (- n 1)
+        (t            (fact-tail-call (- n 1)
                                       (* n acc)))))
 </pre>
 </div>
 
 <p>
-Здесь мы протягиваем в параметре-аккумуляторе результаты вычисления, которые в
-предыдущем случае у нас были в возвращаемом значении. Таким образом возвращаемое
-значение не является для нас важным до тех пор, пока мы не достигнем базы рекурсии,
-т.е. пока <code>n</code> не станет равным нулю.
+Таким образом возвращаемое значение не является для нас важным до тех пор, пока мы не
+достигнем базы рекурсии, т.е. пока <code>n</code> не станет равным нулю. Тут мы просто возвратим
+значение аккумулятора.
 </p>
 
 <p>
-Технически, мы можем построить эквивалентный цикл для этого кода (надо будет
-попробовать, кстати, сделать это полностью автоматически нужен будет code walker?)
+Технически, мы можем построить эквивалентный цикл для этого кода:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">fact-iter</span> (param)
+  (<span style="color: #af00ff;">let</span> ((acc 1))
+    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> n <span style="color: #5f5f87;">:from</span> param <span style="color: #5f5f87;">:downto</span> 1 <span style="color: #5f5f87;">:do</span>
+       (setf acc (* n acc))
+       (print acc))
+    acc))
+</pre>
+</div>
+
+<p>
+[TODO:gmm] - как сделать это полностью автоматически. Нужен будет code walker?
 </p>
 
 <p>
-Теперь перепишем хвосторекурсивный факториал в cps-стиле:
+Теперь перепишем хвосторекурсивный факториал в cps-стиле. Чтобы преобразовать
+<code>fact-tail-call</code> в <code>fact-tail-call-cps</code> добавим параметр-продолжение <code>cont</code>, в который
+будем передавать функцию, которая представляет собой остаток вычисления. <code>(- n 1)</code> мы
+можем вычислить сразу, а <code>(* n acc)</code> - нет, так как у нас больше нет параметра
+<code>acc</code>.
 </p>
 
 <div class="org-src-container">
@@ -937,10 +960,8 @@ cps
 
 <p>
 Это уже не может быть оправдано эффективностью, так как на каждом шаге рекурсии мы
-создаем оборачивающую лямбду. Поэтому я не очень понимаю, чем может быть обусловлен
-такой подход [TODO:gmm] Технически мы могли бы суперкомпилировать созданную цепочку
-лямб, но на практике (и с т.з. производительности), это, возможно, ничем не отличается
-от того чтобы просто энфорсить вычисление как мы это делаем сейчас.
+создаем оборачивающую лямбду. Поэтому я не очень понимаю, зачем нужен такой подход
+[TODO:gmm]
 </p>
 
 <hr >
@@ -960,7 +981,7 @@ cps
 </div>
 
 <p>
-Преобразум вызов в хвосторекурсивный, используя аккумуляторы. С помощью них мы можем
+Преобразуем вызов в хвосторекурсивный, используя аккумуляторы. С помощью них мы можем
 уменьшить количество вложенных вызовов, если применим такую стратегию вычилений:
 </p>
 
@@ -1008,6 +1029,10 @@ cps
                acc2)))
 </pre>
 </div>
+
+<p>
+[TODO:gmm] Здесь надо для тренировки превратить это в CPS.
+</p>
 
 <hr >
 
@@ -1109,21 +1134,34 @@ cps
 </div>
 
 <p>
-Мы помним, что сейчас <code>myeval</code> принимает продолжения. Значит и <code>evlis</code> должен их принимать:
+Переименуем <code>lst</code> в <code>unevaled</code>:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
-        (t           (cons (myeval (car lst) env errcont cont)
-                           (evlis (cdr lst) env errcont cont)))))
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  nil)
+        (t           (cons (myeval (car unevaled) env)
+                           (evlis (cdr unevaled) env)))))
 </pre>
 </div>
 
 <p>
-Теперь переименуем параметр <code>lst</code> в <code>unevaled</code>, добавим параметр <code>evaled</code> и преобразуем
-<code>evlis</code> так-же как мы делали с <code>mul2</code>, чтобы получить хвостовую рекурсию:
+Преобразуем рекурсию в хвостовую с аккумулятором, по аналогии с mul2:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)))))
+</pre>
+</div>
+
+<p>
+Мы помним, что сейчас <code>myeval</code> принимает продолжения. Значит и <code>evlis</code> должен их принимать:
 </p>
 
 <div class="org-src-container">
@@ -1138,84 +1176,24 @@ cps
 </div>
 
 <p>
-Мы можем переформулировать вызов <code>myeval</code> так, чтобы выделить его как отдельную
-лямбда-функцию, которая обрабатывает элемент функции перед передачей его в <code>evaled</code>:
+Теперь проведем CPS-преобразование. Вызов <code>myeval</code> - первый из вычисляемых, которые
+имеют продолжение, поэтому мы можем передать ему все остальное как параметр <code>cont</code>.
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
-        (t                (evlis (cdr unevaled)
-                                 (cons (funcall (<span style="color: #af00ff;">lambda</span> (x)
-                                                  (myeval x env errcont cont))
-                                                (car unevaled))
-                                       evaled)
-                                 env errcont cont))))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #af00ff;">lambda</span> (x)
+                                    (evlis (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
 </pre>
 </div>
 
 <p>
-Выполним (так же как и с <code>mul2</code>) выделение лямбда-функции в отдельную функцию <code>fn</code>,
-которая обрабатывает элемент списка при передаче его из <code>unevaled</code> в <code>evaled</code>.
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
-        (t                (evlis fn
-                                 (cdr unevaled)
-                                 (cons (funcall fn (car unevaled))
-                                       evaled)
-                                 env errcont cont))))
-</pre>
-</div>
-
-<p>
-Вот тут я понял, что ушел куда-то не туда. Где все пошло не так?
-</p>
-
-<p>
-[TODO:gmm] CPS-преобразование
-</p>
-
-<p>
-Так, я только что обратил внимание, что результирующий <code>evlis</code> не хвостовой. Попробую
-вернуться назад к:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null unevaled)  nil)
-        (t           (cons (myeval (car unevaled) env errcont cont)
-                           (evlis (cdr unevaled) env errcont cont)))))
-</pre>
-</div>
-
-<p>
-и сразу провести CPS-преобразование от <code>myeval</code>:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null unevaled)  nil)
-        (t           (cons (myeval (car unevaled) env errcont
-                                   (<span style="color: #af00ff;">lambda</span> (x)
-                                     (evlis (cdr unevaled) env errcont
-                                            (<span style="color: #af00ff;">lambda</span> (y)
-                                              (cons x y)))))))))
-</pre>
-</div>
-
-<p>
-Все равно какая-то херня получается&#x2026;
-</p>
-
-<p>
-Непонятно как выбрать путь преобразований и почему он должен быть выбран именно в эту сторону
+[TODO:gmm] - Вопрос в том, чем обусловлено появление параметра <code>fn</code> в <code>evlis</code>?
 </p>
 
 <p>
