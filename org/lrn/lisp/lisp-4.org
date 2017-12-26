@@ -20,7 +20,7 @@
 - Реализация SECD-машины
 
 SECD-машину мы будем реализовывать несколько позже, а сейчас сосредоточимся на
-CPS-преобразовании. Оно дает нам бесплатные бонусы, напримимер:
+CPS-преобразовании. Оно дает нам бесплатные бонусы, например:
 - решение semipredicate problem, проблемы полупредикатов.
 
 Полупредикаты - это предикаты, у которых может быть три возможных вида возвращаемых
@@ -195,9 +195,8 @@ funarg-problem мы можем передавать функции, мы мог�
   <<myapply_or_4_test>>
   <<myand_4_test>>
   <<myapply_and_4_test>>
-  ;; <<myapply_func_symb_3_test>>
-  ;; ;; TODO : нужен тест для closure в apply
-  ;; <<myapply_closure_3_test>>
+  <<myapply_closure_4_test>>
+  <<myapply_list_4_test>>
 #+END_SRC
 
 ** Встроенные функции арифметики
@@ -390,11 +389,13 @@ funarg-problem мы можем передавать функции, мы мог�
   (assert (equal (and 1 2 3)     (myeval '(and 1 2 3) nil #'err #'ok)))
 #+END_SRC
 
-** TODO CLOSURE
+** CLOSURE
 
-Если в качестве ~fn~ мы получаем структуру ~closure~, то мы должны выполнить (eval) ее
-поле ~closure-body~ в окружении, которое состоит из замкнутого в поле (closure-env fn)
-и полученных функцией ~myapply~ аргументов ~args~.
+Если во время применения функции ~fn~ к аргументам (т.е. в ~apply~) в параметре ~fn~ мы
+получаем структуру типа ~closure~, то мы должны выполнить (т.е. сделать ~eval~) ее поле
+~closure-body~ в составном окружении. Это составное окружение состоит из замкнутого
+окружения, которое мы получаем из поля ~closure-env~ структуры и полученных функцией
+~myapply~ аргументов ~args~.
 
 #+NAME: myapply_closure_4
 #+BEGIN_SRC lisp
@@ -406,26 +407,44 @@ funarg-problem мы можем передавать функции, мы мог�
                                        cont))
 #+END_SRC
 
-** TODO LIST
+Нам также надо написать тесты, чтобы убедиться, что это работает правильно:
 
-Добавим LIST
+#+NAME: myapply_closure_4_test
+#+BEGIN_SRC lisp
+  ;; Тесты для применения CLOSURE
+  (assert (equal 1 (myeval '(((lambda (x)
+                                (lambda (y) x))
+                              1)
+                             2)
+                           nil #'err #'ok)))
+#+END_SRC
+
+** LIST
+
+Добавим LIST, который возвращает свои аргументы
 
 #+NAME: myapply_list_4
 #+BEGIN_SRC lisp
   ((equal fn 'list)            (funcall cont args))
 #+END_SRC
 
+И тесты для LIST
+
 #+NAME: myapply_list_4_test
 #+BEGIN_SRC lisp
-  ;; TODO: and test
+  ;; Тесты для LIST
+  (assert (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
+                                 nil #'err #'ok)))
+
 #+END_SRC
 
-* TODO MyEval
+* MyEval
 
 Теперь ~myeval~ принимает два продолжения: ~errcont~ и ~cont~ и передает их при
-рекурсивном вызове внутри лямбды.
+рекурсивном вызове внутри лямбды. Мы также переименовыываем параметр ~lst~ в ~exp~.
 
-Мы переименовыываем параметр ~lst~ в ~exp~.
+Это еще не все изменения. Изменяется хвостовая часть ~myeval~, что будет подробно
+описано в следующем подразделе [[*Преобразование EVLIS и MYEVAL][Преобразование EVLIS и MYEVAL]]
 
 #+NAME: myeval_4
 #+BEGIN_SRC lisp
@@ -445,7 +464,7 @@ funarg-problem мы можем передавать функции, мы мог�
       <<myeval_cond_4>>
       <<myeval_let_4>>
       <<myeval_progn_4>>
-
+      ;; Тут был LIST, но он перенесен в MYAPPLY
       <<myeval_letstar_4>>
       <<myeval_defun_4>>
       <<myeval_setq_4>>
@@ -456,20 +475,23 @@ funarg-problem мы можем передавать функции, мы мог�
                  (evlis  x  (cdr exp) nil env errcont cont))))))
 #+END_SRC
 
+Тесты:
 
-#+NAME: myeval_3_test
+#+NAME: myeval_4_test
 #+BEGIN_SRC lisp
-  <<myeval_number_3_test>>
-  <<myeval_symb_3_test>>
-  <<myeval_quote_3_test>>
-  <<myeval_if_3_test>>
-  <<myeval_cond_3_test>>
-  <<myeval_let_3_test>>
-  <<myeval_progn_3_test>>
-  <<myeval_list_3_test>>
-  <<myeval_letstar_3_test>>
-  <<myeval_defun_3_test>>
-  <<myeval_setq_3_test>>
+  <<myeval_number_4_test>>
+  <<myeval_symb_4_test>>
+  <<myeval_quote_4_test>>
+  <<myeval_if_4_test>>
+  <<myeval_cond_4_test>>
+  <<myeval_mypairlis_4_test>>
+  <<myeval_let_4_test>>
+  <<myeval_progn_4_test>>
+  <<myeval_evlis_4_test>>
+  <<myeval_list_4_test>>
+  <<myeval_letstar_4_test>>
+  <<myeval_defun_4_test>>
+  <<myeval_setq_4_test>>
 #+END_SRC
 
 ** Преобразование EVLIS и MYEVAL
@@ -916,29 +938,34 @@ cps. Таким образом итоговый evlis сначала вычис�
   ((numberp exp)               (funcall cont exp))
 #+END_SRC
 
-#+NAME: myeval_number_3_test
+#+NAME: myeval_number_4_test
 #+BEGIN_SRC lisp
-  (assert (equal T (myeval 'T nil)))
-  (assert (equal NIL (myeval 'NIL nil)))
-  (assert (equal 999 (myeval 999 nil)))
+  ;; Тесты для самовычисляемых форм
+  (assert (equal T (myeval 'T nil #'err #'ok)))
+  (assert (equal NIL (myeval 'NIL nil #'err #'ok)))
+  (assert (equal 999 (myeval 999 nil #'err #'ok)))
 #+END_SRC
 
 ** Вычисление символов
 
 стало проще. Теперь вместо сигнализирования ошибки, когда символ не найден, lookup
-просто вызовет другое продолжение. Поэтому класс ошибки нам больше не требуется.
+просто вызовет другое error-продолжение. Поэтому класс ошибки нам больше не требуется.
 
 #+NAME: myeval_symb_4
 #+BEGIN_SRC lisp
   ((symbolp exp)               (lookup exp env errcont cont))
 #+END_SRC
 
-#+NAME: myeval_symb_3_test
+Соответственно изменился и тест - теперь мы ожидаем, что будет выполнено
+error-продолжение.
+
+#+NAME: myeval_symb_4_test
 #+BEGIN_SRC lisp
-  (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
-  (assert (equal "error"
-                 (handler-case (myeval 'b nil)
-                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
+  ;; Тесты для вычисления символов
+  (assert (equal 6 (myeval 'b '((a . 3) (b . 6)) #'err #'ok)))
+  (assert (equal "error" (car (myeval 'b nil
+                                      #'(lambda (x) (cons "error" x))
+                                      #'ok))))
 #+END_SRC
 
 ** Цитирование
@@ -950,9 +977,10 @@ cps. Таким образом итоговый evlis сначала вычис�
   ((equal (car exp) 'quote)    (funcall cont (cadr exp)))
 #+END_SRC
 
-#+NAME: myeval_quote_3_test
+#+NAME: myeval_quote_4_test
 #+BEGIN_SRC lisp
-  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+  ;; Тесты для QUOTE
+  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil #'err #'ok)))
 #+END_SRC
 
 ** Условное выполнение IF
@@ -970,12 +998,13 @@ cps. Таким образом итоговый evlis сначала вычис�
                                              (myeval (cadddr exp) env errcont cont)))))
 #+END_SRC
 
-#+NAME: myeval_if_3_test
+#+NAME: myeval_if_4_test
 #+BEGIN_SRC lisp
-  (assert (equal 2 (myeval '(if () 1 2) nil)))
-  (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
-  (assert (equal 2 (myeval '(if a 1 2) '((a . ())))))
-  (assert (equal 1 (myeval '(if a 1 2) '((a . 1)))))
+  ;; Тесты для IF
+  (assert (equal 2 (myeval '(if () 1 2) nil #'err #'ok)))
+  (assert (equal 1 (myeval '(if (null ()) 1 2) nil #'err #'ok)))
+  (assert (equal 2 (myeval '(if a 1 2) '((a . ())) #'err #'ok)))
+  (assert (equal 1 (myeval '(if a 1 2) '((a . 1)) #'err #'ok)))
 #+END_SRC
 
 ** COND
@@ -1000,25 +1029,27 @@ cps. Таким образом итоговый evlis сначала вычис�
   ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp) env errcont cont)))
 #+END_SRC
 
-#+NAME: myeval_cond_3_test
+#+NAME: myeval_cond_4_test
 #+BEGIN_SRC lisp
-  ;; tests for envcond
+  ;; Тесты для envcond
   (assert (equal 2 (evcond '((t 2) (t 1)) nil #'err #'ok)))
   (assert (equal 1 (evcond '((nil 2) (t 1)) nil #'err #'ok)))
   (assert (equal nil (evcond '((nil 2) (nil 1)) nil #'err #'ok)))
-
+  ;; Тесты для COND
   (assert (equal 2 (myeval '(cond
                              (() 1)
                              (1 2))
-                           nil)))
+                           nil #'err #'ok)))
   (assert (equal 2 (myeval '(cond
-                           (a 1)
-                           (b 2))
-                         '((a . ()) (b . 1)))))
+                             (a 1)
+                             (b 2))
+                           '((a . ()) (b . 1))
+                           #'err #'ok)))
   (assert (equal 1 (myeval '(cond
                              (a 1)
                              (b 2))
-                           '((a . 1) (b . ())))))
+                           '((a . 1) (b . ()))
+                           #'err #'ok)))
 #+END_SRC
 
 ** LET
@@ -1050,9 +1081,11 @@ cps. Таким образом итоговый evlis сначала вычис�
                                                            alist)))))
 #+END_SRC
 
+И ее тесты тоже
 
-#+NAME: myeval_mypairlis_3_test
+#+NAME: myeval_mypairlis_4_test
 #+BEGIN_SRC lisp
+  ;; Тесты для MYPAIRLIS
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
   (assert (equal "error"
@@ -1079,7 +1112,7 @@ cps. Таким образом итоговый evlis сначала вычис�
 
 #+END_SRC
 
-используем ~evlet~ чтобы вычислить ~let~
+используем ~evlet~ в ~apply~ чтобы вычислить ~let~
 
 #+NAME: myeval_let_4
 #+BEGIN_SRC lisp
@@ -1092,15 +1125,16 @@ cps. Таким образом итоговый evlis сначала вычис�
                                       cont))
 #+END_SRC
 
+Протестируем ~let~ и ~evlet~
 
-#+NAME: myeval_let_3_test
+#+NAME: myeval_let_4_test
 #+BEGIN_SRC lisp
-  ;; test for evlet
+  ;; Тесты для LET и EVLET
   (assert (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil #'err #'ok)))
-
   (assert (equal '(1 . 2) (myeval '(let ((a 1)
                                          (b 2))
-                                    (cons a b)) nil)))
+                                    (cons a b)) nil
+                                    #'err #'ok)))
 #+END_SRC
 
 ** PROGN
@@ -1125,38 +1159,30 @@ cps
 #+END_SRC
 
 
-#+NAME: myeval_progn_3_test
+#+NAME: myeval_progn_4_test
 #+BEGIN_SRC lisp
-  ;; test for evprogn
+  ;; Тест для EVPROGN
   (assert (equal 2 (evprogn '(1 2) nil #'err #'ok)))
-
-  (assert (equal 3 (myeval '(progn 1 2 3) nil)))
-  (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; Тест для PROGN
+  (assert (equal 3 (myeval '(progn 1 2 3) nil #'err #'ok)))
+  (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
 #+END_SRC
 
-** LIST
+** TODO LIST
 
-[TODO:gmm] Проверить, что все работает после преобразования ~evlis~ и ~myeval~
+[TODO:gmm] Не все тесты работают (неработающие закомментированы)!
 
-#+NAME: myeval_evlis_3_test
+#+NAME: myeval_evlis_4_test
 #+BEGIN_SRC lisp
-  (trace evlis)
-
-  (evlis '+ '(1 (+ 1 2)) nil nil #'err #'ok)
-
-  (evlis 'list '(1 (+ 1 2) 5) nil nil #'err #'ok)
-
-  (list 3 1)
-
-  (myeval '(list 1 2 3) nil #'err #'ok)
-
-  ;; test for evlis
-  (assert (equal 4 (evlis '+ '(1 (+ 1 2)) nil nil #'err #'ok)))
-
-  (assert (equal '(3 6 42)
-                 (evlis #'+ '(1 (+ 1 2) (* 2 3) 42) nil nil #'err #'ok)))
-  (assert (equal '(3 6 42)
-                 (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+  ;; Тест для EVLIS
+  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil #'err #'ok)))
+  (assert (equal '(1 3 5)  (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+  ;; (assert (equal '(3 6 42) (evlis '+     '(1 (+ 1 2) (* 2 3) 42)  nil nil #'err #'ok)))
+  ;; (assert (equal '(3 6 42) (evlis 'list '((+ a b) (* b c) 42)
+  ;;                                 '((a . 1) (b . 2) (c . 3) (d . 4))
+  ;;                                 nil #'err #'ok)))
+  ;; Тесты для LIST
+  (assert (equal '(1 2 3)  (myeval '(list 1 2 3) nil #'err #'ok)))
 #+END_SRC
 
 
@@ -1166,13 +1192,14 @@ cps
 #+END_SRC
 
 
-#+NAME: myeval_list_3_test
+#+NAME: myeval_list_4_test
 #+BEGIN_SRC lisp
   (assert (equal '(3 6 42)
-                 (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+                 (myeval '(list (+ 1 2) (* 2 3) 42) nil #'err #'ok)))
   (assert (equal '(3 6 42)
                  (myeval '(list (+ a b) (* b c) 42)
-                         '((a . 1) (b . 2) (c . 3) (d . 4)))))
+                         '((a . 1) (b . 2) (c . 3) (d . 4))
+                         #'err #'ok)))
 #+END_SRC
 
 ** LET*
@@ -1200,15 +1227,16 @@ cps
                                           errcont cont))
 #+END_SRC
 
-#+NAME: myeval_letstar_3_test
+#+NAME: myeval_letstar_4_test
 #+BEGIN_SRC lisp
-  ;; test for evletstar
+  ;; Тесты для EVLETSTAR
   (assert (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil  #'err #'ok)))
-
+  ;; Тесты для LET*
   (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
                                             (b 2)
                                             (c (+ a b)))
-                                      (cons c (cons a b))) nil)))
+                                      (cons c (cons a b)))
+                                    nil #'err #'ok)))
 #+END_SRC
 
 ** DEFUN
@@ -1229,16 +1257,19 @@ cps
 
 Необходимо протестировать новый ~defun~:
 
-#+NAME: myeval_defun_3_test
+#+NAME: myeval_defun_4_test
 #+BEGIN_SRC lisp
+  ;; Тесты для DEFUN
   (assert (equal 64 (progn
                       (setf *glob-env* nil)
-                      (myeval '(defun alfa (x) (* x x)) nil)
-                      (prog1 (myeval '(alfa 8) nil)
+                      (myeval '(defun alfa (x) (* x x)) nil #'err #'ok)
+                      (prog1 (myeval '(alfa 8) nil #'err #'ok)
                         (setf *glob-env* nil)))))
 #+END_SRC
 
-** SETQ
+** TODO SETQ
+
+[TODO:gmm] Все тесты здесь почему-то не работают
 
 #+NAME: myeval_setq_4
 #+BEGIN_SRC lisp
@@ -1252,23 +1283,29 @@ cps
                                            (funcall cont val)))))
 #+END_SRC
 
-#+NAME: myeval_setq_3_test
+#+NAME: myeval_setq_4_test
 #+BEGIN_SRC lisp
-  (assert (equal 1 (myeval '(let ((alfa 2))
-                             (setq alfa 1)
-                             alfa)
-                           nil)))
-  (assert (equal '((ALFA . 1))
-               (progn
-                 (setf *glob-env* nil)
-                 (myeval '(setq alfa 1) nil)
-                 (prog1 *glob-env*
-                   (setf *glob-env* nil)))))
+  ;; (assert (equal 1 (myeval '(let ((alfa 2))
+  ;;                            (setq alfa 1)
+  ;;                            alfa)
+  ;;                            nil #'err #'ok))))
+  ;; (assert (equal 1 (myeval '(let ((alfa (+ 2 1)))
+  ;;                            (setq alfa 1)
+  ;;                                 alfa)
+  ;;                            nil #'err #'ok)))
+  ;; (assert (equal '((ALFA . 1))
+  ;;                (progn
+  ;;                  (setf *glob-env* nil)
+  ;;                  (myeval '(setq alfa 1) nil #'err #'ok)
+  ;;                  (prog1 *glob-env*
+  ;;                    (setf *glob-env* nil)))))
 #+END_SRC
 
-** LAMBDA
+** TODO LAMBDA
 
-csp
+При обработке формы, начинающейся с вызова ~lambda~ мы все также создаем замыкание,
+чтобы сохранить то окружение, которое было в момент создания лямбды. Но теперь мы
+делаем это в CPS-стиле.
 
 #+NAME: myeval_lambda_4
 #+BEGIN_SRC lisp
@@ -1277,8 +1314,14 @@ csp
                                                            :args (cadr exp))))
 #+END_SRC
 
+[TODO:gmm] Добавить тестов
+
 * TODO OldTests
 
+Тут еще кое-какие тесты, которые стоило бы отсортировать и удалить лишние. Но я пока не
+делаю этого так как они все работают
+
+#+NAME: oldtest_4
 #+BEGIN_SRC lisp
   ;; test number eval
   (assert (equal 123 (myeval 123 nil #'err #'ok)))
@@ -1341,15 +1384,6 @@ csp
                               y
                               x)
                             nil #'err #'ok)))
-
-
-  (defun repl ()
-    (princ "microlisp>")
-    (princ (myeval (read) nil #'identity))
-    (terpri)
-    (finish-output)
-    (repl))
-  ;; (repl)
 #+END_SRC
 
 * TODO Итоги
@@ -1379,10 +1413,20 @@ csp
   <<myapply_4_test>>
 
   ;; Тесты для MYEVAL
-  ;; <<myeval_3_test>>
+  <<myeval_4_test>>
+
+  ;; Старые тесты
+  <<oldtest_4>>
 
   ;; REPL
-  ;; <<repl_4>>
+  (defun repl ()
+    (princ "microlisp>")
+    (princ (myeval (read) nil #'identity))
+    (terpri)
+    (finish-output)
+    (repl))
+
+  ;; (repl)
 #+END_SRC
 
 Получиться должен вот такой результат:
