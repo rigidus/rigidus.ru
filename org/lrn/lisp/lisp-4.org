@@ -20,7 +20,7 @@
 - Реализация SECD-машины
 
 SECD-машину мы будем реализовывать несколько позже, а сейчас сосредоточимся на
-CPS-преобразовании. Оно дает нам несколько бесплатных бонусов, напримимер:
+CPS-преобразовании. Оно дает нам бесплатные бонусы, напримимер:
 - решение semipredicate problem, проблемы полупредикатов.
 
 Полупредикаты - это предикаты, у которых может быть три возможных вида возвращаемых
@@ -29,7 +29,8 @@ CPS-преобразовании. Оно дает нам несколько бе
 - NIL
 - Еще один вид, например "элемент не найден"
 
-Например, полупредикатом является ~assoc~. Вот его реализация:
+Например, полупредикатом является ~assoc~. Вот его реализация, которая названа
+~assoc-1~, чтобы не перекрывать встроенную функцию:
 
 #+BEGIN_SRC lisp
   (defun assoc-1 (key alist)
@@ -44,7 +45,7 @@ CPS-преобразовании. Оно дает нам несколько бе
   ;; => NIL
 #+END_SRC
 
-В этой реализации ~assoc-1~ вынужден возвращать точечную пару (имя . значение), ведь
+В этой реализации ~assoc-1~ вынужден возвращать точечную пару ~(имя . значение)~, ведь
 иначе будет невозможно отличить ситуацию "элемент не найден" от ситуации "элемент имеет
 значение NIL".
 
@@ -84,7 +85,7 @@ funarg-problem мы можем передавать функции, мы мог�
 
 Используя такой подход мы можем изменить ~lookup~, который у нас выглядел так:
 
-#+NAME: lookup_3
+#+NAME: lookup_3_old
 #+BEGIN_SRC lisp
   (defparameter *glob-env* nil)
 
@@ -132,7 +133,7 @@ funarg-problem мы можем передавать функции, мы мог�
 Чтобы удобнее тестироть функции, написанные в стиле передачи продолжений нам стоит
 иметь две функции-продолжения, которые будут выводить тестируемы результат:
 
-#+NAME: cps_4_test
+#+NAME: ok_err_4
 #+BEGIN_SRC lisp
   (defun ok (x)
     (format t "~%ok: ~A" x)
@@ -167,6 +168,8 @@ funarg-problem мы можем передавать функции, мы мог�
 
 #+NAME: myapply_4
 #+BEGIN_SRC lisp
+  <<myor_4>>
+  <<myand_4>>
   (defun myapply (fn args errcont cont)
     (cond
       <<myapply_ariph_4>>
@@ -182,14 +185,19 @@ funarg-problem мы можем передавать функции, мы мог�
 
 А набор тестов остался без изменений:
 
-#+NAME: myapply_3_test
+#+NAME: myapply_4_test
 #+BEGIN_SRC lisp
-  <<myapply_ariph_3_test>>
-  <<myapply_car_cdr_cons_3_test>>
-  <<myapply_null_3_test>>
-  <<myapply_func_symb_3_test>>
-  ;; TODO : нужен тест для closure в apply
-  <<myapply_closure_3_test>>
+  <<myapply_ariph_4_test>>
+  <<myapply_car_cdr_cons_4_test>>
+  <<myapply_null_4_test>>
+  <<myapply_print_4_test>>
+  <<myor_4_test>>
+  <<myapply_or_4_test>>
+  <<myand_4_test>>
+  <<myapply_and_4_test>>
+  ;; <<myapply_func_symb_3_test>>
+  ;; ;; TODO : нужен тест для closure в apply
+  ;; <<myapply_closure_3_test>>
 #+END_SRC
 
 ** Встроенные функции арифметики
@@ -203,13 +211,16 @@ funarg-problem мы можем передавать функции, мы мог�
   ((equal fn '*)               (funcall cont (* (car args) (cadr args))))
 #+END_SRC
 
-#+NAME: myapply_ariph_3_test
+Тесты такие-же, но теперь принимают продолжения
+
+#+NAME: myapply_ariph_4_test
 #+BEGIN_SRC lisp
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+  ;; Тесты арифметики в окружениях
+  (assert (equal 7 (myeval 7 nil #'err #'ok)))
+  (assert (equal 3 (myeval '(+ 1 2) nil #'err #'ok)))
+  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil #'err #'ok)))
+  (assert (equal 2 (myeval 'a '((a . 2)) #'err #'ok)))
+  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)) #'err #'ok)))
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -224,17 +235,20 @@ funarg-problem мы можем передавать функции, мы мог�
   ((equal fn 'cons)            (funcall cont (cons (car args) (cadr args))))
 #+END_SRC
 
-#+NAME: myapply_car_cdr_cons_3_test
+Тесты такие-же, но теперь принимают продолжения
+
+#+NAME: myapply_car_cdr_cons_4_test
 #+BEGIN_SRC lisp
-  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
-  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
-  (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
-  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
-  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
-  (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
-  (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
-  (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+  ;; Тесты cons, car, cdr
+  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil #'err #'ok)))
+  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil #'err #'ok)))
+  (assert (equal 2 (myeval '(car (cons 2 3)) nil #'err #'ok)))
+  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil #'err #'ok)))
+  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+  (assert (equal 1 (myeval '(car a) '((a . (1 . 2))) #'err #'ok)))
+  (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))) #'err #'ok)))
+  (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) #'err #'ok)))
 #+END_SRC
 
 ** NULL-предикат
@@ -246,11 +260,14 @@ funarg-problem мы можем передавать функции, мы мог�
   ((equal fn 'null)            (funcall cont (null (car args))))
 #+END_SRC
 
-#+NAME: myapply_null_3_test
+Тесты такие-же, но теперь принимают продолжения
+
+#+NAME: myapply_null_4_test
 #+BEGIN_SRC lisp
-  (assert (equal T (myeval '(null ()) nil)))
-  (assert (equal T (myeval '(null a) '((a . ())))))
-  (assert (equal NIL (myeval '(null a) '((a . 1)))))
+  ;; Тесты NULL-предиката
+  (assert (equal T (myeval '(null ()) nil #'err #'ok)))
+  (assert (equal T (myeval '(null a) '((a . ())) #'err #'ok)))
+  (assert (equal NIL (myeval '(null a) '((a . 1)) #'err #'ok)))
 #+END_SRC
 
 ** PRINT
@@ -262,46 +279,118 @@ funarg-problem мы можем передавать функции, мы мог�
   ((equal fn 'print)           (funcall cont (print (car args))))
 #+END_SRC
 
-#+NAME: myapply_print_3_test
+Тесты такие-же, но теперь принимают продолжения
+
+#+NAME: myapply_print_4_test
 #+BEGIN_SRC lisp
-  (assert (equal T (myeval '(null ()) nil)))
-  (assert (equal T (myeval '(null a) '((a . ())))))
-  (assert (equal NIL (myeval '(null a) '((a . 1)))))
+  ;; Тесты для PRINT
+  (assert (equal T (myeval '(null ()) nil #'err #'ok)))
+  (assert (equal T (myeval '(null a) '((a . ())) #'err #'ok)))
+  (assert (equal NIL (myeval '(null a) '((a . 1)) #'err #'ok)))
 #+END_SRC
 
 ** OR
 
-Добавим OR
+Сначала сделаем двухаргументый OR, потом на его основе сделаем рекурсивный OR, которому
+передается список аргументов любой длины:
 
-[TODO:gmm] сделать рекурсивный чтобы мог принимать больше двух аргументов
+#+NAME: myor_4
+#+BEGIN_SRC lisp
+  (defun or-2 (a b)
+    (or a b))
+  (defun myor (in)
+    (cond ((equal 0 (length in))      (car in))
+          ((equal 1 (length in))      (car in))
+          ((equal 2 (length in))  (or-2 (car in) (cadr in)))
+          (t (let ((result (or-2 (car in) (cadr in))))
+               (if (not (null result))
+                   result
+                   (myor (cons result (cddr in))))))))
+#+END_SRC
+
+Напишем для него тесты
+
+#+NAME: myor_4_test
+#+BEGIN_SRC lisp
+  ;; Тесты для MYOR
+  (assert (equal (or)           (myor '())))
+  (assert (equal (or nil 1)     (myor '(nil 1))))
+  (assert (equal (or nil nil 1) (myor '(nil nil 1))))
+  (assert (equal (or nil 1 2)   (myor '(nil 1 2))))
+  (assert (equal (or 1 2 3)     (myor '(1 2 3))))
+#+END_SRC
+
+Будем использовать MYOR в APPLY
 
 #+NAME: myapply_or_4
 #+BEGIN_SRC lisp
-  ((equal fn 'or)              (funcall cont (or  (car args) (cadr args))))
+  ((equal fn 'or)              (funcall cont (myor  args)))
 #+END_SRC
+
+Протестируем его работу
 
 #+NAME: myapply_or_4_test
 #+BEGIN_SRC lisp
-  ;; TODO: or test
+  ;; Тесты для OR
+  (assert (equal (or)           (myeval '(or) nil #'err #'ok)))
+  (assert (equal (or nil 1)     (myeval '(or nil 1) nil #'err #'ok)))
+  (assert (equal (or nil nil 1) (myeval '(or nil nil 1) nil #'err #'ok)))
+  (assert (equal (or nil 1 2)   (myeval '(or nil 1 2) nil #'err #'ok)))
 #+END_SRC
 
 ** AND
 
-Добавим AND
+Сначала сделаем двухаргументый AND, потом на его основе сделаем рекурсивный AND,
+которому передается список аргументов любой длины:
 
-[TODO:gmm] сделать рекурсивный чтобы мог принимать больше двух аргументов
+#+NAME: myand_4
+#+BEGIN_SRC lisp
+  (defun and-2 (a b)
+    (and a b))
+  (defun myand (in)
+    (cond ((equal 0 (length in))  t)
+          ((equal 1 (length in))  (car in))
+          ((equal 2 (length in))  (and-2 (car in) (cadr in)))
+          (t (let ((result (and-2 (car in) (cadr in))))
+               (if (null result)
+                   result
+                   (myand (cons result (cddr in))))))))
+#+END_SRC
+
+Напишем для него тесты
+
+#+NAME: myand_4_test
+#+BEGIN_SRC lisp
+  ;; Тесты для MYAND
+  (assert (equal (and)           (myand '())))
+  (assert (equal (and 1)         (myand '(1))))
+  (assert (equal (and nil)       (myand '(nil))))
+  (assert (equal (and 1 nil)     (myand '(1 nil ))))
+  (assert (equal (and 1 2 nil)   (myand '(1 2 nil))))
+  (assert (equal (and 1 2 3)     (myand '(1 2 3))))
+#+END_SRC
+
+Будем использовать MYAND в APPLY
 
 #+NAME: myapply_and_4
 #+BEGIN_SRC lisp
-  ((equal fn 'and)             (funcall cont (and (car args) (cadr args))))
+  ((equal fn 'and)             (funcall cont (myand args)))
 #+END_SRC
+
+Протестируем его работу
 
 #+NAME: myapply_and_4_test
 #+BEGIN_SRC lisp
-  ;; TODO: and test
+  ;; Тесты для AND
+  (assert (equal (and)           (myeval '(and) nil #'err #'ok)))
+  (assert (equal (and 1)         (myeval '(and 1) nil #'err #'ok)))
+  (assert (equal (and nil)       (myeval '(and nil) nil #'err #'ok)))
+  (assert (equal (and 1 nil)     (myeval '(and 1 nil) nil #'err #'ok)))
+  (assert (equal (and 1 2 nil)   (myeval '(and 1 2 nil) nil #'err #'ok)))
+  (assert (equal (and 1 2 3)     (myeval '(and 1 2 3) nil #'err #'ok)))
 #+END_SRC
 
-** CLOSURE
+** TODO CLOSURE
 
 Если в качестве ~fn~ мы получаем структуру ~closure~, то мы должны выполнить (eval) ее
 поле ~closure-body~ в окружении, которое состоит из замкнутого в поле (closure-env fn)
@@ -317,7 +406,7 @@ funarg-problem мы можем передавать функции, мы мог�
                                        cont))
 #+END_SRC
 
-** LIST
+** TODO LIST
 
 Добавим LIST
 
@@ -331,7 +420,7 @@ funarg-problem мы можем передавать функции, мы мог�
   ;; TODO: and test
 #+END_SRC
 
-* MyEval
+* TODO MyEval
 
 Теперь ~myeval~ принимает два продолжения: ~errcont~ и ~cont~ и передает их при
 рекурсивном вызове внутри лямбды.
@@ -809,7 +898,7 @@ cps. Таким образом итоговый evlis сначала вычис�
 
 Роман:
 
-Одна из причин реобразования в cps — сделать рекурсию хвостовой. Применение cps к
+Одна из причин преобразования в cps — сделать рекурсию хвостовой. Применение cps к
 функции с хвостовой рекурсией вообще ничего не дает. Вот evlis — другое
 дело. Преобразовав ее к хвостовому виду добавив аккумулятор, мы еще не привели к
 хвостовому виду вызов myeval. Вот поэтому мы и делаем cps над evlis с хвостовой
@@ -1188,7 +1277,7 @@ csp
                                                            :args (cadr exp))))
 #+END_SRC
 
-* OldTests
+* TODO OldTests
 
 #+BEGIN_SRC lisp
   ;; test number eval
@@ -1263,24 +1352,36 @@ csp
   ;; (repl)
 #+END_SRC
 
-* Итоги
+* TODO Итоги
 
 #+BEGIN_SRC lisp :tangle lisp-4.lisp :noweb tangle :exports code :padline no :comments none
+  ;; CPS-версия ASSOC
+  <<assoc_4>>
+  ;; Классы ошибок
   <<errors_4>>
-
+  ;; Новая функция lookup
   <<lookup_4>>
-
+  ;; Структура замыкания
   <<closure_4>>
 
+  ;; CPS-вариант MYAPPLY и все что к нему относится
   <<myapply_4>>
 
+  ;; CPS-вариант MYEVAL и все что к нему относится
   <<myeval_4>>
 
-  ;; <<myapply_3_test>>
+  ;; Тестируем новый lookup
+  <<lookup_4_test>>
+  ;; Функции для тестирования CPS-функций
+  <<ok_err_4>>
 
+  ;; Тесты для MYAPPLY
+  <<myapply_4_test>>
+
+  ;; Тесты для MYEVAL
   ;; <<myeval_3_test>>
 
-  <<lookup_4_test>>
+  ;; REPL
   ;; <<repl_4>>
 #+END_SRC
 
