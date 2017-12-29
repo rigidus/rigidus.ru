@@ -58,7 +58,7 @@
 * Самовычисляемые формы
 
 Первые случаи, которые мы можем реализовать - это самовычисляемые формы, такие,
-например, как nil, T и числа, которые вычисляются сами в себя:
+например, как NIL, T и числа, которые вычисляются сами в себя:
 
 #+NAME: number_0
 #+BEGIN_SRC lisp
@@ -66,6 +66,8 @@
   ((equal t lst)               t)
   ((numberp lst)               lst)
 #+END_SRC
+
+Протестируем
 
 #+NAME: number_0_test
 #+BEGIN_SRC lisp
@@ -77,16 +79,41 @@
 
 * Встроенные функции арифметики
 
-Теперь мы можем сделать функции сложения и умножения. Для простоты они будут принимать
-только два аргумента (не так как в Common Lisp), но и первый и второй аргумент будет
-рекурсивно вычислен:
+Теперь мы можем сделать функции сложения и умножения. Для того, чтобы они могли
+принимать любое количество аргументов, необходимо сделать их рекурсивными.
+
+Они будут получать список, брать из него первый элемент и оценивать его, а потом
+рекурсивно вызывать себя от остатка списка.
+
+#+NAME: evaddmul_0
+#+BEGIN_SRC lisp
+  (defun evadd (lst)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst))))
+          (t                 (+ (myeval (car lst))
+                                (evadd (cdr lst))))))
+  (defun evmul (lst)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst))))
+          (t                 (* (myeval (car lst))
+                                (evmul (cdr lst))))))
+#+END_SRC
+
+Протестируем ~evadd~ и ~evmul~:
+
+#+NAME: evaddmul_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 1 2 3) (evadd '(1 2 3))))
+  (assert (equal (* 1 2 3) (evadd '(1 2 3))))
+#+END_SRC
+
+Теперь мы можем определить сложение и умножение внутри ~myeval~
 
 #+NAME: ariph_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) '+)        (+ (myeval (cadr lst))
-                                  (myeval (caddr lst))))
-  ((equal (car lst) '*)        (* (myeval (cadr lst))
-                                  (myeval (caddr lst))))
+  ((equal (car lst) '+)        (evadd (cdr lst)))
+  ((equal (car lst) '*)        (evmul (cdr lst)))
 #+END_SRC
 
 Теперь мы можем протестировать то, что у нас получилось:
@@ -139,7 +166,7 @@
 
 #+NAME: car_cdr_cons_0_test
 #+BEGIN_SRC lisp
-  ;; Тесты для CONS-ячеек
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2))))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
   (assert (equal 2 (myeval '(car (cons 2 3)))))
@@ -343,29 +370,29 @@ List - это функция, которая вычисляет свои арг�
 #+BEGIN_SRC lisp
   (defun evand (lst)
     (cond ((null lst)        (and))
-          ((null (cdr lst))  (and (car lst)))
+          ((null (cdr lst))  (and (myeval (car lst))))
           (t                 (and (myeval (car lst))
-                                  (myand (cdr lst))))))
+                                  (evand (cdr lst))))))
 #+END_SRC
 
-Протестируем ~myand~:
+Протестируем ~evand~:
 
 #+NAME: evand_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVAND
-  (assert (equal (and)           (myand '())))
-  (assert (equal (and 1)         (myand '(1))))
-  (assert (equal (and nil)       (myand '(nil))))
-  (assert (equal (and 1 nil)     (myand '(1 nil ))))
-  (assert (equal (and 1 2 nil)   (myand '(1 2 nil))))
-  (assert (equal (and 1 2 3)     (myand '(1 2 3))))
+  (assert (equal (and)           (evand '())))
+  (assert (equal (and 1)         (evand '(1))))
+  (assert (equal (and nil)       (evand '(nil))))
+  (assert (equal (and 1 nil)     (evand '(1 nil ))))
+  (assert (equal (and 1 2 nil)   (evand '(1 2 nil))))
+  (assert (equal (and 1 2 3)     (evand '(1 2 3))))
 #+END_SRC
 
 Теперь мы можем определить ~and~:
 
 #+NAME: and_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'and)      (myand (cdr lst)))
+  ((equal (car lst) 'and)      (evand (cdr lst)))
 #+END_SRC
 
 Протестируем ~and~:
@@ -373,12 +400,13 @@ List - это функция, которая вычисляет свои арг�
 #+NAME: and_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для AND
-  (assert (equal (and)           (myeval '(and))))
-  (assert (equal (and 1)         (myeval '(and 1))))
-  (assert (equal (and nil)       (myeval '(and nil))))
-  (assert (equal (and 1 nil)     (myeval '(and 1 nil))))
-  (assert (equal (and 1 2 nil)   (myeval '(and 1 2 nil))))
-  (assert (equal (and 1 2 3)     (myeval '(and 1 2 3))))
+  (assert (equal (and)                (myeval '(and))))
+  (assert (equal (and 1)              (myeval '(and 1))))
+  (assert (equal (and nil)            (myeval '(and nil))))
+  (assert (equal (and 1 nil)          (myeval '(and 1 nil))))
+  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil))))
+  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3))))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3))))
 #+END_SRC
 
 * OR
@@ -389,9 +417,9 @@ List - это функция, которая вычисляет свои арг�
 #+BEGIN_SRC lisp
   (defun evor (lst)
     (cond ((null lst)        (or))
-          ((null (cdr lst))  (or (car lst)))
+          ((null (cdr lst))  (or (myeval (car lst))))
           (t                 (or (myeval (car lst))
-                                 (myor (cdr lst))))))
+                                 (evor (cdr lst))))))
 #+END_SRC
 
 Тесты
@@ -399,37 +427,38 @@ List - это функция, которая вычисляет свои арг�
 #+NAME: evor_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (myor '())))
-  (assert (equal (or nil 1)     (myor '(nil 1))))
-  (assert (equal (or nil nil 1) (myor '(nil nil 1))))
-  (assert (equal (or nil 1 2)   (myor '(nil 1 2))))
-  (assert (equal (or 1 2 3)     (myor '(1 2 3))))
+  (assert (equal (or)           (evor '())))
+  (assert (equal (or nil 1)     (evor '(nil 1))))
+  (assert (equal (or nil nil 1) (evor '(nil nil 1))))
+  (assert (equal (or nil 1 2)   (evor '(nil 1 2))))
+  (assert (equal (or 1 2 3)     (evor '(1 2 3))))
 #+END_SRC
 
 Теперь мы можем определить ~or~:
 
 #+NAME: and_0
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'or)       (myor  (cdr lst)))
+  ((equal (car lst) 'or)       (evor  (cdr lst)))
 #+END_SRC
 
-Протестируем ~and~:
+Протестируем ~or~:
 
 #+NAME: or_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для OR
-  (assert (equal (or)           (myeval '(or))))
-  (assert (equal (or nil 1)     (myeval '(or nil 1))))
-  (assert (equal (or nil nil 1) (myeval '(or nil nil 1))))
-  (assert (equal (or nil 1 2)   (myeval '(or nil 1 2))))
+  (assert (equal (or)                  (myeval '(or))))
+  (assert (equal (or nil 1)            (myeval '(or nil 1))))
+  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1))))
+  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2))))
+  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2))))
 #+END_SRC
 
 * Итоги
 
 Соберем простой интерпретатор из ~myeval~ и вспомогательных функций и запишем его файл:
 
-#+NAME: simple
 #+BEGIN_SRC lisp :tangle lisp-0.lisp :noweb tangle :exports code :padline no :comments none
+  <<evaddmul_0>>
   <<evcond_0>>
   <<evprogn_0>>
   <<evlis_0>>
@@ -453,6 +482,7 @@ List - это функция, которая вычисляет свои арг�
       (t (error 'unknown-form))))
 
   <<number_0_test>>
+  <<evaddmul_0_test>>
   <<ariph_0_test>>
   <<quote_0_test>>
   <<car_cdr_cons_0_test>>
@@ -470,6 +500,16 @@ List - это функция, которая вычисляет свои арг�
 Мы должны получить следующий результат:
 
 #+BEGIN_SRC lisp
+  (defun evadd (lst)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst))))
+          (t                 (+ (myeval (car lst))
+                                (evadd (cdr lst))))))
+  (defun evmul (lst)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst))))
+          (t                 (* (myeval (car lst))
+                                (evmul (cdr lst))))))
   (defun evcond (lst)
     (cond ((null lst)               nil)
           ((myeval (caar lst))      (myeval (cadar lst)))
@@ -485,23 +525,21 @@ List - это функция, которая вычисляет свои арг�
                              (evlis (cdr lst))))))
   (defun evand (lst)
     (cond ((null lst)        (and))
-          ((null (cdr lst))  (and (car lst)))
+          ((null (cdr lst))  (and (myeval (car lst))))
           (t                 (and (myeval (car lst))
-                                  (myand (cdr lst))))))
+                                  (evand (cdr lst))))))
   (defun evor (lst)
     (cond ((null lst)        (or))
-          ((null (cdr lst))  (or (car lst)))
+          ((null (cdr lst))  (or (myeval (car lst))))
           (t                 (or (myeval (car lst))
-                                 (myor (cdr lst))))))
+                                 (evor (cdr lst))))))
   (defun myeval (lst)
     (cond
       ((null lst)                  nil)
       ((equal t lst)               t)
       ((numberp lst)               lst)
-      ((equal (car lst) '+)        (+ (myeval (cadr lst))
-                                      (myeval (caddr lst))))
-      ((equal (car lst) '*)        (* (myeval (cadr lst))
-                                      (myeval (caddr lst))))
+      ((equal (car lst) '+)        (evadd (cdr lst)))
+      ((equal (car lst) '*)        (evmul (cdr lst)))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'car)      (car (myeval (cadr lst))))
       ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst))))
@@ -515,8 +553,8 @@ List - это функция, которая вычисляет свои арг�
       ((equal (car lst) 'progn)    (evprogn (cdr lst)))
       ((equal (car lst) 'print)    (print (myeval (cadr lst))))
       ((equal (car lst) 'list)     (evlis (cdr lst)))
-      ((equal (car lst) 'and)      (myand (cdr lst)))
-      ((equal (car lst) 'or)       (myor  (cdr lst)))
+      ((equal (car lst) 'and)      (evand (cdr lst)))
+      ((equal (car lst) 'or)       (evor  (cdr lst)))
 
       (t (error 'unknown-form))))
 
@@ -524,13 +562,16 @@ List - это функция, которая вычисляет свои арг�
   (assert (equal T (myeval 'T)))
   (assert (equal NIL (myeval 'NIL)))
   (assert (equal 999 (myeval 999)))
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 1 2 3) (evadd '(1 2 3))))
+  (assert (equal (* 1 2 3) (evadd '(1 2 3))))
   ;; Тесты для арифметических функций
   (assert (equal 7 (myeval 7)))
   (assert (equal 3 (myeval '(+ 1 2))))
   (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)))))
   ;; Тесты для QUOTE
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)))))
-  ;; Тесты для CONS-ячеек
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2))))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
   (assert (equal 2 (myeval '(car (cons 2 3)))))
