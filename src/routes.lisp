@@ -75,6 +75,13 @@
    (merge-pathnames (make-pathname :directory '(:relative "www/prj"))
                     *base-dir*)))
 
+(restas:mount-module -holy- (#:restas.directory-publisher)
+  (:url "/holy")
+  (:render-method (make-instance 'orgmode-handler))
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/holy"))
+                    *base-dir*)))
+
 (restas:mount-module -lrn/asm- (#:restas.directory-publisher)
   (:url "/lrn/asm")
   (:render-method (make-instance 'orgmode-handler))
