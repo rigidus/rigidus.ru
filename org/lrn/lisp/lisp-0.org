@@ -69,6 +69,7 @@
 
 #+NAME: number_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T)))
   (assert (equal NIL (myeval 'NIL)))
   (assert (equal 999 (myeval 999)))
@@ -92,6 +93,7 @@
 
 #+NAME: ariph_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для арифметических функций
   (assert (equal 7 (myeval 7)))
   (assert (equal 3 (myeval '(+ 1 2))))
   (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)))))
@@ -111,6 +113,7 @@
 
 #+NAME: quote_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для QUOTE
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)))))
 #+END_SRC
 
@@ -134,8 +137,9 @@
 
 Теперь можно протестировать создание cons-ячеек и получение правой и левой части ячейки
 
-#+NAME: car_cdr_cons_test
+#+NAME: car_cdr_cons_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для CONS-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2))))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
   (assert (equal 2 (myeval '(car (cons 2 3)))))
@@ -155,15 +159,16 @@
 
 Тест
 
-#+NAME: tests
+#+NAME: null_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()))))
 #+END_SRC
 
 * Условное выполнение (IF)
 
 Теперь мы можем создать IF. Он принимает три аргумента и в зависимости от результата
-вычисления первого вычисляет второй или третий:
+вычисления первого аргумента вычисляет второй или третий аргумент:
 
 #+NAME: if_0
 #+BEGIN_SRC lisp
@@ -176,6 +181,7 @@
 
 #+NAME: if_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для IF
   (assert (equal 2 (myeval '(if () 1 2))))
   (assert (equal 1 (myeval '(if (null ()) 1 2))))
 #+END_SRC
@@ -194,6 +200,20 @@
           (t                        (evcond (cdr lst)))))
 #+END_SRC
 
+Она вычисляет левую часть первого из переданных clauses и если оценка вернула T - то
+выполняет соответствующую правую часть и возвращается. В противном случае она
+рекурсивно вызывает себя, передавая остаток списка clauses
+
+Протестируем EVCOND:
+
+#+NAME: evcond_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для ENVCOND
+  (assert (equal 2 (evcond '((t 2) (t 1)))))
+  (assert (equal 1 (evcond '((nil 2) (t 1)))))
+  (assert (equal nil (evcond '((nil 2) (nil 1)))))
+#+END_SRC
+
 С использованием EVCOND определить COND довольно просто:
 
 #+NAME: cond_0
@@ -205,6 +225,7 @@
 
 #+NAME: cond_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для COND
   (assert (equal 2 (myeval '(cond
                              (() 1)
                              (1 2)))))
@@ -212,7 +233,7 @@
 
 * PROGN
 
-Далее нам понадобится PROGN. Снова будем использовать вспомогательную функцию EVPROGN:
+Далее нам понадобится ~progn~. Снова будем использовать вспомогательную функцию ~evprogn~:
 
 #+NAME: evprogn_0
 #+BEGIN_SRC lisp
@@ -221,6 +242,18 @@
           ((null (cdr lst))  (myeval (car lst)))
           (t                 (myeval (car lst))
                              (evprogn (cdr lst)))))
+#+END_SRC
+
+Эта функция завершается с возвращением результата выполнения первого элемента
+переданного списка, когда ей передан список из одного элемента. Иначе она вычисляет
+первый элемент и рекурсивно вызывает себя от остатка списка.
+
+Тест для ~evprogn~
+
+#+NAME: evprogn_0_test
+#+BEGIN_SRC lisp
+  ;; Тест для EVPROGN
+  (assert (equal 2 (evprogn '(1 2))))
 #+END_SRC
 
 с ее помощью определим PROGN:
@@ -232,8 +265,9 @@
 
 И проверим:
 
-#+NAME: tests
+#+NAME: progn_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для PROGN
   (assert (equal 3 (myeval '(progn 1 2 3))))
 #+END_SRC
 
@@ -246,11 +280,24 @@
   ((equal (car lst) 'print)    (print (myeval (cadr lst))))
 #+END_SRC
 
+Чтобы протестировать ~print~ воспользуемся перехватом ~standatd-output~
+
+#+NAME: print_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для PRINT
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (print 12))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print 12)))))
+  (assert (equal (print 12)
+                 (myeval '(print 12))))
+#+END_SRC
+
 * LIST
 
 List - это функция, которая вычисляет свои аргументы и формирует из результатов
 вычисления список. Для ее определения нам понадобится вспомогательная функция
-EVLIS. Она рекурсивно исполняет список, полученный в первом аргументе, применяя к
+~evlis~. Она рекурсивно исполняет список, полученный в первом аргументе, применяя к
 результатам исполнения CONS, чтобы получить список результатов:
 
 #+NAME: evlis_0
@@ -265,11 +312,12 @@ EVLIS. Она рекурсивно исполняет список, получе
 
 #+NAME: evlis_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42))))
 #+END_SRC
 
-Теперь мы можем определить LIST:
+Теперь мы можем определить ~list~:
 
 #+NAME: list_0
 #+BEGIN_SRC lisp
@@ -280,12 +328,102 @@ EVLIS. Она рекурсивно исполняет список, получе
 
 #+NAME: list_0_test
 #+BEGIN_SRC lisp
+  ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42))))
 #+END_SRC
 
-* TODO AND
-* TODO OR
+* AND
+
+Подобно ~evlis~, ~myand~ рекурсивно вычисляет список, применяя к результатам
+~and~. Подобно ~evprogn~, в случае передачи списка из одного аргумента ~myand~
+завершается с возвращением результата вычисления ~and~ от одного элемента.
+
+#+NAME: evand_0
+#+BEGIN_SRC lisp
+  (defun evand (lst)
+    (cond ((null lst)        (and))
+          ((null (cdr lst))  (and (car lst)))
+          (t                 (and (myeval (car lst))
+                                  (myand (cdr lst))))))
+#+END_SRC
+
+Протестируем ~myand~:
+
+#+NAME: evand_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVAND
+  (assert (equal (and)           (myand '())))
+  (assert (equal (and 1)         (myand '(1))))
+  (assert (equal (and nil)       (myand '(nil))))
+  (assert (equal (and 1 nil)     (myand '(1 nil ))))
+  (assert (equal (and 1 2 nil)   (myand '(1 2 nil))))
+  (assert (equal (and 1 2 3)     (myand '(1 2 3))))
+#+END_SRC
+
+Теперь мы можем определить ~and~:
+
+#+NAME: and_0
+#+BEGIN_SRC lisp
+  ((equal (car lst) 'and)      (myand (cdr lst)))
+#+END_SRC
+
+Протестируем ~and~:
+
+#+NAME: and_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для AND
+  (assert (equal (and)           (myeval '(and))))
+  (assert (equal (and 1)         (myeval '(and 1))))
+  (assert (equal (and nil)       (myeval '(and nil))))
+  (assert (equal (and 1 nil)     (myeval '(and 1 nil))))
+  (assert (equal (and 1 2 nil)   (myeval '(and 1 2 nil))))
+  (assert (equal (and 1 2 3)     (myeval '(and 1 2 3))))
+#+END_SRC
+
+* OR
+
+Определение ~or~ полностью аналогочно определению ~and~:
+
+#+NAME: evor_0
+#+BEGIN_SRC lisp
+  (defun evor (lst)
+    (cond ((null lst)        (or))
+          ((null (cdr lst))  (or (car lst)))
+          (t                 (or (myeval (car lst))
+                                 (myor (cdr lst))))))
+#+END_SRC
+
+Тесты
+
+#+NAME: evor_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVOR
+  (assert (equal (or)           (myor '())))
+  (assert (equal (or nil 1)     (myor '(nil 1))))
+  (assert (equal (or nil nil 1) (myor '(nil nil 1))))
+  (assert (equal (or nil 1 2)   (myor '(nil 1 2))))
+  (assert (equal (or 1 2 3)     (myor '(1 2 3))))
+#+END_SRC
+
+Теперь мы можем определить ~or~:
+
+#+NAME: and_0
+#+BEGIN_SRC lisp
+  ((equal (car lst) 'or)       (myor  (cdr lst)))
+#+END_SRC
+
+Протестируем ~and~:
+
+#+NAME: or_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для OR
+  (assert (equal (or)           (myeval '(or))))
+  (assert (equal (or nil 1)     (myeval '(or nil 1))))
+  (assert (equal (or nil nil 1) (myeval '(or nil nil 1))))
+  (assert (equal (or nil 1 2)   (myeval '(or nil 1 2))))
+#+END_SRC
+
 * Итоги
 
 Соберем простой интерпретатор из ~myeval~ и вспомогательных функций и запишем его файл:
@@ -295,6 +433,8 @@ EVLIS. Она рекурсивно исполняет список, получе
   <<evcond_0>>
   <<evprogn_0>>
   <<evlis_0>>
+  <<evand_0>>
+  <<evor_0>>
   (defun myeval (lst)
     (cond
       <<number_0>>
@@ -308,21 +448,26 @@ EVLIS. Она рекурсивно исполняет список, получе
       <<progn_0>>
       <<print_0>>
       <<list_0>>
+      <<and_0>>
+      <<or_o>>
       (t (error 'unknown-form))))
 
   <<number_0_test>>
   <<ariph_0_test>>
   <<quote_0_test>>
-  <<car_cdr_cons_test>>
+  <<car_cdr_cons_0_test>>
+  <<null_0_test>>
   <<if_0_test>>
+  <<evcond_0_test>>
   <<cond_0_test>>
+  <<evprogn_0_test>>
+  <<progn_0_test>>
+  <<print_0_test>>
   <<evlis_0_test>>
   <<list_0_test>>
 #+END_SRC
 
-
 Мы должны получить следующий результат:
-
 
 #+BEGIN_SRC lisp
   (defun evcond (lst)
@@ -338,6 +483,16 @@ EVLIS. Она рекурсивно исполняет список, получе
     (cond ((null lst)  nil)
           (t           (cons (myeval (car lst))
                              (evlis (cdr lst))))))
+  (defun evand (lst)
+    (cond ((null lst)        (and))
+          ((null (cdr lst))  (and (car lst)))
+          (t                 (and (myeval (car lst))
+                                  (myand (cdr lst))))))
+  (defun evor (lst)
+    (cond ((null lst)        (or))
+          ((null (cdr lst))  (or (car lst)))
+          (t                 (or (myeval (car lst))
+                                 (myor (cdr lst))))))
   (defun myeval (lst)
     (cond
       ((null lst)                  nil)
@@ -360,28 +515,56 @@ EVLIS. Она рекурсивно исполняет список, получе
       ((equal (car lst) 'progn)    (evprogn (cdr lst)))
       ((equal (car lst) 'print)    (print (myeval (cadr lst))))
       ((equal (car lst) 'list)     (evlis (cdr lst)))
+      ((equal (car lst) 'and)      (myand (cdr lst)))
+      ((equal (car lst) 'or)       (myor  (cdr lst)))
+
       (t (error 'unknown-form))))
 
+  ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T)))
   (assert (equal NIL (myeval 'NIL)))
   (assert (equal 999 (myeval 999)))
+  ;; Тесты для арифметических функций
   (assert (equal 7 (myeval 7)))
   (assert (equal 3 (myeval '(+ 1 2))))
   (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)))))
+  ;; Тесты для QUOTE
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)))))
+  ;; Тесты для CONS-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2))))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)))))
   (assert (equal 2 (myeval '(car (cons 2 3)))))
   (assert (equal 3 (myeval '(cdr (cons 2 3)))))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))))))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))))))
+  ;; Тесты для NULL
+  (assert (equal T (myeval '(null ()))))
+  ;; Тесты для IF
   (assert (equal 2 (myeval '(if () 1 2))))
   (assert (equal 1 (myeval '(if (null ()) 1 2))))
+  ;; Тесты для ENVCOND
+  (assert (equal 2 (evcond '((t 2) (t 1)))))
+  (assert (equal 1 (evcond '((nil 2) (t 1)))))
+  (assert (equal nil (evcond '((nil 2) (nil 1)))))
+  ;; Тесты для COND
   (assert (equal 2 (myeval '(cond
                              (() 1)
                              (1 2)))))
+  ;; Тест для EVPROGN
+  (assert (equal 2 (evprogn '(1 2))))
+  ;; Тесты для PROGN
+  (assert (equal 3 (myeval '(progn 1 2 3))))
+  ;; Тесты для PRINT
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (print 12))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print 12)))))
+  (assert (equal (print 12)
+                 (myeval '(print 12))))
+  ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42))))
+  ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42))))
 #+END_SRC
