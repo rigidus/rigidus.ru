@@ -2,9 +2,10 @@
 
 * План работ
 
-Теперь добавим к нашей реализации окружения. Для этого, у ~myeval~ появляется еще один
-параметр ~env~. В параметре ~env~ передается окружение, которое у нас будет реализовано
-как ассоциативный список вида:
+Теперь добавим к нашей реализации окружения. Окружения связывают переменные (символы) с
+их значениями, и если мы хотим добавить символы в язык, то идея окружений нам
+пригодится. Для этого, у ~myeval~ появляется еще один параметр ~env~. В параметре ~env~
+передается окружение, которое будет реализовано как ассоциативный список вида:
 
 #+BEGIN_SRC lisp
   ((a . 1) (b . 42) (c . somesymbol))
@@ -34,35 +35,16 @@
   ((numberp lst)               lst)
 #+END_SRC
 
+Тесты используют нулевое окружение, потому что вычисление чисел, T и NIL не зависят от
+окружения. Технически мы могли бы не хардкодить T и NIL а иметь базовое окружение, в
+котором они были бы вычислялись как обычные переменные.
+
 #+NAME: number_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T nil)))
   (assert (equal NIL (myeval 'NIL nil)))
   (assert (equal 999 (myeval 999 nil)))
-#+END_SRC
-
-* Встроенные функции арифметики
-
-Вызов ~my-eval~ использует дополнительный параметр ~env~
-
-#+NAME: ariph_1
-#+BEGIN_SRC lisp
-  ((equal (car lst) '+)        (+ (myeval (cadr lst) env)
-                                  (myeval (caddr lst) env)))
-  ((equal (car lst) '*)        (* (myeval (cadr lst) env)
-                                  (myeval (caddr lst) env)))
-#+END_SRC
-
-К старым тестам (изменным, чтобы принимать пустое окружение) добавляем новые, которые
-используют окружение в виде ассоциативного списка, которое пока мы формируем вручную.
-
-#+NAME: ariph_1_test
-#+BEGIN_SRC lisp
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
 #+END_SRC
 
 * Цитирование
@@ -74,10 +56,11 @@
   ((equal (car lst) 'quote)    (cadr lst))
 #+END_SRC
 
-Без изменений
+Без изменений, кроме дополнительного параметра - нулевого окружения
 
 #+NAME: quote_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для QUOTE
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
 #+END_SRC
 
@@ -97,12 +80,14 @@
 
 #+NAME: car_cdr_cons_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
   (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
   (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
@@ -121,10 +106,12 @@
 
 #+NAME: null_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()) nil)))
   (assert (equal T (myeval '(null nil) nil)))
   (assert (equal NIL (myeval '(null T) nil)))
   (assert (equal T (myeval '(null a)) '((a . ()))))
+  ;; Тесты для NULL, с аргументом, вычисляемым в окружении
   (assert (equal NIL (myeval '(null a)) '((a . T))))
   (assert (equal NIL (myeval '(null a)) '((a . 1))))
 #+END_SRC
@@ -144,15 +131,17 @@
 
 #+NAME: if_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для IF
   (assert (equal 2 (myeval '(if () 1 2) nil)))
   (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
+  ;; Тесты для IF, где условие вычисляется в окружении
   (assert (equal 2 (myeval '(if a 1 2) '((a . ())))))
   (assert (equal 1 (myeval '(if a 1 2) '((a . 1)))))
 #+END_SRC
 
 * COND
 
-Без изменений
+Добавляем параметр в определение ~evcond~:
 
 #+NAME: evcond_1
 #+BEGIN_SRC lisp
@@ -160,6 +149,21 @@
     (cond ((null lst)               nil)
           ((myeval (caar lst) env)  (myeval (cadar lst) env))
           (t                        (evcond (cdr lst) env))))
+#+END_SRC
+
+Добавляем тесты, где вычисление зависит от переменных, определенных в окружении
+
+#+NAME: evcond_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVCOND
+  (assert (equal 2   (evcond '((t 2)   (t 1)) nil)))
+  (assert (equal 1   (evcond '((nil 2) (t 1)) nil)))
+  (assert (equal nil (evcond '((nil 2) (nil 1)) env)))
+  ;; Тесты для EVCOND, где участвует окружение
+  (assert (equal 2 (evcond '((a 2) (b 1))
+                           '((a . 1) (b . ())))))
+  (assert (equal 1 (evcond '((a 2) (b 1))
+                           '((a . nil) (b . T)))))
 #+END_SRC
 
 Без изменений
@@ -173,10 +177,12 @@
 
 #+NAME: cond_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для COND
   (assert (equal 2 (myeval '(cond
                              (() 1)
                              (1 2))
                            nil)))
+  ;; Тесты для COND в окружении
   (assert (equal 2 (myeval '(cond
                            (a 1)
                            (b 2))
@@ -189,7 +195,7 @@
 
 * PROGN
 
-Без изменений
+Добавляем параметр ~env~:
 
 #+NAME: evprogn_1
 #+BEGIN_SRC lisp
@@ -198,6 +204,16 @@
           ((null (cdr lst))  (myeval (car lst) env))
           (t                 (myeval (car lst) env)
                              (evprogn (cdr lst) env))))
+#+END_SRC
+
+Добавляем тест в окружении
+
+#+NAME: evprogn_1_test
+#+BEGIN_SRC lisp
+  ;; Тест для EVPROGN
+  (assert (equal 2 (evprogn '(1 2))))
+  ;; Тест для EVPROGN в окружении
+  (assert (equal 3 (evprogn '(a b c) '((a . 1) (b . 2) (c . 3)))))
 #+END_SRC
 
 Без изменений
@@ -211,22 +227,47 @@
 
 #+NAME: progn_1_test
 #+BEGIN_SRC lisp
+  ;; Тест для PROGN
   (assert (equal 3 (myeval '(progn 1 2 3) nil)))
+  ;; Тест для PROGN в окружении
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
 #+END_SRC
 
 * PRINT
 
-Без изменений
+Добавляем параметр ~env~:
 
 #+NAME: print_1
 #+BEGIN_SRC lisp
   ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
 #+END_SRC
 
+Добавляем тест в окружении
+
+#+NAME: print_0_test
+#+BEGIN_SRC lisp
+  ;; Тесты для PRINT
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (print 12))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print 12)))))
+  (assert (equal (print 12)
+                 (myeval '(print 12))))
+  ;; Тесты для PRINT в окружении
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (let ((a 12))
+                     (print a)))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print a) '((b . 23) (a . 12))))))
+  (assert (equal (let ((a 12))
+                   (print a))
+                 (myeval '(print a) '((b . 23) (a . 12)))))
+
+#+END_SRC
+
 * LIST
 
-Без изменений
+Добавляем параметр ~env~:
 
 #+NAME: evlis_1
 #+BEGIN_SRC lisp
@@ -240,8 +281,10 @@
 
 #+NAME: evlis_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42) nil)))
+  ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
                  (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
 #+END_SRC
@@ -257,16 +300,240 @@ LIST определяем почти без изменений:
 
 #+NAME: list_1_test
 #+BEGIN_SRC lisp
+  ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+  ;; Тесты для LIST в окружении
   (assert (equal '(3 6 42)
                  (myeval '(list (+ a b) (* b c) 42)
                          '((a . 1) (b . 2) (c . 3) (d . 4)))))
 #+END_SRC
 
-* Вычисление символов
+* AND
 
-С этого момента мы начинаем расширять возможности интерпретатора.
+Добавляем параметр ~env~:
+
+#+NAME: evand_1
+#+BEGIN_SRC lisp
+  (defun evand (lst env)
+    (cond ((null lst)        (and))
+          ((null (cdr lst))  (and (myeval (car lst) env)))
+          (t                 (and (myeval (car lst) env)
+                                  (evand (cdr lst) env)))))
+#+END_SRC
+
+Добавим тесты ~evand~ в окружении:
+
+#+NAME: evand_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVAND
+  (assert (equal (and)           (evand '() nil)))
+  (assert (equal (and 1)         (evand '(1) nil)))
+  (assert (equal (and nil)       (evand '(nil) nil)))
+  (assert (equal (and 1 nil)     (evand '(1 nil) nil)))
+  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil)))
+  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil)))
+  ;; Тесты для EVAND в окружении
+  (assert (equal (let ((a nil))
+                   (and nil))
+                 (evand '(a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (and a))
+                 (evand '(a) '((a . 1)))))
+  (assert (equal (let ((a 1)
+                       (b nil))
+                   (and a b))
+                 (evand '(a b) '((a . 1) (b . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil))
+                   (and a b c))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a b c))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)))))
+#+END_SRC
+
+Теперь мы можем определить ~and~:
+
+#+NAME: and_1
+#+BEGIN_SRC lisp
+  ((equal (car lst) 'and)      (evand (cdr lst) env))
+#+END_SRC
+
+Протестируем ~and~:
+
+#+NAME: and_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для AND
+  (assert (equal (and)                (myeval '(and) nil)))
+  (assert (equal (and 1)              (myeval '(and 1) nil)))
+  (assert (equal (and nil)            (myeval '(and nil) nil)))
+  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil)))
+  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil)))
+  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil)))
+  ;; Тесты для AND в окружении
+  (assert (equal (let ((a nil))
+                   (and nil))
+                 (myeval '(and a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (and a))
+                 (myeval '(and a) '((a . 1)))))
+  (assert (equal (let ((a 1)
+                       (b nil))
+                   (and a b))
+                 (myeval '(and a b) '((a . 1) (b . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil))
+                   (and a b c))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a b c))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)))))
+#+END_SRC
+
+* OR
+
+Определение ~or~ полностью аналогочно определению ~and~:
+
+#+NAME: evor_1
+#+BEGIN_SRC lisp
+  (defun evor (lst env)
+    (cond ((null lst)        (or))
+          ((null (cdr lst))  (or (myeval (car lst) env)))
+          (t                 (or (myeval (car lst) env)
+                                 (evor (cdr lst) env)))))
+#+END_SRC
+
+Тесты
+
+#+NAME: evor_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVOR
+  (assert (equal (or)           (evor '() nil)))
+  (assert (equal (or nil 1)     (evor '(nil 1) nil)))
+  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil)))
+  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil)))
+  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil)))
+  ;; Тесты для EVOR в окружении
+  (assert (equal (let ((a nil))
+                   (or a))
+                 (evor '(a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (or a))
+                 (evor '(a) '((a . 1)))))
+  (assert (equal (let ((a nil)
+                       (b 1))
+                   (or a b))
+                 (evor '(a b) '((a . nil) (b . 1)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3))
+                   (or a b c))
+                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)))))
+  (assert (equal (let ((a nil)
+                       (b 1)
+                       (c 2))
+                   (or a b c))
+                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
+
+#+END_SRC
+
+Теперь мы можем определить ~or~:
+
+#+NAME: or_1
+#+BEGIN_SRC lisp
+  ((equal (car lst) 'or)       (evor  (cdr lst) env))
+#+END_SRC
+
+Протестируем ~or~:
+
+#+NAME: or_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для OR
+  (assert (equal (or)                  (myeval '(or) nil)))
+  (assert (equal (or nil 1)            (myeval '(or nil 1) nil)))
+  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil)))
+  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil)))
+  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil)))
+  ;; Тесты для OR в окружении
+  (assert (equal (let ((a nil))
+                   (or a))
+                 (myeval '(or a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (or a))
+                 (myeval '(or a) '((a . 1)))))
+  (assert (equal (let ((a nil)
+                       (b 1))
+                   (or a b))
+                 (myeval '(or a b) '((a . nil) (b . 1)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3))
+                   (or a b c))
+                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)))))
+  (assert (equal (let ((a nil)
+                       (b 1)
+                       (c 2))
+                   (or a b c))
+                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
+#+END_SRC
+
+* Встроенные функции арифметики
+
+#+NAME: evaddmul_1
+#+BEGIN_SRC lisp
+  (defun evadd (lst env)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst) env)))
+          (t                 (+ (myeval (car lst) env)
+                                (evadd (cdr lst) env)))))
+  (defun evmul (lst env)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst) env)))
+          (t                 (* (myeval (car lst) env)
+                                (evmul (cdr lst) env)))))
+#+END_SRC
+
+#+NAME: evaddmul_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
+  ;; Тесты для EVADD и EVMUL в окружении
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+#+END_SRC
+
+Вызов в ~my-eval~ использует дополнительный параметр ~env~
+
+#+NAME: ariph_1
+#+BEGIN_SRC lisp
+  ((equal (car lst) '+)        (evadd (cdr lst) env))
+  ((equal (car lst) '*)        (evmul (cdr lst) env))
+#+END_SRC
+
+К старым тестам (изменным, чтобы принимать пустое окружение) добавляем новые, которые
+используют окружение в виде ассоциативного списка, которое пока мы формируем вручную.
+
+#+NAME: ariph_1_test
+#+BEGIN_SRC lisp
+  ;; Тесты для арифметических функций
+  (assert (equal 7 (myeval 7 nil)))
+  (assert (equal 3 (myeval '(+ 1 2) nil)))
+  (assert (equal 33 (myeval '(* (+ 1 2) (+ 3 4 4)) nil)))
+  ;; Тесты для арифметических функций в окружении
+  (assert (equal 2 (myeval 'a '((a . 2)))))
+  (assert (equal 120 (myeval '(+ a b c) '((a . 45) (b . 2) (c . 73)))))
+#+END_SRC
+
+* Вычисление символов
 
 Если мы встречаем символ, то мы должны найти его в нашем окружении. Мы можем достичь
 этого следующим образом:
@@ -309,9 +576,9 @@ LIST определяем почти без изменений:
                                                           alist)))))
 #+END_SRC
 
-Вариант с хвостовой рекурсией будет эффективнее. Кроме того есть различие в семантике,
-которое проявляется, если разрешены дубли в lambda-list. Если дубли запрещены, то
-неважно, какой ~pairlis~ использовать.
+Вариант с хвостовой рекурсией (написанный ниже) будет эффективнее. Кроме того есть
+различие в семантике, которое проявляется, если разрешены дубли в lambda-list. Если
+дубли запрещены, то неважно, какой ~pairlis~ использовать.
 
 #+NAME: mypairlis_1
 #+BEGIN_SRC lisp
@@ -337,6 +604,7 @@ LIST определяем почти без изменений:
 
 #+NAME: mypairlis_1_test
 #+BEGIN_SRC lisp
+  ;; Тест для MYPAIRLIS
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
   (assert (equal "error"
@@ -362,6 +630,7 @@ LIST определяем почти без изменений:
 
 #+NAME: let_1_test
 #+BEGIN_SRC lisp
+  ;; Тест для LET
   (assert (equal '(1 . 2) (myeval '(let ((a 1)
                                          (b 2))
                                     (cons a b)) nil)))
@@ -399,6 +668,7 @@ varpairs будут добавлены в окончательное окруж�
 
 #+NAME: letstar_1_test
 #+BEGIN_SRC lisp
+  ;; Тест для LET*
   (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
                                             (b 2)
                                             (c (+ a b)))
@@ -423,6 +693,7 @@ varpairs будут добавлены в окончательное окруж�
 
 #+NAME: lambda_1_test
 #+BEGIN_SRC lisp
+  ;; Тест для LAMBDA
   (assert (equal '(42 . 42) (myeval '((lambda (x)
                                         (cons x x))
                                       42) nil)))
@@ -431,8 +702,6 @@ varpairs будут добавлены в окончательное окруж�
                                       42 17) nil)))
 #+END_SRC
 
-* TODO AND
-* TODO OR
 * Итоги
 
 Добавляем обработку ошибок, чтобы получать более ясные сообщения при отладке.
@@ -444,6 +713,9 @@ varpairs будут добавлены в окончательное окруж�
   <<evcond_1>>
   <<evprogn_1>>
   <<evlis_1>>
+  <<evand_1>>
+  <<evor_1>>
+  <<evaddmul_1>>
   <<mypairlis_1>>
   <<evletstar_1>>
   (define-condition eval-unknown-form-error (error)
@@ -458,7 +730,6 @@ varpairs будут добавлены в окончательное окруж�
     (cond
       <<number_1>>
       <<symb_1>>
-      <<ariph_1>>
       <<quote_1>>
       <<car_cdr_cons_1>>
       <<null_1>>
@@ -467,20 +738,28 @@ varpairs будут добавлены в окончательное окруж�
       <<progn_1>>
       <<print_1>>
       <<list_1>>
+      <<and_1>>
+      <<or_1>>
+      <<ariph_1>>
       <<let_1>>
       <<letstar_1>>
       <<lambda_1>>
-      (t (errort 'eval-unknown-form-error :form lst :env env))))
+      (t (error 'eval-unknown-form-error :form lst :env env))))
 
   <<symb_1_test>>
   <<number_1_test>>
-  <<ariph_1_test>>
   <<quote_1_test>>
   <<car_cdr_cons_1_test>>
   <<if_1_test>>
   <<cond_1_test>>
   <<evlis_1_test>>
   <<list_1_test>>
+  <<evand_1_test>>
+  <<and_1_test>>
+  <<evor_1_test>>
+  <<or_1_test>>
+  <<evaddmul_1_test>>
+  <<ariph_1_test>>
   <<mypairlis_1_test>>
   <<let_1_test>>
   <<letstar_1_test>>
@@ -503,6 +782,26 @@ varpairs будут добавлены в окончательное окруж�
     (cond ((null lst)  nil)
           (t           (cons (myeval (car lst) env)
                              (evlis (cdr lst) env)))))
+  (defun evand (lst env)
+    (cond ((null lst)        (and))
+          ((null (cdr lst))  (and (myeval (car lst) env)))
+          (t                 (and (myeval (car lst) env)
+                                  (evand (cdr lst) env)))))
+  (defun evor (lst env)
+    (cond ((null lst)        (or))
+          ((null (cdr lst))  (or (myeval (car lst) env)))
+          (t                 (or (myeval (car lst) env)
+                                 (evor (cdr lst) env)))))
+  (defun evadd (lst env)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst) env)))
+          (t                 (+ (myeval (car lst) env)
+                                (evadd (cdr lst) env)))))
+  (defun evmul (lst env)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst) env)))
+          (t                 (* (myeval (car lst) env)
+                                (evmul (cdr lst) env)))))
   (define-condition mypairlis-error (error)
     ((lst1 :initarg :lst1  :reader lst1)
      (lst2 :initarg :lst2  :reader lst2))
@@ -540,10 +839,6 @@ varpairs будут добавлены в окончательное окруж�
       ((equal t lst)               t)
       ((numberp lst)               lst)
       ((symbolp lst)               (cdr (assoc lst env)))
-      ((equal (car lst) '+)        (+ (myeval (cadr lst) env)
-                                      (myeval (caddr lst) env)))
-      ((equal (car lst) '*)        (* (myeval (cadr lst) env)
-                                      (myeval (caddr lst) env)))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'car)      (car (myeval (cadr lst) env)))
       ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst) env)))
@@ -557,6 +852,10 @@ varpairs будут добавлены в окончательное окруж�
       ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
       ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
       ((equal (car lst) 'list)     (evlis (cdr lst) env))
+      ((equal (car lst) 'and)      (evand (cdr lst) env))
+      ((equal (car lst) 'or)       (evor  (cdr lst) env))
+      ((equal (car lst) '+)        (evadd (cdr lst) env))
+      ((equal (car lst) '*)        (evmul (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                             (mypairlis (mapcar #'car (cadr lst))
                                                        (evlis (mapcar #'cadr (cadr lst))
@@ -569,35 +868,38 @@ varpairs будут добавлены в окончательное окруж�
                                            (mypairlis (cadar lst)
                                                       (evlis (cdr lst) env)
                                                       env)))
-      (t (errort 'eval-unknown-form-error :form lst :env env))))
+      (t (error 'eval-unknown-form-error :form lst :env env))))
 
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
+  ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T nil)))
   (assert (equal NIL (myeval 'NIL nil)))
   (assert (equal 999 (myeval 999 nil)))
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+  ;; Тесты для QUOTE
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
   (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
   (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+  ;; Тесты для IF
   (assert (equal 2 (myeval '(if () 1 2) nil)))
   (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
+  ;; Тесты для IF, где условие вычисляется в окружении
   (assert (equal 2 (myeval '(if a 1 2) '((a . ())))))
   (assert (equal 1 (myeval '(if a 1 2) '((a . 1)))))
+  ;; Тесты для COND
   (assert (equal 2 (myeval '(cond
                              (() 1)
                              (1 2))
                            nil)))
+  ;; Тесты для COND в окружении
   (assert (equal 2 (myeval '(cond
                              (a 1)
                              (b 2))
@@ -606,15 +908,145 @@ varpairs будут добавлены в окончательное окруж�
                              (a 1)
                              (b 2))
                            '((a . 1) (b . ())))))
+  ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42) nil)))
+  ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
                  (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+  ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
+  ;; Тесты для LIST в окружении
   (assert (equal '(3 6 42)
                  (myeval '(list (+ a b) (* b c) 42)
                          '((a . 1) (b . 2) (c . 3) (d . 4)))))
+  ;; Тесты для EVAND
+  (assert (equal (and)           (evand '() nil)))
+  (assert (equal (and 1)         (evand '(1) nil)))
+  (assert (equal (and nil)       (evand '(nil) nil)))
+  (assert (equal (and 1 nil)     (evand '(1 nil) nil)))
+  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil)))
+  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil)))
+  ;; Тесты для EVAND в окружении
+  (assert (equal (let ((a nil))
+                   (and nil))
+                 (evand '(a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (and a))
+                 (evand '(a) '((a . 1)))))
+  (assert (equal (let ((a 1)
+                       (b nil))
+                   (and a b))
+                 (evand '(a b) '((a . 1) (b . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil))
+                   (and a b c))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a b c))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; Тесты для AND
+  (assert (equal (and)                (myeval '(and) nil)))
+  (assert (equal (and 1)              (myeval '(and 1) nil)))
+  (assert (equal (and nil)            (myeval '(and nil) nil)))
+  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil)))
+  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil)))
+  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil)))
+  ;; Тесты для AND в окружении
+  (assert (equal (let ((a nil))
+                   (and nil))
+                 (myeval '(and a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (and a))
+                 (myeval '(and a) '((a . 1)))))
+  (assert (equal (let ((a 1)
+                       (b nil))
+                   (and a b))
+                 (myeval '(and a b) '((a . 1) (b . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil))
+                   (and a b c))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a b c))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; Тесты для EVOR
+  (assert (equal (or)           (evor '() nil)))
+  (assert (equal (or nil 1)     (evor '(nil 1) nil)))
+  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil)))
+  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil)))
+  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil)))
+  ;; Тесты для EVOR в окружении
+  (assert (equal (let ((a nil))
+                   (or a))
+                 (evor '(a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (or a))
+                 (evor '(a) '((a . 1)))))
+  (assert (equal (let ((a nil)
+                       (b 1))
+                   (or a b))
+                 (evor '(a b) '((a . nil) (b . 1)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3))
+                   (or a b c))
+                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)))))
+  (assert (equal (let ((a nil)
+                       (b 1)
+                       (c 2))
+                   (or a b c))
+                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
+
+  ;; Тесты для OR
+  (assert (equal (or)                  (myeval '(or) nil)))
+  (assert (equal (or nil 1)            (myeval '(or nil 1) nil)))
+  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil)))
+  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil)))
+  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil)))
+  ;; Тесты для OR в окружении
+  (assert (equal (let ((a nil))
+                   (or a))
+                 (myeval '(or a) '((a . nil)))))
+  (assert (equal (let ((a 1))
+                   (or a))
+                 (myeval '(or a) '((a . 1)))))
+  (assert (equal (let ((a nil)
+                       (b 1))
+                   (or a b))
+                 (myeval '(or a b) '((a . nil) (b . 1)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3))
+                   (or a b c))
+                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)))))
+  (assert (equal (let ((a nil)
+                       (b 1)
+                       (c 2))
+                   (or a b c))
+                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
+  ;; Тесты для EVADD и EVMUL в окружении
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  ;; Тесты для арифметических функций
+  (assert (equal 7 (myeval 7 nil)))
+  (assert (equal 3 (myeval '(+ 1 2) nil)))
+  (assert (equal 33 (myeval '(* (+ 1 2) (+ 3 4 4)) nil)))
+  ;; Тесты для арифметических функций в окружении
+  (assert (equal 2 (myeval 'a '((a . 2)))))
+  (assert (equal 120 (myeval '(+ a b c) '((a . 45) (b . 2) (c . 73)))))
+  ;; Тест для MYPAIRLIS
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
   (assert (equal "error"
@@ -623,13 +1055,16 @@ varpairs будут добавлены в окончательное окруж�
   (assert (equal "error"
                  (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
                    (MYPAIRLIS-ERROR (condition) "error"))))
+  ;; Тест для LET
   (assert (equal '(1 . 2) (myeval '(let ((a 1)
                                          (b 2))
                                     (cons a b)) nil)))
+  ;; Тест для LET*
   (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
                                             (b 2)
                                             (c (+ a b)))
                                       (cons c (cons a b))) nil)))
+  ;; Тест для LAMBDA
   (assert (equal '(42 . 42) (myeval '((lambda (x)
                                         (cons x x))
                                       42) nil)))
