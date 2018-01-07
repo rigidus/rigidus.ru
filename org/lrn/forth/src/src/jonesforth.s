@@ -8,7 +8,7 @@
 .endm
 
 .macro PUSHRSP reg
-    lea     -4(%ebp), %ebp  # декремент %ebp
+    lea     -4(%ebp), %ebp  # декремент %ebp на 4
     movl    \reg, (%ebp)    # push reg в стек возвратов
 .endm
 
@@ -17,7 +17,8 @@
     lea     4(%ebp), %ebp   # инкремент %ebp на 4
 .endm
 
-    .set link,0   #  Store the chain of links.
+    .set link,0             # Инициализировать начальное значение
+                            # переменной времени компиляции link
 .macro defword name, namelen, flags=0, label
     .section .rodata
     .align 4
@@ -461,8 +462,8 @@ defcode "DSP!",4,,DSPSTORE
 _KEY:                       # <--+
     mov     (currkey), %ebx #    |  # Берем указатель currkey в %ebx
     cmp     (bufftop), %ebx #    |  # (bufftop >= currkey)? - в буфере есть символы?
-    jge     1f              #-+  |  # ?-Да, переходим вперед
-    xor     %eax, %eax      # |  |  # ?-Нет, (1) переносим символ, на который
+    jge     1f              #-+  |  # ?-Нет, переходим вперед
+    xor     %eax, %eax      # |  |  # ?-Да,  (1) переносим символ, на который
     mov     (%ebx), %al     # |  |  #        указывает bufftop в %eax,
     inc     %ebx            # |  |  #        (2) инкрементируем копию bufftop
     mov     %ebx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
@@ -567,7 +568,7 @@ _FIND:
     push    %esi            # Сохраним %esi - так мы сможем его использовать
                             # для сравнения строк командой cmpsb
     # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
-    mov     var_LATEST, %edx # %edx = LATEST указыввет на name header
+    mov     (var_LATEST), %edx # %edx = LATEST указыввет на name header
                              # последнего слова в словаре
 1:  #                   <------------+
     test    %edx, %edx      # (NULL указатель, т.е. словарь кончился)?
