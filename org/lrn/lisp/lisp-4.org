@@ -3,7 +3,7 @@
 * План работ
 
 Цель этого этапа: преобразовать наш интерпретатор так, чтобы он был написан в стиле
-передачи продолжений, сontinuation-passing style, CPS.
+передачи продолжений (сontinuation-passing style, CPS).
 
 Зачем мы это делаем? Сейчас мы имеем рекурсивный интерпретатор, который использует
 рекурсию, когда выполняет оценку (~eval~) программмы. Нам надо получить нерекурсивный
@@ -187,9 +187,9 @@ funarg-problem мы можем передавать функции, мы мог�
 
 #+NAME: myapply_4_test
 #+BEGIN_SRC lisp
-  <<myapply_ariph_4_test>>
   <<myapply_car_cdr_cons_4_test>>
   <<myapply_null_4_test>>
+  <<myapply_ariph_4_test>>
   <<myapply_print_4_test>>
   <<myor_4_test>>
   <<myapply_or_4_test>>
@@ -197,29 +197,6 @@ funarg-problem мы можем передавать функции, мы мог�
   <<myapply_and_4_test>>
   <<myapply_closure_4_test>>
   <<myapply_list_4_test>>
-#+END_SRC
-
-** Встроенные функции арифметики
-
-Арифметические функции теперь вызывают продолжение ~cont~, передавая ему в качестве
-параметра результат своих вычислений.
-
-#+NAME: myapply_ariph_4
-#+BEGIN_SRC lisp
-  ((equal fn '+)               (funcall cont (+ (car args) (cadr args))))
-  ((equal fn '*)               (funcall cont (* (car args) (cadr args))))
-#+END_SRC
-
-Тесты такие-же, но теперь принимают продолжения
-
-#+NAME: myapply_ariph_4_test
-#+BEGIN_SRC lisp
-  ;; Тесты арифметики в окружениях
-  (assert (equal 7 (myeval 7 nil #'err #'ok)))
-  (assert (equal 3 (myeval '(+ 1 2) nil #'err #'ok)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil #'err #'ok)))
-  (assert (equal 2 (myeval 'a '((a . 2)) #'err #'ok)))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)) #'err #'ok)))
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -245,6 +222,7 @@ funarg-problem мы можем передавать функции, мы мог�
   (assert (equal 3 (myeval '(cdr (cons 2 3)) nil #'err #'ok)))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))) #'err #'ok)))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))) #'err #'ok)))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) #'err #'ok)))
@@ -252,21 +230,88 @@ funarg-problem мы можем передавать функции, мы мог�
 
 ** NULL-предикат
 
-~null~ теперь тоже вызывает продолжение ~cont~
+#+NAME: errors_4
+#+BEGIN_SRC lisp
+  (define-condition invalid-number-of-arguments (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: invalid-number-of-arguments: ~A"
+               (fn condition)))))
+#+END_SRC
+
+~null~ теперь тоже вызывает продолжение ~cont~:
 
 #+NAME: myapply_null_4
 #+BEGIN_SRC lisp
-  ((equal fn 'null)            (funcall cont (null (car args))))
+  ((equal fn 'null)            (if (null (cdr args))
+                                   (funcall cont (null (car args)))
+                                   (error 'invalid-number-of-arguments :fn fn)))
 #+END_SRC
 
 Тесты такие-же, но теперь принимают продолжения
 
 #+NAME: myapply_null_4_test
 #+BEGIN_SRC lisp
-  ;; Тесты NULL-предиката
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()) nil #'err #'ok)))
+  (assert (equal T (myeval '(null nil) nil #'err #'ok)))
+  (assert (equal NIL (myeval '(null T) nil #'err #'ok)))
   (assert (equal T (myeval '(null a) '((a . ())) #'err #'ok)))
+  ;; Тесты для NULL, с аргументом, вычисляемые в окружении
+  (assert (equal NIL (myeval '(null a) '((a . T)) #'err #'ok)))
   (assert (equal NIL (myeval '(null a) '((a . 1)) #'err #'ok)))
+#+END_SRC
+
+** TODO Встроенные функции арифметики
+
+Вспомогательные функции ~evadd~ и ~evmul~ теперь тоже принимают продолжения:
+
+#+NAME: evaddmul_3
+#+BEGIN_SRC lisp
+  (defun evadd (lst env cont)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst) env cont)))
+          (t                 (+ (myeval (car lst) env cont)
+                                (evadd (cdr lst) env cont)))))
+  (defun evmul (lst env cont)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst) env cont)))
+          (t                 (* (myeval (car lst) env cont)
+                                (evmul (cdr lst) env cont)))))
+#+END_SRC
+
+
+#+NAME: evaddmul_3_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
+  ;; Тесты для EVADD и EVMUL в окружении
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+#+END_SRC
+
+
+Арифметические функции теперь вызывают продолжение ~cont~, передавая ему в качестве
+параметра результат своих вычислений.
+
+#+NAME: myapply_ariph_4
+#+BEGIN_SRC lisp
+  ((equal fn '+)               (funcall cont (+ (car args) (cadr args))))
+  ((equal fn '*)               (funcall cont (* (car args) (cadr args))))
+#+END_SRC
+
+Тесты такие-же, но теперь принимают продолжения
+
+#+NAME: myapply_ariph_4_test
+#+BEGIN_SRC lisp
+  ;; Тесты арифметики в окружениях
+  (assert (equal 7 (myeval 7 nil #'err #'ok)))
+  (assert (equal 3 (myeval '(+ 1 2) nil #'err #'ok)))
+  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil #'err #'ok)))
+  (assert (equal 2 (myeval 'a '((a . 2)) #'err #'ok)))
+  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)) #'err #'ok)))
 #+END_SRC
 
 ** PRINT
