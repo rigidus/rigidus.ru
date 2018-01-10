@@ -5,7 +5,9 @@
 Цель этого этапа - создание лексического окружения (в дополнение к динамическому
 окружению и глобальному окружению, которые у нас уже есть). Так мы решаем
 ~funarg-problem~, проблему функционального аргумента. Проблема возникает в программах
-на языках, позволяющих передавать функции в качестве параметров.
+на языках, которые поддерживают функции как объекты первого класса (first-class
+sitizens): позволяюn передавать функции в качестве параметров и возвращать функции из
+функций.
 
 ~funarg problem~ возникает, когда тело определяемой функции ссылается на
 идентификаторы, которые определены в окружении, где функция определяется. В то время
@@ -157,7 +159,7 @@
 * Окружения и MyApply
 
 Это глобальное окружение, которое было сделано на предыдущем этапе и функция поиска в
-нем, тут ничего не поменялось.
+нем (~lookup~), тут ничего не поменялось.
 
 #+NAME: lookup_3
 #+BEGIN_SRC lisp
@@ -180,7 +182,8 @@
     args)
 #+END_SRC
 
-Когда нам нужно передать лямбду в функцию ~apply~ мы будем оборачивать ее в замыкание:
+Когда нам нужно передать лямбду в функцию ~apply~ мы будем оборачивать ее в замыкание,
+сохраняя окружение функции в нем:
 
 #+NAME: myapply_closure_3
 #+BEGIN_SRC lisp
@@ -194,11 +197,12 @@
 
 #+NAME: myapply_3
 #+BEGIN_SRC lisp
-  (defun myapply (fn args)
+  <<evaddmul_3>>
+  (defun myapply (fn args env)
     (cond
-      <<myapply_ariph_3>>
       <<myapply_car_cdr_cons_3>>
       <<myapply_null_3>>
+      <<myapply_ariph_3>>
       <<myapply_closure_3>>
       ))
 #+END_SRC
@@ -207,29 +211,12 @@
 
 #+NAME: myapply_3_test
 #+BEGIN_SRC lisp
-  <<myapply_ariph_3_test>>
   <<myapply_car_cdr_cons_3_test>>
   <<myapply_null_3_test>>
+  <<myapply_ariph_3_test>>
   <<myapply_func_symb_3_test>>
   ;; TODO : нужен тест для closure в apply
   <<myapply_closure_3_test>>
-#+END_SRC
-
-** Встроенные функции арифметики
-
-#+NAME: myapply_ariph_3
-#+BEGIN_SRC lisp
-  ((equal fn '+)               (+ (car args) (cadr args)))
-  ((equal fn '*)               (* (car args) (cadr args)))
-#+END_SRC
-
-#+NAME: myapply_ariph_3_test
-#+BEGIN_SRC lisp
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -243,12 +230,14 @@
 
 #+NAME: myapply_car_cdr_cons_3_test
 #+BEGIN_SRC lisp
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
   (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
   (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
@@ -256,16 +245,78 @@
 
 ** NULL-предикат
 
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition invalid-number-of-arguments (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: invalid-number-of-arguments: ~A"
+               (fn condition)))))
+#+END_SRC
+
 #+NAME: myapply_null_3
 #+BEGIN_SRC lisp
-  ((equal fn 'null)            (null (car args)))
+  ((equal fn 'null)            (if (null (cdr args))
+                                   (null (car args))
+                                   (error 'invalid-number-of-arguments :fn fn)))
 #+END_SRC
 
 #+NAME: myapply_null_3_test
 #+BEGIN_SRC lisp
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()) nil)))
+  (assert (equal T (myeval '(null nil) nil)))
+  (assert (equal NIL (myeval '(null T) nil)))
   (assert (equal T (myeval '(null a) '((a . ())))))
+  ;; Тесты для NULL, с аргументом, вычисляемые в окружении
+  (assert (equal NIL (myeval '(null a) '((a . T)))))
   (assert (equal NIL (myeval '(null a) '((a . 1)))))
+#+END_SRC
+
+** Встроенные функции арифметики
+
+#+NAME: evaddmul_3
+#+BEGIN_SRC lisp
+  (defun evadd (lst env)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst) env)))
+          (t                 (+ (myeval (car lst) env)
+                                (evadd (cdr lst) env)))))
+  (defun evmul (lst env)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst) env)))
+          (t                 (* (myeval (car lst) env)
+                                (evmul (cdr lst) env)))))
+#+END_SRC
+
+#+NAME: evaddmul_3_test
+#+BEGIN_SRC lisp
+  ;; Тесты для EVADD и EVMUL
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
+  ;; Тесты для EVADD и EVMUL в окружении
+  (assert (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  (assert (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+#+END_SRC
+
+
+#+NAME: myapply_ariph_3
+#+BEGIN_SRC lisp
+  ((equal fn '+)               (evadd args env))
+  ((equal fn '*)               (evmul args env))
+#+END_SRC
+
+
+#+NAME: myapply_ariph_3_test
+#+BEGIN_SRC lisp
+  ;; Тесты для арифметических функций
+  (assert (equal 7 (myeval 7 nil)))
+  (assert (equal 3 (myeval '(+ 1 2) nil)))
+  (assert (equal 33 (myeval '(* (+ 1 2) (+ 3 4 4)) nil)))
+  ;; Тесты для арифметических функций в окружении
+  (assert (equal 2 (myeval 'a '((a . 2)))))
+  (assert (equal 120 (myeval '(+ a b c) '((a . 45) (b . 2) (c . 73)))))
 #+END_SRC
 
 ** CANCEL Вычисление символов-функций
@@ -291,7 +342,8 @@
                                      (myapply (cdr it) args env))))
 #+END_SRC
 
-
+И тест видоизменяется, чтобы проверить вычисление в глобальном окружении
+[TODO:gmm] Тут я не уверен что правильный тест
 
 #+NAME: myapply_func_symb_3_test
 #+BEGIN_SRC lisp
@@ -358,7 +410,8 @@
       <<myeval_lambda_3>>
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)))))
+                (evlis (cdr lst) env)
+                env))))
 #+END_SRC
 
 
@@ -398,7 +451,7 @@
 
 #+NAME: errors_3
 #+BEGIN_SRC lisp
-  (define-condition variable-not-found-error (error)
+  (define-condition var-not-found-error (error)
     ((variable :initarg :variable  :reader variable))
     (:report
      (lambda (condition stream)
@@ -410,7 +463,7 @@
 #+BEGIN_SRC lisp
   ((symbolp lst)               (let ((it (lookup lst env)))
                                  (if (null it)
-                                     (error 'variable-not-found-error :variable lst)
+                                     (error 'var-not-found-error :variable lst)
                                      (cdr it))))
 #+END_SRC
 
@@ -419,7 +472,7 @@
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
   (assert (equal "error"
                  (handler-case (myeval 'b nil)
-                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
+                   (VAR-NOT-FOUND-ERROR (condition) "error"))))
 #+END_SRC
 
 ** Цитирование
@@ -732,6 +785,12 @@
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
+  (define-condition invalid-number-of-arguments (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: invalid-number-of-arguments: ~A"
+               (fn condition)))))
   (define-condition function-not-found-error (error)
     ((fn :initarg :fn  :reader fn))
     (:report
@@ -739,7 +798,7 @@
        (format stream "Error in MYAPPLY: function not found: ~A"
                (fn condition)))))
 
-  (define-condition variable-not-found-error (error)
+  (define-condition var-not-found-error (error)
     ((variable :initarg :variable  :reader variable))
     (:report
      (lambda (condition stream)
@@ -766,14 +825,26 @@
     env
     args)
 
-  (defun myapply (fn args)
+  (defun evadd (lst env)
+    (cond ((null lst)        (+))
+          ((null (cdr lst))  (+ (myeval (car lst) env)))
+          (t                 (+ (myeval (car lst) env)
+                                (evadd (cdr lst) env)))))
+  (defun evmul (lst env)
+    (cond ((null lst)        (*))
+          ((null (cdr lst))  (* (myeval (car lst) env)))
+          (t                 (* (myeval (car lst) env)
+                                (evmul (cdr lst) env)))))
+  (defun myapply (fn args env)
     (cond
-      ((equal fn '+)               (+ (car args) (cadr args)))
-      ((equal fn '*)               (* (car args) (cadr args)))
       ((equal fn 'car)             (caar args))
       ((equal fn 'cdr)             (cdar args))
       ((equal fn 'cons)            (cons (car args) (cadr args)))
-      ((equal fn 'null)            (null (car args)))
+      ((equal fn 'null)            (if (null (cdr args))
+                                       (null (car args))
+                                       (error 'invalid-number-of-arguments :fn fn)))
+      ((equal fn '+)               (evadd args env))
+      ((equal fn '*)               (evmul args env))
       ((closure-p fn)              (myeval (closure-body fn)
                                            (pairlis (closure-args fn)
                                                     args
@@ -817,7 +888,7 @@
       ((numberp lst)               lst)
       ((symbolp lst)               (let ((it (lookup lst env)))
                                      (if (null it)
-                                         (error 'variable-not-found-error :variable lst)
+                                         (error 'var-not-found-error :variable lst)
                                          (cdr it))))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
@@ -852,25 +923,35 @@
       ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)))))
+                (evlis (cdr lst) env)
+                env))))
 
-  (assert (equal 7 (myeval 7 nil)))
-  (assert (equal 3 (myeval '(+ 1 2) nil)))
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil)))
-  (assert (equal 2 (myeval 'a '((a . 2)))))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)))))
+  ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
   (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil)))
   (assert (equal 2 (myeval '(car (cons 2 3)) nil)))
   (assert (equal 3 (myeval '(cdr (cons 2 3)) nil)))
   (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil)))
   (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil)))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()) nil)))
+  (assert (equal T (myeval '(null nil) nil)))
+  (assert (equal NIL (myeval '(null T) nil)))
   (assert (equal T (myeval '(null a) '((a . ())))))
+  ;; Тесты для NULL, с аргументом, вычисляемые в окружении
+  (assert (equal NIL (myeval '(null a) '((a . T)))))
   (assert (equal NIL (myeval '(null a) '((a . 1)))))
+  ;; Тесты для арифметических функций
+  (assert (equal 7 (myeval 7 nil)))
+  (assert (equal 3 (myeval '(+ 1 2) nil)))
+  (assert (equal 33 (myeval '(* (+ 1 2) (+ 3 4 4)) nil)))
+  ;; Тесты для арифметических функций в окружении
+  (assert (equal 2 (myeval 'a '((a . 2)))))
+  (assert (equal 120 (myeval '(+ a b c) '((a . 45) (b . 2) (c . 73)))))
   (assert (equal 49 (progn
                       (setf *glob-env* nil)
                       (myeval '(defun alfa (x) (* x x)) nil)
@@ -889,7 +970,7 @@
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
   (assert (equal "error"
                  (handler-case (myeval 'b nil)
-                   (VARIABLE-NOT-FOUND-ERROR (condition) "error"))))
+                   (VAR-NOT-FOUND-ERROR (condition) "error"))))
   (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil)))
   (assert (equal 2 (myeval '(if () 1 2) nil)))
   (assert (equal 1 (myeval '(if (null ()) 1 2) nil)))
