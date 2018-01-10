@@ -390,6 +390,8 @@ sitizens): позволяюn передавать функции в качест
   <<myeval_evcond_3>>
   <<myeval_evprogn_3>>
   <<myeval_evlis_3>>
+  ;;evand
+  ;;evor
   <<myeval_mypairlis_3>>
   <<myeval_evletstar_3>>
 
@@ -400,10 +402,12 @@ sitizens): позволяюn передавать функции в качест
       <<myeval_quote_3>>
       <<myeval_if_3>>
       <<myeval_cond_3>>
-      <<myeval_let_3>>
       <<myeval_progn_3>>
       <<myeval_print_3>>
       <<myeval_list_3>>
+      ;; and
+      ;; or
+      <<myeval_let_3>>
       <<myeval_letstar_3>>
       <<myeval_defun_3>>
       <<myeval_setq_3>>
@@ -415,6 +419,7 @@ sitizens): позволяюn передавать функции в качест
 #+END_SRC
 
 
+
 #+NAME: myeval_3_test
 #+BEGIN_SRC lisp
   <<myeval_number_3_test>>
@@ -422,12 +427,17 @@ sitizens): позволяюn передавать функции в качест
   <<myeval_quote_3_test>>
   <<myeval_if_3_test>>
   <<myeval_cond_3_test>>
-  <<myeval_let_3_test>>
   <<myeval_progn_3_test>>
+  ;; print
+  ;; evlis
   <<myeval_list_3_test>>
+  ;; evand
+  ;; evor
+  <<myeval_let_3_test>>
   <<myeval_letstar_3_test>>
   <<myeval_defun_3_test>>
   <<myeval_setq_3_test>>
+  ;; lambda?
 #+END_SRC
 
 ** Самовычисляемые формы
@@ -452,18 +462,18 @@ sitizens): позволяюn передавать функции в качест
 #+NAME: errors_3
 #+BEGIN_SRC lisp
   (define-condition var-not-found-error (error)
-    ((variable :initarg :variable  :reader variable))
+    ((vari :initarg :vari  :reader vari))
     (:report
      (lambda (condition stream)
        (format stream "Error in MYEVAL: variable not found: ~A"
-               (variable condition)))))
+               (vari condition)))))
 #+END_SRC
 
 #+NAME: myeval_symb_3
 #+BEGIN_SRC lisp
   ((symbolp lst)               (let ((it (lookup lst env)))
                                  (if (null it)
-                                     (error 'var-not-found-error :variable lst)
+                                     (error 'var-not-found-error :vari lst)
                                      (cdr it))))
 #+END_SRC
 
@@ -535,63 +545,6 @@ sitizens): позволяюn передавать функции в качест
                            '((a . 1) (b . ())))))
 #+END_SRC
 
-** LET
-
-#+NAME: errors_3
-#+BEGIN_SRC lisp
-  (define-condition mypairlis-error (error)
-    ((lst1 :initarg :lst1  :reader lst1)
-     (lst2 :initarg :lst2  :reader lst2))
-    (:report
-     (lambda (condition stream)
-       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
-               (lst1 condition) (lst2 condition)))))
-#+END_SRC
-
-
-#+NAME: myeval_mypairlis_3
-#+BEGIN_SRC lisp
-  (defun mypairlis (lst1 lst2 alist)
-    (cond ((and (null lst1) (null lst2))  alist)
-          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
-          (t                              (cons (cons (car lst1)
-                                                      (car lst2))
-                                                (mypairlis (cdr lst1)
-                                                           (cdr lst2)
-                                                           alist)))))
-#+END_SRC
-
-
-#+NAME: myeval_mypairlis_3_test
-#+BEGIN_SRC lisp
-  (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
-                 (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
-  (assert (equal "error"
-                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
-                   (MYPAIRLIS-ERROR (condition) "error"))))
-  (assert (equal "error"
-                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
-                   (MYPAIRLIS-ERROR (condition) "error"))))
-#+END_SRC
-
-
-#+NAME: myeval_let_3
-#+BEGIN_SRC lisp
-  ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
-                                        (pairlis (mapcar #'car (cadr lst))
-                                                 (evlis (mapcar #'cadr (cadr lst))
-                                                        env)
-                                                 env)))
-#+END_SRC
-
-
-#+NAME: myeval_let_3_test
-#+BEGIN_SRC lisp
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b)) nil)))
-#+END_SRC
-
 ** PROGN
 
 #+NAME: myeval_evprogn_3
@@ -657,6 +610,63 @@ sitizens): позволяюn передавать функции в качест
   (assert (equal '(3 6 42)
                  (myeval '(list (+ a b) (* b c) 42)
                          '((a . 1) (b . 2) (c . 3) (d . 4)))))
+#+END_SRC
+
+** LET
+
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+#+END_SRC
+
+
+#+NAME: myeval_mypairlis_3
+#+BEGIN_SRC lisp
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2))  alist)
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
+          (t                              (cons (cons (car lst1)
+                                                      (car lst2))
+                                                (mypairlis (cdr lst1)
+                                                           (cdr lst2)
+                                                           alist)))))
+#+END_SRC
+
+
+#+NAME: myeval_mypairlis_3_test
+#+BEGIN_SRC lisp
+  (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+                 (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+#+END_SRC
+
+
+#+NAME: myeval_let_3
+#+BEGIN_SRC lisp
+  ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
+                                        (pairlis (mapcar #'car (cadr lst))
+                                                 (evlis (mapcar #'cadr (cadr lst))
+                                                        env)
+                                                 env)))
+#+END_SRC
+
+
+#+NAME: myeval_let_3_test
+#+BEGIN_SRC lisp
+  (assert (equal '(1 . 2) (myeval '(let ((a 1)
+                                         (b 2))
+                                    (cons a b)) nil)))
 #+END_SRC
 
 ** LET*
@@ -799,11 +809,11 @@ sitizens): позволяюn передавать функции в качест
                (fn condition)))))
 
   (define-condition var-not-found-error (error)
-    ((variable :initarg :variable  :reader variable))
+    ((vari :initarg :vari  :reader vari))
     (:report
      (lambda (condition stream)
-       (format stream "Error in MYEVAL: variable not found: ~A"
-               (variable condition)))))
+       (format stream "Error in MYEVAL: vari not found: ~A"
+               (vari condition)))))
   (define-condition mypairlis-error (error)
     ((lst1 :initarg :lst1  :reader lst1)
      (lst2 :initarg :lst2  :reader lst2))
@@ -864,6 +874,8 @@ sitizens): позволяюn передавать функции в качест
     (cond ((null lst)  nil)
           (t           (cons (myeval (car lst) env)
                              (evlis (cdr lst) env)))))
+  ;;evand
+  ;;evor
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -888,21 +900,23 @@ sitizens): позволяюn передавать функции в качест
       ((numberp lst)               lst)
       ((symbolp lst)               (let ((it (lookup lst env)))
                                      (if (null it)
-                                         (error 'var-not-found-error :variable lst)
+                                         (error 'var-not-found-error :vari lst)
                                          (cdr it))))
       ((equal (car lst) 'quote)    (cadr lst))
       ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
                                        (myeval (caddr lst) env)
                                        (myeval (cadddr lst) env)))
       ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+      ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+      ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+      ((equal (car lst) 'list)     (evlis (cdr lst) env))
+      ;; and
+      ;; or
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                             (pairlis (mapcar #'car (cadr lst))
                                                      (evlis (mapcar #'cadr (cadr lst))
                                                             env)
                                                      env)))
-      ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
-      ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-      ((equal (car lst) 'list)     (evlis (cdr lst) env))
       ((equal (car lst) 'let*)     (evletstar (cadr lst)
                                               (caddr lst)
                                               env))
@@ -988,16 +1002,20 @@ sitizens): позволяюn передавать функции в качест
                              (a 1)
                              (b 2))
                            '((a . 1) (b . ())))))
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b)) nil)))
   (assert (equal 3 (myeval '(progn 1 2 3) nil)))
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; print
+  ;; evlis
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
   (assert (equal '(3 6 42)
                  (myeval '(list (+ a b) (* b c) 42)
                          '((a . 1) (b . 2) (c . 3) (d . 4)))))
+  ;; evand
+  ;; evor
+  (assert (equal '(1 . 2) (myeval '(let ((a 1)
+                                         (b 2))
+                                    (cons a b)) nil)))
   (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
                                             (b 2)
                                             (c (+ a b)))
@@ -1017,6 +1035,7 @@ sitizens): позволяюn передавать функции в качест
                    (myeval '(setq alfa 1) nil)
                    (prog1 *glob-env*
                      (setf *glob-env* nil)))))
+  ;; lambda?
 
   (defun repl ()
     (princ "microlisp>")
