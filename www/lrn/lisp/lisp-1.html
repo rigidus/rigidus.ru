@@ -670,70 +670,129 @@ LIST определяем почти без изменений:
 <div id="outline-container-unnumbered-13" class="outline-2">
 <h2 id="unnumbered-13">Встроенные функции арифметики</h2>
 <div class="outline-text-2" id="text-unnumbered-13">
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="evaddmul_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (+))
-        ((null (cdr lst))  (+ (myeval (car lst) env)))
-        (t                 (+ (myeval (car lst) env)
-                              (evadd (cdr lst) env)))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evmul</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (*))
-        ((null (cdr lst))  (* (myeval (car lst) env)))
-        (t                 (* (myeval (car lst) env)
-                              (evmul (cdr lst) env)))))
-</pre>
-</div>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="evaddmul_1_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 0 (evadd '() nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evadd '(2) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 5 (evadd '(2 3) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
-                 (+ a))
-               (evadd '(2) '((a . 2)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
-                     (b 3))
-                 (+ a b))
-               (evadd '(2 3) '((a . 2) (b . 3)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
-                     (b 3)
-                     (c 4))
-                 (+ a b c))
-               (evadd '(2 3 4) '((a . 2) (b . 3) (c . 4)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (evmul '() nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evmul '(2) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (evmul '(2 3) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 3 4) (evmul '(2 3 4) nil)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
-                 (* a))
-               (evmul '(2) '((a . 2)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
-                     (b 3))
-                 (* a b))
-               (evmul '(2 3) '((a . 2) (b . 3)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
-                     (b 3)
-                     (c 4))
-                 (* a b c))
-               (evmul '(2 3 4) '((a . 2) (b . 3) (c . 4)))))
-</pre>
-</div>
-
 <p>
-Вызов в <code>my-eval</code> использует дополнительный параметр <code>env</code>
+Улучшим наши арифметические функции, сделав их хвосторекурсивными. Для этого добавим
+параметр-аккумулятор, который будет накапливать результат вычисления. Тогда мы сможем
+написать так:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="ariph_1">((equal (car lst) '+)        (evadd (cdr lst) env))
-((equal (car lst) '*)        (evmul (cdr lst) env))
+<pre class="src src-lisp" id="evaddmul_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        0)
+        ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+        (t                 (evadd (cdr lst)
+                                  (+ acc (myeval (car lst) env))
+                                  env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evmul</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        1)
+        ((null (cdr lst))  (* acc (myeval (car lst) env)))
+        (t                 (evmul (cdr lst)
+                                  (* acc (myeval (car lst) env))
+                                  env))))
+</pre>
+</div>
+
+<p>
+Теперь нам нужно помнить, что начальное значение аккумулятора для <code>evadd</code> равно нулю, а
+для <code>evmul</code> - единице.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="evaddmul_1_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 0                (evadd '() 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2                (evadd '(2) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 5                (evadd '(2 3) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (evadd '(2 3 4) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4))    (evadd '(2 (+ 3 4)) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4) 5)  (evadd '(2 (+ 3 4) 5) 0 nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
+                 (+ a))
+               (evadd '(a)
+                      0
+                      '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3))
+                 (+ a b))
+               (evadd '(a b)
+                      0
+                      '((a . 2) (b . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (+ a b c))
+               (evadd '(a b c)
+                      0
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (+ a (+ b c)))
+               (evadd '(a (+ b c))
+                      0
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4)
+                     (d 5))
+                 (+ a (+ b c) d))
+               (evadd '(a (+ b c) d)
+                      0
+                      '((a . 2) (b . 3) (c . 4) (d . 5)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1                (evmul '() 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2                (evmul '(2) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6                (evmul '(2 3) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 3 4)        (evmul '(2 3 4) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 (* 3 4))    (evmul '(2 (* 3 4)) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 (* 3 4) 5)  (evmul '(2 (* 3 4) 5) 1 nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
+                 (* a))
+               (evmul '(2)
+                      1
+                      '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3))
+                 (* a b))
+               (evmul '(2 3)
+                      1
+                      '((a . 2) (b . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (* a b c))
+               (evmul '(2 3 4)
+                      1
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (* a (* b c)))
+               (evmul '(a (* b c))
+                      1
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4)
+                     (d 5))
+                 (* a (* b c) d))
+               (evmul '(a (* b c) d)
+                      1
+                      '((a . 2) (b . 3) (c . 4) (d . 5)))))
+</pre>
+</div>
+
+<p>
+Вызов в <code>my-eval</code> использует аккумулятор и дополнительный параметр <code>env</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="ariph_1">((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+((equal (car lst) '*)        (evmul (cdr lst) 1 env))
 </pre>
 </div>
 
@@ -1079,16 +1138,18 @@ varpairs будут добавлены в окончательное окруж�
         ((null (cdr lst))  (or (myeval (car lst) env)))
         (t                 (or (myeval (car lst) env)
                                (evor (cdr lst) env)))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (+))
-        ((null (cdr lst))  (+ (myeval (car lst) env)))
-        (t                 (+ (myeval (car lst) env)
-                              (evadd (cdr lst) env)))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evmul</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (*))
-        ((null (cdr lst))  (* (myeval (car lst) env)))
-        (t                 (* (myeval (car lst) env)
-                              (evmul (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        0)
+        ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+        (t                 (evadd (cdr lst)
+                                  (+ acc (myeval (car lst) env))
+                                  env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evmul</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        1)
+        ((null (cdr lst))  (* acc (myeval (car lst) env)))
+        (t                 (evmul (cdr lst)
+                                  (* acc (myeval (car lst) env))
+                                  env))))
 (<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
   ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
    (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
@@ -1141,8 +1202,8 @@ varpairs будут добавлены в окончательное окруж�
     ((equal (car lst) 'list)     (evlis (cdr lst) env))
     ((equal (car lst) 'and)      (evand (cdr lst) env))
     ((equal (car lst) 'or)       (evor  (cdr lst) env))
-    ((equal (car lst) '+)        (evadd (cdr lst) env))
-    ((equal (car lst) '*)        (evmul (cdr lst) env))
+    ((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+    ((equal (car lst) '*)        (evmul (cdr lst) 1 env))
     ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
                                           (mypairlis (mapcar #'car (cadr lst))
                                                      (evlis (mapcar #'cadr (cadr lst))
@@ -1176,6 +1237,7 @@ varpairs будут добавлены в окончательное окруж�
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; NULL</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval '(null nil) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal NIL (myeval '(null T) nil)))
@@ -1328,12 +1390,88 @@ varpairs будут добавлены в окончательное окруж�
                      (c 2))
                  (or a b c))
                (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD &#1080; EVMUL</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 3 4) (evmul '(2 3 4) nil)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD &#1080; EVMUL &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 0                (evadd '() 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2                (evadd '(2) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 5                (evadd '(2 3) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (evadd '(2 3 4) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4))    (evadd '(2 (+ 3 4)) 0 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4) 5)  (evadd '(2 (+ 3 4) 5) 0 nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
+                 (+ a))
+               (evadd '(a)
+                      0
+                      '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3))
+                 (+ a b))
+               (evadd '(a b)
+                      0
+                      '((a . 2) (b . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (+ a b c))
+               (evadd '(a b c)
+                      0
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (+ a (+ b c)))
+               (evadd '(a (+ b c))
+                      0
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4)
+                     (d 5))
+                 (+ a (+ b c) d))
+               (evadd '(a (+ b c) d)
+                      0
+                      '((a . 2) (b . 3) (c . 4) (d . 5)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1                (evmul '() 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2                (evmul '(2) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6                (evmul '(2 3) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 3 4)        (evmul '(2 3 4) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 (* 3 4))    (evmul '(2 (* 3 4)) 1 nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (* 2 (* 3 4) 5)  (evmul '(2 (* 3 4) 5) 1 nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2))
+                 (* a))
+               (evmul '(2)
+                      1
+                      '((a . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3))
+                 (* a b))
+               (evmul '(2 3)
+                      1
+                      '((a . 2) (b . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (* a b c))
+               (evmul '(2 3 4)
+                      1
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4))
+                 (* a (* b c)))
+               (evmul '(a (* b c))
+                      1
+                      '((a . 2) (b . 3) (c . 4)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 2)
+                     (b 3)
+                     (c 4)
+                     (d 5))
+                 (* a (* b c) d))
+               (evmul '(a (* b c) d)
+                      1
+                      '((a . 2) (b . 3) (c . 4) (d . 5)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1072;&#1088;&#1080;&#1092;&#1084;&#1077;&#1090;&#1080;&#1095;&#1077;&#1089;&#1082;&#1080;&#1093; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1081;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 7 (myeval 7 nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(+ 1 2) nil)))

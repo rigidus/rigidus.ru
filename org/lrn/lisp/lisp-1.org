@@ -491,66 +491,121 @@ LIST определяем почти без изменений:
 
 * Встроенные функции арифметики
 
+Улучшим наши арифметические функции, сделав их хвосторекурсивными. Для этого добавим
+параметр-аккумулятор, который будет накапливать результат вычисления. Тогда мы сможем
+написать так:
+
 #+NAME: evaddmul_1
 #+BEGIN_SRC lisp
-  (defun evadd (lst env)
-    (cond ((null lst)        (+))
-          ((null (cdr lst))  (+ (myeval (car lst) env)))
-          (t                 (+ (myeval (car lst) env)
-                                (evadd (cdr lst) env)))))
-  (defun evmul (lst env)
-    (cond ((null lst)        (*))
-          ((null (cdr lst))  (* (myeval (car lst) env)))
-          (t                 (* (myeval (car lst) env)
-                                (evmul (cdr lst) env)))))
+  (defun evadd (lst acc env)
+    (cond ((null lst)        0)
+          ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+          (t                 (evadd (cdr lst)
+                                    (+ acc (myeval (car lst) env))
+                                    env))))
+  (defun evmul (lst acc env)
+    (cond ((null lst)        1)
+          ((null (cdr lst))  (* acc (myeval (car lst) env)))
+          (t                 (evmul (cdr lst)
+                                    (* acc (myeval (car lst) env))
+                                    env))))
 #+END_SRC
+
+Теперь нам нужно помнить, что начальное значение аккумулятора для ~evadd~ равно нулю, а
+для ~evmul~ - единице.
 
 #+NAME: evaddmul_1_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVADD
-  (assert (equal 0 (evadd '() nil)))
-  (assert (equal 2 (evadd '(2) nil)))
-  (assert (equal 5 (evadd '(2 3) nil)))
-  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
+  (assert (equal 0                (evadd '() 0 nil)))
+  (assert (equal 2                (evadd '(2) 0 nil)))
+  (assert (equal 5                (evadd '(2 3) 0 nil)))
+  (assert (equal (+ 2 3 4)        (evadd '(2 3 4) 0 nil)))
+  (assert (equal (+ 2 (+ 3 4))    (evadd '(2 (+ 3 4)) 0 nil)))
+  (assert (equal (+ 2 (+ 3 4) 5)  (evadd '(2 (+ 3 4) 5) 0 nil)))
   ;; Тесты для EVADD в окружении
   (assert (equal (let ((a 2))
                    (+ a))
-                 (evadd '(2) '((a . 2)))))
+                 (evadd '(a)
+                        0
+                        '((a . 2)))))
   (assert (equal (let ((a 2)
                        (b 3))
                    (+ a b))
-                 (evadd '(2 3) '((a . 2) (b . 3)))))
+                 (evadd '(a b)
+                        0
+                        '((a . 2) (b . 3)))))
   (assert (equal (let ((a 2)
                        (b 3)
                        (c 4))
                    (+ a b c))
-                 (evadd '(2 3 4) '((a . 2) (b . 3) (c . 4)))))
+                 (evadd '(a b c)
+                        0
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (+ a (+ b c)))
+                 (evadd '(a (+ b c))
+                        0
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4)
+                       (d 5))
+                   (+ a (+ b c) d))
+                 (evadd '(a (+ b c) d)
+                        0
+                        '((a . 2) (b . 3) (c . 4) (d . 5)))))
   ;; Тесты для EVMUL
-  (assert (equal 1 (evmul '() nil)))
-  (assert (equal 2 (evmul '(2) nil)))
-  (assert (equal 6 (evmul '(2 3) nil)))
-  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
+  (assert (equal 1                (evmul '() 1 nil)))
+  (assert (equal 2                (evmul '(2) 1 nil)))
+  (assert (equal 6                (evmul '(2 3) 1 nil)))
+  (assert (equal (* 2 3 4)        (evmul '(2 3 4) 1 nil)))
+  (assert (equal (* 2 (* 3 4))    (evmul '(2 (* 3 4)) 1 nil)))
+  (assert (equal (* 2 (* 3 4) 5)  (evmul '(2 (* 3 4) 5) 1 nil)))
   ;; Тесты для EVMUL в окружении
   (assert (equal (let ((a 2))
                    (* a))
-                 (evmul '(2) '((a . 2)))))
+                 (evmul '(2)
+                        1
+                        '((a . 2)))))
   (assert (equal (let ((a 2)
                        (b 3))
                    (* a b))
-                 (evmul '(2 3) '((a . 2) (b . 3)))))
+                 (evmul '(2 3)
+                        1
+                        '((a . 2) (b . 3)))))
   (assert (equal (let ((a 2)
                        (b 3)
                        (c 4))
                    (* a b c))
-                 (evmul '(2 3 4) '((a . 2) (b . 3) (c . 4)))))
+                 (evmul '(2 3 4)
+                        1
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (* a (* b c)))
+                 (evmul '(a (* b c))
+                        1
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4)
+                       (d 5))
+                   (* a (* b c) d))
+                 (evmul '(a (* b c) d)
+                        1
+                        '((a . 2) (b . 3) (c . 4) (d . 5)))))
 #+END_SRC
 
-Вызов в ~my-eval~ использует дополнительный параметр ~env~
+Вызов в ~my-eval~ использует аккумулятор и дополнительный параметр ~env~
 
 #+NAME: ariph_1
 #+BEGIN_SRC lisp
-  ((equal (car lst) '+)        (evadd (cdr lst) env))
-  ((equal (car lst) '*)        (evmul (cdr lst) env))
+  ((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+  ((equal (car lst) '*)        (evmul (cdr lst) 1 env))
 #+END_SRC
 
 К старым тестам (изменным, чтобы принимать пустое окружение) добавляем новые, которые
@@ -829,16 +884,18 @@ varpairs будут добавлены в окончательное окруж�
           ((null (cdr lst))  (or (myeval (car lst) env)))
           (t                 (or (myeval (car lst) env)
                                  (evor (cdr lst) env)))))
-  (defun evadd (lst env)
-    (cond ((null lst)        (+))
-          ((null (cdr lst))  (+ (myeval (car lst) env)))
-          (t                 (+ (myeval (car lst) env)
-                                (evadd (cdr lst) env)))))
-  (defun evmul (lst env)
-    (cond ((null lst)        (*))
-          ((null (cdr lst))  (* (myeval (car lst) env)))
-          (t                 (* (myeval (car lst) env)
-                                (evmul (cdr lst) env)))))
+  (defun evadd (lst acc env)
+    (cond ((null lst)        0)
+          ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+          (t                 (evadd (cdr lst)
+                                    (+ acc (myeval (car lst) env))
+                                    env))))
+  (defun evmul (lst acc env)
+    (cond ((null lst)        1)
+          ((null (cdr lst))  (* acc (myeval (car lst) env)))
+          (t                 (evmul (cdr lst)
+                                    (* acc (myeval (car lst) env))
+                                    env))))
   (define-condition mypairlis-error (error)
     ((lst1 :initarg :lst1  :reader lst1)
      (lst2 :initarg :lst2  :reader lst2))
@@ -891,8 +948,8 @@ varpairs будут добавлены в окончательное окруж�
       ((equal (car lst) 'list)     (evlis (cdr lst) env))
       ((equal (car lst) 'and)      (evand (cdr lst) env))
       ((equal (car lst) 'or)       (evor  (cdr lst) env))
-      ((equal (car lst) '+)        (evadd (cdr lst) env))
-      ((equal (car lst) '*)        (evmul (cdr lst) env))
+      ((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+      ((equal (car lst) '*)        (evmul (cdr lst) 1 env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                             (mypairlis (mapcar #'car (cadr lst))
                                                        (evlis (mapcar #'cadr (cadr lst))
@@ -926,6 +983,7 @@ varpairs будут добавлены в окончательное окруж�
   (assert (equal 1 (myeval '(car a) '((a . (1 . 2))))))
   (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))))))
   (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))))))
+  ;; Тесты для NULL
   (assert (equal T (myeval '(null ()) nil)))
   (assert (equal T (myeval '(null nil) nil)))
   (assert (equal NIL (myeval '(null T) nil)))
@@ -1078,12 +1136,88 @@ varpairs будут добавлены в окончательное окруж�
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
-  ;; Тесты для EVADD и EVMUL
-  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil)))
-  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil)))
-  ;; Тесты для EVADD и EVMUL в окружении
-  (assert (equal (+ 2 3 4) (evadd '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
-  (assert (equal (* 2 3 4) (evmul '(2 3 4) '((c . 2) (c . 3) (c . 4)))))
+  ;; Тесты для EVADD
+  (assert (equal 0                (evadd '() 0 nil)))
+  (assert (equal 2                (evadd '(2) 0 nil)))
+  (assert (equal 5                (evadd '(2 3) 0 nil)))
+  (assert (equal (+ 2 3 4)        (evadd '(2 3 4) 0 nil)))
+  (assert (equal (+ 2 (+ 3 4))    (evadd '(2 (+ 3 4)) 0 nil)))
+  (assert (equal (+ 2 (+ 3 4) 5)  (evadd '(2 (+ 3 4) 5) 0 nil)))
+  ;; Тесты для EVADD в окружении
+  (assert (equal (let ((a 2))
+                   (+ a))
+                 (evadd '(a)
+                        0
+                        '((a . 2)))))
+  (assert (equal (let ((a 2)
+                       (b 3))
+                   (+ a b))
+                 (evadd '(a b)
+                        0
+                        '((a . 2) (b . 3)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (+ a b c))
+                 (evadd '(a b c)
+                        0
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (+ a (+ b c)))
+                 (evadd '(a (+ b c))
+                        0
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4)
+                       (d 5))
+                   (+ a (+ b c) d))
+                 (evadd '(a (+ b c) d)
+                        0
+                        '((a . 2) (b . 3) (c . 4) (d . 5)))))
+  ;; Тесты для EVMUL
+  (assert (equal 1                (evmul '() 1 nil)))
+  (assert (equal 2                (evmul '(2) 1 nil)))
+  (assert (equal 6                (evmul '(2 3) 1 nil)))
+  (assert (equal (* 2 3 4)        (evmul '(2 3 4) 1 nil)))
+  (assert (equal (* 2 (* 3 4))    (evmul '(2 (* 3 4)) 1 nil)))
+  (assert (equal (* 2 (* 3 4) 5)  (evmul '(2 (* 3 4) 5) 1 nil)))
+  ;; Тесты для EVMUL в окружении
+  (assert (equal (let ((a 2))
+                   (* a))
+                 (evmul '(2)
+                        1
+                        '((a . 2)))))
+  (assert (equal (let ((a 2)
+                       (b 3))
+                   (* a b))
+                 (evmul '(2 3)
+                        1
+                        '((a . 2) (b . 3)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (* a b c))
+                 (evmul '(2 3 4)
+                        1
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4))
+                   (* a (* b c)))
+                 (evmul '(a (* b c))
+                        1
+                        '((a . 2) (b . 3) (c . 4)))))
+  (assert (equal (let ((a 2)
+                       (b 3)
+                       (c 4)
+                       (d 5))
+                   (* a (* b c) d))
+                 (evmul '(a (* b c) d)
+                        1
+                        '((a . 2) (b . 3) (c . 4) (d . 5)))))
   ;; Тесты для арифметических функций
   (assert (equal 7 (myeval 7 nil)))
   (assert (equal 3 (myeval '(+ 1 2) nil)))
