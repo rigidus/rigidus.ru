@@ -482,6 +482,12 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
 </li>
 </ul>
 
+<p>
+И наконец третье изменение, совсем небольшое, происходит из-за того, что мы сделаем
+вызов <code>evlis</code> хвосторекурсивным. Это добавляет дополнительный параметр-аккумулятор в
+вызов <code>evlic</code>. См раздел <a href="#unnumbered-17">LIST</a> для подробностей.
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_2">&lt;&lt;myeval_evcond_2&gt;&gt;
@@ -511,7 +517,7 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
     &lt;&lt;myeval_lambda_2&gt;&gt;
     (t
      (myapply (myeval (car lst) env)
-              (evlis (cdr lst) env)
+              (evlis (cdr lst) nil env)
               env))))
 </pre>
 </div>
@@ -799,31 +805,81 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
 <div id="outline-container-unnumbered-17" class="outline-3">
 <h3 id="unnumbered-17">LIST</h3>
 <div class="outline-text-3" id="text-unnumbered-17">
+<p>
+Улучшим наш <code>evlis</code>, сделав его хвосторекурсивным. Для этого добавим
+параметр-аккумулятор, который будет накапливать результат вычисления. Итак, <code>evlis</code>,
+полученный на предыдущем шаге выглядит так:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evlis_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
   (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
         (t           (cons (myeval (car lst) env)
-                     (evlis (cdr lst) env)))))
+                           (evlis (cdr lst) env)))))
 </pre>
 </div>
 
+<p>
+Переименуем <code>lst</code> в <code>unevaled</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  nil)
+        (t           (cons (myeval (car unevaled) env)
+                           (evlis (cdr unevaled) env)))))
+</pre>
+</div>
+
+<p>
+Преобразуем рекурсию в хвостовую с аккумулятором:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlis_2">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)
+                                 env))))
+</pre>
+</div>
+
+<p>
+Теперь, на каждом шаге рекурсии <code>evlis</code> берет первый элемент списка <code>unevaled</code> и
+оценивает его. Результат оценки добавляется в начало списка <code>evaled</code>. Когда рекурсия
+завершается (т.е. <code>unevaled</code> пуст) мы переворачиваем список <code>evaled</code>, чтобы восстановить
+правильный порядок. Таким образом, получается что хвосторекурсивный <code>evlis</code> эффективно
+оценивает все переданные ему формы в окружении <code>env</code>.
+</p>
+
+<p>
+Протестируем новый <code>evlis</code>
+</p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evlis_2_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ 1 2) (* 2 3) 42) nil)))
+               (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+               (evlis '((+ a b) (* b c) 42)
+                      nil
+                      '((a . 1) (b . 2) (c . 3) (d . 4)))))
 </pre>
 </div>
 
+<p>
+Вызывать <code>evlis</code> теперь следует с дополнительным параметром-аккумулятором
+</p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_list_2">((equal (car lst) 'list)     (evlis (cdr lst) env))
+<pre class="src src-lisp" id="myeval_list_2">((equal (car lst) 'list)     (evlis (cdr lst) nil env))
 </pre>
 </div>
 
@@ -1073,12 +1129,16 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
 </pre>
 </div>
 
+<p>
+Добавляем еще один параметр к вызову <code>evlis</code>
+</p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_let_2">((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
                                       (pairlis (mapcar #'car (cadr lst))
                                                (evlis (mapcar #'cadr (cadr lst))
+                                                      nil
                                                       env)
                                                env)))
 </pre>
@@ -1345,10 +1405,12 @@ lambda-функцию. В соответствии со стандартом <co
         ((null (cdr lst))  (myeval (car lst) env))
         (t                 (myeval (car lst) env)
                            (evprogn (cdr lst) env))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
-        (t           (cons (myeval (car lst) env)
-                           (evlis (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)
+                                 env))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
         ((null (cdr lst))  (and (myeval (car lst) env)))
@@ -1392,12 +1454,13 @@ lambda-функцию. В соответствии со стандартом <co
     ((equal (car lst) 'cond)     (evcond (cdr lst) env))
     ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
     ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-    ((equal (car lst) 'list)     (evlis (cdr lst) env))
+    ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
     ((equal (car lst) 'and)      (evand (cdr lst) env))
     ((equal (car lst) 'or)       (evor  (cdr lst) env))
     ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
                                           (pairlis (mapcar #'car (cadr lst))
                                                    (evlis (mapcar #'cadr (cadr lst))
+                                                          nil
                                                           env)
                                                    env)))
     ((equal (car lst) 'let*)     (evletstar (cadr lst)
@@ -1419,7 +1482,7 @@ lambda-функцию. В соответствии со стандартом <co
     ((equal (car lst) 'lambda)   lst)
     (t
      (myapply (myeval (car lst) env)
-              (evlis (cdr lst) env)
+              (evlis (cdr lst) nil env)
               env))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 0                (evadd '() 0)))
@@ -1600,10 +1663,12 @@ lambda-функцию. В соответствии со стандартом <co
                (myeval '(print a) '((b . 23) (a . 12)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ 1 2) (* 2 3) 42) nil)))
+               (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+               (evlis '((+ a b) (* b c) 42)
+                      nil
+                      '((a . 1) (b . 2) (c . 3) (d . 4)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LIST</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
                (myeval '(list (+ 1 2) (* 2 3) 42) nil)))

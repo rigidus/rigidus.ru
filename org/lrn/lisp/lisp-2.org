@@ -335,6 +335,10 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
 - вычисленные аргументы
 - окружение
 
+И наконец третье изменение, совсем небольшое, происходит из-за того, что мы сделаем
+вызов ~evlis~ хвосторекурсивным. Это добавляет дополнительный параметр-аккумулятор в
+вызов ~evlic~. См раздел [[*LIST][LIST]] для подробностей.
+
 #+NAME: myeval_2
 #+BEGIN_SRC lisp
   <<myeval_evcond_2>>
@@ -364,7 +368,7 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
       <<myeval_lambda_2>>
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)
+                (evlis (cdr lst) nil env)
                 env))))
 #+END_SRC
 
@@ -596,29 +600,63 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
 
 ** LIST
 
-#+NAME: myeval_evlis_2
+Улучшим наш ~evlis~, сделав его хвосторекурсивным. Для этого добавим
+параметр-аккумулятор, который будет накапливать результат вычисления. Итак, ~evlis~,
+полученный на предыдущем шаге выглядит так:
+
 #+BEGIN_SRC lisp
   (defun evlis (lst env)
     (cond ((null lst)  nil)
           (t           (cons (myeval (car lst) env)
-                       (evlis (cdr lst) env)))))
+                             (evlis (cdr lst) env)))))
 #+END_SRC
 
+Переименуем ~lst~ в ~unevaled~:
+
+#+BEGIN_SRC lisp
+  (defun evlis (unevaled env)
+    (cond ((null unevaled)  nil)
+          (t           (cons (myeval (car unevaled) env)
+                             (evlis (cdr unevaled) env)))))
+#+END_SRC
+
+Преобразуем рекурсию в хвостовую с аккумулятором:
+
+#+NAME: myeval_evlis_2
+#+BEGIN_SRC lisp
+  (defun evlis (unevaled evaled env)
+    (cond ((null unevaled)  (reverse evaled))
+          (t                (evlis (cdr unevaled)
+                                   (cons (myeval (car unevaled) env)
+                                         evaled)
+                                   env))))
+#+END_SRC
+
+Теперь, на каждом шаге рекурсии ~evlis~ берет первый элемент списка ~unevaled~ и
+оценивает его. Результат оценки добавляется в начало списка ~evaled~. Когда рекурсия
+завершается (т.е. ~unevaled~ пуст) мы переворачиваем список ~evaled~, чтобы восстановить
+правильный порядок. Таким образом, получается что хвосторекурсивный ~evlis~ эффективно
+оценивает все переданные ему формы в окружении ~env~.
+
+Протестируем новый ~evlis~
 
 #+NAME: myeval_evlis_2_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
-                 (evlis '((+ 1 2) (* 2 3) 42) nil)))
+                 (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
   ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
-                 (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+                 (evlis '((+ a b) (* b c) 42)
+                        nil
+                        '((a . 1) (b . 2) (c . 3) (d . 4)))))
 #+END_SRC
 
+Вызывать ~evlis~ теперь следует с дополнительным параметром-аккумулятором
 
 #+NAME: myeval_list_2
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'list)     (evlis (cdr lst) env))
+  ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
 #+END_SRC
 
 
@@ -840,12 +878,14 @@ MYEVAL на MYEVAL и MYAPPLY. В MYAPPLY мы будем помещать вс�
                    (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
 
+Добавляем еще один параметр к вызову ~evlis~
 
 #+NAME: myeval_let_2
 #+BEGIN_SRC lisp
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                         (pairlis (mapcar #'car (cadr lst))
                                                  (evlis (mapcar #'cadr (cadr lst))
+                                                        nil
                                                         env)
                                                  env)))
 #+END_SRC
@@ -1066,10 +1106,12 @@ lambda-функцию. В соответствии со стандартом ~de
           ((null (cdr lst))  (myeval (car lst) env))
           (t                 (myeval (car lst) env)
                              (evprogn (cdr lst) env))))
-  (defun evlis (lst env)
-    (cond ((null lst)  nil)
-          (t           (cons (myeval (car lst) env)
-                             (evlis (cdr lst) env)))))
+  (defun evlis (unevaled evaled env)
+    (cond ((null unevaled)  (reverse evaled))
+          (t                (evlis (cdr unevaled)
+                                   (cons (myeval (car unevaled) env)
+                                         evaled)
+                                   env))))
   (defun evand (lst env)
     (cond ((null lst)        (and))
           ((null (cdr lst))  (and (myeval (car lst) env)))
@@ -1113,12 +1155,13 @@ lambda-функцию. В соответствии со стандартом ~de
       ((equal (car lst) 'cond)     (evcond (cdr lst) env))
       ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
       ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-      ((equal (car lst) 'list)     (evlis (cdr lst) env))
+      ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
       ((equal (car lst) 'and)      (evand (cdr lst) env))
       ((equal (car lst) 'or)       (evor  (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                             (pairlis (mapcar #'car (cadr lst))
                                                      (evlis (mapcar #'cadr (cadr lst))
+                                                            nil
                                                             env)
                                                      env)))
       ((equal (car lst) 'let*)     (evletstar (cadr lst)
@@ -1140,7 +1183,7 @@ lambda-функцию. В соответствии со стандартом ~de
       ((equal (car lst) 'lambda)   lst)
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)
+                (evlis (cdr lst) nil env)
                 env))))
   ;; Тесты для EVADD
   (assert (equal 0                (evadd '() 0)))
@@ -1321,10 +1364,12 @@ lambda-функцию. В соответствии со стандартом ~de
                  (myeval '(print a) '((b . 23) (a . 12)))))
   ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
-                 (evlis '((+ 1 2) (* 2 3) 42) nil)))
+                 (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
   ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
-                 (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+                 (evlis '((+ a b) (* b c) 42)
+                        nil
+                        '((a . 1) (b . 2) (c . 3) (d . 4)))))
   ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))

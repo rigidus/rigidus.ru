@@ -439,8 +439,6 @@ sitizens): позволяюn передавать функции в качест
 
 * MyEval
 
-Добавляем вычисление головы формы в конце
-
 #+NAME: myeval_3
 #+BEGIN_SRC lisp
   <<myeval_evcond_3>>
@@ -470,7 +468,7 @@ sitizens): позволяюn передавать функции в качест
       <<myeval_lambda_3>>
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)
+                (evlis (cdr lst) nil env)
                 env))))
 #+END_SRC
 
@@ -689,26 +687,30 @@ sitizens): позволяюn передавать функции в качест
 
 #+NAME: myeval_evlis_3
 #+BEGIN_SRC lisp
-  (defun evlis (lst env)
-    (cond ((null lst)  nil)
-          (t           (cons (myeval (car lst) env)
-                             (evlis (cdr lst) env)))))
+  (defun evlis (unevaled evaled env)
+    (cond ((null unevaled)  (reverse evaled))
+          (t                (evlis (cdr unevaled)
+                                   (cons (myeval (car unevaled) env)
+                                         evaled)
+                                   env))))
 #+END_SRC
 
 #+NAME: myeval_evlis_3_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
-                 (evlis '((+ 1 2) (* 2 3) 42) nil)))
+                 (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
   ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
-                 (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+                 (evlis '((+ a b) (* b c) 42)
+                        nil
+                        '((a . 1) (b . 2) (c . 3) (d . 4)))))
 #+END_SRC
 
 
 #+NAME: myeval_list_3
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'list)     (evlis (cdr lst) env))
+  ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
 #+END_SRC
 
 
@@ -935,6 +937,7 @@ sitizens): позволяюn передавать функции в качест
   ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                         (pairlis (mapcar #'car (cadr lst))
                                                  (evlis (mapcar #'cadr (cadr lst))
+                                                        nil
                                                         env)
                                                  env)))
 #+END_SRC
@@ -1141,10 +1144,12 @@ sitizens): позволяюn передавать функции в качест
           ((null (cdr lst))  (myeval (car lst) env))
           (t                 (myeval (car lst) env)
                              (evprogn (cdr lst) env))))
-  (defun evlis (lst env)
-    (cond ((null lst)  nil)
-          (t           (cons (myeval (car lst) env)
-                             (evlis (cdr lst) env)))))
+  (defun evlis (unevaled evaled env)
+    (cond ((null unevaled)  (reverse evaled))
+          (t                (evlis (cdr unevaled)
+                                   (cons (myeval (car unevaled) env)
+                                         evaled)
+                                   env))))
   (defun evand (lst env)
     (cond ((null lst)        (and))
           ((null (cdr lst))  (and (myeval (car lst) env)))
@@ -1188,12 +1193,13 @@ sitizens): позволяюn передавать функции в качест
       ((equal (car lst) 'cond)     (evcond (cdr lst) env))
       ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
       ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-      ((equal (car lst) 'list)     (evlis (cdr lst) env))
+      ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
       ((equal (car lst) 'and)      (evand (cdr lst) env))
       ((equal (car lst) 'or)       (evor  (cdr lst) env))
       ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
                                             (pairlis (mapcar #'car (cadr lst))
                                                      (evlis (mapcar #'cadr (cadr lst))
+                                                            nil
                                                             env)
                                                      env)))
       ((equal (car lst) 'let*)     (evletstar (cadr lst)
@@ -1216,7 +1222,7 @@ sitizens): позволяюn передавать функции в качест
       ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
       (t
        (myapply (myeval (car lst) env)
-                (evlis (cdr lst) env)
+                (evlis (cdr lst) nil env)
                 env))))
   ;; Тесты для cons-ячеек
   (assert (equal '(1 . 2) (myeval '(cons 1 2) nil)))
@@ -1383,10 +1389,12 @@ sitizens): позволяюn передавать функции в качест
                  (myeval '(print a) '((b . 23) (a . 12)))))
   ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
-                 (evlis '((+ 1 2) (* 2 3) 42) nil)))
+                 (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
   ;; Тесты для EVLIS в окружении
   (assert (equal '(3 6 42)
-                 (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+                 (evlis '((+ a b) (* b c) 42)
+                        nil
+                        '((a . 1) (b . 2) (c . 3) (d . 4)))))
   ;; Тесты для LIST
   (assert (equal '(3 6 42)
                  (myeval '(list (+ 1 2) (* 2 3) 42) nil)))

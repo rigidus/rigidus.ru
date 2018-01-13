@@ -576,10 +576,6 @@ microlisp&gt;
 <div id="outline-container-unnumbered-8" class="outline-2">
 <h2 id="unnumbered-8">MyEval</h2>
 <div class="outline-text-2" id="text-unnumbered-8">
-<p>
-Добавляем вычисление головы формы в конце
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_3">&lt;&lt;myeval_evcond_3&gt;&gt;
@@ -609,7 +605,7 @@ microlisp&gt;
     &lt;&lt;myeval_lambda_3&gt;&gt;
     (t
      (myapply (myeval (car lst) env)
-              (evlis (cdr lst) env)
+              (evlis (cdr lst) nil env)
               env))))
 </pre>
 </div>
@@ -872,10 +868,12 @@ microlisp&gt;
 <div class="outline-text-3" id="text-unnumbered-16">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evlis_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
-        (t           (cons (myeval (car lst) env)
-                           (evlis (cdr lst) env)))))
+<pre class="src src-lisp" id="myeval_evlis_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)
+                                 env))))
 </pre>
 </div>
 
@@ -883,17 +881,19 @@ microlisp&gt;
 
 <pre class="src src-lisp" id="myeval_evlis_3_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ 1 2) (* 2 3) 42) nil)))
+               (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+               (evlis '((+ a b) (* b c) 42)
+                      nil
+                      '((a . 1) (b . 2) (c . 3) (d . 4)))))
 </pre>
 </div>
 
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_list_3">((equal (car lst) 'list)     (evlis (cdr lst) env))
+<pre class="src src-lisp" id="myeval_list_3">((equal (car lst) 'list)     (evlis (cdr lst) nil env))
 </pre>
 </div>
 
@@ -1146,6 +1146,7 @@ microlisp&gt;
 <pre class="src src-lisp" id="myeval_let_3">((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
                                       (pairlis (mapcar #'car (cadr lst))
                                                (evlis (mapcar #'cadr (cadr lst))
+                                                      nil
                                                       env)
                                                env)))
 </pre>
@@ -1393,10 +1394,12 @@ microlisp&gt;
         ((null (cdr lst))  (myeval (car lst) env))
         (t                 (myeval (car lst) env)
                            (evprogn (cdr lst) env))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
-        (t           (cons (myeval (car lst) env)
-                           (evlis (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (unevaled evaled env)
+  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)
+                                 env))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
         ((null (cdr lst))  (and (myeval (car lst) env)))
@@ -1440,12 +1443,13 @@ microlisp&gt;
     ((equal (car lst) 'cond)     (evcond (cdr lst) env))
     ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
     ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
-    ((equal (car lst) 'list)     (evlis (cdr lst) env))
+    ((equal (car lst) 'list)     (evlis (cdr lst) nil env))
     ((equal (car lst) 'and)      (evand (cdr lst) env))
     ((equal (car lst) 'or)       (evor  (cdr lst) env))
     ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
                                           (pairlis (mapcar #'car (cadr lst))
                                                    (evlis (mapcar #'cadr (cadr lst))
+                                                          nil
                                                           env)
                                                    env)))
     ((equal (car lst) 'let*)     (evletstar (cadr lst)
@@ -1468,7 +1472,7 @@ microlisp&gt;
     ((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
     (t
      (myapply (myeval (car lst) env)
-              (evlis (cdr lst) env)
+              (evlis (cdr lst) nil env)
               env))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; cons-&#1103;&#1095;&#1077;&#1077;&#1082;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil)))
@@ -1635,10 +1639,12 @@ microlisp&gt;
                (myeval '(print a) '((b . 23) (a . 12)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ 1 2) (* 2 3) 42) nil)))
+               (evlis '((+ 1 2) (* 2 3) 42) nil nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
-               (evlis '((+ a b) (* b c) 42) '((a . 1) (b . 2) (c . 3) (d . 4)))))
+               (evlis '((+ a b) (* b c) 42)
+                      nil
+                      '((a . 1) (b . 2) (c . 3) (d . 4)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LIST</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
                (myeval '(list (+ 1 2) (* 2 3) 42) nil)))
