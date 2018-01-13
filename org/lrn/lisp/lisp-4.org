@@ -567,8 +567,6 @@ PRINT - это функция, т.к. она оценивает свои арг�
       acc))
 #+END_SRC
 
-[TODO:gmm] - как сделать это полностью автоматически. Нужен будет code walker?
-
 Теперь перепишем хвосторекурсивный факториал в cps-стиле. Чтобы преобразовать
 ~fact-tail-call~ в ~fact-tail-call-cps~ добавим параметр-продолжение ~cont~, в который
 будем передавать функцию, которая представляет собой остаток вычисления. ~(- n 1)~ мы
@@ -1550,77 +1548,7 @@ cps
 
 [TODO:gmm] Добавить тестов (и бэкпортировать их в предыдущие шаги)
 
-* TODO OldTests
-
-Тут еще кое-какие тесты, которые стоило бы отсортировать и удалить лишние. Но я пока не
-делаю этого так как они все работают
-
-#+NAME: oldtest_4
-#+BEGIN_SRC lisp
-  ;; test number eval
-  (assert (equal 123 (myeval 123 nil #'err #'ok)))
-
-  ;; test autoreferenced functions
-  (assert (equal '+ (myeval '+  nil #'err #'ok)))
-
-  ;; test booleans
-  (assert (equal 't   (myeval 't    nil #'err #'ok)))
-  (assert (equal 'nil (myeval 'nil  nil #'err #'ok)))
-
-  ;; test lookup symbols in local environment
-  (assert (equal nil (myeval 'alfa  nil              (lambda (x) (format t "~%err: ~A" x) nil)  #'ok)))
-  (assert (equal 345 (myeval 'alfa  '((alfa . 345))  #'err                                      #'ok)))
-  ;; test lookup symbols in global environment
-  (let ((*glob-env* '((alfa . 111))))
-    (assert (equal 111 (myeval 'alfa  nil (lambda (x) (format t "~%err: ~A" x) nil)  #'ok)))
-    (assert (equal nil (myeval 'beta  nil (lambda (x) (format t "~%err: ~A" x) nil)  #'ok))))
-
-  ;; test quote
-  (assert (equal 'zzz (myeval '(quote zzz)  nil #'err #'ok)))
-
-  ;; test if
-  (assert (equal 1 (myeval '(if t 1 2)  nil #'err #'ok)))
-  (assert (equal 2 (myeval '(if nil 1 2)  nil #'err #'ok)))
-
-
-  (assert (equal 1 (myeval '(car (quote (1 2 3))) nil #'err #'ok)))
-  (assert (equal 42 (myeval '(cond ((null '()) 42) (42 666)) nil #'err #'ok)))
-  (assert (equal 55 (myeval '((lambda (x y) (+ x y)) 42 13) nil #'err #'ok)))
-  (assert (equal '(3 . 42)  (myeval '(let ((x (+ 1 2))
-                                           (y 42))
-                                      (cons x y))
-                                    nil #'err #'ok)))
-  (assert (equal 2 (myeval '(progn (print (+ 1 4))
-                             2)
-                           nil #'err #'ok)))
-  ;; NB:ERR!
-  (assert (equal '(3 . 42)  (myeval '(let ((x (+ 1 2))
-                                           (y 42))
-                                      (print x)
-                                      (print y)
-                                      (cons x y))
-                                    nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let* ((x 42) (y x))
-                              y)
-                            nil #'err #'ok)))
-
-  (assert (equal 84 (myeval '(let* ((x 42) (y (* 2 x)))
-                              y)
-                            nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let* ((x 42) (y (* 2 x)))
-                              y
-                              x)
-                            nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let ((x 42) (y 777))
-                              y
-                              x)
-                            nil #'err #'ok)))
-#+END_SRC
-
-* TODO Итоги
+* Итоги
 
 #+BEGIN_SRC lisp :tangle lisp-4.lisp :noweb tangle :exports code :padline no :comments none
   ;; CPS-версия ASSOC
@@ -1648,9 +1576,6 @@ cps
 
   ;; Тесты для MYEVAL
   <<myeval_4_test>>
-
-  ;; Старые тесты
-  <<oldtest_4>>
 
   ;; REPL
   (defun repl ()
@@ -2222,69 +2147,6 @@ cps
   ;;                  (prog1 *glob-env*
   ;;                    (setf *glob-env* nil)))))
   ;; lambda?
-
-  ;; Старые тесты
-  ;; test number eval
-  (assert (equal 123 (myeval 123 nil #'err #'ok)))
-
-  ;; test autoreferenced functions
-  (assert (equal '+ (myeval '+  nil #'err #'ok)))
-
-  ;; test booleans
-  (assert (equal 't   (myeval 't    nil #'err #'ok)))
-  (assert (equal 'nil (myeval 'nil  nil #'err #'ok)))
-
-  ;; test lookup symbols in local environment
-  (assert (equal nil (myeval 'alfa  nil              (lambda (x) (format t "~%err: ~A" x) nil)  #'ok)))
-  (assert (equal 345 (myeval 'alfa  '((alfa . 345))  #'err                                      #'ok)))
-  ;; test lookup symbols in global environment
-  (let ((*glob-env* '((alfa . 111))))
-    (assert (equal 111 (myeval 'alfa  nil (lambda (x) (format t "~%err: ~A" x) nil)  #'ok)))
-    (assert (equal nil (myeval 'beta  nil (lambda (x) (format t "~%err: ~A" x) nil)  #'ok))))
-
-  ;; test quote
-  (assert (equal 'zzz (myeval '(quote zzz)  nil #'err #'ok)))
-
-  ;; test if
-  (assert (equal 1 (myeval '(if t 1 2)  nil #'err #'ok)))
-  (assert (equal 2 (myeval '(if nil 1 2)  nil #'err #'ok)))
-
-
-  (assert (equal 1 (myeval '(car (quote (1 2 3))) nil #'err #'ok)))
-  (assert (equal 42 (myeval '(cond ((null '()) 42) (42 666)) nil #'err #'ok)))
-  (assert (equal 55 (myeval '((lambda (x y) (+ x y)) 42 13) nil #'err #'ok)))
-  (assert (equal '(3 . 42)  (myeval '(let ((x (+ 1 2))
-                                           (y 42))
-                                      (cons x y))
-                                    nil #'err #'ok)))
-  (assert (equal 2 (myeval '(progn (print (+ 1 4))
-                             2)
-                           nil #'err #'ok)))
-  ;; NB:ERR!
-  (assert (equal '(3 . 42)  (myeval '(let ((x (+ 1 2))
-                                           (y 42))
-                                      (print x)
-                                      (print y)
-                                      (cons x y))
-                                    nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let* ((x 42) (y x))
-                              y)
-                            nil #'err #'ok)))
-
-  (assert (equal 84 (myeval '(let* ((x 42) (y (* 2 x)))
-                              y)
-                            nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let* ((x 42) (y (* 2 x)))
-                              y
-                              x)
-                            nil #'err #'ok)))
-
-  (assert (equal 42 (myeval '(let ((x 42) (y 777))
-                              y
-                              x)
-                            nil #'err #'ok)))
 
   ;; REPL
   (defun repl ()
