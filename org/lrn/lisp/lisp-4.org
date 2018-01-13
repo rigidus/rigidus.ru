@@ -266,111 +266,115 @@ funarg-problem мы можем передавать функции, мы мог�
 
 ** Встроенные функции арифметики
 
-Вспомогательные функции ~evadd~ и ~evmul~ теперь тоже принимают продолжения:
-
-[TODO:gmm] Преобразовать в CPS с аккумулятором
+Вспомогательные функции ~evadd~ и ~evmul~ мы не будем преобразовывать в CPS потому что
+они не являются частью интерпретатора. Поэтому этот раздел остается без изменений
 
 #+NAME: evaddmul_4
 #+BEGIN_SRC lisp
-  (defun evadd (lst env errcont cont)
-    (cond ((null lst)        (funcall cont (+)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (+ x))))
-          (t                 (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (+ x (evadd (cdr lst) env errcont cont)))))))
-  (defun evmul (lst env errcont cont)
-    (cond ((null lst)        (funcall cont (*)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (* x))))
-          (t                 (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (* x (evmul (cdr lst) env errcont cont)))))))
+  (defun evadd (lst acc)
+    (cond ((null lst)        0)
+          ((null (cdr lst))  (+ acc (car lst)))
+          (t                 (evadd (cdr lst)
+                                    (+ acc (car lst))))))
+  (defun evmul (lst acc)
+    (cond ((null lst)        1)
+          ((null (cdr lst))  (* acc (car lst)))
+          (t                 (evmul (cdr lst)
+                                    (* acc (car lst))))))
 #+END_SRC
 
 #+NAME: evaddmul_4_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVADD
-  (assert (equal 0 (evadd '() nil #'err #'ok)))
-  (assert (equal 2 (evadd '(2) nil #'err #'ok)))
-  (assert (equal 5 (evadd '(2 3) nil #'err #'ok)))
-  (assert (equal (+ 2 3 4) (evadd '(2 3 4) nil #'err #'ok)))
-  ;; Тесты для EVADD в окружении
-  (assert (equal (let ((a 2))
-                   (+ a))
-                 (evadd '(2)
-                        '((a . 2))
-                        #'err #'ok)))
-  (assert (equal (let ((a 2)
-                       (b 3))
-                   (+ a b))
-                 (evadd '(2 3)
-                        '((a . 2) (b . 3))
-                        #'err #'ok)))
-  (assert (equal (let ((a 2)
-                       (b 3)
-                       (c 4))
-                   (+ a b c))
-                 (evadd '(2 3 4)
-                        '((a . 2) (b . 3) (c . 4))
-                        #'err #'ok)))
+  (assert (equal 0                (evadd '() 0)))
+  (assert (equal 2                (evadd '(2) 0)))
+  (assert (equal 5                (evadd '(2 3) 0)))
+  (assert (equal (+ 2 3 4)        (evadd '(2 3 4) 0)))
   ;; Тесты для EVMUL
-  (assert (equal 1 (evmul '() nil #'err #'ok)))
-  (assert (equal 2 (evmul '(2) nil #'err #'ok)))
-  (assert (equal 6 (evmul '(2 3) nil #'err #'ok)))
-  (assert (equal (* 2 3 4) (evmul '(2 3 4) nil #'err #'ok)))
-  ;; Тесты для EVMUL в окружении
-  (assert (equal (let ((a 2))
-                   (* a))
-                 (evmul '(2)
-                        '((a . 2))
-                        #'err #'ok)))
-  (assert (equal (let ((a 2)
-                       (b 3))
-                   (* a b))
-                 (evmul '(2 3)
-                        '((a . 2) (b . 3))
-                        #'err #'ok)))
-  (assert (equal (let ((a 2)
-                       (b 3)
-                       (c 4))
-                   (* a b c))
-                 (evmul '(2 3 4)
-                        '((a . 2) (b . 3) (c . 4))
-                        #'err #'ok)))
+  (assert (equal 1                (evmul '() 1)))
+  (assert (equal 2                (evmul '(2) 1)))
+  (assert (equal 6                (evmul '(2 3) 1)))
+  (assert (equal (* 2 3 4)        (evmul '(2 3 4) 1)))
 #+END_SRC
-
-Арифметические функции теперь вызывают продолжение ~cont~, передавая ему в качестве
-параметра результат своих вычислений.
-
-[TODO:gmm] Так как у нас теперь есть EVLIS, мы наконец можем отказаться от вызова
-~myeval~ в EVADD и EVMUL
 
 #+NAME: myapply_ariph_4
 #+BEGIN_SRC lisp
-  ((equal fn '+)               (funcall cont (apply #'+ args)))
-  ((equal fn '*)               (funcall cont (apply #'* args)))
+  ((equal fn '+)               (funcall cont (evadd args 0)))
+  ((equal fn '*)               (funcall cont (evmul args 1)))
 #+END_SRC
-
-Тесты такие-же, но теперь принимают продолжения
-
-[TODO:gmm] расширить и бэкпортить тесты арифметики
 
 #+NAME: myapply_ariph_4_test
 #+BEGIN_SRC lisp
-  ;; Тесты арифметики в окружениях (TODO: расширить и бэкпортить)
-  (assert (equal 7 (myeval 7 nil #'err #'ok)))
-  (assert (equal 3 (myeval '(+ 1 2) nil #'err #'ok)))
-  (assert (equal 3 (myeval '(+ 2 3 17) nil #'err #'ok)))
-
-  (trace myeval)
-  (trave evadd)
-
-  (assert (equal 21 (myeval '(* (+ 1 2) (+ 3 4)) nil #'err #'ok)))
-  (assert (equal 2 (myeval 'a '((a . 2)) #'err #'ok)))
-  (assert (equal 47 (myeval '(+ a b) '((a . 45) (b . 2)) #'err #'ok)))
+  ;; Тесты для сложения
+  (assert (equal 0                (myeval '(+) nil #'err #'ok)))
+  (assert (equal (+ 2)            (myeval '(+ 2) nil #'err #'ok)))
+  (assert (equal (+ 2 3)          (myeval '(+ 2 3) nil #'err #'ok)))
+  (assert (equal (+ 2 3 4)        (myeval '(+ 2 3 4) nil #'err #'ok)))
+  (assert (equal (+ 2 (+ 3 4))    (myeval '(+ 2 (+ 3 4)) nil #'err #'ok)))
+  (assert (equal (+ 2 (+ 3 4) 5)  (myeval '(+ 2 (+ 3 4) 5) nil #'err #'ok)))
+  ;; Тесты для умножения
+  (assert (equal 1                (myeval '(*) nil #'err #'ok)))
+  (assert (equal (* 2)            (myeval '(* 2) nil #'err #'ok)))
+  (assert (equal (* 2 3)          (myeval '(* 2 3) nil #'err #'ok)))
+  (assert (equal (* 2 3 4)        (myeval '(* 2 3 4) nil #'err #'ok)))
+  (assert (equal (* 2 (* 3 4))    (myeval '(* 2 (* 3 4)) nil #'err #'ok)))
+  (assert (equal (* 2 (* 3 4) 5)  (myeval '(* 2 (* 3 4) 5) nil #'err #'ok)))
+  ;; Тесты для сложения в окружении
+  (assert (equal 0
+                 (myeval '(+) nil #'err #'ok)))
+  (assert (equal (let ((a 2))
+                   (+ a))
+                 (myeval '(+ a)
+                         '((a . 2))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3))
+                   (+ a b))
+                 (myeval '(+ a b)
+                         '((a . 2) (b . 3))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (+ a b c))
+                 (myeval '(+ a b c)
+                         '((a . 2) (b . 3) (c . 4))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (+ a (+ b c)))
+                 (myeval '(+ a (+ b c))
+                         '((a . 2) (b . 3) (c . 4))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
+                   (+ a (+ b c) d))
+                 (myeval '(+ a (+ b c) d)
+                         '((a . 2) (b . 3) (c . 4) (d . 5))
+                         #'err #'ok)))
+  ;; Тесты для умножения  в окружении
+  (assert (equal 1
+                 (myeval '(*) nil #'err #'ok)))
+  (assert (equal (let ((a 2))
+                   (* a))
+                 (myeval '(* a)
+                         '((a . 2))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3))
+                   (* a b))
+                 (myeval '(* a b)
+                         '((a . 2) (b . 3))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (* a b c))
+                 (myeval '(* a b c)
+                         '((a . 2) (b . 3) (c . 4))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (* a (* b c)))
+                 (myeval '(* a (* b c))
+                         '((a . 2) (b . 3) (c . 4))
+                         #'err #'ok)))
+  (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
+                   (* a (* b c) d))
+                 (myeval '(* a (* b c) d)
+                         '((a . 2) (b . 3) (c . 4) (d . 5))
+                         #'err #'ok)))
 #+END_SRC
 
 ** CLOSURE
