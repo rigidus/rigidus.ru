@@ -293,7 +293,7 @@
 
 ** CLOSURE
 
-Пробрасываем ~catch-env~
+Пробрасываем ~catch-env~, а ~block-env~ берем из замыкания:
 
 #+NAME: myapply_closure_5
 #+BEGIN_SRC lisp
@@ -301,6 +301,7 @@
                                        (pairlis (closure-args fn)
                                                 args
                                                 (closure-env fn))
+                                       (closure-block-env fn)
                                        catch-env
                                        errcont cont))
 #+END_SRC
@@ -314,7 +315,7 @@
                                 (lambda (y) x))
                               1)
                              2)
-                           nil #'err #'ok)))
+                           nil nil nil #'err #'ok)))
 #+END_SRC
 
 ** PRINT
@@ -332,7 +333,7 @@
   (assert (equal (with-output-to-string (*standard-output*)
                    (print 12))
                  (with-output-to-string (*standard-output*)
-                   (myeval '(print 12) nil #'err #'identity))))
+                   (myeval '(print 12) nil nil nil #'err #'identity))))
   (assert (equal (print 12)
                  (myeval '(print 12) nil nil nil #'err #'ok)))
   ;; Тесты для PRINT в окружении
@@ -342,7 +343,7 @@
                  (with-output-to-string (*standard-output*)
                    (myeval '(print a)
                            '((b . 23) (a . 12))
-                           #'err #'identity))))
+                           nil nil #'err #'identity))))
   (assert (equal (let ((a 12))
                    (print a))
                  (myeval '(print a)
@@ -366,7 +367,7 @@
   <<myeval_mypairlis_5>>
   <<myeval_evlet_5>>
   <<myeval_evletstar_5>>
-  (defun myeval (exp env errcont cont)
+  (defun myeval (exp env block-env catch-env errcont cont)
     (cond
       <<myeval_number_5>>
       <<myeval_symb_5>>
@@ -639,8 +640,8 @@
 #+NAME: myeval_evlis_5_test
 #+BEGIN_SRC lisp
   ;; Тест для EVLIS
-  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil #'err #'ok)))
-  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil nil nil #'err #'ok)))
+  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil #'err #'ok)))
   ;; Этот тест не проходит
   ;; (assert (equal '(1 3 5)  (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
   ;; (assert (equal '(3 6 42) (evlis 'list '((+ a b) (* b c) 42)
@@ -682,180 +683,191 @@
   ;;                        #'err #'ok)))
 #+END_SRC
 
-** TODO AND
+** AND
 
-Выполняем CPS-преобразование (очень похоже на EVCOND)
+Пробрасываем ~block-env~ и ~catch-env~:
 
 #+NAME: myeval_evand_5
 #+BEGIN_SRC lisp
-  (defun evand (lst env errcont cont)
+  (defun evand (lst env block-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (and)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
+          ((null (cdr lst))  (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
                                        (and x))))
-          (t                 (and (myeval (car lst) env errcont
+          (t                 (and (myeval (car lst) env block-env catch-env errcont
                                           (lambda (x)
-                                            (and x (evand (cdr lst) env errcont cont))))))))
+                                            (and x (evand (cdr lst)
+                                                          env block-env catch-env
+                                                          errcont cont))))))))
 #+END_SRC
+
+Поправим тесты
 
 #+NAME: myeval_evand_5_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVAND
-  (assert (equal (and)           (evand '() nil #'err #'ok)))
-  (assert (equal (and 1)         (evand '(1) nil #'err #'ok)))
-  (assert (equal (and nil)       (evand '(nil) nil #'err #'ok)))
-  (assert (equal (and 1 nil)     (evand '(1 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil #'err #'ok)))
+  (assert (equal (and)           (evand '() nil nil nil #'err #'ok)))
+  (assert (equal (and 1)         (evand '(1) nil nil nil #'err #'ok)))
+  (assert (equal (and nil)       (evand '(nil) nil nil nil  #'err #'ok)))
+  (assert (equal (and 1 nil)     (evand '(1 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil #'err #'ok)))
   ;; Тесты для EVAND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
-                 (evand '(a) '((a . nil)) #'err #'ok)))
+                 (evand '(a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (and a))
-                 (evand '(a) '((a . 1)) #'err #'ok)))
+                 (evand '(a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b nil))
                    (and a b))
-                 (evand '(a b) '((a . 1) (b . nil)) #'err #'ok)))
+                 (evand '(a b) '((a . 1) (b . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c nil))
                    (and a b c))
-                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a b c))
-                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil #'err #'ok)))
 #+END_SRC
+
+Добавим параметры в вызов
 
 #+NAME: myeval_and_5
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
+  ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
+                                                    env block-env catch-env
+                                                    errcont cont)))
 #+END_SRC
 
+Поправим тесты
 
 #+NAME: myeval_and_5_test
 #+BEGIN_SRC lisp
   ;; Тесты для AND
-  (assert (equal (and)                (myeval '(and) nil #'err #'ok)))
-  (assert (equal (and 1)              (myeval '(and 1) nil #'err #'ok)))
-  (assert (equal (and nil)            (myeval '(and nil) nil #'err #'ok)))
-  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil #'err #'ok)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil #'err #'ok)))
+  (assert (equal (and)                (myeval '(and) nil nil nil #'err #'ok)))
+  (assert (equal (and 1)              (myeval '(and 1) nil nil nil #'err #'ok)))
+  (assert (equal (and nil)            (myeval '(and nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil #'err #'ok)))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
-                 (myeval '(and a) '((a . nil)) #'err #'ok)))
+                 (myeval '(and a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (and a))
-                 (myeval '(and a) '((a . 1)) #'err #'ok)))
+                 (myeval '(and a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b nil))
                    (and a b))
-                 (myeval '(and a b) '((a . 1) (b . nil)) #'err #'ok)))
+                 (myeval '(and a b) '((a . 1) (b . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c nil))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO OR
-
-Выполняем CPS-преобразование (очень похоже на EVCOND)
+** OR
 
 #+NAME: myeval_evor_5
 #+BEGIN_SRC lisp
-  (defun evor (lst env errcont cont)
+  (defun evor (lst env block-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
+          ((null (cdr lst))  (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
                                        (or x))))
-          (t                 (myeval (car lst) env errcont
+          (t                 (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst) env errcont cont)))))))
+                                       (or x (evor (cdr lst)
+                                                   env block-env catch-env
+                                                   errcont cont)))))))
 #+END_SRC
+
+Поправим тесты
 
 #+NAME: myeval_evor_5_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil #'err #'ok)))
+  (assert (equal (or)           (evor '() nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)     (evor '(nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil #'err #'ok)))
+  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
-                 (evor '(a) '((a . nil)) #'err #'ok)))
+                 (evor '(a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (or a))
-                 (evor '(a) '((a . 1)) #'err #'ok)))
+                 (evor '(a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1))
                    (or a b))
-                 (evor '(a b) '((a . nil) (b . 1)) #'err #'ok)))
+                 (evor '(a b) '((a . nil) (b . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c 3))
                    (or a b c))
-                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1)
                        (c 2))
                    (or a b c))
-                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil #'err #'ok)))
 #+END_SRC
 
-Теперь мы можем определить ~or~:
-
-[TODO:gmm] Не понимаю, почему это работает? Здесь нет правильного CPS ведь
+Добавим параметры в вызов
 
 #+NAME: myeval_or_5
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
+                                                    env block-env catch-env
+                                                    errcont cont)))
 #+END_SRC
 
-Протестируем ~or~:
+Поправим тесты
 
 #+NAME: myeval_or_5_test
 #+BEGIN_SRC lisp
   ;; Тесты для OR
-  (assert (equal (or)                  (myeval '(or) nil #'err #'ok)))
-  (assert (equal (or nil 1)            (myeval '(or nil 1) nil #'err #'ok)))
-  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil #'err #'ok)))
-  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil #'err #'ok)))
-  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil #'err #'ok)))
+  (assert (equal (or)                  (myeval '(or) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)            (myeval '(or nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil nil nil #'err #'ok)))
+  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil nil nil #'err #'ok)))
   ;; Тесты для OR в окружении
   (assert (equal (let ((a nil))
                    (or a))
-                 (myeval '(or a) '((a . nil)) #'err #'ok)))
+                 (myeval '(or a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (or a))
-                 (myeval '(or a) '((a . 1)) #'err #'ok)))
+                 (myeval '(or a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1))
                    (or a b))
-                 (myeval '(or a b) '((a . nil) (b . 1)) #'err #'ok)))
+                 (myeval '(or a b) '((a . nil) (b . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c 3))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1)
                        (c 2))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil #'err #'ok)))
 #+END_SRC
 
 ** LET
@@ -1071,7 +1083,7 @@
                            nil nil nil #'err #'ok)))
 #+END_SRC
 
-** BLOCK
+** TODO BLOCK
 
 При создании блока мы добавляем в окружение ~block-env~ пару вида
 "имя_блока.продолжение".
@@ -1093,7 +1105,7 @@
   ;; Тесты для BLOCK (TODO)
 #+END_SRC
 
-** RETURN-FROM
+** TODO RETURN-FROM
 
 При выходе из блока мы извлекаем из окружения ~block-env~ соответствующее продолжение и
 вызываем его.
@@ -1120,7 +1132,7 @@
   ;; Тесты для RETURN-FROM (TODO)
 #+END_SRC
 
-** CATCH
+** TODO CATCH
 
 При создании блока обработки исключений мы добавляем в окружение ~catch-env~ пару вида
 "имя_блока.продолжение".
@@ -1148,7 +1160,7 @@
   ;; Тесты для CATCH (TODO)
 #+END_SRC
 
-** THROW
+** TODO THROW
 
 Когда мы бросаем исключение, мы извлекаем из окружения ~catch-env~ соответствующее
 продолжение и вызываем его.
@@ -1275,6 +1287,7 @@
                                            (pairlis (closure-args fn)
                                                     args
                                                     (closure-env fn))
+                                           (closure-block-env fn)
                                            catch-env
                                            errcont cont))
       ((equal fn 'print)           (funcall cont (print (car args))))
@@ -1308,22 +1321,26 @@
                                              (cdr unevaled)
                                              (cons x evaled)
                                              env block-env catch-env errcont cont))))))
-  (defun evand (lst env errcont cont)
+  (defun evand (lst env block-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (and)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
+          ((null (cdr lst))  (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
                                        (and x))))
-          (t                 (and (myeval (car lst) env errcont
+          (t                 (and (myeval (car lst) env block-env catch-env errcont
                                           (lambda (x)
-                                            (and x (evand (cdr lst) env errcont cont))))))))
-  (defun evor (lst env errcont cont)
+                                            (and x (evand (cdr lst)
+                                                          env block-env catch-env
+                                                          errcont cont))))))))
+  (defun evor (lst env block-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
+          ((null (cdr lst))  (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
                                        (or x))))
-          (t                 (myeval (car lst) env errcont
+          (t                 (myeval (car lst) env block-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst) env errcont cont)))))))
+                                       (or x (evor (cdr lst)
+                                                   env block-env catch-env
+                                                   errcont cont)))))))
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -1350,7 +1367,7 @@
                                                  (acons (caar varpairs) x env)
                                                  block-env catch-env
                                                  errcont cont))))))
-  (defun myeval (exp env errcont cont)
+  (defun myeval (exp env block-env catch-env errcont cont)
     (cond
       ((null exp)                  (funcall cont 'nil))
       ((equal t exp)               (funcall cont 't))
@@ -1376,8 +1393,12 @@
       ((equal (car exp) 'list)     (evlis 'list (cdr exp) nil
                                           env block-env catch-env
                                           errcont cont))
-      ((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
-      ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+      ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
+                                                        env block-env catch-env
+                                                        errcont cont)))
+      ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
+                                                        env block-env catch-env
+                                                        errcont cont)))
       ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                           (mapcar #'cadr (cadr exp))
                                           nil
@@ -1603,7 +1624,7 @@
   (assert (equal (with-output-to-string (*standard-output*)
                    (print 12))
                  (with-output-to-string (*standard-output*)
-                   (myeval '(print 12) nil #'err #'identity))))
+                   (myeval '(print 12) nil nil nil #'err #'identity))))
   (assert (equal (print 12)
                  (myeval '(print 12) nil nil nil #'err #'ok)))
   ;; Тесты для PRINT в окружении
@@ -1613,7 +1634,7 @@
                  (with-output-to-string (*standard-output*)
                    (myeval '(print a)
                            '((b . 23) (a . 12))
-                           #'err #'identity))))
+                           nil nil #'err #'identity))))
   (assert (equal (let ((a 12))
                    (print a))
                  (myeval '(print a)
@@ -1624,7 +1645,7 @@
                                 (lambda (y) x))
                               1)
                              2)
-                           nil #'err #'ok)))
+                           nil nil nil #'err #'ok)))
   ;; Тесты для MYEVAL
   ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T nil nil nil #'err #'ok)))
@@ -1681,8 +1702,8 @@
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
                            nil nil #'err #'ok)))
   ;; Тест для EVLIS
-  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil #'err #'ok)))
-  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil nil nil #'err #'ok)))
+  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil #'err #'ok)))
   ;; Этот тест не проходит
   ;; (assert (equal '(1 3 5)  (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
   ;; (assert (equal '(3 6 42) (evlis 'list '((+ a b) (* b c) 42)
@@ -1695,116 +1716,116 @@
   ;;                        '((a . 1) (b . 2) (c . 3) (d . 4))
   ;;                        #'err #'ok)))
   ;; Тесты для EVAND
-  (assert (equal (and)           (evand '() nil #'err #'ok)))
-  (assert (equal (and 1)         (evand '(1) nil #'err #'ok)))
-  (assert (equal (and nil)       (evand '(nil) nil #'err #'ok)))
-  (assert (equal (and 1 nil)     (evand '(1 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil #'err #'ok)))
+  (assert (equal (and)           (evand '() nil nil nil #'err #'ok)))
+  (assert (equal (and 1)         (evand '(1) nil nil nil #'err #'ok)))
+  (assert (equal (and nil)       (evand '(nil) nil nil nil  #'err #'ok)))
+  (assert (equal (and 1 nil)     (evand '(1 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil #'err #'ok)))
   ;; Тесты для EVAND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
-                 (evand '(a) '((a . nil)) #'err #'ok)))
+                 (evand '(a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (and a))
-                 (evand '(a) '((a . 1)) #'err #'ok)))
+                 (evand '(a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b nil))
                    (and a b))
-                 (evand '(a b) '((a . 1) (b . nil)) #'err #'ok)))
+                 (evand '(a b) '((a . 1) (b . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c nil))
                    (and a b c))
-                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a b c))
-                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil #'err #'ok)))
   ;; Тесты для AND
-  (assert (equal (and)                (myeval '(and) nil #'err #'ok)))
-  (assert (equal (and 1)              (myeval '(and 1) nil #'err #'ok)))
-  (assert (equal (and nil)            (myeval '(and nil) nil #'err #'ok)))
-  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil #'err #'ok)))
-  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil #'err #'ok)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil #'err #'ok)))
+  (assert (equal (and)                (myeval '(and) nil nil nil #'err #'ok)))
+  (assert (equal (and 1)              (myeval '(and 1) nil nil nil #'err #'ok)))
+  (assert (equal (and nil)            (myeval '(and nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil #'err #'ok)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil #'err #'ok)))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
-                 (myeval '(and a) '((a . nil)) #'err #'ok)))
+                 (myeval '(and a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (and a))
-                 (myeval '(and a) '((a . 1)) #'err #'ok)))
+                 (myeval '(and a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b nil))
                    (and a b))
-                 (myeval '(and a b) '((a . 1) (b . nil)) #'err #'ok)))
+                 (myeval '(and a b) '((a . 1) (b . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c nil))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil #'err #'ok)))
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil #'err #'ok)))
+  (assert (equal (or)           (evor '() nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)     (evor '(nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil #'err #'ok)))
+  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
-                 (evor '(a) '((a . nil)) #'err #'ok)))
+                 (evor '(a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (or a))
-                 (evor '(a) '((a . 1)) #'err #'ok)))
+                 (evor '(a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1))
                    (or a b))
-                 (evor '(a b) '((a . nil) (b . 1)) #'err #'ok)))
+                 (evor '(a b) '((a . nil) (b . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c 3))
                    (or a b c))
-                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+                 (evor '(a b c) '((a . nil) (b . nil) (c . 3)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1)
                        (c 2))
                    (or a b c))
-                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+                 (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil #'err #'ok)))
   ;; Тесты для OR
-  (assert (equal (or)                  (myeval '(or) nil #'err #'ok)))
-  (assert (equal (or nil 1)            (myeval '(or nil 1) nil #'err #'ok)))
-  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil #'err #'ok)))
-  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil #'err #'ok)))
-  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil #'err #'ok)))
+  (assert (equal (or)                  (myeval '(or) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)            (myeval '(or nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil nil nil #'err #'ok)))
+  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil nil nil #'err #'ok)))
   ;; Тесты для OR в окружении
   (assert (equal (let ((a nil))
                    (or a))
-                 (myeval '(or a) '((a . nil)) #'err #'ok)))
+                 (myeval '(or a) '((a . nil)) nil nil #'err #'ok)))
   (assert (equal (let ((a 1))
                    (or a))
-                 (myeval '(or a) '((a . 1)) #'err #'ok)))
+                 (myeval '(or a) '((a . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1))
                    (or a b))
-                 (myeval '(or a b) '((a . nil) (b . 1)) #'err #'ok)))
+                 (myeval '(or a b) '((a . nil) (b . 1)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c 3))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) nil nil #'err #'ok)))
   (assert (equal (let ((a nil)
                        (b 1)
                        (c 2))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil #'err #'ok)))
   ;; Тесты для MYPAIRLIS
   (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
                  (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
