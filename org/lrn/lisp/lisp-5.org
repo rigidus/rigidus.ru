@@ -106,6 +106,7 @@
 #+NAME: myapply_5
 #+BEGIN_SRC lisp
   <<evaddmul_5>>
+  <<evlis_5>>
   (defun myapply (fn args catch-env errcont cont)
     (cond
       <<myapply_car_cdr_cons_5>>
@@ -113,6 +114,7 @@
       <<myapply_ariph_5>>
       <<myapply_closure_5>>
       <<myapply_print_5>>
+      <<myapply_list_5>>
       (t (error 'unknown-function :fn fn))))
 #+END_SRC
 
@@ -124,8 +126,10 @@
   <<myapply_null_5_test>>
   <<evaddmul_5_test>>
   <<myapply_ariph_5_test>>
-  <<myapply_print_5_test>>
   <<myapply_closure_5_test>>
+  <<myapply_print_5_test>>
+  <<myapply_evlis_5_test>>
+  <<myapply_list_5_test>>
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -361,6 +365,59 @@
                          nil nil #'err #'ok)))
 #+END_SRC
 
+** LIST
+
+Добавляем дополнительные параметры
+
+#+NAME: evlis_5
+#+BEGIN_SRC lisp
+  (defun evlis (fn unevaled evaled env block-env catch-env errcont cont)
+    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
+          (t                (myeval (car unevaled) env block-env catch-env errcont
+                                    (lambda (x)
+                                      (evlis fn
+                                             (cdr unevaled)
+                                             (cons x evaled)
+                                             env block-env catch-env
+                                             errcont cont))))))
+#+END_SRC
+
+Вызов:
+
+#+NAME: myapply_list_5
+#+BEGIN_SRC lisp
+  ((equal fn 'list)            (funcall cont args))
+#+END_SRC
+
+Тесты получают дополнительные параметры
+
+#+NAME: myapply_evlis_5_test
+#+BEGIN_SRC lisp
+  ;; Тест для EVLIS
+  (assert (equal 4           (evlis '+     '(1 (+ 1 2))             nil nil nil nil  #'err #'ok)))
+  (assert (equal (+ 1 3 5)   (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil  #'err #'ok)))
+  (assert (equal '(1 3 5)    (evlis 'list  '(1 (+ 1 2) 5)           nil nil nil nil  #'err #'ok)))
+  (assert (equal '(0 3 6 42) (evlis 'list  '(0 (+ a b) (* b c) 42)
+                                    nil
+                                    '((a . 1) (b . 2) (c . 3) (d . 4))
+                                    nil nil  #'err #'ok)))
+#+END_SRC
+
+И тесты для LIST
+
+#+NAME: myapply_list_5_test
+#+BEGIN_SRC lisp
+  ;; Тесты для LIST
+  (assert (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
+                                 nil nil nil #'err #'ok)))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ 1 2) (* 2 3) 42) nil nil nil #'err #'ok)))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ a b) (* b c) 42)
+                         '((a . 1) (b . 2) (c . 3) (d . 4))
+                         nil nil #'err #'ok)))
+#+END_SRC
+
 * MyEval
 
 Мы добавляем новые конструкции:
@@ -371,7 +428,6 @@
 #+BEGIN_SRC lisp
   <<myeval_evcond_5>>
   <<myeval_evprogn_5>>
-  <<myeval_evlis_5>>
   <<myeval_evand_5>>
   <<myeval_evor_5>>
   <<myeval_mypairlis_5>>
@@ -385,7 +441,6 @@
       <<myeval_if_5>>
       <<myeval_cond_5>>
       <<myeval_progn_5>>
-      <<myeval_list_5>>
       <<myeval_and_5>>
       <<myeval_or_5>>
       <<myeval_let_5>>
@@ -418,8 +473,6 @@
   <<myeval_cond_5_test>>
   <<myeval_evprogn_5_test>>
   <<myeval_progn_5_test>>
-  <<myeval_evlis_5_test>>
-  <<myeval_list_5_test>>
   <<myeval_evand_5_test>>
   <<myeval_and_5_test>>
   <<myeval_evor_5_test>>
@@ -446,7 +499,7 @@
 #+BEGIN_SRC lisp
   ((null exp)                  (funcall cont 'nil))
   ((equal t exp)               (funcall cont 't))
-  ((member exp '(+ * car cdr cons null print))  (funcall cont exp))
+  ((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
   ((numberp exp)               (funcall cont exp))
 #+END_SRC
 
@@ -622,75 +675,6 @@
   ;; Тест для PROGN в окружении
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
                            nil nil #'err #'ok)))
-#+END_SRC
-
-** TODO LIST
-
-Пробрасываем ~block-env~ и ~catch-env~:
-
-Когда мы вызываем ~myapply~ нам не нужен ~block-env~.
-
-#+NAME: myeval_evlis_5
-#+BEGIN_SRC lisp
-  ;; более эффективный вариант evlis
-  (defun evlis (fn unevaled evaled env block-env catch-env errcont cont)
-    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
-          (t                (myeval (car unevaled) env block-env catch-env errcont
-                                    (lambda (x)
-                                      (evlis fn
-                                             (cdr unevaled)
-                                             (cons x evaled)
-                                             env block-env catch-env errcont cont))))))
-#+END_SRC
-
-[TODO:gmm] Перенести LIST в myapply
-
-[TODO:gmm] EVLIS работает неправильно с LIST
-
-#+NAME: myeval_evlis_5_test
-#+BEGIN_SRC lisp
-  ;; Тест для EVLIS
-  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil #'err #'ok)))
-  ;; Этот тест не проходит
-  ;; (assert (equal '(1 3 5)  (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
-  ;; (assert (equal '(3 6 42) (evlis 'list '((+ a b) (* b c) 42)
-  ;;                                 '((a . 1) (b . 2) (c . 3) (d . 4))
-  ;;                                 nil #'err #'ok)))
-#+END_SRC
-
-#+NAME: myapply_list_5
-#+BEGIN_SRC lisp
-  ((equal fn 'list)            (funcall cont args))
-#+END_SRC
-
-И тесты для LIST
-
-#+NAME: myapply_list_5_test
-#+BEGIN_SRC lisp
-  ;; Тесты для LIST (не проходит)
-  ;; (assert (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
-  ;;                                nil #'err #'ok)))
-#+END_SRC
-
-[TODO:gmm] Не все тесты работают (неработающие закомментированы)!
-
-#+NAME: myeval_list_5
-#+BEGIN_SRC lisp
-  ((equal (car exp) 'list)     (evlis 'list (cdr exp) nil
-                                      env block-env catch-env
-                                      errcont cont))
-#+END_SRC
-
-
-#+NAME: myeval_list_5_test
-#+BEGIN_SRC lisp
-  ;; (assert (equal '(3 6 42)
-  ;;                (myeval '(list (+ 1 2) (* 2 3) 42) nil #'err #'ok)))
-  ;; (assert (equal '(3 6 42)
-  ;;                (myeval '(list (+ a b) (* b c) 42)
-  ;;                        '((a . 1) (b . 2) (c . 3) (d . 4))
-  ;;                        #'err #'ok)))
 #+END_SRC
 
 ** AND
@@ -1307,6 +1291,15 @@
           ((null (cdr lst))  (* acc (car lst)))
           (t                 (evmul (cdr lst)
                                     (* acc (car lst))))))
+  (defun evlis (fn unevaled evaled env block-env catch-env errcont cont)
+    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
+          (t                (myeval (car unevaled) env block-env catch-env errcont
+                                    (lambda (x)
+                                      (evlis fn
+                                             (cdr unevaled)
+                                             (cons x evaled)
+                                             env block-env catch-env
+                                             errcont cont))))))
   (defun myapply (fn args catch-env errcont cont)
     (cond
       ((equal fn 'car)             (funcall cont (caar args)))
@@ -1325,6 +1318,7 @@
                                            catch-env
                                            errcont cont))
       ((equal fn 'print)           (funcall cont (print (car args))))
+      ((equal fn 'list)            (funcall cont args))
       (t (error 'unknown-function :fn fn))))
   ;; CPS-вариант MYEVAL и все что к нему относится
   (defun evcond (exp env block-env catch-env errcont cont)
@@ -1346,15 +1340,6 @@
                                         (evprogn (cdr lst)
                                                  env block-env catch-env
                                                  errcont cont))))))
-  ;; более эффективный вариант evlis
-  (defun evlis (fn unevaled evaled env block-env catch-env errcont cont)
-    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
-          (t                (myeval (car unevaled) env block-env catch-env errcont
-                                    (lambda (x)
-                                      (evlis fn
-                                             (cdr unevaled)
-                                             (cons x evaled)
-                                             env block-env catch-env errcont cont))))))
   (defun evand (lst env block-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env catch-env errcont
@@ -1405,7 +1390,7 @@
     (cond
       ((null exp)                  (funcall cont 'nil))
       ((equal t exp)               (funcall cont 't))
-      ((member exp '(+ * car cdr cons null print))  (funcall cont exp))
+      ((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
       ((numberp exp)               (funcall cont exp))
       ((symbolp exp)               (lookup exp env errcont cont))
       ((equal (car exp) 'quote)    (funcall cont (cadr exp)))
@@ -1424,9 +1409,6 @@
       ((equal (car exp) 'progn)    (evprogn (cdr exp)
                                             env block-env catch-env
                                             errcont cont))
-      ((equal (car exp) 'list)     (evlis 'list (cdr exp) nil
-                                          env block-env catch-env
-                                          errcont cont))
       ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                         env block-env catch-env
                                                         errcont cont)))
@@ -1656,6 +1638,12 @@
                  (myeval '(* a (* b c) d)
                          '((a . 2) (b . 3) (c . 4) (d . 5))
                          nil nil #'err #'ok)))
+  ;; Тесты для применения CLOSURE
+  (assert (equal 1 (myeval '(((lambda (x)
+                                (lambda (y) x))
+                              1)
+                             2)
+                           nil nil nil #'err #'ok)))
   ;; Тесты для PRINT в сравнении с host-овым print
   (assert (equal (with-output-to-string (*standard-output*)
                    (print 12))
@@ -1676,12 +1664,23 @@
                  (myeval '(print a)
                          '((b . 23) (a . 12))
                          nil nil #'err #'ok)))
-  ;; Тесты для применения CLOSURE
-  (assert (equal 1 (myeval '(((lambda (x)
-                                (lambda (y) x))
-                              1)
-                             2)
-                           nil nil nil #'err #'ok)))
+  ;; Тест для EVLIS
+  (assert (equal 4           (evlis '+     '(1 (+ 1 2))             nil nil nil nil  #'err #'ok)))
+  (assert (equal (+ 1 3 5)   (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil  #'err #'ok)))
+  (assert (equal '(1 3 5)    (evlis 'list  '(1 (+ 1 2) 5)           nil nil nil nil  #'err #'ok)))
+  (assert (equal '(0 3 6 42) (evlis 'list  '(0 (+ a b) (* b c) 42)
+                                    nil
+                                    '((a . 1) (b . 2) (c . 3) (d . 4))
+                                    nil nil  #'err #'ok)))
+  ;; Тесты для LIST
+  (assert (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
+                                 nil nil nil #'err #'ok)))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ 1 2) (* 2 3) 42) nil nil nil #'err #'ok)))
+  (assert (equal '(3 6 42)
+                 (myeval '(list (+ a b) (* b c) 42)
+                         '((a . 1) (b . 2) (c . 3) (d . 4))
+                         nil nil #'err #'ok)))
   ;; Тесты для MYEVAL
   ;; Тесты для самовычисляемых форм
   (assert (equal T (myeval 'T nil nil nil #'err #'ok)))
@@ -1737,20 +1736,6 @@
   ;; Тест для PROGN в окружении
   (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
                            nil nil #'err #'ok)))
-  ;; Тест для EVLIS
-  (assert (equal 4         (evlis '+     '(1 (+ 1 2))             nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 1 3 5) (evlis '+     '(1 (+ 1 2) 5)           nil nil nil nil #'err #'ok)))
-  ;; Этот тест не проходит
-  ;; (assert (equal '(1 3 5)  (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
-  ;; (assert (equal '(3 6 42) (evlis 'list '((+ a b) (* b c) 42)
-  ;;                                 '((a . 1) (b . 2) (c . 3) (d . 4))
-  ;;                                 nil #'err #'ok)))
-  ;; (assert (equal '(3 6 42)
-  ;;                (myeval '(list (+ 1 2) (* 2 3) 42) nil #'err #'ok)))
-  ;; (assert (equal '(3 6 42)
-  ;;                (myeval '(list (+ a b) (* b c) 42)
-  ;;                        '((a . 1) (b . 2) (c . 3) (d . 4))
-  ;;                        #'err #'ok)))
   ;; Тесты для EVAND
   (assert (equal (and)           (evand '() nil nil nil #'err #'ok)))
   (assert (equal (and 1)         (evand '(1) nil nil nil #'err #'ok)))
