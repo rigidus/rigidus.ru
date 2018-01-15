@@ -1095,10 +1095,10 @@
                            nil nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO BLOCK
+** BLOCK
 
 При создании блока мы добавляем в окружение ~block-env~ пару вида
-"имя_блока.продолжение".
+"(имя блока . продолжение)".
 
 #+NAME: myeval_block_5
 #+BEGIN_SRC lisp
@@ -1110,14 +1110,18 @@
                                        catch-env errcont cont))
 #+END_SRC
 
-[TODO:gmm] Нужны тесты для BLOCK
+Тесты для BLOCK
 
 #+NAME: myeval_block_5_test
 #+BEGIN_SRC lisp
-  ;; Тесты для BLOCK (TODO)
+  ;; Тесты для BLOCK
+  (assert (equal nil (myeval '(block testblock)
+                             nil nil nil #'err #'ok)))
+  (assert (equal 3 (myeval '(block testblock 3)
+                           nil nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO RETURN-FROM
+** RETURN-FROM
 
 При выходе из блока мы извлекаем из окружения ~block-env~ соответствующее продолжение и
 вызываем его.
@@ -1137,17 +1141,44 @@
                                                                            (format nil "return-from: undefined return block ~A" y))))))))
 #+END_SRC
 
-[TODO:gmm] Нужны тесты для RETURN-FROM
+Тесты для RETURN-FROM
 
 #+NAME: myeval_return_from_5_test
 #+BEGIN_SRC lisp
-  ;; Тесты для RETURN-FROM (TODO)
+  ;; Тесты для RETURN-FROM
+  (assert (equal 3 (myeval '(block testblock (return-from testblock (+ 1 2)) 777)
+                           nil nil nil #'err #'ok)))
+  (assert (equal "error" (myeval '(block testblock (return-from notblock (+ 1 2)) 777)
+                                 nil nil nil #'(lambda (x) "error") #'ok)))
+  (assert (equal "error" (myeval '(progn (return-from not-found-block (+ 1 2)) 777)
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест RETURN-FROM в лексической области видимости
+  (assert (equal 12 (myeval '(progn
+                              (defun foo (x)
+                                (block in-lambda-block
+                                  (return-from in-lambda-block
+                                    (+ x 2)))
+                                777)
+                              (foo 10))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
+  ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
+  (assert (equal "error" (myeval '(progn
+                                   (defun foo (x)
+                                     (return-from in-lambda-block
+                                       (+ x 2))
+                                     777)
+                                   (block in-lambda-block
+                                     (foo 10)))
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
 #+END_SRC
 
-** TODO CATCH
+** CATCH
 
 При создании блока обработки исключений мы добавляем в окружение ~catch-env~ пару вида
-"имя_блока.продолжение".
+"(имя блока . продолжение)".
 
 #+NAME: myeval_catch_5
 #+BEGIN_SRC lisp
@@ -1165,11 +1196,16 @@
                                                      errcont cont)))))
 #+END_SRC
 
-[TODO:gmm] Нужны тесты для CATCH
+Тесты для CATCH
 
 #+NAME: myeval_catch_5_test
 #+BEGIN_SRC lisp
-  ;; Тесты для CATCH (TODO)
+  ;; Тесты для CATCH
+  (assert (equal nil (myeval '(catch 'zzz)
+                             nil nil nil #'err #'ok)))
+  (assert (equal 3 (myeval '(catch 'zzz 3)
+                           nil nil nil #'err #'ok)))
+
 #+END_SRC
 
 ** TODO THROW
@@ -1191,11 +1227,40 @@
                                                                        (format nil "throw: matching ~A catch is not found" key)))))))))
 #+END_SRC
 
-[TODO:gmm] Нужны тесты для THROW
+Тесты для THROW
 
 #+NAME: myeval_throw_5_test
 #+BEGIN_SRC lisp
-  ;; Тесты для THROW (TODO)
+  ;; Тесты для THROW
+  (assert (equal 3 (myeval '(catch 'testcatch (throw 'testcatch (+ 1 2)) 777)
+                           nil nil nil #'err #'ok)))
+  (assert (equal "error" (myeval '(catch 'testcatch (throw 'notcatch (+ 1 2)) 777)
+                                 nil nil nil
+                                 #'(lambda (x) "error")
+                                 #'ok)))
+  (assert (equal "error" (myeval '(progn (throw 'not-found-catch (+ 1 2)) 777)
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест THROW в лексической области видимости
+  (assert (equal 12 (myeval '(progn
+                              (defun foo (x)
+                                (catch 'in-lambda-catch
+                                  (throw 'in-lambda-catch
+                                    (+ x 2)))
+                                777)
+                              (foo 10))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
+  ;; Тест THROW в динамической области видимости (должно сработать)
+  (assert (equal 12 (myeval '(progn
+                                   (defun foo (x)
+                                     (throw 'in-lambda-catch
+                                       (+ x 2))
+                                     777)
+                                   (catch 'in-lambda-catch
+                                     (foo 10)))
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
 #+END_SRC
 
 * Итоги
@@ -1916,10 +1981,75 @@
   (assert (equal 5 (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
                            nil nil nil #'err #'ok)))
-  ;; Тесты для BLOCK (TODO)
-  ;; Тесты для RETURN-FROM (TODO)
-  ;; Тесты для CATCH (TODO)
-  ;; Тесты для THROW (TODO)
+  ;; Тесты для BLOCK
+  (assert (equal nil (myeval '(block testblock)
+                             nil nil nil #'err #'ok)))
+  (assert (equal 3 (myeval '(block testblock 3)
+                           nil nil nil #'err #'ok)))
+  ;; Тесты для RETURN-FROM
+  (assert (equal 3 (myeval '(block testblock (return-from testblock (+ 1 2)) 777)
+                           nil nil nil #'err #'ok)))
+  (assert (equal "error" (myeval '(block testblock (return-from notblock (+ 1 2)) 777)
+                                 nil nil nil #'(lambda (x) "error") #'ok)))
+  (assert (equal "error" (myeval '(progn (return-from not-found-block (+ 1 2)) 777)
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест RETURN-FROM в лексической области видимости
+  (assert (equal 12 (myeval '(progn
+                              (defun foo (x)
+                                (block in-lambda-block
+                                  (return-from in-lambda-block
+                                    (+ x 2)))
+                                777)
+                              (foo 10))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
+  ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
+  (assert (equal "error" (myeval '(progn
+                                   (defun foo (x)
+                                     (return-from in-lambda-block
+                                       (+ x 2))
+                                     777)
+                                   (block in-lambda-block
+                                     (foo 10)))
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тесты для CATCH
+  (assert (equal nil (myeval '(catch 'zzz)
+                             nil nil nil #'err #'ok)))
+  (assert (equal 3 (myeval '(catch 'zzz 3)
+                           nil nil nil #'err #'ok)))
+
+  ;; Тесты для THROW
+  (assert (equal 3 (myeval '(catch 'testcatch (throw 'testcatch (+ 1 2)) 777)
+                           nil nil nil #'err #'ok)))
+  (assert (equal "error" (myeval '(catch 'testcatch (throw 'notcatch (+ 1 2)) 777)
+                                 nil nil nil
+                                 #'(lambda (x) "error")
+                                 #'ok)))
+  (assert (equal "error" (myeval '(progn (throw 'not-found-catch (+ 1 2)) 777)
+                                 nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест THROW в лексической области видимости
+  (assert (equal 12 (myeval '(progn
+                              (defun foo (x)
+                                (catch 'in-lambda-catch
+                                  (throw 'in-lambda-catch
+                                    (+ x 2)))
+                                777)
+                              (foo 10))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
+  ;; Тест THROW в динамической области видимости (должно сработать)
+  (assert (equal 12 (myeval '(progn
+                              (defun foo (x)
+                                (throw 'in-lambda-catch
+                                  (+ x 2))
+                                777)
+                              (catch 'in-lambda-catch
+                                (foo 10)))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
   ;; REPL
   (defun repl ()
     (princ "microlisp>")
