@@ -93,6 +93,16 @@
 
 Теперь ~myapply~ принимает еще и ~catch-env~:
 
+#+NAME: errors_5
+#+BEGIN_SRC lisp
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
+#+END_SRC
+
 #+NAME: myapply_5
 #+BEGIN_SRC lisp
   <<evaddmul_5>>
@@ -103,7 +113,7 @@
       <<myapply_ariph_5>>
       <<myapply_closure_5>>
       <<myapply_print_5>>
-      ))
+      (t (error 'unknown-function :fn fn))))
 #+END_SRC
 
 А набор тестов остался без изменений:
@@ -1023,7 +1033,7 @@
                         (setf *glob-env* nil)))))
 #+END_SRC
 
-** TODO SETQ
+** SETQ
 
 Пробрасываем ~block-env~ и ~catch-env~ и убираем комментарии:
 
@@ -1041,7 +1051,7 @@
 
 #+END_SRC
 
-[TODO:gmm] Все тесты здесь почему-то не работают - не происходит изменения переменной.
+Добавляем к тестам дополнительные параметры
 
 #+NAME: myeval_setq_5_test
 #+BEGIN_SRC lisp
@@ -1247,6 +1257,12 @@
           ((equal key (caar alist))  (funcall cont    (cdar alist)))
           (t                         (assoc-2 key (cdr alist) cont errcont))))
   ;; Классы ошибок
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
   (define-condition invalid-number-of-arguments (error)
     ((fn :initarg :fn  :reader fn))
     (:report
@@ -1309,7 +1325,7 @@
                                            catch-env
                                            errcont cont))
       ((equal fn 'print)           (funcall cont (print (car args))))
-      ))
+      (t (error 'unknown-function :fn fn))))
   ;; CPS-вариант MYEVAL и все что к нему относится
   (defun evcond (exp env block-env catch-env errcont cont)
     (cond ((null exp)  (funcall cont nil))

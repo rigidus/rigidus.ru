@@ -195,6 +195,17 @@ sitizens): позволяюn передавать функции в качест
 
 Этим куском кода мы заменяем обработку ~lambda~ внутри ~myapply~.
 
+
+#+NAME: errors_3
+#+BEGIN_SRC lisp
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
+#+END_SRC
+
 #+NAME: myapply_3
 #+BEGIN_SRC lisp
   <<evaddmul_3>>
@@ -204,7 +215,7 @@ sitizens): позволяюn передавать функции в качест
       <<myapply_null_3>>
       <<myapply_ariph_3>>
       <<myapply_closure_3>>
-      ))
+      (t (error 'unknown-function :fn fn))))
 #+END_SRC
 
 И отдельно вынесем тесты:
@@ -385,7 +396,6 @@ sitizens): позволяюn передавать функции в качест
      (lambda (condition stream)
        (format stream "Error in MYAPPLY: function not found: ~A"
                (fn condition)))))
-
 #+END_SRC
 
 Этот кейс удаляем, потому что у нас это вычисление теперь производится в myeval
@@ -1084,6 +1094,12 @@ sitizens): позволяюn передавать функции в качест
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
   (define-condition invalid-number-of-arguments (error)
     ((fn :initarg :fn  :reader fn))
     (:report
@@ -1096,7 +1112,6 @@ sitizens): позволяюn передавать функции в качест
      (lambda (condition stream)
        (format stream "Error in MYAPPLY: function not found: ~A"
                (fn condition)))))
-
   (define-condition var-not-found-error (error)
     ((vari :initarg :vari  :reader vari))
     (:report
@@ -1145,7 +1160,7 @@ sitizens): позволяюn передавать функции в качест
                                            (pairlis (closure-args fn)
                                                     args
                                                     (closure-env fn))))
-      ))
+      (t (error 'unknown-function :fn fn))))
   (defun evcond (lst env)
     (cond ((null lst)               nil)
           ((myeval (caar lst) env)  (myeval (cadar lst) env))

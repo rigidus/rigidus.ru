@@ -176,6 +176,16 @@ CPS-преобразовании. Оно дает нам бесплатные б
 Переносим сюда ~print~ из ~myeval~, потому что это функция, которая оценивает свои
 аргументы.
 
+#+NAME: errors_4
+#+BEGIN_SRC lisp
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
+#+END_SRC
+
 #+NAME: myapply_4
 #+BEGIN_SRC lisp
   <<evaddmul_4>>
@@ -186,7 +196,7 @@ CPS-преобразовании. Оно дает нам бесплатные б
       <<myapply_ariph_4>>
       <<myapply_closure_4>>
       <<myapply_print_4>>
-      ))
+      (t (error 'unknown-function :fn fn))))
 #+END_SRC
 
 А набор тестов остался без изменений:
@@ -1630,6 +1640,12 @@ cps
           ((equal key (caar alist))  (funcall cont    (cdar alist)))
           (t                         (assoc-2 key (cdr alist) cont errcont))))
   ;; Классы ошибок
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
   (define-condition invalid-number-of-arguments (error)
     ((fn :initarg :fn  :reader fn))
     (:report
@@ -1690,7 +1706,7 @@ cps
                                            errcont
                                            cont))
       ((equal fn 'print)           (funcall cont (print (car args))))
-      ))
+      (t (error 'unknown-function :fn fn))))
   ;; CPS-вариант MYEVAL и все что к нему относится
   (defun evcond (exp env errcont cont)
     (cond ((null exp)  (funcall cont nil))
@@ -1814,8 +1830,7 @@ cps
                                                      (rplacd (assoc (cadr exp) *glob-env*) val))
                                                  ;; переменная найдена в текущем окружении
                                                  ;; - изменить ее значение
-                                                 (rplacd (assoc (cadr exp) env) val)
-                                                 )
+                                                 (rplacd (assoc (cadr exp) env) val))
                                              ;; В любом случае возвращаем значение переменной
                                              (funcall cont val))))
       ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
