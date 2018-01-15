@@ -1025,18 +1025,20 @@
 
 ** TODO SETQ
 
-Пробрасываем ~block-env~ и ~catch-env~:
+Пробрасываем ~block-env~ и ~catch-env~ и убираем комментарии:
 
 #+NAME: myeval_setq_5
 #+BEGIN_SRC lisp
   ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env catch-env errcont
                                        (lambda (val)
-                                         (let ((it (lookup (cadr exp) env errcont cont)))
-                                           (if (null it)
-                                               (push (cons (cadr exp) val)
-                                                     ,*glob-env*)
-                                               (rplacd it val))
-                                           (funcall cont val)))))
+                                         (if (null (assoc (cadr exp) env))
+                                             (if (null (assoc (cadr exp) *glob-env*))
+                                                 (push (cons (cadr exp) val)
+                                                       ,*glob-env*)
+                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
+                                             (rplacd (assoc (cadr exp) env) val))
+                                         (funcall cont val))))
+
 #+END_SRC
 
 [TODO:gmm] Все тесты здесь почему-то не работают - не происходит изменения переменной.
@@ -1044,20 +1046,36 @@
 #+NAME: myeval_setq_5_test
 #+BEGIN_SRC lisp
   ;; Тесты для SETQ
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil #'err #'ok)))
-  ;; (assert (equal 1 (myeval '(let ((alfa (+ 2 1)))
-  ;;                            (setq alfa 1)
-  ;;                                 alfa)
-  ;;                            nil #'err #'ok)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(setq alfa 1) nil #'err #'ok)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
+  ;; Проверка изменения значения локальной переменной, не затрагивая глобального окружения
+  (assert (equal '((2 . 2) ((alfa . 0)))
+                 (progn
+                   (setf *glob-env* '((alfa . 0)))
+                   (prog1 (list (myeval '(cons (setq alfa 2)
+                                          alfa)
+                                        '((alfa . 1))
+                                        nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения несуществующей переменной (создание глобальной переменной)
+  (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq alfa 1)
+                                          alfa)
+                                        nil nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения существующей глобальной переменной
+  (assert (equal '((1 . 1) ((BETA . 1)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq beta 1)
+                                          beta)
+                                        nil nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
 #+END_SRC
 
 ** LAMBDA
@@ -1419,12 +1437,14 @@
                                           (funcall cont (cadr exp))))
       ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env catch-env errcont
                                            (lambda (val)
-                                             (let ((it (lookup (cadr exp) env errcont cont)))
-                                               (if (null it)
-                                                   (push (cons (cadr exp) val)
-                                                         ,*glob-env*)
-                                                   (rplacd it val))
-                                               (funcall cont val)))))
+                                             (if (null (assoc (cadr exp) env))
+                                                 (if (null (assoc (cadr exp) *glob-env*))
+                                                     (push (cons (cadr exp) val)
+                                                           ,*glob-env*)
+                                                     (rplacd (assoc (cadr exp) *glob-env*) val))
+                                                 (rplacd (assoc (cadr exp) env) val))
+                                             (funcall cont val))))
+
       ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
                                                                :env env
                                                                :block-env block-env
@@ -1858,20 +1878,36 @@
                       (prog1 (myeval '(alfa 8) nil nil nil #'err #'ok)
                         (setf *glob-env* nil)))))
   ;; Тесты для SETQ
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil #'err #'ok)))
-  ;; (assert (equal 1 (myeval '(let ((alfa (+ 2 1)))
-  ;;                            (setq alfa 1)
-  ;;                                 alfa)
-  ;;                            nil #'err #'ok)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(setq alfa 1) nil #'err #'ok)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
+  ;; Проверка изменения значения локальной переменной, не затрагивая глобального окружения
+  (assert (equal '((2 . 2) ((alfa . 0)))
+                 (progn
+                   (setf *glob-env* '((alfa . 0)))
+                   (prog1 (list (myeval '(cons (setq alfa 2)
+                                          alfa)
+                                        '((alfa . 1))
+                                        nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения несуществующей переменной (создание глобальной переменной)
+  (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq alfa 1)
+                                          alfa)
+                                        nil nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения существующей глобальной переменной
+  (assert (equal '((1 . 1) ((BETA . 1)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq beta 1)
+                                          beta)
+                                        nil nil nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
   ;; Тесты для LAMBDA
   (assert (equal 3 (myeval '((lambda (x) (+ 1  x)) 2)
                            nil nil nil #'err #'ok)))

@@ -1299,19 +1299,20 @@
 <h3 id="unnumbered-24"><span class="todo TODO">TODO</span> SETQ</h3>
 <div class="outline-text-3" id="text-unnumbered-24">
 <p>
-Пробрасываем <code>block-env</code> и <code>catch-env</code>:
+Пробрасываем <code>block-env</code> и <code>catch-env</code> и убираем комментарии:
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_setq_5">((equal (car exp) 'setq)     (myeval (caddr exp) env block-env catch-env errcont
                                      (<span style="color: #af00ff;">lambda</span> (val)
-                                       (<span style="color: #af00ff;">let</span> ((it (lookup (cadr exp) env errcont cont)))
-                                         (<span style="color: #af00ff;">if</span> (null it)
-                                             (push (cons (cadr exp) val)
-                                                   *glob-env*)
-                                             (rplacd it val))
-                                         (funcall cont val)))))
+                                       (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
+                                           (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) *glob-env*))
+                                               (push (cons (cadr exp) val)
+                                                     *glob-env*)
+                                               (rplacd (assoc (cadr exp) *glob-env*) val))
+                                           (rplacd (assoc (cadr exp) env) val))
+                                       (funcall cont val))))
 </pre>
 </div>
 
@@ -1322,20 +1323,36 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_setq_5_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SETQ</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 1 (myeval '(let ((alfa 2))</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">(setq alfa 1)</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">alfa)</span>
-<span style="color: #af0000;">;;                          </span><span style="color: #af0000;">nil #'err #'ok)))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 1 (myeval '(let ((alfa (+ 2 1)))</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">(setq alfa 1)</span>
-<span style="color: #af0000;">;;                                 </span><span style="color: #af0000;">alfa)</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">nil #'err #'ok)))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '((ALFA . 1))</span>
-<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(progn</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(setf *glob-env* nil)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(myeval '(setq alfa 1) nil #'err #'ok)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(prog1 *glob-env*</span>
-<span style="color: #af0000;">;;                    </span><span style="color: #af0000;">(setf *glob-env* nil)))))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1072; &#1080;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1083;&#1086;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1085;&#1077; &#1079;&#1072;&#1090;&#1088;&#1072;&#1075;&#1080;&#1074;&#1072;&#1103; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1075;&#1086; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((2 . 2) ((alfa . 0)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((alfa . 0)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons (setq alfa 2)
+                                        alfa)
+                                      '((alfa . 1))
+                                      nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1085;&#1077;&#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; (&#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1080;&#1077; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;)</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons
+                                        (setq alfa 1)
+                                        alfa)
+                                      nil nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 1) ((BETA . 1)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons
+                                        (setq beta 1)
+                                        beta)
+                                      nil nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
 </pre>
 </div>
 </div>
@@ -1750,12 +1767,14 @@
                                         (funcall cont (cadr exp))))
     ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (val)
-                                           (<span style="color: #af00ff;">let</span> ((it (lookup (cadr exp) env errcont cont)))
-                                             (<span style="color: #af00ff;">if</span> (null it)
-                                                 (push (cons (cadr exp) val)
-                                                       *glob-env*)
-                                                 (rplacd it val))
-                                             (funcall cont val)))))
+                                           (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
+                                               (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) *glob-env*))
+                                                   (push (cons (cadr exp) val)
+                                                         *glob-env*)
+                                                   (rplacd (assoc (cadr exp) *glob-env*) val))
+                                               (rplacd (assoc (cadr exp) env) val))
+                                           (funcall cont val))))
+
     ((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
                                                              <span style="color: #5f5f87;">:env</span> env
                                                              <span style="color: #5f5f87;">:block-env</span> block-env
@@ -2189,20 +2208,36 @@
                     (<span style="color: #af00ff;">prog1</span> (myeval '(alfa 8) nil nil nil #'err #'ok)
                       (setf *glob-env* nil)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SETQ</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 1 (myeval '(let ((alfa 2))</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">(setq alfa 1)</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">alfa)</span>
-<span style="color: #af0000;">;;                          </span><span style="color: #af0000;">nil #'err #'ok)))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 1 (myeval '(let ((alfa (+ 2 1)))</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">(setq alfa 1)</span>
-<span style="color: #af0000;">;;                                 </span><span style="color: #af0000;">alfa)</span>
-<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">nil #'err #'ok)))</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal '((ALFA . 1))</span>
-<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(progn</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(setf *glob-env* nil)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(myeval '(setq alfa 1) nil #'err #'ok)</span>
-<span style="color: #af0000;">;;                  </span><span style="color: #af0000;">(prog1 *glob-env*</span>
-<span style="color: #af0000;">;;                    </span><span style="color: #af0000;">(setf *glob-env* nil)))))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1072; &#1080;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1083;&#1086;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1085;&#1077; &#1079;&#1072;&#1090;&#1088;&#1072;&#1075;&#1080;&#1074;&#1072;&#1103; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1075;&#1086; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((2 . 2) ((alfa . 0)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((alfa . 0)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons (setq alfa 2)
+                                        alfa)
+                                      '((alfa . 1))
+                                      nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1085;&#1077;&#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; (&#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1080;&#1077; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;)</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons
+                                        (setq alfa 1)
+                                        alfa)
+                                      nil nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '((1 . 1) ((BETA . 1)))
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #af00ff;">prog1</span> (list (myeval '(cons
+                                        (setq beta 1)
+                                        beta)
+                                      nil nil nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '((<span style="color: #af00ff;">lambda</span> (x) (+ 1  x)) 2)
                          nil nil nil #'err #'ok)))

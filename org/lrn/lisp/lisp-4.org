@@ -23,6 +23,8 @@ SECD-машину мы будем реализовывать несколько 
 CPS-преобразовании. Оно дает нам бесплатные бонусы, например:
 - решение semipredicate problem, проблемы полупредикатов.
 
+* Semipredicate problem
+
 Полупредикаты - это предикаты, у которых может быть три возможных вида возвращаемых
 значений:
 - T
@@ -34,9 +36,9 @@ CPS-преобразовании. Оно дает нам бесплатные б
 
 #+BEGIN_SRC lisp
   (defun assoc-1 (key alist)
-    (cond ((null alist) nil)
-          ((equal key (caar alist)) (car alist))
-          (t (assoc-1 key (cdr alist)))))
+    (cond ((null alist)              nil)
+          ((equal key (caar alist))  (car alist))
+          (t                         (assoc-1 key (cdr alist)))))
 
   ;; (assoc-1 'alfa '((alfa . 1) (beta . 2)))
   ;; => (ALFA . 1)
@@ -49,10 +51,11 @@ CPS-преобразовании. Оно дает нам бесплатные б
 иначе будет невозможно отличить ситуацию "элемент не найден" от ситуации "элемент имеет
 значение NIL".
 
-Типичным вариантом использования является проверка на "элемент не найден" возвращаемого
-~assoc~ значения. Ее отсутствие, как правило является ошибкой. Так как после решения
-funarg-problem мы можем передавать функции, мы могли бы сделать такой вариант ~assoc~,
-который принимал бы функцию, которая будет вызвана в ситуации "элемент не найден".
+Типичным вариантом использования ~assoc-1 ~является проверка на "элемент не найден"
+возвращаемого значения. Ее отсутствие, как правило является ошибкой. Так как после
+решения funarg-problem мы можем передавать функции, мы могли бы сделать такой вариант
+~assoc~, который принимал бы функцию, которая будет вызвана в ситуации "элемент не
+найден".
 
 Такая функция называется "продолжением". Следуя далее этим путем, мы могли бы
 передавать два продолжения: одно будет вызвано, если элемент не найден, а второе - в
@@ -1496,49 +1499,68 @@ cps
                         (setf *glob-env* nil)))))
 #+END_SRC
 
-** TODO SETQ
+** SETQ
 
-[TODO:gmm] Переписываем через ~assoc~, потому что ~lookup~ не может вернуть пару, а это нужно
-чтобы изменить переменную.
+~lookup~ у нас не может вернуть пару ~(переменная . значение)~, а нам эта пара нужна
+чтобы изменить значение переменной. Поэтому здесь мы обходимся без ~lookup~, напрямую
+отрабатывая все его инварианты
 
 #+NAME: myeval_setq_4
 #+BEGIN_SRC lisp
-  (defun lookup (symb env)
-    (let ((it (assoc symb env)))
-      (if (not (null it))
-          it
-          (assoc symb *glob-env*))))
-
-
   ((equal (car exp) 'setq)     (myeval (caddr exp) env errcont
                                        (lambda (val)
-                                         (let ((it (lookup (cadr exp) env errcont cont)))
-                                           (if (null it)
-                                               (push (cons (cadr exp) val)
-                                                     ,*glob-env*)
-                                               (rplacd it val))
-                                           (funcall cont val)))))
+                                         (if (null (assoc (cadr exp) env))
+                                             ;; переменная не найдена в текущем окружении
+                                             ;; - посмотрим в глобальном
+                                             (if (null (assoc (cadr exp) *glob-env*))
+                                                 ;; переменная не найдена в глобальном
+                                                 ;; окружении - создадим ее в глобальном
+                                                 ;; окружении
+                                                 (push (cons (cadr exp) val)
+                                                       ,*glob-env*)
+                                                 ;; переменная найдена в глобальном
+                                                 ;; окружении - изменим ее значение
+                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
+                                             ;; переменная найдена в текущем окружении
+                                             ;; - изменить ее значение
+                                             (rplacd (assoc (cadr exp) env) val))
+                                         ;; В любом случае возвращаем значение переменной
+                                         (funcall cont val))))
 #+END_SRC
-
-[TODO:gmm] Все тесты здесь почему-то не работают - не происходит изменения переменной.
 
 #+NAME: myeval_setq_4_test
 #+BEGIN_SRC lisp
   ;; Тесты для SETQ
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil #'err #'ok)))
-  ;; (assert (equal 1 (myeval '(let ((alfa (+ 2 1)))
-  ;;                            (setq alfa 1)
-  ;;                                 alfa)
-  ;;                            nil #'err #'ok)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(setq alfa 1) nil #'err #'ok)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
+  ;; Проверка изменения значения локальной переменной, не затрагивая глобального окружения
+  (assert (equal '((2 . 2) ((alfa . 0)))
+                 (progn
+                   (setf *glob-env* '((alfa . 0)))
+                   (prog1 (list (myeval '(cons (setq alfa 2)
+                                          alfa)
+                                        '((alfa . 1))
+                                        #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения несуществующей переменной (создание глобальной переменной)
+  (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq alfa 1)
+                                          alfa)
+                                        nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения существующей глобальной переменной
+  (assert (equal '((1 . 1) ((BETA . 1)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq beta 1)
+                                          beta)
+                                        nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
 #+END_SRC
 
 ** LAMBDA
@@ -1778,12 +1800,24 @@ cps
                                           (funcall cont (cadr exp))))
       ((equal (car exp) 'setq)     (myeval (caddr exp) env errcont
                                            (lambda (val)
-                                             (let ((it (lookup (cadr exp) env errcont cont)))
-                                               (if (null it)
-                                                   (push (cons (cadr exp) val)
-                                                         ,*glob-env*)
-                                                   (rplacd it val))
-                                               (funcall cont val)))))
+                                             (if (null (assoc (cadr exp) env))
+                                                 ;; переменная не найдена в текущем окружении
+                                                 ;; - посмотрим в глобальном
+                                                 (if (null (assoc (cadr exp) *glob-env*))
+                                                     ;; переменная не найдена в глобальном
+                                                     ;; окружении - создадим ее в глобальном
+                                                     ;; окружении
+                                                     (push (cons (cadr exp) val)
+                                                           ,*glob-env*)
+                                                     ;; переменная найдена в глобальном
+                                                     ;; окружении - изменим ее значение
+                                                     (rplacd (assoc (cadr exp) *glob-env*) val))
+                                                 ;; переменная найдена в текущем окружении
+                                                 ;; - изменить ее значение
+                                                 (rplacd (assoc (cadr exp) env) val)
+                                                 )
+                                             ;; В любом случае возвращаем значение переменной
+                                             (funcall cont val))))
       ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
                                                                :env env
                                                                :args (cadr exp))))
@@ -2142,20 +2176,36 @@ cps
                       (prog1 (myeval '(alfa 8) nil #'err #'ok)
                         (setf *glob-env* nil)))))
   ;; Тесты для SETQ
-  ;; (assert (equal 1 (myeval '(let ((alfa 2))
-  ;;                            (setq alfa 1)
-  ;;                            alfa)
-  ;;                          nil #'err #'ok)))
-  ;; (assert (equal 1 (myeval '(let ((alfa (+ 2 1)))
-  ;;                            (setq alfa 1)
-  ;;                                 alfa)
-  ;;                            nil #'err #'ok)))
-  ;; (assert (equal '((ALFA . 1))
-  ;;                (progn
-  ;;                  (setf *glob-env* nil)
-  ;;                  (myeval '(setq alfa 1) nil #'err #'ok)
-  ;;                  (prog1 *glob-env*
-  ;;                    (setf *glob-env* nil)))))
+  ;; Проверка изменения значения локальной переменной, не затрагивая глобального окружения
+  (assert (equal '((2 . 2) ((alfa . 0)))
+                 (progn
+                   (setf *glob-env* '((alfa . 0)))
+                   (prog1 (list (myeval '(cons (setq alfa 2)
+                                          alfa)
+                                        '((alfa . 1))
+                                        #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения несуществующей переменной (создание глобальной переменной)
+  (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq alfa 1)
+                                          alfa)
+                                        nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения существующей глобальной переменной
+  (assert (equal '((1 . 1) ((BETA . 1)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (myeval '(cons
+                                          (setq beta 1)
+                                          beta)
+                                        nil #'err #'ok)
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
   ;; Тесты для LAMBDA
   (assert (equal 3 (myeval '((lambda (x) (+ 1  x)) 2)
                            nil #'err #'ok)))
