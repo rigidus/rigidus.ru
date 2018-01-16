@@ -1166,25 +1166,31 @@
                                  nil nil nil nil (lambda (x) "error")
                                  #'ok)))
   ;; Тест RETURN-FROM в лексической области видимости
-  (assert (equal 12 (myeval '(progn
-                              (defun foo (x)
-                                (block in-lambda-block
-                                  (return-from in-lambda-block
-                                    (+ x 2)))
-                                777)
-                              (foo 10))
-                            nil nil nil nil (lambda (x) "error")
-                            #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (block in-lambda-block
+                                           (return-from in-lambda-block
+                                             (+ x 2)))
+                                         777)
+                                       (foo 10))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
   ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
-  (assert (equal "error" (myeval '(progn
-                                   (defun foo (x)
-                                     (return-from in-lambda-block
-                                       (+ x 2))
-                                     777)
-                                   (block in-lambda-block
-                                     (foo 10)))
-                                 nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+  (assert (equal "error" (progn
+                           (setf *glob-env* nil)
+                           (prog1 (myeval '(progn
+                                            (defun foo (x)
+                                              (return-from in-lambda-block
+                                                (+ x 2))
+                                              777)
+                                            (block in-lambda-block
+                                              (foo 10)))
+                                          nil nil nil nil (lambda (x) "error")
+                                          #'ok)
+                             (setf *glob-env* nil)))))
 #+END_SRC
 
 ** CATCH
@@ -1252,25 +1258,31 @@
                                  nil nil nil nil (lambda (x) "error")
                                  #'ok)))
   ;; Тест THROW в лексической области видимости
-  (assert (equal 12 (myeval '(progn
-                              (defun foo (x)
-                                (catch 'in-lambda-catch
-                                  (throw 'in-lambda-catch
-                                    (+ x 2)))
-                                777)
-                              (foo 10))
-                            nil nil nil nil (lambda (x) "error")
-                            #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (catch 'in-lambda-catch
+                                           (throw 'in-lambda-catch
+                                             (+ x 2)))
+                                         777)
+                                       (foo 10))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
   ;; Тест THROW в динамической области видимости (должно сработать)
-  (assert (equal 12 (myeval '(progn
-                                   (defun foo (x)
-                                     (throw 'in-lambda-catch
-                                       (+ x 2))
-                                     777)
-                                   (catch 'in-lambda-catch
-                                     (foo 10)))
-                                 nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (throw 'in-lambda-catch
+                                           (+ x 2))
+                                         777)
+                                       (catch 'in-lambda-catch
+                                         (foo 10)))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
 #+END_SRC
 
 ** TAGBODY
@@ -1279,7 +1291,7 @@
 
 Нам потребуется несколько дополнительных функций:
 
-#+NAME: my_eval_evtagbody_6
+#+NAME: myeval_evtagbody_6
 #+BEGIN_SRC lisp
   (defun tagbody-check-tag (exp cont errcont)
     (cond ((null exp) (funcall cont))
@@ -1568,7 +1580,32 @@
                                                  (acons (caar varpairs) x env)
                                                  block-env go-env catch-env
                                                  errcont cont))))))
+  (defun tagbody-check-tag (exp cont errcont)
+    (cond ((null exp) (funcall cont))
+          ((and (symbolp (car exp))
+                (member (car exp) (cdr exp)))
+           (funcall errcont (car exp)))
+          (t (tagbody-check-tag (cdr exp) cont errcont))))
 
+
+  (defun evtagbody (body env block-env go-env catch-env errcont cont)
+    (cond ((null (car body))      (funcall cont nil))
+          ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
+          (t                      (myeval (car body) env block-env go-env catch-env errcont
+                                          (lambda (x)
+                                            (declare (ignore x))
+                                            (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
+
+
+  (defun tagbody-slice (exp)
+    (cond ((null exp)           nil)
+          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
+          (t                    (tagbody-slice (cdr exp)))))
+
+  (defun tagbody-slice (exp res)
+    (cond ((null exp) res)
+          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+          (t                   (tagbody-slice (cdr exp) res))))
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
       ((null exp)                  (funcall cont 'nil))
@@ -2137,25 +2174,31 @@
                                  nil nil nil nil (lambda (x) "error")
                                  #'ok)))
   ;; Тест RETURN-FROM в лексической области видимости
-  (assert (equal 12 (myeval '(progn
-                              (defun foo (x)
-                                (block in-lambda-block
-                                  (return-from in-lambda-block
-                                    (+ x 2)))
-                                777)
-                              (foo 10))
-                            nil nil nil nil (lambda (x) "error")
-                            #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (block in-lambda-block
+                                           (return-from in-lambda-block
+                                             (+ x 2)))
+                                         777)
+                                       (foo 10))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
   ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
-  (assert (equal "error" (myeval '(progn
-                                   (defun foo (x)
-                                     (return-from in-lambda-block
-                                       (+ x 2))
-                                     777)
-                                   (block in-lambda-block
-                                     (foo 10)))
-                                 nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+  (assert (equal "error" (progn
+                           (setf *glob-env* nil)
+                           (prog1 (myeval '(progn
+                                            (defun foo (x)
+                                              (return-from in-lambda-block
+                                                (+ x 2))
+                                              777)
+                                            (block in-lambda-block
+                                              (foo 10)))
+                                          nil nil nil nil (lambda (x) "error")
+                                          #'ok)
+                             (setf *glob-env* nil)))))
   ;; Тесты для CATCH
   (assert (equal nil (myeval '(catch 'zzz)
                              nil nil nil nil #'err #'ok)))
@@ -2172,25 +2215,31 @@
                                  nil nil nil nil (lambda (x) "error")
                                  #'ok)))
   ;; Тест THROW в лексической области видимости
-  (assert (equal 12 (myeval '(progn
-                              (defun foo (x)
-                                (catch 'in-lambda-catch
-                                  (throw 'in-lambda-catch
-                                    (+ x 2)))
-                                777)
-                              (foo 10))
-                            nil nil nil nil (lambda (x) "error")
-                            #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (catch 'in-lambda-catch
+                                           (throw 'in-lambda-catch
+                                             (+ x 2)))
+                                         777)
+                                       (foo 10))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
   ;; Тест THROW в динамической области видимости (должно сработать)
-  (assert (equal 12 (myeval '(progn
-                              (defun foo (x)
-                                (throw 'in-lambda-catch
-                                  (+ x 2))
-                                777)
-                              (catch 'in-lambda-catch
-                                (foo 10)))
-                            nil nil nil nil (lambda (x) "error")
-                            #'ok)))
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (myeval '(progn
+                                       (defun foo (x)
+                                         (throw 'in-lambda-catch
+                                           (+ x 2))
+                                         777)
+                                       (catch 'in-lambda-catch
+                                         (foo 10)))
+                                     nil nil nil nil (lambda (x) "error")
+                                     #'ok)
+                        (setf *glob-env* nil)))))
   ;; Тесты для TAGBODY
   (assert (equal nil (myeval '(tagbody a 1)
                              nil nil nil nil #'err #'ok)))
@@ -2223,5 +2272,4 @@
     (finish-output)
     (repl))
   ;; (repl)
-
 #+END_SRC
