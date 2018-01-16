@@ -1763,6 +1763,31 @@
                                             (lambda (x)
                                               (funcall errcont (format nil "go: wrong target ~A" x)))))
 
+      ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
+                                                           (cons (car label) nil))
+                                                         (cadr exp)))
+                                          (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
+                                          (closures (mapcar (lambda (label)
+                                                              ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
+                                                              (make-closure :body (caddr label)
+                                                                            :block-env block-env
+                                                                            :env new-env
+                                                                            :go-env go-env
+                                                                            :args (cadr label)))
+                                                            (cadr exp))))
+                                     ;; alist:    '((zzz . nil) (xxx . nil))
+                                     ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
+                                     ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
+                                     (assert (equal (length alist) (length closures)))
+                                     (loop
+                                        :for aelt     :in alist
+                                        :for closure  :in closures
+                                        :do (rplacd aelt closure))
+                                     ;; получаем:
+                                     ;; alist:    '((zzz . #:closure) (xxx . #:closure))
+                                     ;; И передаем new-env в качестве окружения
+                                     (print new-env)
+                                     (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
       (t
        (myeval (car exp) env block-env go-env catch-env errcont
                (lambda (x)
@@ -2264,6 +2289,12 @@
                                      e (setq alfa (cons alfa 5)))
                                     alfa)
                                   nil nil nil nil #'err #'ok)))
+  ;; Тесты для LABELS
+  (assert (equal 3 (myeval '(labels ((zzz (lst acc)
+                                      (cond ((null lst) acc)
+                                            (t (zzz (cdr lst) (+ 1 acc))))))
+                             (zzz '(1 2 3) 0))
+                           nil nil nil nil #'err #'ok)))
   ;; REPL
   (defun repl ()
     (princ "microlisp>")

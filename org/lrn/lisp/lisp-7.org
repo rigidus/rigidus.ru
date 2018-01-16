@@ -1277,25 +1277,36 @@
                                   nil nil nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO LABELS
+** LABELS
 
-[TODO:gmm] Не очень понимаю как это работает.
+[TODO:gmm] impicit progn
+[TODO:gmm] в labels можно сначала сделать замыкания с полем env указывающим на nil, а потом инжектить в них окружения
 
 #+NAME: myeval_labels_7
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label)
+  ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
                                                        (cons (car label) nil))
                                                      (cadr exp)))
-                                      (new-env (append alist env))
+                                      (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                       (closures (mapcar (lambda (label)
-                                                          (make-closure :block-env block-env
+                                                          ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
+                                                          (make-closure :body (caddr label)
+                                                                        :block-env block-env
                                                                         :env new-env
                                                                         :go-env go-env
                                                                         :args (cadr label)))
                                                         (cadr exp))))
-                                 (loop :for aelt     :in alist
+                                 ;; alist:    '((zzz . nil) (xxx . nil))
+                                 ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
+                                 ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
+                                 (assert (equal (length alist) (length closures)))
+                                 (loop
+                                    :for aelt     :in alist
                                     :for closure  :in closures
                                     :do (rplacd aelt closure))
+                                 ;; получаем:
+                                 ;; alist:    '((zzz . #:closure) (xxx . #:closure))
+                                 ;; И передаем new-env в качестве окружения
                                  (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
 #+END_SRC
 
@@ -1314,6 +1325,8 @@
 * Итоги
 
 #+BEGIN_SRC lisp :tangle lisp-7.lisp :noweb tangle :exports code :padline no :comments none
+  (setq *print-circle* T)
+
   ;; CPS-версия ASSOC
   <<assoc_7>>
   ;; Классы ошибок
@@ -1347,6 +1360,8 @@
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
+  (setq *print-circle* T)
+
   ;; CPS-версия ASSOC
   (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
     ;; continuations (for lookup)
@@ -1684,19 +1699,29 @@
                                             (lambda (x)
                                               (funcall errcont (format nil "go: wrong target ~A" x)))))
 
-      ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label)
+      ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
                                                            (cons (car label) nil))
                                                          (cadr exp)))
-                                          (new-env (append alist env))
+                                          (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                           (closures (mapcar (lambda (label)
-                                                              (make-closure :block-env block-env
+                                                              ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
+                                                              (make-closure :body (caddr label)
+                                                                            :block-env block-env
                                                                             :env new-env
                                                                             :go-env go-env
                                                                             :args (cadr label)))
                                                             (cadr exp))))
-                                     (loop :for aelt     :in alist
+                                     ;; alist:    '((zzz . nil) (xxx . nil))
+                                     ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
+                                     ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
+                                     (assert (equal (length alist) (length closures)))
+                                     (loop
+                                        :for aelt     :in alist
                                         :for closure  :in closures
                                         :do (rplacd aelt closure))
+                                     ;; получаем:
+                                     ;; alist:    '((zzz . #:closure) (xxx . #:closure))
+                                     ;; И передаем new-env в качестве окружения
                                      (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
       (t
        (myeval (car exp) env block-env go-env catch-env errcont
