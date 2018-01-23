@@ -4,10 +4,18 @@
 
 На этом этапе мы проведем дефункционализацию.
 
+Выносим применение продолжения в отдельную функцию. Большинство продолжений принимают
+один аргумент, но есть и такие (в ~go~) которые не принимают аргументов.
+
+Также продолжения могут быть представлены структурами
+
 #+NAME: apply_continuation_8
 #+BEGIN_SRC lisp
   (defun apply-continuation (cont arg)
-    (cond ((functionp cont)       (funcall cont arg))
+    (cond ((and (functionp cont)
+                (equal arg 'NOT-A-PARAM))
+                                  (funcall cont))
+          ((functionp cont)       (funcall cont arg))
           ((evcond-cont-p cont)   (if arg
                                       (myeval (cadar (evcond-cont-clauses cont))
                                               (evcond-cont-env cont)
@@ -1166,21 +1174,22 @@
                         (setf *glob-env* nil)))))
 #+END_SRC
 
-** TODO SETQ
+** DONE SETQ
 
-[TODO:gmm] Заменяем ~funcall cont~ на ~apply-continuation~. Проверить IT
+Заменяем ~funcall cont~ на ~apply-continuation~
 
 #+NAME: myeval_setq_8
 #+BEGIN_SRC lisp
   ;; стало
   ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                        (lambda (val)
-                                         (let ((it (lookup (cadr exp) env errcont cont)))
-                                           (if (null it)
-                                               (push (cons (cadr exp) val)
-                                                     ,*glob-env*)
-                                               (rplacd it val))
-                                           (apply-continuation cont val)))))
+                                         (if (null (assoc (cadr exp) env))
+                                             (if (null (assoc (cadr exp) *glob-env*))
+                                                 (push (cons (cadr exp) val)
+                                                       ,*glob-env*)
+                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
+                                             (rplacd (assoc (cadr exp) env) val))
+                                         (apply-continuation cont val))))
   ;; было
   ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                        (lambda (val)
@@ -1192,8 +1201,6 @@
                                              (rplacd (assoc (cadr exp) env) val))
                                          (funcall cont val))))
 #+END_SRC
-
-[TODO:gmm] Не проходят тесты
 
 #+NAME: myeval_setq_8_test
 #+BEGIN_SRC lisp
@@ -1353,7 +1360,7 @@
                              (setf *glob-env* nil)))))
 #+END_SRC
 
-** TODO CATCH
+** DONE CATCH
 
 [TODO:gmm] Заменяем ~funcall~ на ~apply-continuation~
 
@@ -1369,10 +1376,10 @@
                                              (myeval (caddr exp)
                                                      env
                                                      block-env
+                                                     go-env
                                                      (acons symb-res
                                                             cont
                                                             catch-env)
-                                                     go-env
                                                      errcont
                                                      cont)))))
   ;; было
@@ -1593,13 +1600,13 @@
                                            errcont
                                            (format nil "go: wrong target ~A" x)))))
   ;; было
-  ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
-                                        (lambda (x)
-                                          (funcall x))
-                                        (lambda (x)
-                                          (funcall
-                                           errcont
-                                           (format nil "go: wrong target ~A" x)))))
+  ;; ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
+  ;;                                       (lambda (x)
+  ;;                                         (funcall x))
+  ;;                                       (lambda (x)
+  ;;                                         (funcall
+  ;;                                          errcont
+  ;;                                          (format nil "go: wrong target ~A" x)))))
 #+END_SRC
 
 [TODO:gmm] Не проходят тесты
