@@ -7,7 +7,6 @@
 #+NAME: apply_continuation_8
 #+BEGIN_SRC lisp
   (defun apply-continuation (cont arg)
-    (print arg)
     (cond ((functionp cont)       (funcall cont arg))
           ((evcond-cont-p cont)   (if arg
                                       (myeval (cadar (evcond-cont-clauses cont))
@@ -38,12 +37,21 @@
 
 * Глобальное окружение
 
+Меняем ~funcall~ на ~apply-continuation~:
+
 #+NAME: assoc_8
 #+BEGIN_SRC lisp
+  ;; было
   (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
                                           ;; continuations (for lookup)
     (cond ((null alist)              (funcall errcont key))
           ((equal key (caar alist))  (funcall cont    (cdar alist)))
+          (t                         (assoc-2 key (cdr alist) cont errcont))))
+  ;; стало
+  (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
+                                          ;; continuations (for lookup)
+    (cond ((null alist)              (apply-continuation errcont key))
+          ((equal key (caar alist))  (apply-continuation cont (cdar alist)))
           (t                         (assoc-2 key (cdr alist) cont errcont))))
 #+END_SRC
 
@@ -59,11 +67,14 @@
                           (lambda (x) (format nil "err:~A" x)))))
 #+END_SRC
 
+Заменяем передачу продолжения ~cont~ в ~assoc~ на ~(apply-continuation cont ...)~. Также
+заменяем вызов ~funcall errcont~ на ~(apply-continuation errcont ...)~
+
 #+NAME: lookup_8
 #+BEGIN_SRC lisp
   ;; environment
   (defparameter *glob-env* nil)
-  ;; lookup
+  ;; lookup (old)
   (defun lookup (symb env errcont cont)
     (assoc-2 symb env cont
              (lambda (key)
@@ -74,6 +85,19 @@
                                     nil
                                     "UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"
                                     key env *glob-env*)))))))
+  ;; lookup
+  (defun lookup (symb env errcont cont)
+    (assoc-2 symb env
+             (lambda (x)
+               (apply-continuation cont x))
+             (lambda (key)
+               (assoc-2 key *glob-env* cont
+                        (lambda (key)
+                          (apply-continuation
+                           errcont
+                           (format
+                            nil "UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"
+                            key env *glob-env*)))))))
 #+END_SRC
 
 #+NAME: lookup_8_test
@@ -126,7 +150,6 @@
 #+NAME: myapply_8
 #+BEGIN_SRC lisp
   <<evlis_cont_8>>
-
   <<evaddmul_8>>
   <<evlis_8>>
   (defun myapply (fn args catch-env errcont cont)
@@ -255,11 +278,11 @@
 #+NAME: myapply_ariph_8
 #+BEGIN_SRC lisp
   ;; стало
-  ((equal fn '+)             (apply-continuation cont (+ (car args) (cadr args))))
+  ((equal fn '+)             (apply-continuation cont (evadd args 0)))
   ;; было
   ((equal fn '+)             (funcall cont (evadd args 0)))
   ;; стало
-  ((equal fn '*)             (apply-continuation cont (* (car args) (cadr args))))
+  ((equal fn '*)             (apply-continuation cont (evmul args 1)))
   ;; было
   ((equal fn '*)             (funcall cont (evmul args 1)))
 #+END_SRC
@@ -478,7 +501,6 @@
 #+NAME: myeval_8
 #+BEGIN_SRC lisp
   <<evcond_cont_8>>
-
   <<myeval_evcond_8>>
   <<myeval_evprogn_8>>
   <<myeval_evand_8>>
@@ -583,7 +605,6 @@
 
 #+NAME: myeval_symb_8
 #+BEGIN_SRC lisp
-  ;; стало
   ((symbolp exp)               (lookup exp env errcont cont))
 #+END_SRC
 
@@ -756,7 +777,6 @@
                                         (evprogn (cdr lst)
                                                  env block-env go-env catch-env
                                                  errcont cont))))))
-
 #+END_SRC
 
 #+NAME: myeval_evprogn_8_test
@@ -840,7 +860,9 @@
 #+NAME: myeval_and_8
 #+BEGIN_SRC lisp
   ;; стало
-  ((equal fn 'and)             (apply-continuation cont (and (car args) (cadr args))))
+  ((equal (car exp) 'and)      (apply-continuation cont (evand (cdr exp)
+                                                               env block-env go-env catch-env
+                                                               errcont cont)))
   ;; было
   ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                     env block-env go-env catch-env
@@ -932,7 +954,9 @@
 #+NAME: myeval_or_8
 #+BEGIN_SRC lisp
   ;; стало
-  ((equal fn 'or)              (apply-continuation cont (or  (car args) (cadr args))))
+  ((equal (car exp) 'or)       (apply-continuation cont (evor  (cdr exp)
+                                                               env block-env go-env catch-env
+                                                               errcont cont)))
   ;; было
   ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
                                                     env block-env go-env catch-env
@@ -1144,7 +1168,7 @@
 
 ** TODO SETQ
 
-[TODO:gmm] Заменяем ~funcall cont~ на ~apply-continuation~
+[TODO:gmm] Заменяем ~funcall cont~ на ~apply-continuation~. Проверить IT
 
 #+NAME: myeval_setq_8
 #+BEGIN_SRC lisp
@@ -1168,6 +1192,8 @@
                                              (rplacd (assoc (cadr exp) env) val))
                                          (funcall cont val))))
 #+END_SRC
+
+[TODO:gmm] Не проходят тесты
 
 #+NAME: myeval_setq_8_test
 #+BEGIN_SRC lisp
@@ -1413,6 +1439,8 @@
                                                                 key)))))))))
 #+END_SRC
 
+[TODO:gmm] Не проходят тесты
+
 #+NAME: myeval_throw_8_test
 #+BEGIN_SRC lisp
   ;; Тесты для THROW
@@ -1463,7 +1491,6 @@
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-
   ;; было
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
@@ -1480,14 +1507,10 @@
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-
   (defun tagbody-slice (exp)
     (cond ((null exp)           nil)
           ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
           (t                    (tagbody-slice (cdr exp)))))
-
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
@@ -1559,7 +1582,7 @@
 
 [TODO:gmm] Заменяем ~funcall~ на ~apply-continuation~
 
-#+NAME: myeval_tagbody_8
+#+NAME: myeval_go_8
 #+BEGIN_SRC lisp
   ;; стало
   ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
@@ -1578,6 +1601,8 @@
                                            errcont
                                            (format nil "go: wrong target ~A" x)))))
 #+END_SRC
+
+[TODO:gmm] Не проходят тесты
 
 #+NAME: myeval_go_8_test
 #+BEGIN_SRC lisp
