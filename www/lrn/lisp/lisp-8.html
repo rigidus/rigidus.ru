@@ -26,33 +26,37 @@
 <li><a href="#unnumbered-9">CLOSURE</a></li>
 <li><a href="#unnumbered-10">PRINT</a></li>
 <li><a href="#unnumbered-11">LIST</a></li>
+<li><a href="#unnumbered-12">CALL/CC</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-12">MyEval</a>
+<li><a href="#unnumbered-13">MyEval</a>
 <ul>
-<li><a href="#unnumbered-13">Самовычисляемые формы</a></li>
-<li><a href="#unnumbered-14">Вычисление символов</a></li>
-<li><a href="#unnumbered-15">Цитирование</a></li>
-<li><a href="#unnumbered-16">Условное выполнение IF</a></li>
-<li><a href="#unnumbered-17">COND</a></li>
-<li><a href="#unnumbered-18">PROGN</a></li>
-<li><a href="#unnumbered-19">AND</a></li>
-<li><a href="#unnumbered-20">OR</a></li>
-<li><a href="#unnumbered-21">LET</a></li>
-<li><a href="#unnumbered-22">LET*</a></li>
-<li><a href="#unnumbered-23">DEFUN</a></li>
-<li><a href="#unnumbered-24">SETQ</a></li>
-<li><a href="#unnumbered-25">LAMBDA</a></li>
-<li><a href="#unnumbered-26">BLOCK</a></li>
-<li><a href="#unnumbered-27">RETURN-FROM</a></li>
-<li><a href="#unnumbered-28">CATCH</a></li>
-<li><a href="#unnumbered-29">THROW</a></li>
-<li><a href="#unnumbered-30">TAGBODY</a></li>
-<li><a href="#unnumbered-31">GO</a></li>
-<li><a href="#unnumbered-32">LABELS</a></li>
+<li><a href="#unnumbered-14">Самовычисляемые формы</a></li>
+<li><a href="#unnumbered-15">Вычисление символов</a></li>
+<li><a href="#unnumbered-16">Цитирование</a></li>
+<li><a href="#unnumbered-17">Условное выполнение IF</a></li>
+<li><a href="#unnumbered-18">COND</a></li>
+<li><a href="#unnumbered-19">PROGN</a></li>
+<li><a href="#unnumbered-20">AND</a></li>
+<li><a href="#unnumbered-21">OR</a></li>
+<li><a href="#unnumbered-22">LET</a></li>
+<li><a href="#unnumbered-23">LET*</a></li>
+<li><a href="#unnumbered-24"><span class="todo nilTODO">TODO</span> DEFUN</a></li>
+<li><a href="#unnumbered-25">SETQ</a></li>
+<li><a href="#unnumbered-26">LAMBDA</a></li>
+<li><a href="#unnumbered-27">BLOCK</a></li>
+<li><a href="#unnumbered-28">RETURN-FROM</a></li>
+<li><a href="#unnumbered-29">CATCH</a></li>
+<li><a href="#unnumbered-30">THROW</a></li>
+<li><a href="#unnumbered-31">TAGBODY</a></li>
+<li><a href="#unnumbered-32">GO</a></li>
+<li><a href="#unnumbered-33"><span class="todo nilTODO">TODO</span> LABELS</a></li>
+<li><a href="#unnumbered-34">RESET</a></li>
+<li><a href="#unnumbered-35">SHIFT</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-33">Итоги</a></li>
+<li><a href="#unnumbered-36">Repl</a></li>
+<li><a href="#unnumbered-37">Итоги</a></li>
 </ul>
 </div>
 </div>
@@ -61,75 +65,27 @@
 <h2 id="unnumbered-1">План работ</h2>
 <div class="outline-text-2" id="text-unnumbered-1">
 <p>
-На этом этапе мы проведем дефункционализацию.
+На предыдущем этапе мы получили <code>labels</code>. Продолжая добавлять конструкции управления,
+добавим <code>call/cc</code>, <code>shift</code> и <code>reset</code>. Изменится не очень много, мы добавим несколько
+clauses в <code>myeval</code> и <code>myapply</code>.
 </p>
 
 <p>
-Выносим применение продолжения в отдельную функцию. Большинство продолжений принимают
-один аргумент, но есть и такие (в <code>go</code>) которые не принимают аргументов.
+Кроме того, мы изменим наш <code>repl</code> так, чтобы иметь возможность вызывать его при
+возникновении ошибок.
 </p>
-
-<p>
-Также продолжения могут быть представлены структурами
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="apply_continuation_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">apply-continuation</span> (cont arg)
-  (<span style="color: #af00ff;">cond</span> ((and (functionp cont)
-              (equal arg 'NOT-A-PARAM))
-                                (funcall cont))
-        ((functionp cont)       (funcall cont arg))
-        ((evcond-cont-p cont)   (<span style="color: #af00ff;">if</span> arg
-                                    (myeval (cadar (evcond-cont-clauses cont))
-                                            (evcond-cont-env cont)
-                                            (evcond-cont-block-env cont)
-                                            (evcond-cont-go-env cont)
-                                            (evcond-cont-catch-env cont)
-                                            (evcond-cont-errcont cont)
-                                            (evcond-cont-cont cont))
-                                    (evcond (cdr (evcond-cont-clauses cont))
-                                            (evcond-cont-env cont)
-                                            (evcond-cont-block-env cont)
-                                            (evcond-cont-go-env cont)
-                                            (evcond-cont-catch-env cont)
-                                            (evcond-cont-errcont cont)
-                                            (evcond-cont-cont cont))))
-        ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
-                                       (cdr (evlis-cont-unevaled cont))
-                                       (cons arg (evlis-cont-evaled cont))
-                                       (evlis-cont-env cont)
-                                       (evlis-cont-block-env cont)
-                                       (evlis-cont-go-env cont)
-                                       (evlis-cont-catch-env cont)
-                                       (evlis-cont-errcont cont)
-                                       (evlis-cont-cont cont)))
-        (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'bad-cont))))
-</pre>
-</div>
 </div>
 </div>
 
 <div id="outline-container-unnumbered-2" class="outline-2">
 <h2 id="unnumbered-2">Глобальное окружение</h2>
 <div class="outline-text-2" id="text-unnumbered-2">
-<p>
-Меняем <code>funcall</code> на <code>apply-continuation</code>:
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="assoc_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
+<pre class="src src-lisp" id="assoc_7">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
                                         <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
   (<span style="color: #af00ff;">cond</span> ((null alist)              (funcall errcont key))
         ((equal key (caar alist))  (funcall cont    (cdar alist)))
-        (t                         (assoc-2 key (cdr alist) cont errcont))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
-                                        <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
-  (<span style="color: #af00ff;">cond</span> ((null alist)              (apply-continuation errcont key))
-        ((equal key (caar alist))  (apply-continuation cont (cdar alist)))
         (t                         (assoc-2 key (cdr alist) cont errcont))))
 </pre>
 </div>
@@ -147,16 +103,11 @@
 </pre>
 </div>
 
-<p>
-Заменяем передачу продолжения <code>cont</code> в <code>assoc</code> на <code>(apply-continuation cont ...)</code>. Также
-заменяем вызов <code>funcall errcont</code> на <code>(apply-continuation errcont ...)</code>
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="lookup_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">environment</span>
 (<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">lookup (old)</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">lookup</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env errcont cont)
   (assoc-2 symb env cont
            (<span style="color: #af00ff;">lambda</span> (key)
@@ -167,19 +118,6 @@
                                   nil
                                   <span style="color: #87005f;">"UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"</span>
                                   key env *glob-env*)))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">lookup</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">lookup</span> (symb env errcont cont)
-  (assoc-2 symb env
-           (<span style="color: #af00ff;">lambda</span> (x)
-             (apply-continuation cont x))
-           (<span style="color: #af00ff;">lambda</span> (key)
-             (assoc-2 key *glob-env* cont
-                      (<span style="color: #af00ff;">lambda</span> (key)
-                        (apply-continuation
-                         errcont
-                         (format
-                          nil <span style="color: #87005f;">"UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"</span>
-                          key env *glob-env*)))))))
 </pre>
 </div>
 
@@ -232,6 +170,16 @@
 <div id="outline-container-unnumbered-5" class="outline-2">
 <h2 id="unnumbered-5">MyApply</h2>
 <div class="outline-text-2" id="text-unnumbered-5">
+<p>
+Добавляем в <code>myapply</code> дополнительные подразделы
+</p>
+<ul class="org-ul">
+<li>call/cc
+</li>
+<li>repl
+</li>
+</ul>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="errors_8">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">unknown-function</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
@@ -245,8 +193,7 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_8">&lt;&lt;evlis_cont_8&gt;&gt;
-&lt;&lt;evaddmul_8&gt;&gt;
+<pre class="src src-lisp" id="myapply_8">&lt;&lt;evaddmul_8&gt;&gt;
 &lt;&lt;evlis_8&gt;&gt;
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
@@ -256,6 +203,7 @@
     &lt;&lt;myapply_closure_8&gt;&gt;
     &lt;&lt;myapply_print_8&gt;&gt;
     &lt;&lt;myapply_list_8&gt;&gt;
+    &lt;&lt;myapply_callcc_8&gt;&gt;
     (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'unknown-function <span style="color: #5f5f87;">:fn</span> fn))))
 </pre>
 </div>
@@ -271,6 +219,7 @@
 &lt;&lt;myapply_print_8_test&gt;&gt;
 &lt;&lt;myapply_evlis_8_test&gt;&gt;
 &lt;&lt;myapply_list_8_test&gt;&gt;
+&lt;&lt;myapply_callcc_8test&gt;&gt;
 </pre>
 </div>
 </div>
@@ -280,12 +229,7 @@
 <div class="outline-text-3" id="text-unnumbered-6">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_car_cdr_cons_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal fn 'car)             (apply-continuation cont (caar args)))
-((equal fn 'cdr)             (apply-continuation cont (cdar args)))
-((equal fn 'cons)            (apply-continuation cont (cons (car args) (cadr args))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal fn 'car)             (funcall cont (caar args)))
+<pre class="src src-lisp" id="myapply_car_cdr_cons_8">((equal fn 'car)             (funcall cont (caar args)))
 ((equal fn 'cdr)             (funcall cont (cdar args)))
 ((equal fn 'cons)            (funcall cont (cons (car args) (cadr args))))
 </pre>
@@ -323,16 +267,9 @@
 </pre>
 </div>
 
-<p>
-[TODO:gmm] Поправить проверку аргументов
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_null_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal fn 'null)            (apply-continuation cont (null (car args))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal fn 'null)            (<span style="color: #af00ff;">if</span> (null (cdr args))
+<pre class="src src-lisp" id="myapply_null_8">((equal fn 'null)            (<span style="color: #af00ff;">if</span> (null (cdr args))
                                  (funcall cont (null (car args)))
                                  (<span style="color: #ff0000; font-weight: bold;">error</span> 'invalid-number-of-arguments <span style="color: #5f5f87;">:fn</span> fn)))
 </pre>
@@ -388,14 +325,8 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_ariph_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal fn '+)             (apply-continuation cont (evadd args 0)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal fn '+)             (funcall cont (evadd args 0)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal fn '*)             (apply-continuation cont (evmul args 1)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal fn '*)             (funcall cont (evmul args 1)))
+<pre class="src src-lisp" id="myapply_ariph_8">((equal fn '+)               (funcall cont (evadd args 0)))
+((equal fn '*)               (funcall cont (evmul args 1)))
 </pre>
 </div>
 
@@ -479,10 +410,6 @@
 <div id="outline-container-unnumbered-9" class="outline-3">
 <h3 id="unnumbered-9">CLOSURE</h3>
 <div class="outline-text-3" id="text-unnumbered-9">
-<p>
-Тут без изменений
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myapply_closure_8">((closure-p fn)              (myeval (closure-body fn)
@@ -512,16 +439,9 @@
 <div id="outline-container-unnumbered-10" class="outline-3">
 <h3 id="unnumbered-10">PRINT</h3>
 <div class="outline-text-3" id="text-unnumbered-10">
-<p>
-[TODO:gmm] Сделать проверку аргументов
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_print_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal fn 'print)           (apply-continuation cont (print (car args))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal fn 'print)           (funcall cont (print (car args))))
+<pre class="src src-lisp" id="myapply_print_8">((equal fn 'print)           (funcall cont (print (car args))))
 </pre>
 </div>
 
@@ -555,26 +475,9 @@
 <div id="outline-container-unnumbered-11" class="outline-3">
 <h3 id="unnumbered-11">LIST</h3>
 <div class="outline-text-3" id="text-unnumbered-11">
-<p>
-Определим структуру для сохранения продолжения EVLIS:
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evlis_cont_8">(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">evlis-cont</span>
-  fn unevaled evaled env block-env go-env catch-env errcont cont)
-</pre>
-</div>
-
-<p>
-Теперь <code>evlis</code>, в случае получения непустого <code>unevaled</code> будет создавать эту структуру и
-передавать её в качестве продолжения в <code>myeval</code>.
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="evlis_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env block-env go-env catch-env errcont cont)
+<pre class="src src-lisp" id="evlis_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
         (t                (myeval (car unevaled) env block-env go-env catch-env errcont
                                   (<span style="color: #af00ff;">lambda</span> (x)
@@ -583,26 +486,8 @@
                                            (cons x evaled)
                                            env block-env go-env catch-env
                                            errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
-        (t                (myeval (car unevaled) env block-env go-env catch-env errcont
-                                  (make-evlis-cont
-                                   <span style="color: #5f5f87;">:fn</span> fn
-                                   <span style="color: #5f5f87;">:unevaled</span> unevaled
-                                   <span style="color: #5f5f87;">:evaled</span> evaled
-                                   <span style="color: #5f5f87;">:env</span> env
-                                   <span style="color: #5f5f87;">:block-env</span> block-env
-                                   <span style="color: #5f5f87;">:go-env</span> go-env
-                                   <span style="color: #5f5f87;">:catch-env</span> catch-env
-                                   <span style="color: #5f5f87;">:errcont</span> errcont
-                                   <span style="color: #5f5f87;">:cont</span> cont)))))
 </pre>
 </div>
-
-<p>
-[TODO:gmm] Этого вообще нет в исходнике почему-то. APPLY-CONTINATIONS?
-</p>
 
 <div class="org-src-container">
 
@@ -638,15 +523,61 @@
 </div>
 </div>
 </div>
-</div>
 
-<div id="outline-container-unnumbered-12" class="outline-2">
-<h2 id="unnumbered-12">MyEval</h2>
-<div class="outline-text-2" id="text-unnumbered-12">
+<div id="outline-container-unnumbered-12" class="outline-3">
+<h3 id="unnumbered-12">CALL/CC</h3>
+<div class="outline-text-3" id="text-unnumbered-12">
+<p>
+Когда мы встречаем инструкцию <code>call/cc</code> мы ожидаем, что она содержит лямбду, которая
+принимает один функциональный аргумент. Мы хотим вычислить (apply) эту лямбду, передав
+ей в качестве этого аргумента текущее продолжение.
+</p>
+
+<p>
+Когда эта лямбда попадает в <code>myapply</code> она будет представлена как функция (пока у нас
+нет объектов-функций) и нам останется только применить эту функцию к ее аргументу.
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_8">&lt;&lt;evcond_cont_8&gt;&gt;
-&lt;&lt;myeval_evcond_8&gt;&gt;
+<pre class="src src-lisp" id="myapply_callcc_8">((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
+((functionp fn)              (apply fn args))      <span style="color: #af0000;">; interim hack</span>
+</pre>
+</div>
+
+<p>
+Чтобы написать тест на <code>call/cc</code> мы можем сформировать такое выражение. Здесь в
+<code>call/cc</code> передается продолжение из интерпретатора, которое будет вызвано внутри лямбды
+и вернет результат "11", который станет частью выражения "(+ 1 2 [])".
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_callcc_8_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LIST</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 14 (myeval '(+ 1 2 (call/cc (<span style="color: #af00ff;">lambda</span> (x) (+ 3 4) (x (+ 5 6)) (+7 8)))
+                          nil nil nil nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-2">
+<h2 id="unnumbered-13">MyEval</h2>
+<div class="outline-text-2" id="text-unnumbered-13">
+<p>
+Добавляем новые конструкции:
+</p>
+<ul class="org-ul">
+<li><code>reset</code>
+</li>
+<li><code>shift</code>
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_8">&lt;&lt;myeval_evcond_8&gt;&gt;
 &lt;&lt;myeval_evprogn_8&gt;&gt;
 &lt;&lt;myeval_evand_8&gt;&gt;
 &lt;&lt;myeval_evor_8&gt;&gt;
@@ -679,6 +610,8 @@
     &lt;&lt;myeval_tagbody_8&gt;&gt;
     &lt;&lt;myeval_go_8&gt;&gt;
     &lt;&lt;myeval_labels_8&gt;&gt;
+    &lt;&lt;myeval_reset_8&gt;&gt;
+    &lt;&lt;myeval_shift_8&gt;&gt;
     (t
      (myeval (car exp) env block-env go-env catch-env errcont
              (<span style="color: #af00ff;">lambda</span> (x)
@@ -719,28 +652,24 @@
 &lt;&lt;myeval_tagbody_8_test&gt;&gt;
 &lt;&lt;myeval_go_8_test&gt;&gt;
 &lt;&lt;myeval_labels_8_test&gt;&gt;
+&lt;&lt;myeval_reset_8_test&gt;&gt;
+&lt;&lt;myeval_shift_8_test&gt;&gt;
 </pre>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-13" class="outline-3">
-<h3 id="unnumbered-13">Самовычисляемые формы</h3>
-<div class="outline-text-3" id="text-unnumbered-13">
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14">Самовычисляемые формы</h3>
+<div class="outline-text-3" id="text-unnumbered-14">
 <p>
-Замена <code>funcall cont</code> на <code>apply-continauation</code>
+Добавляем <code>call/cc</code> и <code>repl</code> в список встроенных функций.
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_number_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((null exp)                  (apply-continuation cont 'nil))
-((equal 't exp)              (apply-continuation cont 't))
-((member exp '(+ * car cdr cons null print or and))  (apply-continuation cont exp))
-((numberp exp)               (apply-continuation cont exp))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((null exp)                  (funcall cont 'nil))
+<pre class="src src-lisp" id="myeval_number_8">((null exp)                  (funcall cont 'nil))
 ((equal t exp)               (funcall cont 't))
-((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
+((member exp '(+ * car cdr cons null print list call/cc repl))  (funcall cont exp))
 ((numberp exp)               (funcall cont exp))
 </pre>
 </div>
@@ -756,13 +685,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-14" class="outline-3">
-<h3 id="unnumbered-14">Вычисление символов</h3>
-<div class="outline-text-3" id="text-unnumbered-14">
-<p>
-Без изменений
-</p>
-
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15">Вычисление символов</h3>
+<div class="outline-text-3" id="text-unnumbered-15">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_symb_8">((symbolp exp)               (lookup exp env errcont cont))
@@ -781,19 +706,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-15" class="outline-3">
-<h3 id="unnumbered-15">Цитирование</h3>
-<div class="outline-text-3" id="text-unnumbered-15">
-<p>
-Замена <code>funcall cont</code> на <code>apply-continauation</code>
-</p>
-
+<div id="outline-container-unnumbered-16" class="outline-3">
+<h3 id="unnumbered-16">Цитирование</h3>
+<div class="outline-text-3" id="text-unnumbered-16">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_quote_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'quote)    (apply-continuation cont (cadr exp)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'quote)    (funcall cont (cadr exp)))
+<pre class="src src-lisp" id="myeval_quote_8">((equal (car exp) 'quote)    (funcall cont (cadr exp)))
 </pre>
 </div>
 
@@ -806,13 +724,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-16" class="outline-3">
-<h3 id="unnumbered-16">Условное выполнение IF</h3>
-<div class="outline-text-3" id="text-unnumbered-16">
-<p>
-Без изменений
-</p>
-
+<div id="outline-container-unnumbered-17" class="outline-3">
+<h3 id="unnumbered-17">Условное выполнение IF</h3>
+<div class="outline-text-3" id="text-unnumbered-17">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_if_8">((equal (car exp) 'if)       (myeval (cadr exp) env block-env go-env catch-env errcont
@@ -840,29 +754,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-17" class="outline-3">
-<h3 id="unnumbered-17">COND</h3>
-<div class="outline-text-3" id="text-unnumbered-17">
-<p>
-Определим структуру для сохранения продолжения COND:
-</p>
-
+<div id="outline-container-unnumbered-18" class="outline-3">
+<h3 id="unnumbered-18">COND</h3>
+<div class="outline-text-3" id="text-unnumbered-18">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evcond_cont_8">(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">evcond-cont</span>
-  clauses env block-env go-env catch-env errcont cont)
-</pre>
-</div>
-
-<p>
-Теперь <code>evcond</code>, в случае получения непустого COND будет создавать эту структуру и
-передавать её в качестве продолжения в <code>myeval</code>.
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evcond_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (exp env block-env go-env catch-env errcont cont)
+<pre class="src src-lisp" id="myeval_evcond_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null exp)  (funcall cont nil))
         (t           (myeval (caar exp) env block-env go-env catch-env errcont
                              (<span style="color: #af00ff;">lambda</span> (x)
@@ -873,18 +770,6 @@
                                    (evcond (cdr exp)
                                            env block-env go-env catch-env
                                            errcont cont)))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (clauses env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null clauses)  (apply-continuation cont nil))
-        (t               (myeval (caar clauses) env block-env go-env catch-env errcont
-                                 (make-evcond-cont
-                                  <span style="color: #5f5f87;">:clauses</span> clauses
-                                  <span style="color: #5f5f87;">:env</span> env
-                                  <span style="color: #5f5f87;">:block-env</span> block-env
-                                  <span style="color: #5f5f87;">:go-env</span> go-env
-                                  <span style="color: #5f5f87;">:catch-env</span> catch-env
-                                  <span style="color: #5f5f87;">:errcont</span> errcont
-                                  <span style="color: #5f5f87;">:cont</span> cont)))))
 </pre>
 </div>
 
@@ -906,10 +791,7 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_cond_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'cond)     (evcond (cdr exp) env block-env go-env catch-env errcont cont))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
+<pre class="src src-lisp" id="myeval_cond_8">((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
                                                    env block-env go-env catch-env
                                                    errcont cont)))
 </pre>
@@ -937,32 +819,16 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-18" class="outline-3">
-<h3 id="unnumbered-18">PROGN</h3>
-<div class="outline-text-3" id="text-unnumbered-18">
-<p>
-[TODO:gmm] Нет продолжения <code>evprogn-cont</code> в исходнике почему-то
-[TODO:gmm] Новый <code>evprogn</code> отличается только вызовом <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-19" class="outline-3">
+<h3 id="unnumbered-19">PROGN</h3>
+<div class="outline-text-3" id="text-unnumbered-19">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evprogn_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env block-env go-env catch-env errcont cont)
+<pre class="src src-lisp" id="myeval_evprogn_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)         (funcall cont nil))
         ((null (cdr lst))   (myeval (car lst) env block-env go-env catch-env errcont cont))
         (t                  (myeval (car lst) env block-env go-env catch-env errcont
                                     (<span style="color: #af00ff;">lambda</span> (x)
-                                      (evprogn (cdr lst)
-                                               env block-env go-env catch-env
-                                               errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null lst)         (apply-continuation cont nil))
-        ((null (cdr lst))   (myeval (car lst) env block-env go-env catch-env errcont cont))
-        (t                  (myeval (car lst) env block-env go-env catch-env errcont
-                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                      (<span style="color: #af00ff;">declare</span> (ignore x))
                                       (evprogn (cdr lst)
                                                env block-env go-env catch-env
                                                errcont cont))))))
@@ -979,10 +845,6 @@
                            nil nil nil #'err #'ok)))
 </pre>
 </div>
-
-<p>
-Без изменений
-</p>
 
 <div class="org-src-container">
 
@@ -1004,9 +866,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-19" class="outline-3">
-<h3 id="unnumbered-19">AND</h3>
-<div class="outline-text-3" id="text-unnumbered-19">
+<div id="outline-container-unnumbered-20" class="outline-3">
+<h3 id="unnumbered-20">AND</h3>
+<div class="outline-text-3" id="text-unnumbered-20">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evand_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env block-env go-env catch-env errcont cont)
@@ -1055,18 +917,9 @@
 </pre>
 </div>
 
-<p>
-Отличие в вызове <code>apply-continuations</code>
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_and_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'and)      (apply-continuation cont (evand (cdr exp)
-                                                             env block-env go-env catch-env
-                                                             errcont cont)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
+<pre class="src src-lisp" id="myeval_and_8">((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                   env block-env go-env catch-env
                                                   errcont cont)))
 </pre>
@@ -1108,9 +961,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-20" class="outline-3">
-<h3 id="unnumbered-20">OR</h3>
-<div class="outline-text-3" id="text-unnumbered-20">
+<div id="outline-container-unnumbered-21" class="outline-3">
+<h3 id="unnumbered-21">OR</h3>
+<div class="outline-text-3" id="text-unnumbered-21">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evor_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env block-env go-env catch-env errcont cont)
@@ -1158,18 +1011,9 @@
 </pre>
 </div>
 
-<p>
-Отличие в вызове <code>apply-continuations</code>
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_or_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'or)       (apply-continuation cont (evor  (cdr exp)
-                                                             env block-env go-env catch-env
-                                                             errcont cont)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
+<pre class="src src-lisp" id="myeval_or_8">((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
                                                   env block-env go-env catch-env
                                                   errcont cont)))
 </pre>
@@ -1209,9 +1053,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-21" class="outline-3">
-<h3 id="unnumbered-21">LET</h3>
-<div class="outline-text-3" id="text-unnumbered-21">
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">LET</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="errors_8">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
@@ -1273,10 +1117,6 @@
 </pre>
 </div>
 
-<p>
-Без изменений
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_let_8">((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
@@ -1301,26 +1141,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-22" class="outline-3">
-<h3 id="unnumbered-22">LET*</h3>
-<div class="outline-text-3" id="text-unnumbered-22">
-<p>
-[TODO:gmm] По-видимому вообще без изменений?
-</p>
-
+<div id="outline-container-unnumbered-23" class="outline-3">
+<h3 id="unnumbered-23">LET*</h3>
+<div class="outline-text-3" id="text-unnumbered-23">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evletstar_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
-        (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
-                                  (<span style="color: #af00ff;">lambda</span> (x)
-                                    (evletstar (cdr varpairs) exp
-                                               (acons (caar varpairs) x env)
-                                               block-env go-env catch-env
-                                               errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env block-env go-env catch-env errcont cont)
+<pre class="src src-lisp" id="myeval_evletstar_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
         (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
                                   (<span style="color: #af00ff;">lambda</span> (x)
@@ -1337,10 +1163,6 @@
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil nil nil nil #'err #'ok)))
 </pre>
 </div>
-
-<p>
-Без изменений
-</p>
 
 <div class="org-src-container">
 
@@ -1364,31 +1186,16 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-23" class="outline-3">
-<h3 id="unnumbered-23">DEFUN</h3>
-<div class="outline-text-3" id="text-unnumbered-23">
+<div id="outline-container-unnumbered-24" class="outline-3">
+<h3 id="unnumbered-24"><span class="todo TODO">TODO</span> DEFUN</h3>
+<div class="outline-text-3" id="text-unnumbered-24">
 <p>
 [TODO:gmm] В текущей реализации мы не перезаписываем уже определенную функцию!
 </p>
 
-<p>
-Заменяем <code>funcall cont</code> на <code>apply-continuation</code>
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_defun_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
-                                    (push (cons (cadr exp)
-                                                (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
-                                                              <span style="color: #5f5f87;">:block-env</span> block-env
-                                                              <span style="color: #5f5f87;">:env</span> env
-                                                              <span style="color: #5f5f87;">:go-env</span> go-env
-                                                              <span style="color: #5f5f87;">:args</span> (caddr exp)))
-                                          *glob-env*)
-                                    (apply-continuation cont (cadr exp))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
+<pre class="src src-lisp" id="myeval_defun_8">((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
                                     (push (cons (cadr exp)
                                                 (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
                                                               <span style="color: #5f5f87;">:env</span> env
@@ -1413,27 +1220,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-24" class="outline-3">
-<h3 id="unnumbered-24">SETQ</h3>
-<div class="outline-text-3" id="text-unnumbered-24">
-<p>
-Заменяем <code>funcall cont</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-25" class="outline-3">
+<h3 id="unnumbered-25">SETQ</h3>
+<div class="outline-text-3" id="text-unnumbered-25">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_setq_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                     (<span style="color: #af00ff;">lambda</span> (val)
-                                       (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
-                                           (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) *glob-env*))
-                                               (push (cons (cadr exp) val)
-                                                     *glob-env*)
-                                               (rplacd (assoc (cadr exp) *glob-env*) val))
-                                           (rplacd (assoc (cadr exp) env) val))
-                                       (apply-continuation cont val))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
+<pre class="src src-lisp" id="myeval_setq_8">((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                      (<span style="color: #af00ff;">lambda</span> (val)
                                        (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
                                            (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) *glob-env*))
@@ -1483,23 +1275,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-25" class="outline-3">
-<h3 id="unnumbered-25">LAMBDA</h3>
-<div class="outline-text-3" id="text-unnumbered-25">
-<p>
-Заменяем <code>funcall cont</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-26" class="outline-3">
+<h3 id="unnumbered-26">LAMBDA</h3>
+<div class="outline-text-3" id="text-unnumbered-26">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_lambda_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'lambda)   (apply-continuation cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
-                                                                    <span style="color: #5f5f87;">:block-env</span> block-env
-                                                                    <span style="color: #5f5f87;">:env</span> env
-                                                                    <span style="color: #5f5f87;">:go-env</span> go-env
-                                                                    <span style="color: #5f5f87;">:args</span> (cadr exp))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
+<pre class="src src-lisp" id="myeval_lambda_8">((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
                                                          <span style="color: #5f5f87;">:env</span> env
                                                          <span style="color: #5f5f87;">:block-env</span> block-env
                                                          <span style="color: #5f5f87;">:go-env</span> go-env
@@ -1521,13 +1302,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-26" class="outline-3">
-<h3 id="unnumbered-26">BLOCK</h3>
-<div class="outline-text-3" id="text-unnumbered-26">
-<p>
-Без изменений
-</p>
-
+<div id="outline-container-unnumbered-27" class="outline-3">
+<h3 id="unnumbered-27">BLOCK</h3>
+<div class="outline-text-3" id="text-unnumbered-27">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_block_8">((equal (car exp) 'block)    (myeval (caddr exp)
@@ -1551,28 +1328,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-27" class="outline-3">
-<h3 id="unnumbered-27">RETURN-FROM</h3>
-<div class="outline-text-3" id="text-unnumbered-27">
-<p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-28" class="outline-3">
+<h3 id="unnumbered-28">RETURN-FROM</h3>
+<div class="outline-text-3" id="text-unnumbered-28">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_return_from_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp)
-        'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                 (apply-continuation errcont
-                                                     (format nil
-                                                             <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                 (myeval (caddr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (x)
-                                           (assoc-2 (cadr exp) block-env
-                                                    (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation y x))
-                                                    (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation errcont (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp)
+<pre class="src src-lisp" id="myeval_return_from_8">((equal (car exp)
         'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
                                  (funcall errcont
                                           (format nil
@@ -1627,38 +1388,16 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-28" class="outline-3">
-<h3 id="unnumbered-28">CATCH</h3>
-<div class="outline-text-3" id="text-unnumbered-28">
-<p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-29" class="outline-3">
+<h3 id="unnumbered-29">CATCH</h3>
+<div class="outline-text-3" id="text-unnumbered-29">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_catch_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
+<pre class="src src-lisp" id="myeval_catch_8">((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                      (<span style="color: #af00ff;">lambda</span> (symb-res)
                                        (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                           (apply-continuation
-                                            errcont
-                                            (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
-                                           (myeval (caddr exp)
-                                                   env
-                                                   block-env
-                                                   go-env
-                                                   (acons symb-res
-                                                          cont
-                                                          catch-env)
-                                                   errcont
-                                                   cont)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                     (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                       (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                           (funcall
-                                            errcont
-                                            (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
+                                           (funcall errcont
+                                                    (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
                                            (myeval (caddr exp)
                                                    env
                                                    block-env
@@ -1682,32 +1421,12 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-29" class="outline-3">
-<h3 id="unnumbered-29">THROW</h3>
-<div class="outline-text-3" id="text-unnumbered-29">
-<p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-30" class="outline-3">
+<h3 id="unnumbered-30">THROW</h3>
+<div class="outline-text-3" id="text-unnumbered-30">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_throw_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                     (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                       (myeval (caddr exp) env block-env go-env catch-env errcont
-                                               (<span style="color: #af00ff;">lambda</span> (exp-res)
-                                                 (assoc-2 symb-res catch-env
-                                                          (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                                            (apply-continuation cont-res exp-res))
-                                                          (<span style="color: #af00ff;">lambda</span> (key)
-                                                            (apply-continuation
-                                                             errcont
-                                                             (format
-                                                              nil
-                                                              <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                              key)))))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
+<pre class="src src-lisp" id="myeval_throw_8">((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                      (<span style="color: #af00ff;">lambda</span> (symb-res)
                                        (myeval (caddr exp) env block-env go-env catch-env errcont
                                                (<span style="color: #af00ff;">lambda</span> (exp-res)
@@ -1715,18 +1434,10 @@
                                                           (<span style="color: #af00ff;">lambda</span> (cont-res)
                                                             (funcall cont-res exp-res))
                                                           (<span style="color: #af00ff;">lambda</span> (key)
-                                                            (funcall
-                                                             errcont
-                                                             (format
-                                                              nil
-                                                              <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                              key)))))))))
+                                                            (funcall errcont
+                                                                     (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
 </pre>
 </div>
-
-<p>
-Не проходят тесты
-</p>
 
 <div class="org-src-container">
 
@@ -1771,9 +1482,9 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-30" class="outline-3">
-<h3 id="unnumbered-30">TAGBODY</h3>
-<div class="outline-text-3" id="text-unnumbered-30">
+<div id="outline-container-unnumbered-31" class="outline-3">
+<h3 id="unnumbered-31">TAGBODY</h3>
+<div class="outline-text-3" id="text-unnumbered-31">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evtagbody_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-check-tag</span> (exp cont errcont)
@@ -1782,7 +1493,8 @@
               (member (car exp) (cdr exp)))
          (funcall errcont (car exp)))
         (t (tagbody-check-tag (cdr exp) cont errcont))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+
+
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null (car body))      (funcall cont nil))
         ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1790,18 +1502,13 @@
                                         (<span style="color: #af00ff;">lambda</span> (x)
                                           (<span style="color: #af00ff;">declare</span> (ignore x))
                                           (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null (car body))      (apply-continuation cont nil))
-        ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
-        (t                      (myeval (car body) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (<span style="color: #af00ff;">declare</span> (ignore x))
-                                          (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
+
+
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp)
   (<span style="color: #af00ff;">cond</span> ((null exp)           nil)
         ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
         (t                    (tagbody-slice (cdr exp)))))
+
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
   (<span style="color: #af00ff;">cond</span> ((null exp) res)
         ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
@@ -1809,58 +1516,22 @@
 </pre>
 </div>
 
-<p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_tagbody_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'tagbody)  (tagbody-check-tag
-                              (cdr exp)
-                              (<span style="color: #af00ff;">lambda</span> ()
-                                (setq go-env
-                                      (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
-                                                          (cons (car x)
-                                                                (<span style="color: #af00ff;">lambda</span> ()
-                                                                  (evtagbody x
-                                                                             env
-                                                                             block-env
-                                                                             go-env
-                                                                             catch-env
-                                                                             errcont cont))))
-                                                      (tagbody-slice (cdr exp) nil))
-                                              go-env))
-                                (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
-                              (<span style="color: #af00ff;">lambda</span> (x)
-                                (apply-continuation
-                                 errcont
-                                 (format
-                                  nil
-                                  <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'tagbody)  (tagbody-check-tag
-                              (cdr exp)
-                              (<span style="color: #af00ff;">lambda</span> ()
-                                (setq go-env
-                                      (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
-                                                          (cons (car x)
-                                                                (<span style="color: #af00ff;">lambda</span> ()
-                                                                  (evtagbody x
-                                                                             env
-                                                                             block-env
-                                                                             go-env
-                                                                             catch-env
-                                                                             errcont cont))))
-                                                      (tagbody-slice (cdr exp) nil))
-                                              go-env))
-                                (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
-                              (<span style="color: #af00ff;">lambda</span> (x)
-                                (funcall
-                                 errcont
-                                 (format
-                                  nil
-                                  <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
+<pre class="src src-lisp" id="myeval_tagbody_8">((equal (car exp) 'tagbody)  (tagbody-check-tag (cdr exp)
+                                                (<span style="color: #af00ff;">lambda</span> ()
+                                                  (setq go-env
+                                                        (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
+                                                                            (cons (car x)
+                                                                                  (<span style="color: #af00ff;">lambda</span> ()
+                                                                                    (evtagbody x env block-env go-env catch-env errcont cont))))
+                                                                        (tagbody-slice (cdr exp) nil))
+                                                                go-env))
+                                                  (evtagbody (cdr exp) env block-env
+                                                             go-env
+                                                             catch-env errcont cont))
+                                                (<span style="color: #af00ff;">lambda</span> (x)
+                                                  (funcall errcont (format nil <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
 </pre>
 </div>
 
@@ -1876,31 +1547,16 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-31" class="outline-3">
-<h3 id="unnumbered-31">GO</h3>
-<div class="outline-text-3" id="text-unnumbered-31">
-<p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
-</p>
-
+<div id="outline-container-unnumbered-32" class="outline-3">
+<h3 id="unnumbered-32">GO</h3>
+<div class="outline-text-3" id="text-unnumbered-32">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_go_8"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
+<pre class="src src-lisp" id="myeval_tagbody_8">((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                       (<span style="color: #af00ff;">lambda</span> (x)
-                                        (apply-continuation x 'NOT-A-PARAM))
+                                        (funcall x))
                                       (<span style="color: #af00ff;">lambda</span> (x)
-                                        (apply-continuation
-                                         errcont
-                                         (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env</span>
-<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(lambda (x)</span>
-<span style="color: #af0000;">;;                                         </span><span style="color: #af0000;">(funcall x))</span>
-<span style="color: #af0000;">;;                                       </span><span style="color: #af0000;">(lambda (x)</span>
-<span style="color: #af0000;">;;                                         </span><span style="color: #af0000;">(funcall</span>
-<span style="color: #af0000;">;;                                          </span><span style="color: #af0000;">errcont</span>
-<span style="color: #af0000;">;;                                          </span><span style="color: #af0000;">(format nil "go: wrong target ~A" x)))))</span>
+                                        (funcall errcont (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
 </pre>
 </div>
 
@@ -1930,39 +1586,54 @@
 </div>
 </div>
 
-<div id="outline-container-unnumbered-32" class="outline-3">
-<h3 id="unnumbered-32">LABELS</h3>
-<div class="outline-text-3" id="text-unnumbered-32">
+<div id="outline-container-unnumbered-33" class="outline-3">
+<h3 id="unnumbered-33"><span class="todo TODO">TODO</span> LABELS</h3>
+<div class="outline-text-3" id="text-unnumbered-33">
 <p>
-[TODO:gmm] impicit progn
+[TODO:gmm] добавить impicit progn
 </p>
 
 <p>
-Без изменений
+Здесь мы воплощаем новую функциональность - LABELS. Она нужна нам для того чтобы иметь
+возможность делать рекурсивные лямбды в лексическом окружении. В этом есть следующая
+сложность: в момент определения такой лямбды необходимо, чтобы окружение, в котором она
+определяется, содержало символ, указывающий на саму лямбду.
+</p>
+
+<p>
+Чтобы это сделать, мы сначала сформируем окружение, в котором есть символ определяемой
+лямбды, но он указывает на NIL. Затем, после определения лямбды мы пройдем по созданным
+ссылкам и установим им правильное значение.
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_labels_8">((equal (car exp) 'labels)   (<span style="color: #af00ff;">let*</span> ((alist (mapcar (<span style="color: #af00ff;">lambda</span> (label)
+<pre class="src src-lisp" id="myeval_labels_8">((equal (car exp) 'labels)   (<span style="color: #af00ff;">let*</span> ((alist (mapcar (<span style="color: #af00ff;">lambda</span> (label) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1092;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1087;&#1072;&#1088; (&#1080;&#1084;&#1103; . nil)</span>
                                                      (cons (car label) nil))
                                                    (cadr exp)))
-                                    (new-env (append alist env))
+                                    (new-env (append alist env))   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1076;&#1086;&#1073;&#1072;&#1074;&#1080;&#1084; &#1082; &#1089;&#1087;&#1080;&#1089;&#1082;&#1091; &#1087;&#1072;&#1088; &#1087;&#1088;&#1077;&#1076;&#1099;&#1076;&#1091;&#1097;&#1077;&#1077; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
                                     (closures (mapcar (<span style="color: #af00ff;">lambda</span> (label)
+                                                        <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1086;&#1079;&#1076;&#1072;&#1077;&#1084; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1077;, &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1102;&#1097;&#1077;&#1077; (env) &#1085;&#1072; &#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1099;&#1077; (&#1089;&#1086;&#1076;&#1077;&#1088;&#1078;&#1072;&#1097;&#1080;&#1077; &#1087;&#1086;&#1082;&#1072; nil)</span>
                                                         (make-closure <span style="color: #5f5f87;">:body</span> (caddr label)
                                                                       <span style="color: #5f5f87;">:block-env</span> block-env
                                                                       <span style="color: #5f5f87;">:env</span> new-env
                                                                       <span style="color: #5f5f87;">:go-env</span> go-env
                                                                       <span style="color: #5f5f87;">:args</span> (cadr label)))
                                                       (cadr exp))))
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">alist:    '((zzz . nil) (xxx . nil))</span>
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))</span>
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">closures: '(#:closure #:closure) ;; &#1091; &#1101;&#1090;&#1080;&#1093; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1081; :env &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; new-env</span>
                                (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (length alist) (length closures)))
                                (<span style="color: #af00ff;">loop</span>
                                   <span style="color: #5f5f87;">:for</span> aelt     <span style="color: #5f5f87;">:in</span> alist
                                   <span style="color: #5f5f87;">:for</span> closure  <span style="color: #5f5f87;">:in</span> closures
                                   <span style="color: #5f5f87;">:do</span> (rplacd aelt closure))
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084;:</span>
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">alist:    '((zzz . #:closure) (xxx . #:closure))</span>
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048; &#1087;&#1077;&#1088;&#1077;&#1076;&#1072;&#1077;&#1084; new-env &#1074; &#1082;&#1072;&#1095;&#1077;&#1089;&#1090;&#1074;&#1077; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
                                (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
 </pre>
 </div>
-
 
 <div class="org-src-container">
 
@@ -1976,16 +1647,123 @@
 </div>
 </div>
 </div>
+
+<div id="outline-container-unnumbered-34" class="outline-3">
+<h3 id="unnumbered-34">RESET</h3>
+<div class="outline-text-3" id="text-unnumbered-34">
+<p>
+Когда мы встречаем <code>reset</code> мы как бы "сбрасываем стек", т.е. вычисляем внутреннюю форму
+в "identity-continuation", в результате чего эта форма возвращает значение. Это
+значение мы передаем как параметр продолжения <code>cont</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_reset_8">((equal (car exp) 'reset)    (funcall cont (myeval (cadr exp)
+                                                   env block-env go-env catch-env
+                                                   errcont #'identity)))
+</pre>
 </div>
 
-<div id="outline-container-unnumbered-33" class="outline-2">
-<h2 id="unnumbered-33">Итоги</h2>
-<div class="outline-text-2" id="text-unnumbered-33">
+<p>
+Тест так себе, но ничего более умного не придумалось
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_reset_8_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RESET</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #af00ff;">progn</span>
+                            (+ 1 (reset (+ 2 3)) 2))
+                            nil nil nil nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-35" class="outline-3">
+<h3 id="unnumbered-35">SHIFT</h3>
+<div class="outline-text-3" id="text-unnumbered-35">
+<p>
+В выражении <code>(shift x form)</code> SHIFT биндит к переменной <code>x</code> продолжение <code>cont</code>. Поэтому
+(даже снаружи формы) можно будет вызвать <code>x</code> как функцию и перейти в это продолжение. В
+этом это похоже на <code>call/cc</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_shift_8">((equal (car exp) 'shift)    (myeval (caddr exp)
+                                     (acons (cadr exp) cont env)
+                                     block-env go-env catch-env
+                                     errcont cont))
+</pre>
+</div>
+
+<p>
+Тут мы сохраняем продолжение в переменной и используем его, чтобы возвращаться в него и
+вычислять то что происходит между <code>reset</code> и <code>shift</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_shift_8_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SHIFT/RESET</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 44 (myeval '(<span style="color: #af00ff;">let</span> ((foo))
+                            (+ 1 (reset (+ 2 (shift f (<span style="color: #af00ff;">progn</span> (setq foo f) 4)))))
+                            (foo 42))
+                          nil nil nil nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-36" class="outline-2">
+<h2 id="unnumbered-36">Repl</h2>
+<div class="outline-text-2" id="text-unnumbered-36">
+<p>
+Мы выносим <code>repl</code> в отдельный раздел и изменем его так, чтобы он:
+</p>
+<ul class="org-ul">
+<li>принимал приглашение ввода
+</li>
+<li>принимал <code>catch-env</code>
+</li>
+<li>при каждом рекурсивном вызове добавлял в <code>catch-env</code> пару (exit . текущее продолжение)
+</li>
+</ul>
+
+<p>
+Это позволяет нам делать <code>(trow 'exit)</code> всякий раз, когда нам нужно выйти из
+<code>repl</code>. Если у нас <code>repl</code> вызывается там, где произошла ошибка, мы можем исправить ее
+выйти из <code>repl</code>, продолжив исполнение.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="repl_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> (prompt catch-env errcont cont)
+  (format t <span style="color: #87005f;">"~%~A&gt; "</span> prompt)
+  (myeval (read) nil nil nil (acons 'exit cont catch-env)
+    #'(<span style="color: #af00ff;">lambda</span> (x)
+        (princ x)
+        (terpri)
+        (finish-output)
+        (repl prompt catch-env errcont cont))
+    #'(<span style="color: #af00ff;">lambda</span> (x)
+        (princ x)
+        (terpri)
+        (finish-output)
+        (repl prompt catch-env errcont cont))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-37" class="outline-2">
+<h2 id="unnumbered-37">Итоги</h2>
+<div class="outline-text-2" id="text-unnumbered-37">
 <div class="org-src-container">
 
 <pre class="src src-lisp">(setq *print-circle* T)
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">APPLY-CONTINUATION</span>
-&lt;&lt;apply_continuation_8&gt;&gt;
+
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
 &lt;&lt;assoc_8&gt;&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
@@ -2007,12 +1785,7 @@
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYEVAL</span>
 &lt;&lt;myeval_8_test&gt;&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">REPL</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
-  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
-  (princ (myeval (read) nil #'identity #'identity))
-  (terpri)
-  (finish-output)
-  (repl))
+&lt;&lt;repl_8&gt;&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">(repl)</span>
 </pre>
 </div>
@@ -2024,42 +1797,9 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp">(setq *print-circle* T)
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">APPLY-CONTINUATION</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">apply-continuation</span> (cont arg)
-  (print arg)
-  (<span style="color: #af00ff;">cond</span> ((functionp cont)       (funcall cont arg))
-        ((evcond-cont-p cont)   (<span style="color: #af00ff;">if</span> arg
-                                    (myeval (cadar (evcond-cont-clauses cont))
-                                            (evcond-cont-env cont)
-                                            (evcond-cont-block-env cont)
-                                            (evcond-cont-go-env cont)
-                                            (evcond-cont-catch-env cont)
-                                            (evcond-cont-errcont cont)
-                                            (evcond-cont-cont cont))
-                                    (evcond (cdr (evcond-cont-clauses cont))
-                                            (evcond-cont-env cont)
-                                            (evcond-cont-block-env cont)
-                                            (evcond-cont-go-env cont)
-                                            (evcond-cont-catch-env cont)
-                                            (evcond-cont-errcont cont)
-                                            (evcond-cont-cont cont))))
-        ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
-                                       (cdr (evlis-cont-unevaled cont))
-                                       (cons arg (evlis-cont-evaled cont))
-                                       (evlis-cont-env cont)
-                                       (evlis-cont-block-env cont)
-                                       (evlis-cont-go-env cont)
-                                       (evlis-cont-catch-env cont)
-                                       (evlis-cont-errcont cont)
-                                       (evlis-cont-cont cont)))
-        (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'bad-cont))))
 
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
-  <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
-  (<span style="color: #af00ff;">cond</span> ((null alist)              (funcall errcont key))
-        ((equal key (caar alist))  (funcall cont    (cdar alist)))
-        (t                         (assoc-2 key (cdr alist) cont errcont))))
+
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
 (<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">unknown-function</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
   ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
@@ -2102,9 +1842,6 @@
   go-env
   args)
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYAPPLY &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
-(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">evlis-cont</span>
-  fn unevaled evaled env block-env go-env catch-env errcont cont)
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst acc)
   (<span style="color: #af00ff;">cond</span> ((null lst)        0)
         ((null (cdr lst))  (+ acc (car lst)))
@@ -2115,7 +1852,6 @@
         ((null (cdr lst))  (* acc (car lst)))
         (t                 (evmul (cdr lst)
                                   (* acc (car lst))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
         (t                (myeval (car unevaled) env block-env go-env catch-env errcont
@@ -2125,44 +1861,16 @@
                                            (cons x evaled)
                                            env block-env go-env catch-env
                                            errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (fn unevaled evaled env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
-        (t                (myeval (car unevaled) env block-env go-env catch-env errcont
-                                  (make-evlis-cont
-                                   <span style="color: #5f5f87;">:fn</span> fn
-                                   <span style="color: #5f5f87;">:unevaled</span> unevaled
-                                   <span style="color: #5f5f87;">:evaled</span> evaled
-                                   <span style="color: #5f5f87;">:env</span> env
-                                   <span style="color: #5f5f87;">:block-env</span> block-env
-                                   <span style="color: #5f5f87;">:go-env</span> go-env
-                                   <span style="color: #5f5f87;">:catch-env</span> catch-env
-                                   <span style="color: #5f5f87;">:errcont</span> errcont
-                                   <span style="color: #5f5f87;">:cont</span> cont)))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myapply</span> (fn args catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn 'car)             (apply-continuation cont (caar args)))
-    ((equal fn 'cdr)             (apply-continuation cont (cdar args)))
-    ((equal fn 'cons)            (apply-continuation cont (cons (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal fn 'car)             (funcall cont (caar args)))
     ((equal fn 'cdr)             (funcall cont (cdar args)))
     ((equal fn 'cons)            (funcall cont (cons (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn 'null)            (apply-continuation cont (null (car args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal fn 'null)            (<span style="color: #af00ff;">if</span> (null (cdr args))
                                      (funcall cont (null (car args)))
                                      (<span style="color: #ff0000; font-weight: bold;">error</span> 'invalid-number-of-arguments <span style="color: #5f5f87;">:fn</span> fn)))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn '+)             (apply-continuation cont (+ (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-    ((equal fn '+)             (funcall cont (evadd args 0)))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn '*)             (apply-continuation cont (* (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-    ((equal fn '*)             (funcall cont (evmul args 1)))
+    ((equal fn '+)               (funcall cont (evadd args 0)))
+    ((equal fn '*)               (funcall cont (evmul args 1)))
     ((closure-p fn)              (myeval (closure-body fn)
                                          (pairlis (closure-args fn)
                                                   args
@@ -2171,17 +1879,12 @@
                                          (closure-go-env fn)
                                          catch-env
                                          errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn 'print)           (apply-continuation cont (print (car args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal fn 'print)           (funcall cont (print (car args))))
     ((equal fn 'list)            (funcall cont args))
+    ((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
+    ((functionp fn)              (apply fn args))      <span style="color: #af0000;">; interim hack</span>
     (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'unknown-function <span style="color: #5f5f87;">:fn</span> fn))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYEVAL &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
-(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">evcond-cont</span>
-  clauses env block-env go-env catch-env errcont cont)
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null exp)  (funcall cont nil))
         (t           (myeval (caar exp) env block-env go-env catch-env errcont
@@ -2193,19 +1896,6 @@
                                    (evcond (cdr exp)
                                            env block-env go-env catch-env
                                            errcont cont)))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (clauses env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null clauses)  (apply-continuation cont nil))
-        (t               (myeval (caar clauses) env block-env go-env catch-env errcont
-                                 (make-evcond-cont
-                                  <span style="color: #5f5f87;">:clauses</span> clauses
-                                  <span style="color: #5f5f87;">:env</span> env
-                                  <span style="color: #5f5f87;">:block-env</span> block-env
-                                  <span style="color: #5f5f87;">:go-env</span> go-env
-                                  <span style="color: #5f5f87;">:catch-env</span> catch-env
-                                  <span style="color: #5f5f87;">:errcont</span> errcont
-                                  <span style="color: #5f5f87;">:cont</span> cont)))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)         (funcall cont nil))
         ((null (cdr lst))   (myeval (car lst) env block-env go-env catch-env errcont cont))
@@ -2214,17 +1904,6 @@
                                       (evprogn (cdr lst)
                                                env block-env go-env catch-env
                                                errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null lst)         (apply-continuation cont nil))
-        ((null (cdr lst))   (myeval (car lst) env block-env go-env catch-env errcont cont))
-        (t                  (myeval (car lst) env block-env go-env catch-env errcont
-                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                      (<span style="color: #af00ff;">declare</span> (ignore x))
-                                      (evprogn (cdr lst)
-                                               env block-env go-env catch-env
-                                               errcont cont))))))
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
@@ -2263,16 +1942,6 @@
                                 (evlet vars (cdr exps) (cons x evald-exps) exp
                                        env block-env go-env catch-env
                                        errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
-        (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
-                                  (<span style="color: #af00ff;">lambda</span> (x)
-                                    (evletstar (cdr varpairs) exp
-                                               (acons (caar varpairs) x env)
-                                               block-env go-env catch-env
-                                               errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
         (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
@@ -2309,21 +1978,11 @@
         (t                   (tagbody-slice (cdr exp) res))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((null exp)                  (apply-continuation cont 'nil))
-    ((equal 't exp)              (apply-continuation cont 't))
-    ((member exp '(+ * car cdr cons null print or and))  (apply-continuation cont exp))
-    ((numberp exp)               (apply-continuation cont exp))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((null exp)                  (funcall cont 'nil))
     ((equal t exp)               (funcall cont 't))
-    ((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
+    ((member exp '(+ * car cdr cons null print list call/cc repl))  (funcall cont exp))
     ((numberp exp)               (funcall cont exp))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
     ((symbolp exp)               (lookup exp env errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'quote)    (apply-continuation cont (cadr exp)))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'quote)    (funcall cont (cadr exp)))
     ((equal (car exp) 'if)       (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (x)
@@ -2334,24 +1993,15 @@
                                                (myeval (cadddr exp)
                                                        env block-env go-env catch-env
                                                        errcont cont)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'cond)     (evcond (cdr exp) env block-env go-env catch-env errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
                                                        env block-env go-env catch-env
                                                        errcont cont)))
     ((equal (car exp) 'progn)    (evprogn (cdr exp)
                                           env block-env go-env catch-env
                                           errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn 'and)             (apply-continuation cont (and (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                       env block-env go-env catch-env
                                                       errcont cont)))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal fn 'or)              (apply-continuation cont (or  (car args) (cadr args))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
                                                       env block-env go-env catch-env
                                                       errcont cont)))
@@ -2365,17 +2015,6 @@
                                             (cddr exp)
                                             env block-env go-env catch-env
                                             errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
-                                        (push (cons (cadr exp)
-                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
-                                                                  <span style="color: #5f5f87;">:block-env</span> block-env
-                                                                  <span style="color: #5f5f87;">:env</span> env
-                                                                  <span style="color: #5f5f87;">:go-env</span> go-env
-                                                                  <span style="color: #5f5f87;">:args</span> (caddr exp)))
-                                              *glob-env*)
-                                        (apply-continuation cont (cadr exp))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
                                         (push (cons (cadr exp)
                                                     (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
@@ -2385,16 +2024,6 @@
                                                                   <span style="color: #5f5f87;">:args</span> (caddr exp)))
                                               *glob-env*)
                                         (funcall cont (cadr exp))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (val)
-                                           (<span style="color: #af00ff;">let</span> ((it (lookup (cadr exp) env errcont cont)))
-                                             (<span style="color: #af00ff;">if</span> (null it)
-                                                 (push (cons (cadr exp) val)
-                                                       *glob-env*)
-                                                 (rplacd it val))
-                                             (apply-continuation cont val)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (val)
                                            (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
@@ -2404,13 +2033,7 @@
                                                    (rplacd (assoc (cadr exp) *glob-env*) val))
                                                (rplacd (assoc (cadr exp) env) val))
                                            (funcall cont val))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'lambda)   (apply-continuation cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
-                                                                        <span style="color: #5f5f87;">:block-env</span> block-env
-                                                                        <span style="color: #5f5f87;">:env</span> env
-                                                                        <span style="color: #5f5f87;">:go-env</span> go-env
-                                                                        <span style="color: #5f5f87;">:args</span> (cadr exp))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+
     ((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
                                                              <span style="color: #5f5f87;">:env</span> env
                                                              <span style="color: #5f5f87;">:block-env</span> block-env
@@ -2422,18 +2045,6 @@
                                                 cont
                                                 block-env)
                                          go-env catch-env errcont cont))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp)
-            'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (apply-continuation errcont
-                                                         (format nil
-                                                                 <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation errcont (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp)
             'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
                                      (funcall errcont
@@ -2445,29 +2056,11 @@
                                                         (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
                                                         (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
                                                                              (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                               (apply-continuation
-                                                errcont
-                                                (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
-                                               (myeval (caddr exp)
-                                                       env
-                                                       block-env
-                                                       (acons symb-res
-                                                              cont
-                                                              catch-env)
-                                                       go-env
-                                                       errcont
-                                                       cont)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-    ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                           (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                               (funcall
-                                                errcont
-                                                (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
+                                               (funcall errcont
+                                                        (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
                                                (myeval (caddr exp)
                                                        env
                                                        block-env
@@ -2476,22 +2069,6 @@
                                                               cont
                                                               catch-env)
                                                        errcont cont)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                           (myeval (caddr exp) env block-env go-env catch-env errcont
-                                                   (<span style="color: #af00ff;">lambda</span> (exp-res)
-                                                     (assoc-2 symb-res catch-env
-                                                              (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                                                (apply-continuation cont-res exp-res))
-                                                              (<span style="color: #af00ff;">lambda</span> (key)
-                                                                (apply-continuation
-                                                                 errcont
-                                                                 (format
-                                                                  nil
-                                                                  <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                                  key)))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (myeval (caddr exp) env block-env go-env catch-env errcont
@@ -2500,24 +2077,8 @@
                                                               (<span style="color: #af00ff;">lambda</span> (cont-res)
                                                                 (funcall cont-res exp-res))
                                                               (<span style="color: #af00ff;">lambda</span> (key)
-                                                                (funcall
-                                                                 errcont
-                                                                 (format
-                                                                  nil
-                                                                  <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                                  key)))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp)
-            'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (apply-continuation errcont
-                                                         (format nil
-                                                                 <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (apply-continuation errcont (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+                                                                (funcall errcont
+                                                                         (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
     ((equal (car exp)
             'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
                                      (funcall errcont
@@ -2529,29 +2090,11 @@
                                                         (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
                                                         (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
                                                                              (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                               (apply-continuation
-                                                errcont
-                                                (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
-                                               (myeval (caddr exp)
-                                                       env
-                                                       block-env
-                                                       (acons symb-res
-                                                              cont
-                                                              catch-env)
-                                                       go-env
-                                                       errcont
-                                                       cont)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-    ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                           (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
-                                               (funcall
-                                                errcont
-                                                (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
+                                               (funcall errcont
+                                                        (format nil <span style="color: #87005f;">"catch: first argument not a symbol"</span>))
                                                (myeval (caddr exp)
                                                        env
                                                        block-env
@@ -2560,22 +2103,6 @@
                                                               cont
                                                               catch-env)
                                                        errcont cont)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                         (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                           (myeval (caddr exp) env block-env go-env catch-env errcont
-                                                   (<span style="color: #af00ff;">lambda</span> (exp-res)
-                                                     (assoc-2 symb-res catch-env
-                                                              (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                                                (apply-continuation cont-res exp-res))
-                                                              (<span style="color: #af00ff;">lambda</span> (key)
-                                                                (apply-continuation
-                                                                 errcont
-                                                                 (format
-                                                                  nil
-                                                                  <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                                  key)))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
     ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (myeval (caddr exp) env block-env go-env catch-env errcont
@@ -2584,92 +2111,59 @@
                                                               (<span style="color: #af00ff;">lambda</span> (cont-res)
                                                                 (funcall cont-res exp-res))
                                                               (<span style="color: #af00ff;">lambda</span> (key)
-                                                                (funcall
-                                                                 errcont
-                                                                 (format
-                                                                  nil
-                                                                  <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
-                                                                  key)))))))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'tagbody)  (tagbody-check-tag
-                                  (cdr exp)
-                                  (<span style="color: #af00ff;">lambda</span> ()
-                                    (setq go-env
-                                          (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
-                                                              (cons (car x)
-                                                                    (<span style="color: #af00ff;">lambda</span> ()
-                                                                      (evtagbody x
-                                                                                 env
-                                                                                 block-env
-                                                                                 go-env
-                                                                                 catch-env
-                                                                                 errcont cont))))
-                                                          (tagbody-slice (cdr exp) nil))
-                                                  go-env))
-                                    (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
-                                  (<span style="color: #af00ff;">lambda</span> (x)
-                                    (apply-continuation
-                                     errcont
-                                     (format
-                                      nil
-                                      <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-    ((equal (car exp) 'tagbody)  (tagbody-check-tag
-                                  (cdr exp)
-                                  (<span style="color: #af00ff;">lambda</span> ()
-                                    (setq go-env
-                                          (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
-                                                              (cons (car x)
-                                                                    (<span style="color: #af00ff;">lambda</span> ()
-                                                                      (evtagbody x
-                                                                                 env
-                                                                                 block-env
-                                                                                 go-env
-                                                                                 catch-env
-                                                                                 errcont cont))))
-                                                          (tagbody-slice (cdr exp) nil))
-                                                  go-env))
-                                    (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
-                                  (<span style="color: #af00ff;">lambda</span> (x)
-                                    (funcall
-                                     errcont
-                                     (format
-                                      nil
-                                      <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-    ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
-                                          (<span style="color: #af00ff;">lambda</span> (x)
-                                            (apply-continuation x 'NOT-A-PARAM))
-                                          (<span style="color: #af00ff;">lambda</span> (x)
-                                            (apply-continuation
-                                             errcont
-                                             (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+                                                                (funcall errcont
+                                                                         (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
+    ((equal (car exp) 'tagbody)  (tagbody-check-tag (cdr exp)
+                                                    (<span style="color: #af00ff;">lambda</span> ()
+                                                      (setq go-env
+                                                            (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
+                                                                                (cons (car x)
+                                                                                      (<span style="color: #af00ff;">lambda</span> ()
+                                                                                        (evtagbody x env block-env go-env catch-env errcont cont))))
+                                                                            (tagbody-slice (cdr exp) nil))
+                                                                    go-env))
+                                                      (evtagbody (cdr exp) env block-env
+                                                                 go-env
+                                                                 catch-env errcont cont))
+                                                    (<span style="color: #af00ff;">lambda</span> (x)
+                                                      (funcall errcont (format nil <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
     ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                           (<span style="color: #af00ff;">lambda</span> (x)
                                             (funcall x))
                                           (<span style="color: #af00ff;">lambda</span> (x)
-                                            (funcall
-                                             errcont
-                                             (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
+                                            (funcall errcont (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
 
-    ((equal (car exp) 'labels)   (<span style="color: #af00ff;">let*</span> ((alist (mapcar (<span style="color: #af00ff;">lambda</span> (label)
+    ((equal (car exp) 'labels)   (<span style="color: #af00ff;">let*</span> ((alist (mapcar (<span style="color: #af00ff;">lambda</span> (label) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1092;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1087;&#1072;&#1088; (&#1080;&#1084;&#1103; . nil)</span>
                                                          (cons (car label) nil))
                                                        (cadr exp)))
-                                        (new-env (append alist env))
+                                        (new-env (append alist env))   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1076;&#1086;&#1073;&#1072;&#1074;&#1080;&#1084; &#1082; &#1089;&#1087;&#1080;&#1089;&#1082;&#1091; &#1087;&#1072;&#1088; &#1087;&#1088;&#1077;&#1076;&#1099;&#1076;&#1091;&#1097;&#1077;&#1077; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
                                         (closures (mapcar (<span style="color: #af00ff;">lambda</span> (label)
+                                                            <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1086;&#1079;&#1076;&#1072;&#1077;&#1084; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1077;, &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1102;&#1097;&#1077;&#1077; (env) &#1085;&#1072; &#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1099;&#1077; (&#1089;&#1086;&#1076;&#1077;&#1088;&#1078;&#1072;&#1097;&#1080;&#1077; &#1087;&#1086;&#1082;&#1072; nil)</span>
                                                             (make-closure <span style="color: #5f5f87;">:body</span> (caddr label)
                                                                           <span style="color: #5f5f87;">:block-env</span> block-env
                                                                           <span style="color: #5f5f87;">:env</span> new-env
                                                                           <span style="color: #5f5f87;">:go-env</span> go-env
                                                                           <span style="color: #5f5f87;">:args</span> (cadr label)))
                                                           (cadr exp))))
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">alist:    '((zzz . nil) (xxx . nil))</span>
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))</span>
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">closures: '(#:closure #:closure) ;; &#1091; &#1101;&#1090;&#1080;&#1093; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1081; :env &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; new-env</span>
                                    (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (length alist) (length closures)))
                                    (<span style="color: #af00ff;">loop</span>
                                       <span style="color: #5f5f87;">:for</span> aelt     <span style="color: #5f5f87;">:in</span> alist
                                       <span style="color: #5f5f87;">:for</span> closure  <span style="color: #5f5f87;">:in</span> closures
                                       <span style="color: #5f5f87;">:do</span> (rplacd aelt closure))
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084;:</span>
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">alist:    '((zzz . #:closure) (xxx . #:closure))</span>
+                                   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048; &#1087;&#1077;&#1088;&#1077;&#1076;&#1072;&#1077;&#1084; new-env &#1074; &#1082;&#1072;&#1095;&#1077;&#1089;&#1090;&#1074;&#1077; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
                                    (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
+    ((equal (car exp) 'reset)    (funcall cont (myeval (cadr exp)
+                                                       env block-env go-env catch-env
+                                                       errcont #'identity)))
+    ((equal (car exp) 'shift)    (myeval (caddr exp)
+                                         (acons (cadr exp) cont env)
+                                         block-env go-env catch-env
+                                         errcont cont))
     (t
      (myeval (car exp) env block-env go-env catch-env errcont
              (<span style="color: #af00ff;">lambda</span> (x)
@@ -2832,6 +2326,7 @@
                (myeval '(list (+ a b) (* b c) 42)
                        '((a . 1) (b . 2) (c . 3) (d . 4))
                        nil nil nil #'err #'ok)))
+
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYEVAL</span>
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1072;&#1084;&#1086;&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1092;&#1086;&#1088;&#1084;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval 'T nil nil nil nil #'err #'ok)))
@@ -3177,13 +2672,29 @@
                                           (t (zzz (cdr lst) (+ 1 acc))))))
                            (zzz '(1 2 3) 0))
                          nil nil nil nil #'err #'ok)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RESET</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #af00ff;">progn</span>
+                           (+ 1 (reset (+ 2 3)) 2))
+                         nil nil nil nil #'err #'ok)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SHIFT/RESET</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 44 (myeval '(<span style="color: #af00ff;">let</span> ((foo))
+                            (+ 1 (reset (+ 2 (shift f (<span style="color: #af00ff;">progn</span> (setq foo f) 4)))))
+                            (foo 42))
+                          nil nil nil nil #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">REPL</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
-  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
-  (princ (myeval (read) nil #'identity #'identity))
-  (terpri)
-  (finish-output)
-  (repl))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> (prompt catch-env errcont cont)
+  (format t <span style="color: #87005f;">"~%~A&gt; "</span> prompt)
+  (myeval (read) nil nil nil (acons 'exit cont catch-env)
+          #'(<span style="color: #af00ff;">lambda</span> (x)
+              (princ x)
+              (terpri)
+              (finish-output)
+              (repl prompt catch-env errcont cont))
+          #'(<span style="color: #af00ff;">lambda</span> (x)
+              (princ x)
+              (terpri)
+              (finish-output)
+              (repl prompt catch-env errcont cont))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">(repl)</span>
 </pre>
 </div>
