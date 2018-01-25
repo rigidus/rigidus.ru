@@ -11,7 +11,7 @@ clauses в ~myeval~ и ~myapply~.
 
 * Глобальное окружение
 
-#+NAME: assoc_7
+#+NAME: assoc_8
 #+BEGIN_SRC lisp
   (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
                                           ;; continuations (for lookup)
@@ -127,7 +127,7 @@ clauses в ~myeval~ и ~myapply~.
   <<myapply_print_8_test>>
   <<myapply_evlis_8_test>>
   <<myapply_list_8_test>>
-  <<myapply_callcc_8test>>
+  <<myapply_callcc_8_test>>
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -297,9 +297,11 @@ clauses в ~myeval~ и ~myapply~.
 
 ** CLOSURE
 
+Чтобы был ~implicit progn~ мы вызываем ~evprogn~ а не ~myeval~
+
 #+NAME: myapply_closure_8
 #+BEGIN_SRC lisp
-  ((closure-p fn)              (myeval (closure-body fn)
+  ((closure-p fn)              (evprogn (closure-body fn)
                                        (pairlis (closure-args fn)
                                                 args
                                                 (closure-env fn))
@@ -416,8 +418,8 @@ clauses в ~myeval~ и ~myapply~.
 
 #+NAME: myapply_callcc_8_test
 #+BEGIN_SRC lisp
-  ;; Тесты для LIST
-  (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8)))
+  ;; Тесты для CALL/CC
+  (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
                             nil nil nil nil #'err #'ok)))
 #+END_SRC
 
@@ -970,11 +972,13 @@ clauses в ~myeval~ и ~myapply~.
 
 [TODO:gmm] В текущей реализации мы не перезаписываем уже определенную функцию!
 
+NB: делаем implicit progn в body и в closure
+
 #+NAME: myeval_defun_8
 #+BEGIN_SRC lisp
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
-                                                  (make-closure :body (cadddr exp)
+                                                  (make-closure :body (cdddr exp)
                                                                 :env env
                                                                 :block-env block-env
                                                                 :go-env go-env
@@ -1006,7 +1010,6 @@ clauses в ~myeval~ и ~myapply~.
                                                  (rplacd (assoc (cadr exp) *glob-env*) val))
                                              (rplacd (assoc (cadr exp) env) val))
                                          (funcall cont val))))
-
 #+END_SRC
 
 #+NAME: myeval_setq_8_test
@@ -1048,7 +1051,7 @@ clauses в ~myeval~ и ~myapply~.
 
 #+NAME: myeval_lambda_8
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
+  ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (cddr exp)
                                                            :env env
                                                            :block-env block-env
                                                            :go-env go-env
@@ -1104,6 +1107,8 @@ clauses в ~myeval~ и ~myapply~.
                                                                            (format nil "return-from: undefined return block ~A" y))))))))
 #+END_SRC
 
+NB: Поправлен неверный тест return-from в лексической области видимости
+
 #+NAME: myeval_return_from_8_test
 #+BEGIN_SRC lisp
   ;; Тесты для RETURN-FROM
@@ -1121,8 +1126,8 @@ clauses в ~myeval~ и ~myapply~.
                                        (defun foo (x)
                                          (block in-lambda-block
                                            (return-from in-lambda-block
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -1205,8 +1210,8 @@ clauses в ~myeval~ и ~myapply~.
                                        (defun foo (x)
                                          (catch 'in-lambda-catch
                                            (throw 'in-lambda-catch
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -1236,8 +1241,6 @@ clauses в ~myeval~ и ~myapply~.
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-
-
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1245,13 +1248,10 @@ clauses в ~myeval~ и ~myapply~.
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
   (defun tagbody-slice (exp)
     (cond ((null exp)           nil)
           ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
           (t                    (tagbody-slice (cdr exp)))))
-
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
@@ -1287,7 +1287,7 @@ clauses в ~myeval~ и ~myapply~.
 
 ** GO
 
-#+NAME: myeval_tagbody_8
+#+NAME: myeval_go_8
 #+BEGIN_SRC lisp
   ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                         (lambda (x)
@@ -1451,11 +1451,10 @@ clauses в ~myeval~ и ~myapply~.
 
 #+BEGIN_SRC lisp :tangle lisp-8.lisp :noweb tangle :exports code :padline no :comments none
   (setq *print-circle* T)
-
-  ;; CPS-версия ASSOC
-  <<assoc_8>>
   ;; Классы ошибок
   <<errors_8>>
+  ;; CPS-версия ASSOC
+  <<assoc_8>>
   ;; Новая функция lookup
   <<lookup_8>>
   ;; Структура замыкания
