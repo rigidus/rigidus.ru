@@ -32,20 +32,26 @@
 <li><a href="#unnumbered-15">Ввод и вывод: KEY EMIT WORD NUMBER</a></li>
 <li><a href="#unnumbered-16">Просмотр словаря</a></li>
 <li><a href="#unnumbered-17">Компиляция</a></li>
-<li><a href="#unnumbered-18">Расширение компилятора</a></li>
-<li><a href="#unnumbered-19">Ветвление</a></li>
-<li><a href="#unnumbered-20">Строковые литералы - LITSTRING</a></li>
-<li><a href="#unnumbered-21">Печать строки - TELL</a></li>
-<li><a href="#unnumbered-22">QUIT</a></li>
-<li><a href="#unnumbered-23">INTERPRET</a></li>
-<li><a href="#unnumbered-24">CHAR</a></li>
-<li><a href="#unnumbered-25">EXECUTE</a></li>
-<li><a href="#unnumbered-26">DODOES</a></li>
-<li><a href="#unnumbered-27">Системные вызовы</a></li>
-<li><a href="#unnumbered-28">Сегмент стека и буффер ввода</a></li>
+<li><a href="#unnumbered-18">Расширение компилятора</a>
+<ul>
+<li><a href="#unnumbered-19">IMMEDIATE</a></li>
+<li><a href="#unnumbered-20">HIDDEN</a></li>
+<li><a href="#unnumbered-21">TICK</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-29">Tangling</a></li>
+<li><a href="#unnumbered-22">Ветвление</a></li>
+<li><a href="#unnumbered-23">Строковые литералы - LITSTRING</a></li>
+<li><a href="#unnumbered-24">Печать строки - TELL</a></li>
+<li><a href="#unnumbered-25">QUIT</a></li>
+<li><a href="#unnumbered-26">INTERPRET</a></li>
+<li><a href="#unnumbered-27">CHAR</a></li>
+<li><a href="#unnumbered-28">EXECUTE</a></li>
+<li><a href="#unnumbered-29">DODOES</a></li>
+<li><a href="#unnumbered-30">Системные вызовы</a></li>
+<li><a href="#unnumbered-31">Сегмент стека и буффер ввода</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-32">Tangling</a></li>
 </ul>
 </div>
 </div>
@@ -2580,6 +2586,9 @@ DATA - любое 32-битное значение, которое лежит н
 <div id="outline-container-unnumbered-18" class="outline-3">
 <h3 id="unnumbered-18">Расширение компилятора</h3>
 <div class="outline-text-3" id="text-unnumbered-18">
+</div><div id="outline-container-unnumbered-19" class="outline-4">
+<h4 id="unnumbered-19">IMMEDIATE</h4>
+<div class="outline-text-4" id="text-unnumbered-19">
 <p>
 Слова, помеченные IMMEDIATE (F＿IMMED), предназначены не только для использования
 компилятором Forth. Вы также можете определить свои собственные IMMEDIATE-слова, и это
@@ -2635,6 +2644,71 @@ DATA - любое 32-битное значение, которое лежит н
 </pre>
 </div>
 
+<p>
+В качестве примера использования IMMEDIATE-слов для компиляции рассмотрим такой:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">: BAZ IMMEDIATE HERE @ , <span style="color: #af00ff;">;</span>
+<span style="color: #af00ff;">: </span><span style="color: #0000ff;">BAR </span>BAZ BAZ <span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+BAZ - "немедленное" слово. Оно положит на стек данных значение по адресу HERE, а затем
+вкомпилирует его в новое слово. В момент создания слова BAR:
+</p>
+<ul class="org-ul">
+<li>Сначала создается заголовочная часть BAR, устанавливается HERE и LATEST (см. CREATE и
+COLON
+</li>
+<li>Потом исполняется первый BAZ (кладется значение по адресу HERE на стек), после чего
+COMMA вкомпиливает его в создаваемое слово BAR. В реезультате значение по адресу из
+HERE - "вкомпиливается" в BAR.
+</li>
+<li>Исполняется второй BAZ. Происходит то же самое.
+</li>
+<li>SEMICOLON (точка с запятой) вкомпиливает в BAR слово EXIT и выходит из режима
+компиляции
+</li>
+</ul>
+
+<p>
+Вот так скомпилированное слово BAR будет выглядеть в памяти:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">LINK
+FLAGS/LEN
+"BAR" (name)
+padding <span style="color: #af0000;">(&#1086;&#1087;&#1094;&#1080;&#1086;&#1085;&#1072;&#1083;&#1100;&#1085;&#1086;)
+DOCOL
+addr of HERE
+addr of HERE
+EXIT
+</span>
+</pre>
+</div>
+
+<p>
+Таким образом, IMMEDIATE слова не становятся во время компиляции "частью" других слов,
+как мы привыкли. Вместо этого они получают возможность вкомпиливать все что захотят
+прямо в режиме компиляции.
+</p>
+
+<p>
+Не стоит вызывать это слово - оно содержит ошибку потому что HERE не является
+правильным адресом дочернего слова. Если это непонятно, вернитесь к главе "Косвенный
+шитый код" в первой части мана
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-4">
+<h4 id="unnumbered-20">HIDDEN</h4>
+<div class="outline-text-4" id="text-unnumbered-20">
 <p>
 <code>addr HIDDEN</code> переключает HIDDEN флаг (F＿HIDDEN) слова, определенного в <code>addr</code>. Чтобы
 скрыть последнее заданное слово (используемое выше в <code>:</code> и <code>;</code> определениях), вы
@@ -2702,8 +2776,12 @@ IMMEDIATE, как вы уже поняли, может работать толь
 HIDDEN, в отличие от IMMEDIATE, может работать с любым словом, чей адрес помещен на
 стек данных, откуда он его возьмет.
 </p>
+</div>
+</div>
 
-
+<div id="outline-container-unnumbered-21" class="outline-4">
+<h4 id="unnumbered-21">TICK</h4>
+<div class="outline-text-4" id="text-unnumbered-21">
 <p>
 <code> ' </code> (TICK) - это стандартное слово Forth, которое возвращает <code>codeword</code> следующего за
 ним слова.
@@ -2769,10 +2847,11 @@ HIDDEN, в отличие от IMMEDIATE, может работать с люб�
 </div>
 </div>
 </div>
+</div>
 
-<div id="outline-container-unnumbered-19" class="outline-3">
-<h3 id="unnumbered-19">Ветвление</h3>
-<div class="outline-text-3" id="text-unnumbered-19">
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">Ветвление</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
 <p>
 Оказывается, все, что вам нужно для определения циклов, IF-выражений и.т.д. - это два
 примитива.
@@ -2855,9 +2934,9 @@ BRANCH - безусловная ветвь (эквивалентная кома�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-20" class="outline-3">
-<h3 id="unnumbered-20">Строковые литералы - LITSTRING</h3>
-<div class="outline-text-3" id="text-unnumbered-20">
+<div id="outline-container-unnumbered-23" class="outline-3">
+<h3 id="unnumbered-23">Строковые литералы - LITSTRING</h3>
+<div class="outline-text-3" id="text-unnumbered-23">
 <p>
 LITSTRING - это примитив, используемый для реализации операторов <code> ." </code> И <code> S" </code> (которые
 написаны в формате Forth). См. ниже определение этих операторов.
@@ -2878,9 +2957,9 @@ LITSTRING - это примитив, используемый для реали�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-21" class="outline-3">
-<h3 id="unnumbered-21">Печать строки - TELL</h3>
-<div class="outline-text-3" id="text-unnumbered-21">
+<div id="outline-container-unnumbered-24" class="outline-3">
+<h3 id="unnumbered-24">Печать строки - TELL</h3>
+<div class="outline-text-3" id="text-unnumbered-24">
 <p>
 TELL просто печатает строку. Это более эффективно определять в ассемблере, потому что
 мы можем сделать это одним из системных вызовов Linux.
@@ -2900,9 +2979,9 @@ TELL просто печатает строку. Это более эффект�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-22" class="outline-3">
-<h3 id="unnumbered-22">QUIT</h3>
-<div class="outline-text-3" id="text-unnumbered-22">
+<div id="outline-container-unnumbered-25" class="outline-3">
+<h3 id="unnumbered-25">QUIT</h3>
+<div class="outline-text-3" id="text-unnumbered-25">
 <p>
 QUIT - первая функция Forth, вызываемая почти сразу после того, как система Forth
 загружается. Как объяснялось ранее, QUIT никуда не "уходит". Она выполняет некоторую
@@ -2933,9 +3012,9 @@ QUIT - первая функция Forth, вызываемая почти сра
 </div>
 </div>
 
-<div id="outline-container-unnumbered-23" class="outline-3">
-<h3 id="unnumbered-23">INTERPRET</h3>
-<div class="outline-text-3" id="text-unnumbered-23">
+<div id="outline-container-unnumbered-26" class="outline-3">
+<h3 id="unnumbered-26">INTERPRET</h3>
+<div class="outline-text-3" id="text-unnumbered-26">
 <p>
 INTERPRET является REPL (см.: <a href="http://en.wikipedia.org/wiki/REPL">http://en.wikipedia.org/wiki/REPL</a>) внутри Forth.
 </p>
@@ -3044,9 +3123,9 @@ INTERPRET является REPL (см.: <a href="http://en.wikipedia.org/wiki/RE
 </div>
 </div>
 
-<div id="outline-container-unnumbered-24" class="outline-3">
-<h3 id="unnumbered-24">CHAR</h3>
-<div class="outline-text-3" id="text-unnumbered-24">
+<div id="outline-container-unnumbered-27" class="outline-3">
+<h3 id="unnumbered-27">CHAR</h3>
+<div class="outline-text-3" id="text-unnumbered-27">
 <p>
 CHAR помещает код ASCII первого символа следующего слова в стек. Например, <code>CHAR A</code>
 кладет 65 в стек.
@@ -3065,9 +3144,9 @@ CHAR помещает код ASCII первого символа следующ�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-25" class="outline-3">
-<h3 id="unnumbered-25">EXECUTE</h3>
-<div class="outline-text-3" id="text-unnumbered-25">
+<div id="outline-container-unnumbered-28" class="outline-3">
+<h3 id="unnumbered-28">EXECUTE</h3>
+<div class="outline-text-3" id="text-unnumbered-28">
 <p>
 EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
 в коде Forth для получения более подробной информации.
@@ -3098,9 +3177,9 @@ DOCON) - осуществляется переход по нему. Т.е. уп�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-26" class="outline-3">
-<h3 id="unnumbered-26">DODOES</h3>
-<div class="outline-text-3" id="text-unnumbered-26">
+<div id="outline-container-unnumbered-29" class="outline-3">
+<h3 id="unnumbered-29">DODOES</h3>
+<div class="outline-text-3" id="text-unnumbered-29">
 <p>
 Работа этого кода объясняется во второй части
 </p>
@@ -3123,9 +3202,9 @@ DOCON) - осуществляется переход по нему. Т.е. уп�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-27" class="outline-3">
-<h3 id="unnumbered-27">Системные вызовы</h3>
-<div class="outline-text-3" id="text-unnumbered-27">
+<div id="outline-container-unnumbered-30" class="outline-3">
+<h3 id="unnumbered-30">Системные вызовы</h3>
+<div class="outline-text-3" id="text-unnumbered-30">
 <p>
 SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См.
 список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3
@@ -3175,9 +3254,9 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-28" class="outline-3">
-<h3 id="unnumbered-28">Сегмент стека и буффер ввода</h3>
-<div class="outline-text-3" id="text-unnumbered-28">
+<div id="outline-container-unnumbered-31" class="outline-3">
+<h3 id="unnumbered-31">Сегмент стека и буффер ввода</h3>
+<div class="outline-text-3" id="text-unnumbered-31">
 <div class="org-src-container">
 
 <pre class="src src-asm" id="sys_ret_stack_and_input_buffer">    <span style="color: #af00ff;">.bss</span>
@@ -3206,9 +3285,9 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-29" class="outline-2">
-<h2 id="unnumbered-29">Tangling</h2>
-<div class="outline-text-2" id="text-unnumbered-29">
+<div id="outline-container-unnumbered-32" class="outline-2">
+<h2 id="unnumbered-32">Tangling</h2>
+<div class="outline-text-2" id="text-unnumbered-32">
 <p>
 Теперь мы можем переходить к высокоуровневой части. Она лежит в разделе: <a href="jonesforth-2.html">Forth-часть</a>
 </p>
