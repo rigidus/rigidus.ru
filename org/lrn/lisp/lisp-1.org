@@ -2,6 +2,8 @@
 
 * План работ
 
+Наш предыдущий лисп уже имеет ~eval~, ~repl~ и может вычислять списковые формы.
+
 Теперь добавим к нашей реализации (динамические) окружения. Окружения связывают
 переменные (символы) с их значениями, и если мы хотим добавить переменные в язык, то
 идея окружений нам пригодится. Для этого, у ~myeval~ появляется еще один параметр
@@ -98,8 +100,6 @@
 #+END_SRC
 
 * NULL-предикат
-
-Без изменений
 
 #+NAME: null_1
 #+BEGIN_SRC lisp
@@ -948,6 +948,13 @@ varpairs будут добавлены в окончательное окруж�
 Мы должны получить следующий результат:
 
 #+BEGIN_SRC lisp
+  (define-condition eval-unknown-form-error (error)
+    ((form :initarg :form  :reader form)
+     (env  :initarg :env   :reader env))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"
+               (form condition) (env condition)))))
   (defun evcond (lst env)
     (cond ((null lst)               nil)
           ((myeval (caar lst) env)  (myeval (cadar lst) env))
@@ -983,14 +990,6 @@ varpairs будут добавлены в окончательное окруж�
           (t                 (evmul (cdr lst)
                                     (* acc (myeval (car lst) env))
                                     env))))
-  (define-condition mypairlis-error (error)
-    ((lst1 :initarg :lst1  :reader lst1)
-     (lst2 :initarg :lst2  :reader lst2))
-    (:report
-     (lambda (condition stream)
-       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
-               (lst1 condition) (lst2 condition)))))
-
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -1006,14 +1005,6 @@ varpairs будут добавлены в окончательное окруж�
                                        (cons (cons (caar varpairs)
                                                    (myeval (cadar varpairs) env))
                                              env)))))
-  (define-condition eval-unknown-form-error (error)
-    ((form :initarg :form  :reader form)
-     (env  :initarg :env   :reader env))
-    (:report
-     (lambda (condition stream)
-       (format stream "Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"
-               (form condition) (env condition)))))
-
   (defun myeval (lst env)
     (cond
       ((null lst)                  nil)
@@ -1050,7 +1041,113 @@ varpairs будут добавлены в окончательное окруж�
                                                       (evlis (cdr lst) env)
                                                       env)))
       (t (error 'eval-unknown-form-error :form lst :env env))))
-
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+  (define-condition eval-unknown-form-error (error)
+    ((form :initarg :form  :reader form)
+     (env  :initarg :env   :reader env))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"
+               (form condition) (env condition)))))
+  (defun evcond (lst env)
+    (cond ((null lst)               nil)
+          ((myeval (caar lst) env)  (myeval (cadar lst) env))
+          (t                        (evcond (cdr lst) env))))
+  (defun evprogn (lst env)
+    (cond ((null lst)        nil)
+          ((null (cdr lst))  (myeval (car lst) env))
+          (t                 (myeval (car lst) env)
+                             (evprogn (cdr lst) env))))
+  (defun evlis (lst env)
+    (cond ((null lst)  nil)
+          (t           (cons (myeval (car lst) env)
+                             (evlis (cdr lst) env)))))
+  (defun evand (lst env)
+    (cond ((null lst)        (and))
+          ((null (cdr lst))  (and (myeval (car lst) env)))
+          (t                 (and (myeval (car lst) env)
+                                  (evand (cdr lst) env)))))
+  (defun evor (lst env)
+    (cond ((null lst)        (or))
+          ((null (cdr lst))  (or (myeval (car lst) env)))
+          (t                 (or (myeval (car lst) env)
+                                 (evor (cdr lst) env)))))
+  (defun evadd (lst acc env)
+    (cond ((null lst)        0)
+          ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+          (t                 (evadd (cdr lst)
+                                    (+ acc (myeval (car lst) env))
+                                    env))))
+  (defun evmul (lst acc env)
+    (cond ((null lst)        1)
+          ((null (cdr lst))  (* acc (myeval (car lst) env)))
+          (t                 (evmul (cdr lst)
+                                    (* acc (myeval (car lst) env))
+                                    env))))
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2))  alist)
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
+          (t                              (cons (cons (car lst1)
+                                                      (car lst2))
+                                                (mypairlis (cdr lst1)
+                                                           (cdr lst2)
+                                                           alist)))))
+  (defun evletstar (varpairs exp env)
+    (cond ((null varpairs)  (myeval exp env))
+          (t                (evletstar (cdr varpairs)
+                                       exp
+                                       (cons (cons (caar varpairs)
+                                                   (myeval (cadar varpairs) env))
+                                             env)))))
+  (defun myeval (lst env)
+    (cond
+      ((null lst)                  nil)
+      ((equal t lst)               t)
+      ((numberp lst)               lst)
+      ((symbolp lst)               (cdr (assoc lst env)))
+      ((equal (car lst) 'quote)    (cadr lst))
+      ((equal (car lst) 'car)      (car (myeval (cadr lst) env)))
+      ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst) env)))
+      ((equal (car lst) 'cons)     (cons (myeval (cadr lst) env)
+                                         (myeval (caddr lst) env)))
+      ((equal (car lst) 'null)     (null (myeval (cadr lst) env)))
+      ((equal (car lst) 'if)       (if (myeval (cadr lst) env)
+                                       (myeval (caddr lst) env)
+                                       (myeval (cadddr lst) env)))
+      ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+      ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+      ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+      ((equal (car lst) 'list)     (evlis (cdr lst) env))
+      ((equal (car lst) 'and)      (evand (cdr lst) env))
+      ((equal (car lst) 'or)       (evor  (cdr lst) env))
+      ((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+      ((equal (car lst) '*)        (evmul (cdr lst) 1 env))
+      ((equal (car lst) 'let)      (evprogn (cddr lst) ; implicit progn
+                                            (mypairlis (mapcar #'car (cadr lst))
+                                                       (evlis (mapcar #'cadr (cadr lst))
+                                                              env)
+                                                       env)))
+      ((equal (car lst) 'let*)     (evletstar (cadr lst)
+                                              (caddr lst)
+                                              env))
+      ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
+                                           (mypairlis (cadar lst)
+                                                      (evlis (cdr lst) env)
+                                                      env)))
+      (t (error 'eval-unknown-form-error :form lst :env env))))
+  (defun repl ()
+    (princ "microlisp>")
+    (finish-output)
+    (princ (myeval (read)))
+    (terpri)
+    (finish-output)
+    (repl))
   ;; Тесты для вычисления символов
   (assert (equal 6 (myeval 'b '((a . 3) (b . 6)))))
   ;; Тесты для самовычисляемых форм
@@ -1098,6 +1195,30 @@ varpairs будут добавлены в окончательное окруж�
                              (a 1)
                              (b 2))
                            '((a . 1) (b . ())))))
+  ;; Тест для EVPROGN
+  (assert (equal 2 (evprogn '(1 2) nil)))
+  ;; Тест для EVPROGN в окружении
+  (assert (equal 3 (evprogn '(a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; Тест для PROGN
+  (assert (equal 3 (myeval '(progn 1 2 3) nil)))
+  ;; Тест для PROGN в окружении
+  (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3)))))
+  ;; Тесты для PRINT
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (print 12))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print 12) nil))))
+  (assert (equal (print 12)
+                 (myeval '(print 12) nil)))
+  ;; Тесты для PRINT в окружении
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (let ((a 12))
+                     (print a)))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(print a) '((b . 23) (a . 12))))))
+  (assert (equal (let ((a 12))
+                   (print a))
+                 (myeval '(print a) '((b . 23) (a . 12)))))
   ;; Тесты для EVLIS
   (assert (equal '(3 6 42)
                  (evlis '((+ 1 2) (* 2 3) 42) nil)))
@@ -1195,7 +1316,6 @@ varpairs будут добавлены в окончательное окруж�
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
-
   ;; Тесты для OR
   (assert (equal (or)                  (myeval '(or) nil)))
   (assert (equal (or nil 1)            (myeval '(or nil 1) nil)))

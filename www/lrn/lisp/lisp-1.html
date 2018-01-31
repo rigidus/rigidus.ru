@@ -42,6 +42,10 @@
 <h2 id="unnumbered-1">План работ</h2>
 <div class="outline-text-2" id="text-unnumbered-1">
 <p>
+Наш предыдущий лисп уже имеет <code>eval</code>, <code>repl</code> и может вычислять списковые формы.
+</p>
+
+<p>
 Теперь добавим к нашей реализации (динамические) окружения. Окружения связывают
 переменные (символы) с их значениями, и если мы хотим добавить переменные в язык, то
 идея окружений нам пригодится. Для этого, у <code>myeval</code> появляется еще один параметр
@@ -178,10 +182,6 @@
 <div id="outline-container-unnumbered-5" class="outline-2">
 <h2 id="unnumbered-5">NULL-предикат</h2>
 <div class="outline-text-2" id="text-unnumbered-5">
-<p>
-Без изменений
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="null_1">((equal (car lst) 'null)     (null (myeval (cadr lst) env)))
@@ -1226,7 +1226,14 @@ varpairs будут добавлены в окончательное окруж�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
+<pre class="src src-lisp">(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">eval-unknown-form-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((form <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:form</span>  <span style="color: #5f5f87;">:reader</span> form)
+   (env  <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:env</span>   <span style="color: #5f5f87;">:reader</span> env))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"</span>
+             (form condition) (env condition)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
   (<span style="color: #af00ff;">cond</span> ((null lst)               nil)
         ((myeval (caar lst) env)  (myeval (cadar lst) env))
         (t                        (evcond (cdr lst) env))))
@@ -1261,14 +1268,6 @@ varpairs будут добавлены в окончательное окруж�
         (t                 (evmul (cdr lst)
                                   (* acc (myeval (car lst) env))
                                   env))))
-(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
-  ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
-   (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
-  (<span style="color: #5f5f87;">:report</span>
-   (<span style="color: #af00ff;">lambda</span> (condition stream)
-     (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
-             (lst1 condition) (lst2 condition)))))
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
         ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
@@ -1284,14 +1283,6 @@ varpairs будут добавлены в окончательное окруж�
                                      (cons (cons (caar varpairs)
                                                  (myeval (cadar varpairs) env))
                                            env)))))
-(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">eval-unknown-form-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
-  ((form <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:form</span>  <span style="color: #5f5f87;">:reader</span> form)
-   (env  <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:env</span>   <span style="color: #5f5f87;">:reader</span> env))
-  (<span style="color: #5f5f87;">:report</span>
-   (<span style="color: #af00ff;">lambda</span> (condition stream)
-     (format stream <span style="color: #87005f;">"Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"</span>
-             (form condition) (env condition)))))
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
   (<span style="color: #af00ff;">cond</span>
     ((null lst)                  nil)
@@ -1328,7 +1319,113 @@ varpairs будут добавлены в окончательное окруж�
                                                     (evlis (cdr lst) env)
                                                     env)))
     (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'eval-unknown-form-error <span style="color: #5f5f87;">:form</span> lst <span style="color: #5f5f87;">:env</span> env))))
-
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">mypairlis-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst1</span>  <span style="color: #5f5f87;">:reader</span> lst1)
+   (lst2 <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:lst2</span>  <span style="color: #5f5f87;">:reader</span> lst2))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+(<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">eval-unknown-form-error</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
+  ((form <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:form</span>  <span style="color: #5f5f87;">:reader</span> form)
+   (env  <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:env</span>   <span style="color: #5f5f87;">:reader</span> env))
+  (<span style="color: #5f5f87;">:report</span>
+   (<span style="color: #af00ff;">lambda</span> (condition stream)
+     (format stream <span style="color: #87005f;">"Error in MYEVAL: Unknown form~%'~A~%can not be evaluated in environment~%'~A"</span>
+             (form condition) (env condition)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evcond</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)               nil)
+        ((myeval (caar lst) env)  (myeval (cadar lst) env))
+        (t                        (evcond (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evprogn</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        nil)
+        ((null (cdr lst))  (myeval (car lst) env))
+        (t                 (myeval (car lst) env)
+                           (evprogn (cdr lst) env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evlis</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)  nil)
+        (t           (cons (myeval (car lst) env)
+                           (evlis (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
+        ((null (cdr lst))  (and (myeval (car lst) env)))
+        (t                 (and (myeval (car lst) env)
+                                (evand (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        (or))
+        ((null (cdr lst))  (or (myeval (car lst) env)))
+        (t                 (or (myeval (car lst) env)
+                               (evor (cdr lst) env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evadd</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        0)
+        ((null (cdr lst))  (+ acc (myeval (car lst) env)))
+        (t                 (evadd (cdr lst)
+                                  (+ acc (myeval (car lst) env))
+                                  env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evmul</span> (lst acc env)
+  (<span style="color: #af00ff;">cond</span> ((null lst)        1)
+        ((null (cdr lst))  (* acc (myeval (car lst) env)))
+        (t                 (evmul (cdr lst)
+                                  (* acc (myeval (car lst) env))
+                                  env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evletstar</span> (varpairs exp env)
+  (<span style="color: #af00ff;">cond</span> ((null varpairs)  (myeval exp env))
+        (t                (evletstar (cdr varpairs)
+                                     exp
+                                     (cons (cons (caar varpairs)
+                                                 (myeval (cadar varpairs) env))
+                                           env)))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (lst env)
+  (<span style="color: #af00ff;">cond</span>
+    ((null lst)                  nil)
+    ((equal t lst)               t)
+    ((numberp lst)               lst)
+    ((symbolp lst)               (cdr (assoc lst env)))
+    ((equal (car lst) 'quote)    (cadr lst))
+    ((equal (car lst) 'car)      (car (myeval (cadr lst) env)))
+    ((equal (car lst) 'cdr)      (cdr (myeval (cadr lst) env)))
+    ((equal (car lst) 'cons)     (cons (myeval (cadr lst) env)
+                                       (myeval (caddr lst) env)))
+    ((equal (car lst) 'null)     (null (myeval (cadr lst) env)))
+    ((equal (car lst) 'if)       (<span style="color: #af00ff;">if</span> (myeval (cadr lst) env)
+                                     (myeval (caddr lst) env)
+                                     (myeval (cadddr lst) env)))
+    ((equal (car lst) 'cond)     (evcond (cdr lst) env))
+    ((equal (car lst) 'progn)    (evprogn (cdr lst) env))
+    ((equal (car lst) 'print)    (print (myeval (cadr lst)  env)))
+    ((equal (car lst) 'list)     (evlis (cdr lst) env))
+    ((equal (car lst) 'and)      (evand (cdr lst) env))
+    ((equal (car lst) 'or)       (evor  (cdr lst) env))
+    ((equal (car lst) '+)        (evadd (cdr lst) 0 env))
+    ((equal (car lst) '*)        (evmul (cdr lst) 1 env))
+    ((equal (car lst) 'let)      (evprogn (cddr lst) <span style="color: #af0000;">; implicit progn</span>
+                                          (mypairlis (mapcar #'car (cadr lst))
+                                                     (evlis (mapcar #'cadr (cadr lst))
+                                                            env)
+                                                     env)))
+    ((equal (car lst) 'let*)     (evletstar (cadr lst)
+                                            (caddr lst)
+                                            env))
+    ((equal (caar lst) 'lambda)  (myeval (car (cddar lst))
+                                         (mypairlis (cadar lst)
+                                                    (evlis (cdr lst) env)
+                                                    env)))
+    (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'eval-unknown-form-error <span style="color: #5f5f87;">:form</span> lst <span style="color: #5f5f87;">:env</span> env))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
+  (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (finish-output)
+  (princ (myeval (read)))
+  (terpri)
+  (finish-output)
+  (repl))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1077;&#1085;&#1080;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1072;&#1084;&#1086;&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1092;&#1086;&#1088;&#1084;</span>
@@ -1376,6 +1473,30 @@ varpairs будут добавлены в окончательное окруж�
                            (a 1)
                            (b 2))
                          '((a . 1) (b . ())))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evprogn '(1 2) nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (evprogn '(a b c) '((a . 1) (b . 2) (c . 3)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> 1 2 3) nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
+                 (print 12))
+               (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print 12) nil))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (print 12)
+               (myeval '(print 12) nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
+                 (<span style="color: #af00ff;">let</span> ((a 12))
+                   (print a)))
+               (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print a) '((b . 23) (a . 12))))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 12))
+                 (print a))
+               (myeval '(print a) '((b . 23) (a . 12)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLIS</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(3 6 42)
                (evlis '((+ 1 2) (* 2 3) 42) nil)))
@@ -1473,7 +1594,6 @@ varpairs будут добавлены в окончательное окруж�
                      (c 2))
                  (or a b c))
                (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
-
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                  (myeval '(or) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)            (myeval '(or nil 1) nil)))
