@@ -4,61 +4,29 @@
 
 [TODO:gmm] Добавить call/cc, shift и reset, а также repl
 
-На этом этапе мы проведем дефункционализацию.
+На этом этапе мы проведем дефункционализацию. Дефункционализация - это представление
+продолжений явными структурами. Для этого мы берем лямбду продолжения и все её
+свободные переменные упаковываем в структуру, соответствующую этом вызову.
 
-Выносим применение продолжения в отдельную функцию. Большинство продолжений принимают
-один аргумент, но есть и такие (в ~go~) которые не принимают аргументов.
+Большинство вызовов похожи друг на друга в отношении принимаемых параметров, значит и
+структуры будут похожи в отношении полей. Поэтому мы можем объявить структуру (назовем
+ее ~unicont~) от которой будем наследовать различающиеся поля. Мы сделаем это в разделе
+[[*Структура UNICONT][Структура UNICONT]].
 
-Также продолжения могут быть представлены структурами
-
-#+NAME: errors_9
-#+BEGIN_SRC lisp
-  (define-condition unknown-continuation (error)
-    ((cont :initarg :cont  :reader cont))
-    (:report
-     (lambda (condition stream)
-       (format stream "Error in APPLY-CONTINUATION: unknown-continuation: ~A"
-               (cont condition)))))
-#+END_SRC
-
-
-#+NAME: apply_continuation_9
-#+BEGIN_SRC lisp
-  (defun apply-continuation (cont arg)
-    (cond ((and (functionp cont)
-                (equal arg 'NOT-A-PARAM))
-                                  (funcall cont))
-          ((functionp cont)       (funcall cont arg))
-          ((evcond-cont-p cont)   (if arg
-                                      (myeval (cadar (evcond-cont-clauses cont))
-                                              (evcond-cont-env cont)
-                                              (evcond-cont-block-env cont)
-                                              (evcond-cont-go-env cont)
-                                              (evcond-cont-catch-env cont)
-                                              (evcond-cont-errcont cont)
-                                              (evcond-cont-cont cont))
-                                      (evcond (cdr (evcond-cont-clauses cont))
-                                              (evcond-cont-env cont)
-                                              (evcond-cont-block-env cont)
-                                              (evcond-cont-go-env cont)
-                                              (evcond-cont-catch-env cont)
-                                              (evcond-cont-errcont cont)
-                                              (evcond-cont-cont cont))))
-          ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
-                                         (cdr (evlis-cont-unevaled cont))
-                                         (cons arg (evlis-cont-evaled cont))
-                                         (evlis-cont-env cont)
-                                         (evlis-cont-block-env cont)
-                                         (evlis-cont-go-env cont)
-                                         (evlis-cont-catch-env cont)
-                                         (evlis-cont-errcont cont)
-                                         (evlis-cont-cont cont)))
-          (t (error 'unknown-continuation :cont cont))))
-#+END_SRC
+Теперь у нас есть передача структур вместо функций в продолжениях. Когда продолжения
+были функциями мы применяли их с помощью ~funcall~. Теперь мы вынесем применение
+продолжения в отдельную функцию ~apply-continuation~, которая по типу продолжения
+определяет как именно его применить. Т.е. вся логика лямбда-функции продолжений
+переносится туда. Большинство продолжений принимают один аргумент, но есть и такие (в
+~go~) которые не принимают аргументов. Мы сделаем это в разделе [[*Применение продолжений][Применение продолжений]]
 
 * Глобальное окружение
 
-Меняем ~funcall~ на ~apply-continuation~:
+Здесь мы не должны менять ~funcall~ на ~apply-continuation~, потому что продолжения
+assoc-2 не являются продолжениями интерпретатора. Поэтому для наглядоности переименуем
+~cont~ в ~success~ а ~errcont~ в ~failure~:
+
+[TODO:gmm] Возможно это стоит бэкпортить
 
 #+NAME: assoc_9
 #+BEGIN_SRC lisp
@@ -69,11 +37,11 @@
           ((equal key (caar alist))  (funcall cont    (cdar alist)))
           (t                         (assoc-2 key (cdr alist) cont errcont))))
   ;; стало
-  (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
-                                          ;; continuations (for lookup)
-    (cond ((null alist)              (apply-continuation errcont key))
-          ((equal key (caar alist))  (apply-continuation cont (cdar alist)))
-          (t                         (assoc-2 key (cdr alist) cont errcont))))
+  (defun assoc-2 (key alist success failure) ;; NB!: inverted order of
+                                             ;; successinuations (for lookup)
+    (cond ((null alist)              (funcall failure key))
+          ((equal key (caar alist))  (funcall success (cdar alist)))
+          (t                         (assoc-2 key (cdr alist) success failure))))
 #+END_SRC
 
 #+NAME: assoc_9_test
@@ -89,13 +57,18 @@
 #+END_SRC
 
 Заменяем передачу продолжения ~cont~ в ~assoc~ на ~(apply-continuation cont ...)~. Также
-заменяем вызов ~funcall errcont~ на ~(apply-continuation errcont ...)~
+заменяем вызов ~funcall errcont~ на ~(apply-continuation errcont ...)~. Мы можем это
+сделать, так как когда ~apply-continuation~ встречает лямбду, а не структуру, она
+применяет ее с помощью ~funcall~.
+
+[TODO:gmm] Я тут поправил возможную ошибку с потерей лямбды, замеченную в следущем
+файле. Проверить что все работает.
 
 #+NAME: lookup_9
 #+BEGIN_SRC lisp
   ;; environment
   (defparameter *glob-env* nil)
-  ;; lookup (old)
+  ;; lookup (было)
   (defun lookup (symb env errcont cont)
     (assoc-2 symb env cont
              (lambda (key)
@@ -106,13 +79,15 @@
                                     nil
                                     "UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"
                                     key env *glob-env*)))))))
-  ;; lookup
+  ;; lookup (стало)
   (defun lookup (symb env errcont cont)
     (assoc-2 symb env
              (lambda (x)
                (apply-continuation cont x))
              (lambda (key)
-               (assoc-2 key *glob-env* cont
+               (assoc-2 key *glob-env*
+                        (lambda (x) ;; возможно ошибка (была) тут
+                          (apply-continuation cont nil))
                         (lambda (key)
                           (apply-continuation
                            errcont
@@ -154,6 +129,70 @@
     block-env
     go-env
     args)
+#+END_SRC
+
+* Структура UNICONT
+
+Определим структуру ~unicont~, которая будет хранить
+- block-env
+- go-env
+- catch-env
+- errcont
+- cont
+дефункционализированного продолжения. Остальные структуры разнотипных продолжений будем
+наследовать от нее. Поэтому они будут включаться здесь, под объединяющим литературным
+плейсхолдером ~contstruct~ (игра слов: от continuation structure), так же как мы
+включаем общий плейсхлолдер ошибок ~errors~.
+
+#+NAME: unicont_9
+#+BEGIN_SRC lisp
+  (defstruct unicont
+    block-env
+    go-env
+    catch-env
+    errcont
+    cont)
+
+  <<construct_9>>
+#+END_SRC
+
+* Применение продолжений
+
+Когда ~apply-continuation~ получает структуру, которую не знает как обрабатывать - это
+определенно ошибка. Создадим класс ошибки для этого случая.
+
+#+NAME: errors_9
+#+BEGIN_SRC lisp
+  (define-condition unknown-continuation (error)
+    ((cont :initarg :cont  :reader cont))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in APPLY-CONTINUATION: unknown-continuation: ~A"
+               (cont condition)))))
+#+END_SRC
+
+Создадим функцию ~apply-continuation~, в которую будем переносить логику обработки
+продолжений из лямбд.
+
+#+NAME: apply_continuation_9
+#+BEGIN_SRC lisp
+  (defun apply-continuation (cont arg)
+    (cond ((and (functionp cont)
+                (equal arg 'NOT-A-PARAM))
+                                  (funcall cont))
+          ((functionp cont)       (funcall cont arg))
+          <<apply_cont_evcond_9>>
+          <<apply_cont_evlet_9>>
+          ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
+                                         (cdr (evlis-cont-unevaled cont))
+                                         (cons arg (evlis-cont-evaled cont))
+                                         (evlis-cont-env cont)
+                                         (evlis-cont-block-env cont)
+                                         (evlis-cont-go-env cont)
+                                         (evlis-cont-catch-env cont)
+                                         (evlis-cont-errcont cont)
+                                         (evlis-cont-cont cont)))
+          (t (error 'unknown-continuation :cont cont))))
 #+END_SRC
 
 * MyApply
@@ -713,16 +752,18 @@
 
 ** COND
 
-Определим структуру для сохранения продолжения COND:
+Определим структуру для сохранения продолжения COND, которая будет унаследована от
+~unicond~:
 
-#+NAME: evcond_cont_9
+#+NAME: construct_9
 #+BEGIN_SRC lisp
   (defstruct evcond-cont
-    clauses env block-env go-env catch-env errcont cont)
+    clauses
+    env)
 #+END_SRC
 
 Теперь ~evcond~, в случае получения непустого COND будет создавать эту структуру и
-передавать её в качестве продолжения в ~myeval~.
+передавать её в качестве продолжения в ~myeval~, вместо лямбды:
 
 #+NAME: myeval_evcond_9
 #+BEGIN_SRC lisp
@@ -752,6 +793,27 @@
                                     :cont cont)))))
 #+END_SRC
 
+А саму логику из лямбды переместим в ~apply-continuation~:
+
+#+NAME: apply_cont_evcond_9
+#+BEGIN_SRC lisp
+  ((evcond-cont-p cont)   (if arg
+                              (myeval (cadar (evcond-cont-clauses cont))
+                                      (evcond-cont-env cont)
+                                      (evcond-cont-block-env cont)
+                                      (evcond-cont-go-env cont)
+                                      (evcond-cont-catch-env cont)
+                                      (evcond-cont-errcont cont)
+                                      (evcond-cont-cont cont))
+                              (evcond (cdr (evcond-cont-clauses cont))
+                                      (evcond-cont-env cont)
+                                      (evcond-cont-block-env cont)
+                                      (evcond-cont-go-env cont)
+                                      (evcond-cont-catch-env cont)
+                                      (evcond-cont-errcont cont)
+                                      (evcond-cont-cont cont))))
+#+END_SRC
+
 #+NAME: myeval_evcond_9_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVCOND
@@ -769,12 +831,9 @@
 
 #+NAME: myeval_cond_9
 #+BEGIN_SRC lisp
-  ;; стало
-  ((equal (car exp) 'cond)     (evcond (cdr exp) env block-env go-env catch-env errcont cont))
-  ;; было
-  ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                     env block-env go-env catch-env
-                                                     errcont cont)))
+  ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                       env block-env go-env catch-env
+                                       errcont cont)))
 #+END_SRC
 
 #+NAME: myeval_cond_9_test
@@ -949,8 +1008,25 @@
 
 ** OR
 
+Определим структуру для сохранения продолжения OR, которая будет унаследована от
+~unicond~:
+
+#+NAME: construct_9
+#+BEGIN_SRC lisp
+  (defstruct (or-cont (:include unicont))
+    exps
+    env)
+#+END_SRC
+
+Теперь ~evor~, в случае получения непустого COND будет создавать эту структуру и
+передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для единообразия мы
+переименовали ~lst~ в ~exps~. Так как логика проксирования ~or~ для нашего хост-языка
+не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
+случай, где мы передаем один аргумент.
+
 #+NAME: myeval_evor_9
 #+BEGIN_SRC lisp
+  ;; было
   (defun evor (lst env block-env go-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
@@ -961,7 +1037,40 @@
                                        (or x (evor (cdr lst)
                                                    env block-env go-env catch-env
                                                    errcont cont)))))))
+  ;; стало
+  (defun evor (exps env block-env go-env catch-env errcont cont)
+    (cond ((null exps) (apply-continuation cont (or)))
+          ((myeval (car exps) env block-env go-env catch-env errcont
+                   (make-or-cont
+                    :exps (cdr exps)
+                    :env env
+                    :block-env block-env
+                    :go-env go-env
+                    :catch-env catch-env
+                    :errcont errcont
+                    :cont cont)))))
 #+END_SRC
+
+А саму логику из лямбды переместим в ~apply-continuation~. В этот момент аргументы уже
+вычислены. Если аргумент истинный, то возвращаем применение продолжения, которое берем
+из структуры, к аргументу (потому что ~or~ возвращает свой аргумент). В противном
+случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
+вызываем ~evor~.
+
+#+NAME: apply_cont_evcond_9
+#+BEGIN_SRC lisp
+  ((or-cont-p cont)       (if (not (null arg))
+                              (apply-continuation (or-cont-cont cont) arg)
+                              (evor (or-cont-exps cont)
+                                    (or-cont-env cont)
+                                    (or-cont-block-env cont)
+                                    (or-cont-go-env cont)
+                                    (or-cont-catch-env cont)
+                                    (or-cont-errcont cont)
+                                    (or-cont-cont cont))))
+#+END_SRC
+
+
 
 #+NAME: myeval_evor_9_test
 #+BEGIN_SRC lisp
@@ -994,18 +1103,11 @@
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
 #+END_SRC
 
-Отличие в вызове ~apply-continuations~
-
 #+NAME: myeval_or_9
 #+BEGIN_SRC lisp
-  ;; стало
-  ((equal (car exp) 'or)       (apply-continuation cont (evor  (cdr exp)
-                                                               env block-env go-env catch-env
-                                                               errcont cont)))
-  ;; было
-  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                    env block-env go-env catch-env
-                                                    errcont cont)))
+  ((equal (car exp) 'or)       (evor  (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont)))
 #+END_SRC
 
 #+NAME: myeval_or_9_test
@@ -1077,8 +1179,24 @@
                    (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
 
+Определим структуру для сохранения продолжения LET, которая будет унаследована от
+~unicond~:
+
+#+NAME: construct_9
+#+BEGIN_SRC lisp
+  (defstruct (evlet-cont (:include unicont))
+    vars
+    exps
+    evald-exps
+    exp
+    env)
+#+END_SRC
+
+Теперь вместо передачи продолжения в виде лямбды мы будем передавать эту структуру:
+
 #+NAME: myeval_evlet_9
 #+BEGIN_SRC lisp
+  ;; было
   (defun evlet (vars exps evald-exps exp env block-env go-env catch-env errcont cont)
     (cond ((null exps)  (evprogn exp
                                  (pairlis vars (reverse evald-exps) env)
@@ -1089,6 +1207,40 @@
                                   (evlet vars (cdr exps) (cons x evald-exps) exp
                                          env block-env go-env catch-env
                                          errcont cont))))))
+  ;; стало
+  (defun evlet (vars exps evald-exps exp env block-env go-env catch-env errcont cont)
+    (cond ((null exps)  (evprogn exp
+                                 (pairlis vars (reverse evald-exps) env)
+                                 block-env go-env catch-env
+                                 errcont cont))
+          (t            (myeval (car exps) env block-env go-env catch-env errcont
+                                (make-evlet-cont
+                                 :vars vars
+                                 :exps exps
+                                 :evald-exps evald-exps
+                                 :exp exp
+                                 :env env
+                                 :block-env block-env
+                                 :go-env go-env
+                                 :catch-env catch-env
+                                 :errcont errcont
+                                 :cont cont)))))
+#+END_SRC
+
+А саму логику из лямбды переместим в ~apply-continuation~:
+
+#+NAME: apply_cont_evlet_9
+#+BEGIN_SRC lisp
+  ((evlet-cont-p cont)    (evlet (evlet-cont-vars cont)
+                                 (cdr (evlet-cont-exps cont))
+                                 (cons arg (evlet-cont-evald-exps cont))
+                                 (evlet-cont-exp cont)
+                                 (evlet-cont-env cont)
+                                 (evlet-cont-block-env cont)
+                                 (evlet-cont-go-env cont)
+                                 (evlet-cont-catch-env cont)
+                                 (evlet-cont-errcont cont)
+                                 (evlet-cont-cont cont)))
 #+END_SRC
 
 #+NAME: myeval_evlet_9_test
@@ -1096,8 +1248,6 @@
   ;; Тесты для EVLET
   (assert (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil nil nil nil #'err #'ok)))
 #+END_SRC
-
-Без изменений
 
 #+NAME: myeval_let_9
 #+BEGIN_SRC lisp
@@ -1307,8 +1457,6 @@
 
 ** BLOCK
 
-Без изменений
-
 #+NAME: myeval_block_9
 #+BEGIN_SRC lisp
   ((equal (car exp) 'block)    (myeval (caddr exp)
@@ -1330,24 +1478,55 @@
 
 ** RETURN-FROM
 
-Заменяем ~funcall~ на ~apply-continuation~
+С нашей текущей реализацией ~block/return-from~ есть одна проблема, которая проявляется
+так: если присвоить внешней переменой значение какой-нибудь функции, которая
+захватывает ~block~, то таким образом можно сэмулировать ~call/cc~.
 
-#+NAME: myeval_return_from_9
+В семантике Common Lisp ~return-from~ при выходе из блока, который уже закрыт должен
+возвращать ошибку. В Common Lisp продолжение, создаваемое ~block~ ограничено
+локально. Для того чтобы это реализовать необходимо, что ~return-from~ проверял, вышли
+мы из блока или нет. Этого нельзя достичь до того как мы сделали дефукнционализацию. Но
+теперь мы можем пройтись по цепочке продолжений и посмотреть, достижимо ли из точки, в
+которой мы находимся продолжение, в которое мы хотим попасть при выполнении
+~return-from~. Для этого нам нужна функция, которая проходит по цепочке
+продолжений. Назовем ее ~is-cont-subset~. Она будет принимать два продолжения и должна
+будет проверить, если ли первое продолжение во втором. По сути это похоже на ~sublis~
+только для продолжений.
+
+#+NAME: is_cont_subset
+#+BEGIN_SRC lisp
+  (defun is-cont-subset (target-cont cont)
+    (cond ((equal target-cont cont) t)    ;; positive
+          ((functionp cont) nil)          ;; negative
+          (t (is-cont-subset target-cont (cdr cont)))))
+#+END_SRC
+
+Для остановки рекурсии и возврата отрицательного ответа (nil) мы будем использовать то,
+что у нас есть identity-продолжение, которое представлено как функция. В будущем, когда
+мы полностью откажемся от представления продолжений в виде функций мы заменим в этой
+строчке ~functionp~ на явное сравнение с оконечным продолжением.
+
+Теперь приступим к преобразованию ~return-from~. Сначала заменяем ~funcall~ на
+~apply-continuation~ - это преобразование уже нам знакомо:
+
+#+NAME: myeval_return_from_9_step_1
 #+BEGIN_SRC lisp
   ;; стало
-  ((equal (car exp)
-          'return-from)        (if (not (symbolp (cadr exp)))
-                                   (apply-continuation errcont
-                                                       (format nil
-                                                               "return-from: first argument not a symbol"))
+  ((equal (car exp) 'return-from)
+                               (if (not (symbolp (cadr exp)))
+                                   (apply-continuation
+                                    errcont
+                                    (format nil "return-from: first argument not a symbol"))
                                    (myeval (caddr exp) env block-env go-env catch-env errcont
                                            (lambda (x)
                                              (assoc-2 (cadr exp) block-env
                                                       (lambda (y) (apply-continuation y x))
-                                                      (lambda (y) (apply-continuation errcont (format nil "return-from: undefined return block ~A" y))))))))
+                                                      (lambda (y) (apply-continuation
+                                                                   errcont
+                                                                   (format nil "return-from: undefined return block ~A" y))))))))
   ;; было
-  ((equal (car exp)
-          'return-from)        (if (not (symbolp (cadr exp)))
+  ((equal (car exp) 'return-from)
+                               (if (not (symbolp (cadr exp)))
                                    (funcall errcont
                                             (format nil
                                                     "return-from: first argument not a symbol"))
@@ -1358,6 +1537,51 @@
                                                       (lambda (y) (funcall errcont
                                                                            (format nil "return-from: undefined return block ~A" y))))))))
 #+END_SRC
+
+Потом выполним кое-что поинтереснее. Когда ~assoc-2~ находит целевое продолжение
+~return-from~ он вызывает свое первое продолжение ~success~. В этом продолжении мы
+можем проверить, достижимо ли целевое продолжение ~y~ в ~x~. Если да - то делаем
+~apply-continuation~ иначе - применяем продожение ошибки с соответствующим текстом.
+
+#+NAME: myeval_return_from_9
+#+BEGIN_SRC lisp
+  ;; стало
+  ((equal (car exp) 'return-from)
+                               (if (not (symbolp (cadr exp)))
+                                   (apply-continuation
+                                    errcont (format nil "return-from: first argument not a symbol"))
+                                   (myeval (caddr exp) env block-env go-env catch-env errcont
+                                           (lambda (x)
+                                             (assoc-2 (cadr exp) block-env
+                                                      (lambda (y)
+                                                        (if (is-cont-subset y cont)
+                                                            (apply-continuation y x)
+                                                            (apply-continuation
+                                                             errcont
+                                                             (format nil "return-from: attempt to RETURN-FROM to ~A that no longer exists" (cadr exp)))))
+                                                      (lambda (y)
+                                                        (apply-continuation
+                                                         errcont (format nil "return-from: undefined return block ~A" y))))))))
+  ;; было
+  ((equal (car exp) 'return-from)
+                               (if (not (symbolp (cadr exp)))
+                                   (apply-continuation
+                                    errcont
+                                    (format nil "return-from: first argument not a symbol"))
+                                   (myeval (caddr exp) env block-env go-env catch-env errcont
+                                           (lambda (x)
+                                             (assoc-2 (cadr exp) block-env
+                                                      (lambda (y)
+                                                        (apply-continuation y x))
+                                                      (lambda (y)
+                                                        (apply-continuation
+                                                         errcont
+                                                         (format nil "return-from: undefined return block ~A" y))))))))
+#+END_SRC
+
+Добавляем тест на ошибку недостижимого блока. Для этого заставим return-from возвратить
+тот блок из которого он только что вышел. Аналогично проверяем, что эта ошибка не
+срабатывает в корректных блоках.
 
 #+NAME: myeval_return_from_9_test
 #+BEGIN_SRC lisp
@@ -1395,6 +1619,14 @@
                                           nil nil nil nil (lambda (x) "error")
                                           #'ok)
                              (setf *glob-env* nil)))))
+  ;; Тест на ошибку недостижимого блока
+  (assert (equal "error" (myeval '((block the-block (lambda () (return-from the-block nil))))
+                                 nil nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест на отсутствие ошибки при возврате в достижимый блок
+  (assert (equal 123 (myeval '(block the-block (return-from the-block 123))
+                             nil nil nil nil (lambda (x) "error")
+                             #'ok)))
 #+END_SRC
 
 ** CATCH
@@ -1525,6 +1757,46 @@
 #+END_SRC
 
 ** TAGBODY
+
+Определим структуру для сохранения продолжения TAGBODY, которая будет унаследована от
+~unicond~:
+
+#+NAME: construct_9
+#+BEGIN_SRC lisp
+  (defstruct (evtagbody-cont (:include unicont))
+    body
+    env)
+#+END_SRC
+
+Теперь ~evtagbody~, в случае получения непустого COND будет создавать эту структуру и
+передавать её в качестве продолжения в ~myeval~, вместо лямбды:
+
+#+NAME: myeval_evtagbody_9_step_1
+#+BEGIN_SRC lisp
+  ;; было
+  (defun evtagbody (body env block-env go-env catch-env errcont cont)
+    (cond ((null (car body))      (funcall cont nil))
+          ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
+          (t                      (myeval (car body) env block-env go-env catch-env errcont
+                                          (lambda (x)
+                                            (declare (ignore x))
+                                            (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
+  ;; стало
+  (defun evtagbody (body env block-env go-env catch-env errcont cont)
+    (cond ((null (car body))      (apply-continuation cont nil))
+          ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
+          (t                      (myeval (car body) env block-env go-env catch-env errcont
+                                          (make-evtagbody-cont
+                                           :body (cdr body)
+                                           :env  env
+                                           :block-env block-env
+                                           :go-env go-env
+                                           :catch-env catch-env
+                                           :errcont errcont
+                                           :cont cont)))))
+#+END_SRC
+
+
 
 #+NAME: myeval_evtagbody_9
 #+BEGIN_SRC lisp

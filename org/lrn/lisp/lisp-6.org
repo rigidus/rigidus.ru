@@ -606,9 +606,9 @@
 
 #+NAME: myeval_cond_6
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                     env block-env go-env catch-env
-                                                     errcont cont)))
+  ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                       env block-env go-env catch-env
+                                       errcont cont))
 #+END_SRC
 
 Тесты получают дополнительный nil
@@ -1043,7 +1043,6 @@
                                                  (rplacd (assoc (cadr exp) *glob-env*) val))
                                              (rplacd (assoc (cadr exp) env) val))
                                          (funcall cont val))))
-
 #+END_SRC
 
 Тесты получают дополнительный nil
@@ -1287,11 +1286,70 @@
 
 ** TAGBODY
 
-При создании ~tagbody~ мы [TODO:gmm] что делаем?
+Когда мы хотим обрабатывать формы вида:
 
-Нам потребуется несколько дополнительных функций:
+#+BEGIN_SRC lisp
+  (tagbody
+   a
+     (progn 1)
+   b
+     (progn 2)
+   c
+     (progn))
+#+END_SRC
 
-#+NAME: myeval_evtagbody_6
+Мы хотим иметь возможность с помощью ~go~ переходить в любую из форм, из тех что лежат
+за метками. Для того чтобы обеспечить это, мы должны нарезать форму ~tagbody~ на
+"хвосты", каждый из которых представляет собой остаток формы, отрезанный от метки:
+
+#+BEGIN_SRC lisp
+  ((TAGBODY (A (PROGN 1) (B (PROGN 2) (C (PROGN)))))
+   (A (PROGN 1) (B (PROGN 2) (C (PROGN))))
+   (B (PROGN 2) (C (PROGN)))
+   (C (PROGN)))
+#+END_SRC
+
+Это дает нам возможность найти такой остаток по метке. Функция ~tagbody-slice~ делает
+это:
+
+#+BEGIN_SRC lisp
+  (defun tagbody-slice (exp)
+    (cond ((null exp)           nil)
+          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
+          (t                    (tagbody-slice (cdr exp)))))
+#+END_SRC
+
+Однако мы можем сделать хвосторекурсивный ее вариант:
+
+#+NAME: tagbody_slice_6
+#+BEGIN_SRC lisp
+  (defun tagbody-slice (exp res)
+    (cond ((null exp) res)
+          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+          (t                    (tagbody-slice (cdr exp) res))))
+#+END_SRC
+
+Он выдает нам результат в обратном порядке:
+
+#+BEGIN_SRC lisp
+  ((C (PROGN))
+   (B (PROGN 2) (C (PROGN)))
+   (A (PROGN (C (PROGN))) (B (PROGN 2) (C (PROGN))))
+   (TAGBODY (A (PROGN (C (PROGN))) (B (PROGN 2) . (C (PROGN))))))
+#+END_SRC
+
+Каждый из этих слайсов мы хотим превратить в точечную пару, где ~car~ пары будет равен
+метке, а ~cdr~ будет созданной лямбдой из формы слайса.
+
+После этого мы добавим список этих точечных пар к окружению ~go-env~ и перезапишем
+~go-env~ чтобы сделать его циклическим. Если не сделать циклический ~go-env~ то мы не
+сможем например дважды перейти по одной метке.
+
+Однако нам потребуется еще проверить ситуации, когда одна и та же метка встречается
+дважды. Это делает функция ~tagbody-check-tag~.
+
+
+#+NAME: tagbody_check_tag_6
 #+BEGIN_SRC lisp
   (defun tagbody-check-tag (exp cont errcont)
     (cond ((null exp) (funcall cont))
@@ -1299,8 +1357,14 @@
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
+#+END_SRC
 
+Теперь мы почти готовы написать ~evtagbody~, задача которого - рекурсивно евалить формы
+внутри ~tagbody~
 
+#+NAME: myeval_evtagbody_6
+#+BEGIN_SRC lisp
+  <<tagbody_check_tag_6>>
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1308,20 +1372,10 @@
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-  (defun tagbody-slice (exp)
-    (cond ((null exp)           nil)
-          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-          (t                    (tagbody-slice (cdr exp)))))
-
-  (defun tagbody-slice (exp res)
-    (cond ((null exp) res)
-          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-          (t                   (tagbody-slice (cdr exp) res))))
+  <<tagbody_slice_6>>
 #+END_SRC
 
-Вызов
+И, наконец, закончим определением в ~myeval~
 
 #+NAME: myeval_tagbody_6
 #+BEGIN_SRC lisp
@@ -1354,9 +1408,10 @@
 
 ** GO
 
-При создании ~go~ мы [TODO:gmm] что делаем?
+При создании ~go~ мы ищем в ~go-env~ соответствующую пару по имени и вызываем
+продолжение. Если такая пара не найдена - это ошибка.
 
-#+NAME: myeval_tagbody_6
+#+NAME: myeval_go_6
 #+BEGIN_SRC lisp
   ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                         (lambda (x)
@@ -1586,8 +1641,6 @@
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-
-
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1595,17 +1648,10 @@
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-  (defun tagbody-slice (exp)
-    (cond ((null exp)           nil)
-          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-          (t                    (tagbody-slice (cdr exp)))))
-
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-          (t                   (tagbody-slice (cdr exp) res))))
+          (t                    (tagbody-slice (cdr exp) res))))
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
       ((null exp)                  (funcall cont 'nil))
@@ -1623,9 +1669,9 @@
                                                  (myeval (cadddr exp)
                                                          env block-env go-env catch-env
                                                          errcont cont)))))
-      ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                         env block-env go-env catch-env
-                                                         errcont cont)))
+      ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                           env block-env go-env catch-env
+                                           errcont cont))
       ((equal (car exp) 'progn)    (evprogn (cdr exp)
                                             env block-env go-env catch-env
                                             errcont cont))
@@ -1663,7 +1709,6 @@
                                                      (rplacd (assoc (cadr exp) *glob-env*) val))
                                                  (rplacd (assoc (cadr exp) env) val))
                                              (funcall cont val))))
-
       ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
                                                                :env env
                                                                :block-env block-env
@@ -1762,32 +1807,6 @@
                                               (funcall x))
                                             (lambda (x)
                                               (funcall errcont (format nil "go: wrong target ~A" x)))))
-
-      ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
-                                                           (cons (car label) nil))
-                                                         (cadr exp)))
-                                          (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
-                                          (closures (mapcar (lambda (label)
-                                                              ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
-                                                              (make-closure :body (caddr label)
-                                                                            :block-env block-env
-                                                                            :env new-env
-                                                                            :go-env go-env
-                                                                            :args (cadr label)))
-                                                            (cadr exp))))
-                                     ;; alist:    '((zzz . nil) (xxx . nil))
-                                     ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
-                                     ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
-                                     (assert (equal (length alist) (length closures)))
-                                     (loop
-                                        :for aelt     :in alist
-                                        :for closure  :in closures
-                                        :do (rplacd aelt closure))
-                                     ;; получаем:
-                                     ;; alist:    '((zzz . #:closure) (xxx . #:closure))
-                                     ;; И передаем new-env в качестве окружения
-                                     (print new-env)
-                                     (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
       (t
        (myeval (car exp) env block-env go-env catch-env errcont
                (lambda (x)
@@ -2289,12 +2308,6 @@
                                      e (setq alfa (cons alfa 5)))
                                     alfa)
                                   nil nil nil nil #'err #'ok)))
-  ;; Тесты для LABELS
-  (assert (equal 3 (myeval '(labels ((zzz (lst acc)
-                                      (cond ((null lst) acc)
-                                            (t (zzz (cdr lst) (+ 1 acc))))))
-                             (zzz '(1 2 3) 0))
-                           nil nil nil nil #'err #'ok)))
   ;; REPL
   (defun repl ()
     (princ "microlisp>")

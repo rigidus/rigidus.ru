@@ -571,9 +571,9 @@
 
 #+NAME: myeval_cond_7
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                     env block-env go-env catch-env
-                                                     errcont cont)))
+  ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                       env block-env go-env catch-env
+                                       errcont cont))
 #+END_SRC
 
 #+NAME: myeval_cond_7_test
@@ -964,7 +964,6 @@
                                                  (rplacd (assoc (cadr exp) *glob-env*) val))
                                              (rplacd (assoc (cadr exp) env) val))
                                          (funcall cont val))))
-
 #+END_SRC
 
 #+NAME: myeval_setq_7_test
@@ -1049,8 +1048,8 @@
 
 #+NAME: myeval_return_from_7
 #+BEGIN_SRC lisp
-  ((equal (car exp)
-          'return-from)        (if (not (symbolp (cadr exp)))
+  ((equal (car exp) 'return-from)
+                               (if (not (symbolp (cadr exp)))
                                    (funcall errcont
                                             (format nil
                                                     "return-from: first argument not a symbol"))
@@ -1079,8 +1078,8 @@
                                        (defun foo (x)
                                          (block in-lambda-block
                                            (return-from in-lambda-block
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -1163,8 +1162,8 @@
                                        (defun foo (x)
                                          (catch 'in-lambda-catch
                                            (throw 'in-lambda-catch
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -1194,8 +1193,6 @@
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-
-
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1203,13 +1200,6 @@
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-  (defun tagbody-slice (exp)
-    (cond ((null exp)           nil)
-          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-          (t                    (tagbody-slice (cdr exp)))))
-
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
@@ -1245,7 +1235,7 @@
 
 ** GO
 
-#+NAME: myeval_tagbody_7
+#+NAME: myeval_go_7
 #+BEGIN_SRC lisp
   ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                         (lambda (x)
@@ -1332,11 +1322,10 @@
 
 #+BEGIN_SRC lisp :tangle lisp-7.lisp :noweb tangle :exports code :padline no :comments none
   (setq *print-circle* T)
-
-  ;; CPS-версия ASSOC
-  <<assoc_7>>
   ;; Классы ошибок
   <<errors_7>>
+  ;; CPS-версия ASSOC
+  <<assoc_7>>
   ;; Новая функция lookup
   <<lookup_7>>
   ;; Структура замыкания
@@ -1528,8 +1517,6 @@
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-
-
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1537,13 +1524,6 @@
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-  (defun tagbody-slice (exp)
-    (cond ((null exp)           nil)
-          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-          (t                    (tagbody-slice (cdr exp)))))
-
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
@@ -1565,9 +1545,9 @@
                                                  (myeval (cadddr exp)
                                                          env block-env go-env catch-env
                                                          errcont cont)))))
-      ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                         env block-env go-env catch-env
-                                                         errcont cont)))
+      ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                           env block-env go-env catch-env
+                                           errcont cont))
       ((equal (car exp) 'progn)    (evprogn (cdr exp)
                                             env block-env go-env catch-env
                                             errcont cont))
@@ -1605,7 +1585,6 @@
                                                      (rplacd (assoc (cadr exp) *glob-env*) val))
                                                  (rplacd (assoc (cadr exp) env) val))
                                              (funcall cont val))))
-
       ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
                                                                :env env
                                                                :block-env block-env
@@ -1617,8 +1596,8 @@
                                                   cont
                                                   block-env)
                                            go-env catch-env errcont cont))
-      ((equal (car exp)
-              'return-from)        (if (not (symbolp (cadr exp)))
+      ((equal (car exp) 'return-from)
+                                   (if (not (symbolp (cadr exp)))
                                        (funcall errcont
                                                 (format nil
                                                         "return-from: first argument not a symbol"))
@@ -1704,7 +1683,6 @@
                                               (funcall x))
                                             (lambda (x)
                                               (funcall errcont (format nil "go: wrong target ~A" x)))))
-
       ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
                                                            (cons (car label) nil))
                                                          (cadr exp)))
