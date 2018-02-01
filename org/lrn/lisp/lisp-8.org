@@ -1109,8 +1109,6 @@ NB: делаем implicit progn в body и в closure
                                                                            (format nil "return-from: undefined return block ~A" y))))))))
 #+END_SRC
 
-NB: Поправлен неверный тест return-from в лексической области видимости
-
 #+NAME: myeval_return_from_8_test
 #+BEGIN_SRC lisp
   ;; Тесты для RETURN-FROM
@@ -1235,7 +1233,15 @@ NB: Поправлен неверный тест return-from в лексичес
 
 ** TAGBODY
 
-#+NAME: myeval_evtagbody_8
+#+NAME: tagbody_slice_8
+#+BEGIN_SRC lisp
+  (defun tagbody-slice (exp res)
+    (cond ((null exp) res)
+          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+          (t                    (tagbody-slice (cdr exp) res))))
+#+END_SRC
+
+#+NAME: tagbody_check_tag_8
 #+BEGIN_SRC lisp
   (defun tagbody-check-tag (exp cont errcont)
     (cond ((null exp) (funcall cont))
@@ -1243,6 +1249,11 @@ NB: Поправлен неверный тест return-from в лексичес
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
+#+END_SRC
+
+#+NAME: myeval_evtagbody_8
+#+BEGIN_SRC lisp
+  <<tagbody_check_tag_8>>
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (funcall cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1250,10 +1261,7 @@ NB: Поправлен неверный тест return-from в лексичес
                                           (lambda (x)
                                             (declare (ignore x))
                                             (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-  (defun tagbody-slice (exp res)
-    (cond ((null exp) res)
-          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-          (t                   (tagbody-slice (cdr exp) res))))
+  <<tagbody_slice_8>>
 #+END_SRC
 
 #+NAME: myeval_tagbody_8
@@ -1417,7 +1425,7 @@ NB: Поправлен неверный тест return-from в лексичес
                             nil nil nil nil #'err #'ok)))
 #+END_SRC
 
-* Repl
+* REPL
 
 Мы выносим ~repl~ в отдельный раздел и изменем его так, чтобы он:
 - принимал приглашение ввода
@@ -1432,6 +1440,7 @@ NB: Поправлен неверный тест return-from в лексичес
 #+BEGIN_SRC lisp
  (defun repl (prompt catch-env errcont cont)
    (format t "~%~A> " prompt)
+   (finish-output)
    (myeval (read) nil nil nil (acons 'exit cont catch-env)
      #'(lambda (x)
          (princ x)

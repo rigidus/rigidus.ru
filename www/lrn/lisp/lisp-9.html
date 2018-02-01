@@ -57,7 +57,7 @@
 <li><a href="#unnumbered-37">SHIFT</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-38">Repl</a></li>
+<li><a href="#unnumbered-38">REPL</a></li>
 <li><a href="#unnumbered-39">Итоги</a></li>
 </ul>
 </div>
@@ -778,6 +778,7 @@ assoc-2 не являются продолжениями интерпретат�
 &lt;&lt;myeval_evlet_9&gt;&gt;
 &lt;&lt;myeval_evletstar_9&gt;&gt;
 &lt;&lt;myeval_evtagbody_9&gt;&gt;
+&lt;&lt;myeval_is_cont_subset_9&gt;&gt;
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
     &lt;&lt;myeval_number_9&gt;&gt;
@@ -1333,8 +1334,6 @@ assoc-2 не являются продолжениями интерпретат�
 </pre>
 </div>
 
-
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evor_9_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
@@ -1825,7 +1824,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="is_cont_subset">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">is-cont-subset</span> (target-cont cont)
+<pre class="src src-lisp" id="myeval_is_cont_subset_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">is-cont-subset</span> (target-cont cont)
   (<span style="color: #af00ff;">cond</span> ((equal target-cont cont) t)    <span style="color: #af0000;">;; </span><span style="color: #af0000;">positive</span>
         ((functionp cont) nil)          <span style="color: #af0000;">;; </span><span style="color: #af0000;">negative</span>
         (t (is-cont-subset target-cont (cdr cont)))))
@@ -1836,7 +1835,9 @@ assoc-2 не являются продолжениями интерпретат�
 Для остановки рекурсии и возврата отрицательного ответа (nil) мы будем использовать то,
 что у нас есть identity-продолжение, которое представлено как функция. В будущем, когда
 мы полностью откажемся от представления продолжений в виде функций мы заменим в этой
-строчке <code>functionp</code> на явное сравнение с оконечным продолжением.
+строчке <code>functionp</code> на явное сравнение с оконечным продолжением. Важно отметитит, что
+сравнение <code>(equal target-cont cont)</code> должно идти раньше чем <code>(functionp cont)</code> по той
+причине, что они могут совпадать и при этом оба быть функциями.
 </p>
 
 <p>
@@ -1878,7 +1879,8 @@ assoc-2 не являются продолжениями интерпретат�
 Потом выполним кое-что поинтереснее. Когда <code>assoc-2</code> находит целевое продолжение
 <code>return-from</code> он вызывает свое первое продолжение <code>success</code>. В этом продолжении мы
 можем проверить, достижимо ли целевое продолжение <code>y</code> в <code>x</code>. Если да - то делаем
-<code>apply-continuation</code> иначе - применяем продожение ошибки с соответствующим текстом.
+<code>apply-continuation</code>, иначе - применяем error-продолжение, потому что это ошибка
+недостижимости.
 </p>
 
 <div class="org-src-container">
@@ -2117,6 +2119,26 @@ assoc-2 не являются продолжениями интерпретат�
 <div id="outline-container-unnumbered-33" class="outline-3">
 <h3 id="unnumbered-33">TAGBODY</h3>
 <div class="outline-text-3" id="text-unnumbered-33">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="tagbody_slice_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
+  (<span style="color: #af00ff;">cond</span> ((null exp) res)
+        ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+        (t                    (tagbody-slice (cdr exp) res))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="tagbody_check_tag_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-check-tag</span> (exp cont errcont)
+  (<span style="color: #af00ff;">cond</span> ((null exp) (funcall cont))
+        ((and (symbolp (car exp))
+              (member (car exp) (cdr exp)))
+         (funcall errcont (car exp)))
+        (t (tagbody-check-tag (cdr exp) cont errcont))))
+</pre>
+</div>
+
 <p>
 Определим структуру для сохранения продолжения TAGBODY, которая будет унаследована от
 <code>unicond</code>:
@@ -2137,7 +2159,8 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evtagbody_9_step_1"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+<pre class="src src-lisp" id="myeval_evtagbody_9">&lt;&lt;tagbody_check_tag_9&gt;&gt;
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null (car body))      (funcall cont nil))
         ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -2158,54 +2181,18 @@ assoc-2 не являются продолжениями интерпретат�
                                          <span style="color: #5f5f87;">:catch-env</span> catch-env
                                          <span style="color: #5f5f87;">:errcont</span> errcont
                                          <span style="color: #5f5f87;">:cont</span> cont)))))
-</pre>
-</div>
-
-
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evtagbody_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-check-tag</span> (exp cont errcont)
-  (<span style="color: #af00ff;">cond</span> ((null exp) (funcall cont))
-        ((and (symbolp (car exp))
-              (member (car exp) (cdr exp)))
-         (funcall errcont (car exp)))
-        (t (tagbody-check-tag (cdr exp) cont errcont))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null (car body))      (funcall cont nil))
-        ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
-        (t                      (myeval (car body) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (<span style="color: #af00ff;">declare</span> (ignore x))
-                                          (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null (car body))      (apply-continuation cont nil))
-        ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
-        (t                      (myeval (car body) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (<span style="color: #af00ff;">declare</span> (ignore x))
-                                          (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp)
-  (<span style="color: #af00ff;">cond</span> ((null exp)           nil)
-        ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-        (t                    (tagbody-slice (cdr exp)))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
-  (<span style="color: #af00ff;">cond</span> ((null exp) res)
-        ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-        (t                   (tagbody-slice (cdr exp) res))))
+&lt;&lt;tagbody_slice_9&gt;&gt;
 </pre>
 </div>
 
 <p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
+Теперь перейдем к вызову. Напомним, для ориентира, как выглядит обработка
+<code>tagbody</code>-формы в <code>myeval</code>:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_tagbody_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'tagbody)  (tagbody-check-tag
+<pre class="src src-lisp">((equal (car exp) 'tagbody)  (tagbody-check-tag
                               (cdr exp)
                               (<span style="color: #af00ff;">lambda</span> ()
                                 (setq go-env
@@ -2221,6 +2208,121 @@ assoc-2 не являются продолжениями интерпретат�
                                                       (tagbody-slice (cdr exp) nil))
                                               go-env))
                                 (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
+                              (<span style="color: #af00ff;">lambda</span> (x)
+                                (apply-continuation
+                                 errcont
+                                 (format
+                                  nil
+                                  <span style="color: #87005f;">"tagbody: The tag ~A appears more than once in a tagbody"</span> x)))))
+</pre>
+</div>
+
+<p>
+Продолжая дефункционализацию нам надо преобразовать лямбду, которая вызывает
+<code>evtagbody</code> (самую глубокую по уровню в примере выше). Преобразуем ее в структуру,
+которую назовем <code>go-cont</code>. Помимо unicont-полей она будет содержать <code>env</code> и свой
+<code>slice</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="contsruct_9">(<span style="color: #af00ff;">defstruct</span> (<span style="color: #008700;">go-cont</span> (<span style="color: #5f5f87;">:include</span> unicont))
+  slice
+  env)
+</pre>
+</div>
+
+<p>
+Поднимаясь до уровня <code>append</code> мы делаем список таких структур. Но тогда у нас будет
+выпадать <code>go-env</code>, потому что: пока мы не сделали окружение мы не можем его записать в
+<code>go-env</code>, т.е цикличности не получится.
+</p>
+
+<p>
+Поэтому мы применим тот же трюк что и с <code>labels</code>: мы сделаем все окружения, а потом
+пройдемся по ним и <code>setf</code>-ом изменим поле <code>go-env</code> в них. Для удобства мы
+дефункционализируем не всю лямбду, а ее часть, соответствующую содержимому формы
+<code>setq</code>. Назовем этот кусок <code>make-go-env</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_make_goenv_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">make-go-env</span> (tagbody-body env block-env go-env catch-env errcont cont)
+  (<span style="color: #af00ff;">let*</span> ((conts (mapcar #'(<span style="color: #af00ff;">lambda</span> (x) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1077;&#1085;&#1080;&#1103;, &#1085;&#1072;&#1088;&#1077;&#1079;&#1072;&#1085;&#1085;&#1099;&#1077; &#1080;&#1079; tagbody</span>
+                            (make-go-cont
+                             <span style="color: #5f5f87;">:slice</span> x
+                             <span style="color: #5f5f87;">:env</span> env
+                             <span style="color: #5f5f87;">:block-env</span> block-env
+                             <span style="color: #5f5f87;">:go-env</span> go-env <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1101;&#1090;&#1086;&#1090; &#1089;&#1083;&#1086;&#1090; &#1073;&#1091;&#1076;&#1077;&#1084; setf-&#1101;&#1092;&#1080;&#1090;&#1100;</span>
+                             <span style="color: #5f5f87;">:catch-env</span>  catch-env
+                             <span style="color: #5f5f87;">:errcont</span> errcont
+                             <span style="color: #5f5f87;">:cont</span> cont))
+                        (tagbody-slice tagbody-body nil)))
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1072;&#1088;&#1099; (&#1089;&#1080;&#1084;&#1074;&#1086;&#1083; . &#1087;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1077;&#1085;&#1080;&#1077;) &#1085;&#1072;&#1088;&#1077;&#1079;&#1072;&#1085;&#1085;&#1099;&#1077; &#1080;&#1079;</span>
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">tagbody &#1080; &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1077;&#1085;&#1085;&#1099;&#1077; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
+         (new-go-env (append (mapcar #'(<span style="color: #af00ff;">lambda</span> (go-cont)
+                                         (cons (car (go-cont-slice go-cont))
+                                               go-cont))
+                                     conts)
+                             go-env)))
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1080;&#1079;&#1084;&#1077;&#1085;&#1103;&#1077;&#1084; &#1087;&#1086;&#1083;&#1103; go-env, &#1079;&#1072;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1103; &#1074; &#1085;&#1080;&#1093; new-go-env</span>
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074;&#1086; &#1074;&#1089;&#1077;&#1093; &#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1085;&#1099;&#1093; &#1087;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1077;&#1085;&#1080;&#1103;&#1093;</span>
+    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> elt-cont <span style="color: #5f5f87;">:in</span> conts <span style="color: #5f5f87;">:do</span>
+       (setf (go-cont-go-env elt-cont)
+             new-go-env))
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; &#1085;&#1086;&#1074;&#1086;&#1077; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
+    new-go-env))
+</pre>
+</div>
+
+<p>
+Также нам нужна функция, которая будет <code>go-cont</code> применять, она будет вызывать
+<code>evtagbody</code> - мы просто переносём логику самой глубокой лямбды в нее. Эта функция будет
+вызываться при обработке формы <code>go</code>. Она просто вызывает <code>evtagbody</code>, которая просто
+проходит по телу <code>tagbody</code> и выполняет все формы, отбрасывая метки.
+</p>
+
+<p>
+Мы могли бы применять <code>go-cont</code> как обычное продолжение, и тогда мы бы добавили его в
+<code>apply-continuation</code>. Но лучше сделать отдельную функцию, потому что <code>go-cont</code>
+отличается от всех остальных тем, что у него нет параметров.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_apply_go_continuation_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">apply-go-continuation</span> (go-cont)
+  (evtagbody (go-cont-slice go-cont)
+             (go-cont-env go-cont)
+             (go-cont-block-env go-cont)
+             (go-cont-go-env go-cont)
+             (go-cont-catch-env go-cont)
+             (go-cont-errcont go-cont)
+             (go-cont-cont go-cont)))
+</pre>
+</div>
+
+<p>
+Теперь в <code>myeval</code> мы должны:
+</p>
+<ul class="org-ul">
+<li>Заменить <code>funcall</code> на <code>apply-continuation</code>
+</li>
+<li>Заменить форму <code>setf</code> на вызов <code>evtagbody</code>, в котором для формирования окружения
+<code>go-env</code> вызовем <code>make-go-env</code>.
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_tagbody_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
+((equal (car exp) 'tagbody)  (tagbody-check-tag
+                              (cdr exp)
+                              (<span style="color: #af00ff;">lambda</span> ()
+                                (evtagbody (cdr exp) env block-env
+                                           (make-go-env (cdr exp)
+                                                        env block-env go-env catch-env
+                                                        errcont cont)
+                                           catch-env errcont cont))
                               (<span style="color: #af00ff;">lambda</span> (x)
                                 (apply-continuation
                                  errcont
@@ -2269,12 +2371,25 @@ assoc-2 не являются продолжениями интерпретат�
 <h3 id="unnumbered-34">GO</h3>
 <div class="outline-text-3" id="text-unnumbered-34">
 <p>
-Заменяем <code>funcall</code> на <code>apply-continuation</code>
+Заменяем <code>funcall</code> на <code>(apply-continuation x 'NOT-A-PARAM)</code>. А потом сразу же заменяем
+его на <code>apply-go-continuation</code>, определенный в разделе <code>tagbody</code>.
+</p>
+
+<p>
+[TODO:gmm] В следующем файле перенести определение <code>apply-go-continuation</code> сюда.
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_go_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
+((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
+                                      (<span style="color: #af00ff;">lambda</span> (go-cont)
+                                        (apply-go-continuation go-cont))
+                                      (<span style="color: #af00ff;">lambda</span> (go-label)
+                                        (apply-continuation
+                                         errcont
+                                         (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> go-label)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1088;&#1086;&#1084;&#1077;&#1078;&#1091;&#1090;&#1086;&#1095;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090;</span>
 ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
                                       (<span style="color: #af00ff;">lambda</span> (x)
                                         (apply-continuation x 'NOT-A-PARAM))
@@ -2438,12 +2553,13 @@ assoc-2 не являются продолжениями интерпретат�
 </div>
 </div>
 <div id="outline-container-unnumbered-38" class="outline-2">
-<h2 id="unnumbered-38">Repl</h2>
+<h2 id="unnumbered-38">REPL</h2>
 <div class="outline-text-2" id="text-unnumbered-38">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="repl_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> (prompt catch-env errcont cont)
   (format t <span style="color: #87005f;">"~%~A&gt; "</span> prompt)
+  (finish-output)
   (myeval (read) nil nil nil (acons 'exit cont catch-env)
     #'(<span style="color: #af00ff;">lambda</span> (x)
         (princ x)

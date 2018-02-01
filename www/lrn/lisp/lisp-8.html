@@ -55,7 +55,7 @@
 <li><a href="#unnumbered-35">SHIFT</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-36">Repl</a></li>
+<li><a href="#unnumbered-36">REPL</a></li>
 <li><a href="#unnumbered-37">Итоги</a></li>
 </ul>
 </div>
@@ -1359,10 +1359,6 @@ NB: делаем implicit progn в body и в closure
 </pre>
 </div>
 
-<p>
-NB: Поправлен неверный тест return-from в лексической области видимости
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_return_from_8_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RETURN-FROM</span>
@@ -1503,12 +1499,27 @@ NB: Поправлен неверный тест return-from в лексичес
 <div class="outline-text-3" id="text-unnumbered-31">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evtagbody_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-check-tag</span> (exp cont errcont)
+<pre class="src src-lisp" id="tagbody_slice_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
+  (<span style="color: #af00ff;">cond</span> ((null exp) res)
+        ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+        (t                    (tagbody-slice (cdr exp) res))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="tagbody_check_tag_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-check-tag</span> (exp cont errcont)
   (<span style="color: #af00ff;">cond</span> ((null exp) (funcall cont))
         ((and (symbolp (car exp))
               (member (car exp) (cdr exp)))
          (funcall errcont (car exp)))
         (t (tagbody-check-tag (cdr exp) cont errcont))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evtagbody_8">&lt;&lt;tagbody_check_tag_8&gt;&gt;
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null (car body))      (funcall cont nil))
         ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1516,10 +1527,7 @@ NB: Поправлен неверный тест return-from в лексичес
                                         (<span style="color: #af00ff;">lambda</span> (x)
                                           (<span style="color: #af00ff;">declare</span> (ignore x))
                                           (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
-  (<span style="color: #af00ff;">cond</span> ((null exp) res)
-        ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-        (t                   (tagbody-slice (cdr exp) res))))
+&lt;&lt;tagbody_slice_8&gt;&gt;
 </pre>
 </div>
 
@@ -1724,7 +1732,7 @@ NB: Поправлен неверный тест return-from в лексичес
 </div>
 
 <div id="outline-container-unnumbered-36" class="outline-2">
-<h2 id="unnumbered-36">Repl</h2>
+<h2 id="unnumbered-36">REPL</h2>
 <div class="outline-text-2" id="text-unnumbered-36">
 <p>
 Мы выносим <code>repl</code> в отдельный раздел и изменем его так, чтобы он:
@@ -1748,6 +1756,7 @@ NB: Поправлен неверный тест return-from в лексичес
 
 <pre class="src src-lisp" id="repl_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> (prompt catch-env errcont cont)
   (format t <span style="color: #87005f;">"~%~A&gt; "</span> prompt)
+  (finish-output)
   (myeval (read) nil nil nil (acons 'exit cont catch-env)
     #'(<span style="color: #af00ff;">lambda</span> (x)
         (princ x)

@@ -147,8 +147,7 @@ RECURSE делает рекурсивный вызов текущему слов
 
 Пока мы определили только очень простые определения. Прежде чем мы сможем идти дальше,
 нам нужно сделать некоторые управляющие структуры, например ~IF ... THEN~ и ~LOOP~. К
-счастью, мы можем определить произвольные элементы управления структуры
-непосредственно в Forth.
+счастью, мы можем определить произвольные структуры управления непосредственно в Forth.
 
 Обратите внимание, что структуры управления, так, как я их определил, будут работать
 только внутри компилируемых слов. Если вы попытаетесь ввести выражения с использованием
@@ -158,30 +157,126 @@ IF и.т.д. в непосредственном режиме, то они не 
 Условное выражение вида:
 
 #+BEGIN_SRC forth
-  condition IF true-part THEN rest
+  ...
+  condition IF
+      true-part-1
+      true-part-2
+      ...
+  THEN
+  rest-1
+  rest-1
+  ...
 #+END_SRC
 
 компилируется в:
 
-#+BEGIN_SRC forth
-  condition 0BRANCH OFFSET true-part rest
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-control-01.png
+  | ...                       |
+  +---------------------------+
+  | addr of condition    cAAF |
+  +---------------------------+
+  | addr of 0BRANCH      cC44 |
+  +---------------------------+
+  | OFFSET REST          cC44 +---+
+  +---------------------------+   |
+  | addr of true part 1  cAFA |   |
+  +---------------------------+   |
+  | addr of ture part 2  cAFA |   |
+  +---------------------------+   |
+  | ...                  cAFA |   |
+  +---------------------------+<--+
+  | rest 1               cAAF |
+  +---------------------------+
+  | rest 2               cAAF |
+  +---------------------------+
+  | ...                       |
 #+END_SRC
 
-где OFFSET - это смещение ~rest~
-
-А условное выражение вида:
+Или, в текстовой нотации
 
 #+BEGIN_SRC forth
-  condition IF true-part ELSE false-part THEN
+  ...
+  condition
+  0BRANCH OFFSET-REST  true-part-1  true-part-2  ...
+  rest-1
+  rest-2
+  ...
+#+END_SRC
+
+где OFFSET-REST - это смещение до ~rest~
+
+-----------------------
+
+Более сложное условное выражение вида:
+
+#+BEGIN_SRC forth
+  ...
+  condition IF
+      true-part-1
+      true-part-2
+      ...
+  ELSE
+      false-part-1
+      false-part-2
+      ...
+  THEN
+  rest-1
+  rest-2
+  ...
 #+END_SRC
 
 компилируется в:
 
-#+BEGIN_SRC forth
-  condition 0BRANCH OFFSET true-part BRANCH OFFSET2 false-part rest
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-control-02.png
+  | ...                       |
+  +---------------------------+
+  | addr of condition    cAAF |
+  +---------------------------+
+  | addr of 0BRANCH      cC44 |
+  +---------------------------+
+  | OFFSET FALSE         cC44 +---+
+  +---------------------------+   |
+  | addr of true part 1  cAFA |   |
+  +---------------------------+   |
+  | addr of ture part 2  cAFA |   |
+  +---------------------------+   |
+  | ...                  cAFA |   |
+  +---------------------------+   |
+  | addr of BRANAH       c7A7 |   |
+  +---------------------------+   |
+  | OFFSET REST          c7A7 +---|---+
+  +---------------------------+<--+   |
+  | addr of false part 1 cF77 |       |
+  +---------------------------+       |
+  | addr of false part 2 cF77 |       |
+  +---------------------------+       |
+  | ...                  cF77 |       |
+  +---------------------------+<------+
+  | rest 1               cAAF |
+  +---------------------------+
+  | rest 2               cAAF |
+  +---------------------------+
+  | ...                       |
 #+END_SRC
 
-где ~OFFSET~ - это смещение ~false-part~ и ~OFFSET2~ - это смещение ~rest~.
+Или, в текстовой нотации:
+
+#+BEGIN_SRC forth
+  ...
+  condition
+  0BRANCH OFFSET  true-part-1  true-part-2  ...
+   BRANCH OFFSET2 false-part-2 false-part-2 ...
+  rest-1
+  rest-2
+  ...
+#+END_SRC
+
+где ~OFFSET-FALSE~ - это смещение до ~false-part~ и ~OFFSET-REST~ - это смещение до
+~rest~.
+
+-----------------------
+
+Теперь рассмотрим реализацию.
 
 IF - это НЕМЕДЛЕННОЕ слово, которое компилирует 0BRANCH, за которым следует фиктивное
 смещение, и помещает адрес 0BRANCH в стек. Позже, когда мы увидим THEN, мы вытолкнем
