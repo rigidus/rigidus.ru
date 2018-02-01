@@ -643,12 +643,15 @@
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                     (lambda (x)
+                                       (funcall cont
+                                                (and x
+                                                     (evand (cdr lst)
+                                                            env block-env go-env catch-env
+                                                            errcont cont))))))))
 #+END_SRC
 
 #+NAME: myeval_evand_7_test
@@ -731,12 +734,15 @@
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst)
-                                                   env block-env go-env catch-env
-                                                   errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 #+END_SRC
 
 #+NAME: myeval_evor_7_test
@@ -772,9 +778,9 @@
 
 #+NAME: myeval_or_7
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                    env block-env go-env catch-env
-                                                    errcont cont)))
+  ((equal (car exp) 'or)       (evor  (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont))
 #+END_SRC
 
 #+NAME: myeval_or_7_test
@@ -1374,13 +1380,6 @@
 
 #+BEGIN_SRC lisp
   (setq *print-circle* T)
-
-  ;; CPS-версия ASSOC
-  (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
-    ;; continuations (for lookup)
-    (cond ((null alist)              (funcall errcont key))
-          ((equal key (caar alist))  (funcall cont    (cdar alist)))
-          (t                         (assoc-2 key (cdr alist) cont errcont))))
   ;; Классы ошибок
   (define-condition unknown-function (error)
     ((fn :initarg :fn  :reader fn))
@@ -1401,6 +1400,12 @@
      (lambda (condition stream)
        (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
                (lst1 condition) (lst2 condition)))))
+  ;; CPS-версия ASSOC
+  (defun assoc-2 (key alist cont errcont) ;; NB!: inverted order of
+    ;; continuations (for lookup)
+    (cond ((null alist)              (funcall errcont key))
+          ((equal key (caar alist))  (funcall cont    (cdar alist)))
+          (t                         (assoc-2 key (cdr alist) cont errcont))))
   ;; Новая функция lookup
   ;; environment
   (defparameter *glob-env* nil)
@@ -1487,22 +1492,28 @@
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                     (lambda (x)
+                                       (funcall cont
+                                                (and x
+                                                     (evand (cdr lst)
+                                                            env block-env go-env catch-env
+                                                            errcont cont))))))))
   (defun evor (lst env block-env go-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst)
-                                                   env block-env go-env catch-env
-                                                   errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -1545,7 +1556,7 @@
   (defun tagbody-slice (exp res)
     (cond ((null exp) res)
           ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-          (t                   (tagbody-slice (cdr exp) res))))
+          (t                    (tagbody-slice (cdr exp) res))))
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
       ((null exp)                  (funcall cont 'nil))
@@ -1572,9 +1583,9 @@
       ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                         env block-env go-env catch-env
                                                         errcont cont)))
-      ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                        env block-env go-env catch-env
-                                                        errcont cont)))
+      ((equal (car exp) 'or)       (evor  (cdr exp)
+                                          env block-env go-env catch-env
+                                          errcont cont))
       ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                           (mapcar #'cadr (cadr exp))
                                           nil
@@ -1615,16 +1626,16 @@
                                                   block-env)
                                            go-env catch-env errcont cont))
       ((equal (car exp) 'return-from)
-                                   (if (not (symbolp (cadr exp)))
-                                       (funcall errcont
-                                                (format nil
-                                                        "return-from: first argument not a symbol"))
-                                       (myeval (caddr exp) env block-env go-env catch-env errcont
-                                               (lambda (x)
-                                                 (assoc-2 (cadr exp) block-env
-                                                          (lambda (y) (funcall y x))
-                                                          (lambda (y) (funcall errcont
-                                                                               (format nil "return-from: undefined return block ~A" y))))))))
+       (if (not (symbolp (cadr exp)))
+           (funcall errcont
+                    (format nil
+                            "return-from: first argument not a symbol"))
+           (myeval (caddr exp) env block-env go-env catch-env errcont
+                   (lambda (x)
+                     (assoc-2 (cadr exp) block-env
+                              (lambda (y) (funcall y x))
+                              (lambda (y) (funcall errcont
+                                                   (format nil "return-from: undefined return block ~A" y))))))))
       ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                            (lambda (symb-res)
                                              (if (not (symbolp symb-res))
@@ -1648,17 +1659,17 @@
                                                                 (lambda (key)
                                                                   (funcall errcont
                                                                            (format nil "throw: matching ~A catch is not found" key)))))))))
-      ((equal (car exp)
-              'return-from)        (if (not (symbolp (cadr exp)))
-                                       (funcall errcont
-                                                (format nil
-                                                        "return-from: first argument not a symbol"))
-                                       (myeval (caddr exp) env block-env go-env catch-env errcont
-                                               (lambda (x)
-                                                 (assoc-2 (cadr exp) block-env
-                                                          (lambda (y) (funcall y x))
-                                                          (lambda (y) (funcall errcont
-                                                                               (format nil "return-from: undefined return block ~A" y))))))))
+      ((equal (car exp) 'return-from)
+       (if (not (symbolp (cadr exp)))
+           (funcall errcont
+                    (format nil
+                            "return-from: first argument not a symbol"))
+           (myeval (caddr exp) env block-env go-env catch-env errcont
+                   (lambda (x)
+                     (assoc-2 (cadr exp) block-env
+                              (lambda (y) (funcall y x))
+                              (lambda (y) (funcall errcont
+                                                   (format nil "return-from: undefined return block ~A" y))))))))
       ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                            (lambda (symb-res)
                                              (if (not (symbolp symb-res))
@@ -2142,8 +2153,8 @@
                                        (defun foo (x)
                                          (block in-lambda-block
                                            (return-from in-lambda-block
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -2183,8 +2194,8 @@
                                        (defun foo (x)
                                          (catch 'in-lambda-catch
                                            (throw 'in-lambda-catch
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -2235,6 +2246,7 @@
   ;; REPL
   (defun repl ()
     (princ "microlisp>")
+    (finish-output)
     (princ (myeval (read) nil #'identity #'identity))
     (terpri)
     (finish-output)

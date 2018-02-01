@@ -1175,20 +1175,19 @@ MYAPPLY.
 
 Выполняем CPS-преобразование (очень похоже на EVCOND)
 
-Тут есть ошибки возрата значений из CPS-функций.
-
-[TODO:gmm] Сделать тесты вида ~(+ 7 (and ...))~
-
 #+NAME: myeval_evand_4
 #+BEGIN_SRC lisp
   (defun evand (lst env errcont cont)
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (and x)))) ;; Тут ошибка нужен (funcall cont (and x)) вместо (and x) - и далее там полный бред
-          (t                 (and (myeval (car lst) env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst) env errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                 (myeval (car lst) env errcont
+                                     (lambda (x)
+                                       (funcall cont
+                                                (and x
+                                                     (evand (cdr lst) env errcont cont))))))))
 #+END_SRC
 
 #+NAME: myeval_evand_4_test
@@ -1225,7 +1224,7 @@ MYAPPLY.
 
 #+NAME: myeval_and_4
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
+  ((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
 #+END_SRC
 
 
@@ -1272,10 +1271,13 @@ MYAPPLY.
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst) env errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst) env errcont cont))))))))
 #+END_SRC
 
 #+NAME: myeval_evor_4_test
@@ -1313,7 +1315,7 @@ MYAPPLY.
 
 #+NAME: myeval_or_4
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+  ((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
 #+END_SRC
 
 Протестируем ~or~:
@@ -1598,7 +1600,7 @@ cps
 
 * REPL
 
-#+NAME: repl_5
+#+NAME: repl_4
 #+BEGIN_SRC lisp
   (defun repl ()
       (princ "microlisp>")
@@ -1751,18 +1753,24 @@ cps
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst) env errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                 (myeval (car lst) env errcont
+                                     (lambda (x)
+                                       (funcall cont
+                                                (and x
+                                                     (evand (cdr lst) env errcont cont))))))))
   (defun evor (lst env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst) env errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst) env errcont cont))))))))
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -1798,12 +1806,12 @@ cps
                                              (if x
                                                  (myeval (caddr exp)  env errcont cont)
                                                  (myeval (cadddr exp) env errcont cont)))))
-      ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp) env errcont cont)))
+      ((equal (car exp) 'cond)     (evcond (cdr exp) env errcont cont))
       ((equal (car exp) 'progn)    (evprogn (cdr exp) env errcont cont))
       ;; Тут был PRINT, но он перенесен в MYAPPLY
       ;; Тут был LIST, но он перенесен в MYAPPLY
-      ((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
-      ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+      ((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
+      ((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
       ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                           (mapcar #'cadr (cadr exp))
                                           nil
@@ -2242,6 +2250,7 @@ cps
   ;; REPL
   (defun repl ()
     (princ "microlisp>")
+    (finish-output)
     (princ (myeval (read) nil #'identity #'identity))
     (terpri)
     (finish-output)

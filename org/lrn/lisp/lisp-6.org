@@ -688,12 +688,15 @@
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                  (myeval (car lst) env block-env go-env catch-env errcont
+                                      (lambda (x)
+                                        (funcall cont
+                                                 (and x
+                                                      (evand (cdr lst)
+                                                             env block-env go-env catch-env
+                                                             errcont cont))))))))
 #+END_SRC
 
 Поправим тесты
@@ -784,12 +787,15 @@
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst)
-                                                   env block-env go-env catch-env
-                                                   errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 #+END_SRC
 
 Тесты получают дополнительный nil
@@ -829,9 +835,9 @@
 
 #+NAME: myeval_or_6
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                    env block-env go-env catch-env
-                                                    errcont cont)))
+  ((equal (car exp) 'or)       (evor  (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont))
 #+END_SRC
 
 Поправим тесты
@@ -1600,22 +1606,28 @@
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                  (myeval (car lst) env block-env go-env catch-env errcont
+                                      (lambda (x)
+                                        (funcall cont
+                                                 (and x
+                                                      (evand (cdr lst)
+                                                             env block-env go-env catch-env
+                                                             errcont cont))))))))
   (defun evor (lst env block-env go-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst)
-                                                   env block-env go-env catch-env
-                                                   errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
   (defun mypairlis (lst1 lst2 alist)
     (cond ((and (null lst1) (null lst2))  alist)
           ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
@@ -1685,9 +1697,9 @@
       ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                         env block-env go-env catch-env
                                                         errcont cont)))
-      ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                        env block-env go-env catch-env
-                                                        errcont cont)))
+      ((equal (car exp) 'or)       (evor  (cdr exp)
+                                          env block-env go-env catch-env
+                                          errcont cont))
       ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                           (mapcar #'cadr (cadr exp))
                                           nil
@@ -2231,8 +2243,8 @@
                                        (defun foo (x)
                                          (block in-lambda-block
                                            (return-from in-lambda-block
-                                             (+ x 2)))
-                                         777)
+                                             (+ x 2))
+                                           777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
                                      #'ok)
@@ -2318,6 +2330,7 @@
   ;; REPL
   (defun repl ()
     (princ "microlisp>")
+    (finish-output)
     (princ (myeval (read) nil #'identity #'identity))
     (terpri)
     (finish-output)

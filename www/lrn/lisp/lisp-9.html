@@ -261,7 +261,6 @@ assoc-2 не являются продолжениями интерпретат�
   catch-env
   errcont
   cont)
-
 &lt;&lt;construct_9&gt;&gt;
 </pre>
 </div>
@@ -301,6 +300,8 @@ assoc-2 не являются продолжениями интерпретат�
         ((functionp cont)       (funcall cont arg))
         &lt;&lt;apply_cont_evcond_9&gt;&gt;
         &lt;&lt;apply_cont_evlet_9&gt;&gt;
+        &lt;&lt;apply_cont_evand_9&gt;&gt;
+        &lt;&lt;apply_cont_evor_9&gt;&gt;
         ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
                                        (cdr (evlis-cont-unevaled cont))
                                        (cons arg (evlis-cont-evaled cont))
@@ -769,8 +770,7 @@ assoc-2 не являются продолжениями интерпретат�
 <div class="outline-text-2" id="text-unnumbered-15">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_9">&lt;&lt;evcond_cont_9&gt;&gt;
-&lt;&lt;myeval_evcond_9&gt;&gt;
+<pre class="src src-lisp" id="myeval_9">&lt;&lt;myeval_evcond_9&gt;&gt;
 &lt;&lt;myeval_evprogn_9&gt;&gt;
 &lt;&lt;myeval_evand_9&gt;&gt;
 &lt;&lt;myeval_evor_9&gt;&gt;
@@ -779,6 +779,8 @@ assoc-2 не являются продолжениями интерпретат�
 &lt;&lt;myeval_evletstar_9&gt;&gt;
 &lt;&lt;myeval_evtagbody_9&gt;&gt;
 &lt;&lt;myeval_is_cont_subset_9&gt;&gt;
+&lt;&lt;myeval_make_goenv_9&gt;&gt;
+&lt;&lt;myeval_apply_go_continuation_9&gt;&gt;
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
     &lt;&lt;myeval_number_9&gt;&gt;
@@ -979,7 +981,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="construct_9">(<span style="color: #af00ff;">defstruct</span> <span style="color: #008700;">evcond-cont</span>
+<pre class="src src-lisp" id="construct_9">(<span style="color: #af00ff;">defstruct</span> (<span style="color: #008700;">evcond-cont</span> (<span style="color: #5f5f87;">:include</span> unicont))
   clauses
   env)
 </pre>
@@ -1063,7 +1065,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <pre class="src src-lisp" id="myeval_cond_9">((equal (car exp) 'cond)     (evcond (cdr exp)
                                      env block-env go-env catch-env
-                                     errcont cont)))
+                                     errcont cont))
 </pre>
 </div>
 
@@ -1159,18 +1161,86 @@ assoc-2 не являются продолжениями интерпретат�
 <div id="outline-container-unnumbered-22" class="outline-3">
 <h3 id="unnumbered-22">AND</h3>
 <div class="outline-text-3" id="text-unnumbered-22">
+<p>
+Определим структуру для сохранения продолжения AND, которая будет унаследована от
+<code>unicond</code>:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evand_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env block-env go-env catch-env errcont cont)
+<pre class="src src-lisp" id="construct_9">(<span style="color: #af00ff;">defstruct</span> (<span style="color: #008700;">and-cont</span> (<span style="color: #5f5f87;">:include</span> unicont))
+  exps
+  env)
+</pre>
+</div>
+
+<p>
+Теперь <code>evand</code>, в случае получения непустого COND будет создавать эту структуру и
+передавать её в качестве продолжения в <code>myeval</code>, вместо лямбды. Для единообразия мы
+переименовали <code>lst</code> в <code>exps</code>. Так как логика проксирования <code>and</code> для нашего хост-языка
+не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
+случай, где мы передаем один аргумент.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evand_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (exps env block-env go-env catch-env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null exps)       (apply-continuation cont (and)))
+        ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    <span style="color: #5f5f87;">:exps</span> (cdr exps)
+                                    <span style="color: #5f5f87;">:env</span> env
+                                    <span style="color: #5f5f87;">:block-env</span> block-env
+                                    <span style="color: #5f5f87;">:go-env</span> go-env
+                                    <span style="color: #5f5f87;">:catch-env</span> catch-env
+                                    <span style="color: #5f5f87;">:errcont</span> errcont
+                                    <span style="color: #5f5f87;">:cont</span> cont)))
+        (t                 (myeval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    <span style="color: #5f5f87;">:exps</span> (cdr exps)
+                                    <span style="color: #5f5f87;">:env</span> env
+                                    <span style="color: #5f5f87;">:block-env</span> block-env
+                                    <span style="color: #5f5f87;">:go-env</span> go-env
+                                    <span style="color: #5f5f87;">:catch-env</span> catch-env
+                                    <span style="color: #5f5f87;">:errcont</span> errcont
+                                    <span style="color: #5f5f87;">:cont</span> cont)))))
+</pre>
+</div>
+
+<p>
+А саму логику из лямбды переместим в <code>apply-continuation</code>. В этот момент аргументы уже
+вычислены. Если аргумент истинный, то возвращаем применение продолжения, которое берем
+из структуры, к аргументу (потому что <code>and</code> возвращает свой аргумент). В противном
+случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
+вызываем <code>evand</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="apply_cont_evand_9">((and-cont-p cont)      (<span style="color: #af00ff;">if</span> (not (null arg))
+                            (apply-continuation (and-cont-cont cont) arg)
+                            (evand (and-cont-exps cont)
+                                   (and-cont-env cont)
+                                   (and-cont-block-env cont)
+                                   (and-cont-go-env cont)
+                                   (and-cont-catch-env cont)
+                                   (and-cont-errcont cont)
+                                   (and-cont-cont cont))))
 </pre>
 </div>
 
@@ -1207,20 +1277,11 @@ assoc-2 не являются продолжениями интерпретат�
 </pre>
 </div>
 
-<p>
-Отличие в вызове <code>apply-continuations</code>
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_and_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'and)      (apply-continuation cont (evand (cdr exp)
-                                                             env block-env go-env catch-env
-                                                             errcont cont)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                  env block-env go-env catch-env
-                                                  errcont cont)))
+<pre class="src src-lisp" id="myeval_and_9">((equal (car exp) 'and)      (evand (cdr exp)
+                                    env block-env go-env catch-env
+                                    errcont cont))
 </pre>
 </div>
 
@@ -1277,11 +1338,15 @@ assoc-2 не являются продолжениями интерпретат�
 </div>
 
 <p>
-Теперь <code>evor</code>, в случае получения непустого COND будет создавать эту структуру и
-передавать её в качестве продолжения в <code>myeval</code>, вместо лямбды. Для единообразия мы
-переименовали <code>lst</code> в <code>exps</code>. Так как логика проксирования <code>or</code> для нашего хост-языка
-не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
-случай, где мы передаем один аргумент.
+Теперь <code>evor</code>, в случае получения непустого списка параметров будет создавать эту
+структуру и передавать её в качестве продолжения в <code>myeval</code>, вместо лямбды. Для
+единообразия мы переименовали <code>lst</code> в <code>exps</code>.
+</p>
+
+<p>
+[ Так как логика проксирования <code>or</code> для нашего хост-языка не отличается передаем мы
+один аргумент или два - мы можем выбросить из обработки тот случай, где мы передаем
+один аргумент. ]
 </p>
 
 <div class="org-src-container">
@@ -1291,24 +1356,36 @@ assoc-2 не являются продолжениями интерпретат�
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst)
+                                                        env block-env go-env catch-env
+                                                        errcont cont))))))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (exps env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null exps) (apply-continuation cont (or)))
-        ((myeval (car exps) env block-env go-env catch-env errcont
-                 (make-or-cont
-                  <span style="color: #5f5f87;">:exps</span> (cdr exps)
-                  <span style="color: #5f5f87;">:env</span> env
-                  <span style="color: #5f5f87;">:block-env</span> block-env
-                  <span style="color: #5f5f87;">:go-env</span> go-env
-                  <span style="color: #5f5f87;">:catch-env</span> catch-env
-                  <span style="color: #5f5f87;">:errcont</span> errcont
-                  <span style="color: #5f5f87;">:cont</span> cont)))))
+  (<span style="color: #af00ff;">cond</span> ((null exps)       (apply-continuation cont (or)))
+        ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    <span style="color: #5f5f87;">:exps</span> (cdr exps)
+                                    <span style="color: #5f5f87;">:env</span> env
+                                    <span style="color: #5f5f87;">:block-env</span> block-env
+                                    <span style="color: #5f5f87;">:go-env</span> go-env
+                                    <span style="color: #5f5f87;">:catch-env</span> catch-env
+                                    <span style="color: #5f5f87;">:errcont</span> errcont
+                                    <span style="color: #5f5f87;">:cont</span> cont)))
+        (t                 (myeval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    <span style="color: #5f5f87;">:exps</span> (cdr exps)
+                                    <span style="color: #5f5f87;">:env</span> env
+                                    <span style="color: #5f5f87;">:block-env</span> block-env
+                                    <span style="color: #5f5f87;">:go-env</span> go-env
+                                    <span style="color: #5f5f87;">:catch-env</span> catch-env
+                                    <span style="color: #5f5f87;">:errcont</span> errcont
+                                    <span style="color: #5f5f87;">:cont</span> cont)))))
 </pre>
 </div>
 
@@ -1322,7 +1399,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="apply_cont_evcond_9">((or-cont-p cont)       (<span style="color: #af00ff;">if</span> (not (null arg))
+<pre class="src src-lisp" id="apply_cont_evor_9">((or-cont-p cont)       (<span style="color: #af00ff;">if</span> (not (null arg))
                             (apply-continuation (or-cont-cont cont) arg)
                             (evor (or-cont-exps cont)
                                   (or-cont-env cont)
@@ -1370,7 +1447,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <pre class="src src-lisp" id="myeval_or_9">((equal (car exp) 'or)       (evor  (cdr exp)
                                     env block-env go-env catch-env
-                                    errcont cont)))
+                                    errcont cont))
 </pre>
 </div>
 
@@ -2584,6 +2661,8 @@ assoc-2 не являются продолжениями интерпретат�
 <pre class="src src-lisp">(setq *print-circle* T)
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
 &lt;&lt;errors_9&gt;&gt;
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1057;&#1090;&#1088;&#1091;&#1082;&#1090;&#1091;&#1088;&#1099;</span>
+&lt;&lt;unicont_9&gt;&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">APPLY-CONTINUATION</span>
 &lt;&lt;apply_continuation_9&gt;&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>

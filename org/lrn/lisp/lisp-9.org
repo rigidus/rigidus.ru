@@ -152,7 +152,6 @@ assoc-2 не являются продолжениями интерпретат�
     catch-env
     errcont
     cont)
-
   <<construct_9>>
 #+END_SRC
 
@@ -183,6 +182,8 @@ assoc-2 не являются продолжениями интерпретат�
           ((functionp cont)       (funcall cont arg))
           <<apply_cont_evcond_9>>
           <<apply_cont_evlet_9>>
+          <<apply_cont_evand_9>>
+          <<apply_cont_evor_9>>
           ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
                                          (cdr (evlis-cont-unevaled cont))
                                          (cons arg (evlis-cont-evaled cont))
@@ -584,7 +585,6 @@ assoc-2 не являются продолжениями интерпретат�
 
 #+NAME: myeval_9
 #+BEGIN_SRC lisp
-  <<evcond_cont_9>>
   <<myeval_evcond_9>>
   <<myeval_evprogn_9>>
   <<myeval_evand_9>>
@@ -594,6 +594,8 @@ assoc-2 не являются продолжениями интерпретат�
   <<myeval_evletstar_9>>
   <<myeval_evtagbody_9>>
   <<myeval_is_cont_subset_9>>
+  <<myeval_make_goenv_9>>
+  <<myeval_apply_go_continuation_9>>
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
       <<myeval_number_9>>
@@ -758,7 +760,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 #+NAME: construct_9
 #+BEGIN_SRC lisp
-  (defstruct evcond-cont
+  (defstruct (evcond-cont (:include unicont))
     clauses
     env)
 #+END_SRC
@@ -834,7 +836,7 @@ assoc-2 не являются продолжениями интерпретат�
 #+BEGIN_SRC lisp
   ((equal (car exp) 'cond)     (evcond (cdr exp)
                                        env block-env go-env catch-env
-                                       errcont cont)))
+                                       errcont cont))
 #+END_SRC
 
 #+NAME: myeval_cond_9_test
@@ -914,18 +916,78 @@ assoc-2 не являются продолжениями интерпретат�
 
 ** AND
 
+Определим структуру для сохранения продолжения AND, которая будет унаследована от
+~unicond~:
+
+#+NAME: construct_9
+#+BEGIN_SRC lisp
+  (defstruct (and-cont (:include unicont))
+    exps
+    env)
+#+END_SRC
+
+Теперь ~evand~, в случае получения непустого COND будет создавать эту структуру и
+передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для единообразия мы
+переименовали ~lst~ в ~exps~. Так как логика проксирования ~and~ для нашего хост-языка
+не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
+случай, где мы передаем один аргумент.
+
 #+NAME: myeval_evand_9
 #+BEGIN_SRC lisp
+  ;; было
   (defun evand (lst env block-env go-env catch-env errcont cont)
     (cond ((null lst)        (funcall cont (and)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (and x))))
-          (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (and x (evand (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+                                       (funcall cont
+                                                (and x)))))
+          (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                     (lambda (x)
+                                       (funcall cont
+                                                (and x
+                                                     (evand (cdr lst)
+                                                            env block-env go-env catch-env
+                                                            errcont cont))))))))
+  ;; стало
+  (defun evand (exps env block-env go-env catch-env errcont cont)
+    (cond ((null exps)       (apply-continuation cont (and)))
+          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
+                                     (make-or-cont
+                                      :exps (cdr exps)
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))
+          (t                 (myeval (car exps) env block-env go-env catch-env errcont
+                                     (make-or-cont
+                                      :exps (cdr exps)
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))))
+#+END_SRC
+
+А саму логику из лямбды переместим в ~apply-continuation~. В этот момент аргументы уже
+вычислены. Если аргумент истинный, то возвращаем применение продолжения, которое берем
+из структуры, к аргументу (потому что ~and~ возвращает свой аргумент). В противном
+случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
+вызываем ~evand~.
+
+#+NAME: apply_cont_evand_9
+#+BEGIN_SRC lisp
+  ((and-cont-p cont)      (if (not (null arg))
+                              (apply-continuation (and-cont-cont cont) arg)
+                              (evand (and-cont-exps cont)
+                                     (and-cont-env cont)
+                                     (and-cont-block-env cont)
+                                     (and-cont-go-env cont)
+                                     (and-cont-catch-env cont)
+                                     (and-cont-errcont cont)
+                                     (and-cont-cont cont))))
 #+END_SRC
 
 #+NAME: myeval_evand_9_test
@@ -960,18 +1022,11 @@ assoc-2 не являются продолжениями интерпретат�
                  (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
 #+END_SRC
 
-Отличие в вызове ~apply-continuations~
-
 #+NAME: myeval_and_9
 #+BEGIN_SRC lisp
-  ;; стало
-  ((equal (car exp) 'and)      (apply-continuation cont (evand (cdr exp)
-                                                               env block-env go-env catch-env
-                                                               errcont cont)))
-  ;; было
-  ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                    env block-env go-env catch-env
-                                                    errcont cont)))
+  ((equal (car exp) 'and)      (evand (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont))
 #+END_SRC
 
 #+NAME: myeval_and_9_test
@@ -1019,11 +1074,13 @@ assoc-2 не являются продолжениями интерпретат�
     env)
 #+END_SRC
 
-Теперь ~evor~, в случае получения непустого COND будет создавать эту структуру и
-передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для единообразия мы
-переименовали ~lst~ в ~exps~. Так как логика проксирования ~or~ для нашего хост-языка
-не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
-случай, где мы передаем один аргумент.
+Теперь ~evor~, в случае получения непустого списка параметров будет создавать эту
+структуру и передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для
+единообразия мы переименовали ~lst~ в ~exps~.
+
+[ Так как логика проксирования ~or~ для нашего хост-языка не отличается передаем мы
+один аргумент или два - мы можем выбросить из обработки тот случай, где мы передаем
+один аргумент. ]
 
 #+NAME: myeval_evor_9
 #+BEGIN_SRC lisp
@@ -1032,24 +1089,36 @@ assoc-2 не являются продолжениями интерпретат�
     (cond ((null lst)        (funcall cont (or)))
           ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x))))
+                                       (funcall cont
+                                                (or x)))))
           (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                      (lambda (x)
-                                       (or x (evor (cdr lst)
-                                                   env block-env go-env catch-env
-                                                   errcont cont)))))))
+                                       (funcall cont
+                                                (or x
+                                                    (evor (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
   ;; стало
   (defun evor (exps env block-env go-env catch-env errcont cont)
-    (cond ((null exps) (apply-continuation cont (or)))
-          ((myeval (car exps) env block-env go-env catch-env errcont
-                   (make-or-cont
-                    :exps (cdr exps)
-                    :env env
-                    :block-env block-env
-                    :go-env go-env
-                    :catch-env catch-env
-                    :errcont errcont
-                    :cont cont)))))
+    (cond ((null exps)       (apply-continuation cont (or)))
+          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
+                                     (make-or-cont
+                                      :exps (cdr exps)
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))
+          (t                 (myeval (car exps) env block-env go-env catch-env errcont
+                                     (make-or-cont
+                                      :exps (cdr exps)
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))))
 #+END_SRC
 
 А саму логику из лямбды переместим в ~apply-continuation~. В этот момент аргументы уже
@@ -1058,7 +1127,7 @@ assoc-2 не являются продолжениями интерпретат�
 случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
 вызываем ~evor~.
 
-#+NAME: apply_cont_evcond_9
+#+NAME: apply_cont_evor_9
 #+BEGIN_SRC lisp
   ((or-cont-p cont)       (if (not (null arg))
                               (apply-continuation (or-cont-cont cont) arg)
@@ -1106,7 +1175,7 @@ assoc-2 не являются продолжениями интерпретат�
 #+BEGIN_SRC lisp
   ((equal (car exp) 'or)       (evor  (cdr exp)
                                       env block-env go-env catch-env
-                                      errcont cont)))
+                                      errcont cont))
 #+END_SRC
 
 #+NAME: myeval_or_9_test
@@ -2145,6 +2214,8 @@ assoc-2 не являются продолжениями интерпретат�
   (setq *print-circle* T)
   ;; Классы ошибок
   <<errors_9>>
+  ;; Структуры
+  <<unicont_9>>
   ;; APPLY-CONTINUATION
   <<apply_continuation_9>>
   ;; CPS-версия ASSOC

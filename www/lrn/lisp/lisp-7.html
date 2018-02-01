@@ -809,12 +809,15 @@
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 </pre>
 </div>
 
@@ -904,12 +907,15 @@
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst)
+                                                        env block-env go-env catch-env
+                                                        errcont cont))))))))
 </pre>
 </div>
 
@@ -947,9 +953,9 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_or_7">((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                  env block-env go-env catch-env
-                                                  errcont cont)))
+<pre class="src src-lisp" id="myeval_or_7">((equal (car exp) 'or)       (evor  (cdr exp)
+                                    env block-env go-env catch-env
+                                    errcont cont))
 </pre>
 </div>
 
@@ -1642,13 +1648,6 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp">(setq *print-circle* T)
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
-  <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
-  (<span style="color: #af00ff;">cond</span> ((null alist)              (funcall errcont key))
-        ((equal key (caar alist))  (funcall cont    (cdar alist)))
-        (t                         (assoc-2 key (cdr alist) cont errcont))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
 (<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">unknown-function</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
   ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
@@ -1669,6 +1668,12 @@
    (<span style="color: #af00ff;">lambda</span> (condition stream)
      (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
              (lst1 condition) (lst2 condition)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
+  (<span style="color: #af00ff;">cond</span> ((null alist)              (funcall errcont key))
+        ((equal key (caar alist))  (funcall cont    (cdar alist)))
+        (t                         (assoc-2 key (cdr alist) cont errcont))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1053;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; lookup</span>
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">environment</span>
 (<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
@@ -1755,22 +1760,28 @@
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst)
+                                                        env block-env go-env catch-env
+                                                        errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
         ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
@@ -1813,7 +1824,7 @@
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
   (<span style="color: #af00ff;">cond</span> ((null exp) res)
         ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-        (t                   (tagbody-slice (cdr exp) res))))
+        (t                    (tagbody-slice (cdr exp) res))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
     ((null exp)                  (funcall cont 'nil))
@@ -1840,9 +1851,9 @@
     ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
                                                       env block-env go-env catch-env
                                                       errcont cont)))
-    ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                      env block-env go-env catch-env
-                                                      errcont cont)))
+    ((equal (car exp) 'or)       (evor  (cdr exp)
+                                        env block-env go-env catch-env
+                                        errcont cont))
     ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                         (mapcar #'cadr (cadr exp))
                                         nil
@@ -1883,16 +1894,16 @@
                                                 block-env)
                                          go-env catch-env errcont cont))
     ((equal (car exp) 'return-from)
-                                 (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (funcall errcont
-                                              (format nil
-                                                      <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
-                                                                             (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
+     (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
+         (funcall errcont
+                  (format nil
+                          <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
+         (myeval (caddr exp) env block-env go-env catch-env errcont
+                 (<span style="color: #af00ff;">lambda</span> (x)
+                   (assoc-2 (cadr exp) block-env
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
+                                                 (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
@@ -1916,17 +1927,17 @@
                                                               (<span style="color: #af00ff;">lambda</span> (key)
                                                                 (funcall errcont
                                                                          (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
-    ((equal (car exp)
-            'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (funcall errcont
-                                              (format nil
-                                                      <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
-                                                                             (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
+    ((equal (car exp) 'return-from)
+     (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
+         (funcall errcont
+                  (format nil
+                          <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
+         (myeval (caddr exp) env block-env go-env catch-env errcont
+                 (<span style="color: #af00ff;">lambda</span> (x)
+                   (assoc-2 (cadr exp) block-env
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
+                                                 (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
@@ -2410,8 +2421,8 @@
                                      (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
                                        (<span style="color: #af00ff;">block</span> in-lambda-block
                                          (<span style="color: #af00ff;">return-from</span> in-lambda-block
-                                           (+ x 2)))
-                                       777)
+                                           (+ x 2))
+                                         777))
                                      (foo 10))
                                    nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
                                    #'ok)
@@ -2451,8 +2462,8 @@
                                      (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
                                        (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
                                          (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                           (+ x 2)))
-                                       777)
+                                           (+ x 2))
+                                         777))
                                      (foo 10))
                                    nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
                                    #'ok)
@@ -2503,6 +2514,7 @@
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">REPL</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
   (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (finish-output)
   (princ (myeval (read) nil #'identity #'identity))
   (terpri)
   (finish-output)

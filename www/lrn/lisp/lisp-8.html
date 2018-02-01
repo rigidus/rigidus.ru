@@ -879,12 +879,15 @@ clauses в <code>myeval</code> и <code>myapply</code>.
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 </pre>
 </div>
 
@@ -923,9 +926,9 @@ clauses в <code>myeval</code> и <code>myapply</code>.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_and_8">((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                  env block-env go-env catch-env
-                                                  errcont cont)))
+<pre class="src src-lisp" id="myeval_and_8">((equal (car exp) 'and)      (evand (cdr exp)
+                                    env block-env go-env catch-env
+                                    errcont cont))
 </pre>
 </div>
 
@@ -974,12 +977,15 @@ clauses в <code>myeval</code> и <code>myapply</code>.
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst)
+                                                        env block-env go-env catch-env
+                                                        errcont cont))))))))
 </pre>
 </div>
 
@@ -1015,15 +1021,11 @@ clauses в <code>myeval</code> и <code>myapply</code>.
 </pre>
 </div>
 
-<p>
-[TODO:gmm] Тут ошибка - не нужен funcall. Проверить везде!
-</p>
-
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_or_8">((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                  env block-env go-env catch-env
-                                                  errcont cont)))
+<pre class="src src-lisp" id="myeval_or_8">((equal (car exp) 'or)       (evor  (cdr exp)
+                                    env block-env go-env catch-env
+                                    errcont cont))
 </pre>
 </div>
 
@@ -1812,9 +1814,6 @@ NB: делаем implicit progn в body и в closure
 <div class="org-src-container">
 
 <pre class="src src-lisp">(setq *print-circle* T)
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
-
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
 (<span style="color: #af00ff;">define-condition</span> <span style="color: #0000ff;">unknown-function</span> (<span style="color: #ff0000; font-weight: bold;">error</span>)
   ((fn <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:fn</span>  <span style="color: #5f5f87;">:reader</span> fn))
@@ -1835,6 +1834,12 @@ NB: делаем implicit progn в body и в closure
    (<span style="color: #af00ff;">lambda</span> (condition stream)
      (format stream <span style="color: #87005f;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
              (lst1 condition) (lst2 condition)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">assoc-2</span> (key alist cont errcont) <span style="color: #af0000;">;; </span><span style="color: #af0000;">NB!: inverted order of</span>
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">continuations (for lookup)</span>
+  (<span style="color: #af00ff;">cond</span> ((null alist)              (funcall errcont key))
+        ((equal key (caar alist))  (funcall cont    (cdar alist)))
+        (t                         (assoc-2 key (cdr alist) cont errcont))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1053;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; lookup</span>
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">environment</span>
 (<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*glob-env*</span> nil)
@@ -1886,14 +1891,14 @@ NB: делаем implicit progn в body и в closure
                                      (<span style="color: #ff0000; font-weight: bold;">error</span> 'invalid-number-of-arguments <span style="color: #5f5f87;">:fn</span> fn)))
     ((equal fn '+)               (funcall cont (evadd args 0)))
     ((equal fn '*)               (funcall cont (evmul args 1)))
-    ((closure-p fn)              (myeval (closure-body fn)
-                                         (pairlis (closure-args fn)
-                                                  args
-                                                  (closure-env fn))
-                                         (closure-block-env fn)
-                                         (closure-go-env fn)
-                                         catch-env
-                                         errcont cont))
+    ((closure-p fn)              (evprogn (closure-body fn)
+                                          (pairlis (closure-args fn)
+                                                   args
+                                                   (closure-env fn))
+                                          (closure-block-env fn)
+                                          (closure-go-env fn)
+                                          catch-env
+                                          errcont cont))
     ((equal fn 'print)           (funcall cont (print (car args))))
     ((equal fn 'list)            (funcall cont args))
     ((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
@@ -1923,22 +1928,28 @@ NB: делаем implicit progn в body и в closure
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env block-env go-env catch-env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env block-env go-env catch-env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst)
+                                                          env block-env go-env catch-env
+                                                          errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env block-env go-env catch-env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst)
+                                                        env block-env go-env catch-env
+                                                        errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
         ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
@@ -1971,8 +1982,6 @@ NB: делаем implicit progn в body и в closure
               (member (car exp) (cdr exp)))
          (funcall errcont (car exp)))
         (t (tagbody-check-tag (cdr exp) cont errcont))))
-
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evtagbody</span> (body env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null (car body))      (funcall cont nil))
         ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
@@ -1980,17 +1989,10 @@ NB: делаем implicit progn в body и в closure
                                         (<span style="color: #af00ff;">lambda</span> (x)
                                           (<span style="color: #af00ff;">declare</span> (ignore x))
                                           (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-
-
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp)
-  (<span style="color: #af00ff;">cond</span> ((null exp)           nil)
-        ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-        (t                    (tagbody-slice (cdr exp)))))
-
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tagbody-slice</span> (exp res)
   (<span style="color: #af00ff;">cond</span> ((null exp) res)
         ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-        (t                   (tagbody-slice (cdr exp) res))))
+        (t                    (tagbody-slice (cdr exp) res))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
     ((null exp)                  (funcall cont 'nil))
@@ -2008,18 +2010,18 @@ NB: делаем implicit progn в body и в closure
                                                (myeval (cadddr exp)
                                                        env block-env go-env catch-env
                                                        errcont cont)))))
-    ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp)
-                                                       env block-env go-env catch-env
-                                                       errcont cont)))
+    ((equal (car exp) 'cond)     (evcond (cdr exp)
+                                         env block-env go-env catch-env
+                                         errcont cont))
     ((equal (car exp) 'progn)    (evprogn (cdr exp)
                                           env block-env go-env catch-env
                                           errcont cont))
-    ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                      env block-env go-env catch-env
-                                                      errcont cont)))
-    ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp)
-                                                      env block-env go-env catch-env
-                                                      errcont cont)))
+    ((equal (car exp) 'and)      (evand (cdr exp)
+                                        env block-env go-env catch-env
+                                        errcont cont))
+    ((equal (car exp) 'or)       (evor  (cdr exp)
+                                        env block-env go-env catch-env
+                                        errcont cont))
     ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                         (mapcar #'cadr (cadr exp))
                                         nil
@@ -2032,7 +2034,7 @@ NB: делаем implicit progn в body и в closure
                                             errcont cont))
     ((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
                                         (push (cons (cadr exp)
-                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
+                                                    (make-closure <span style="color: #5f5f87;">:body</span> (cdddr exp)
                                                                   <span style="color: #5f5f87;">:env</span> env
                                                                   <span style="color: #5f5f87;">:block-env</span> block-env
                                                                   <span style="color: #5f5f87;">:go-env</span> go-env
@@ -2048,8 +2050,7 @@ NB: делаем implicit progn в body и в closure
                                                    (rplacd (assoc (cadr exp) *glob-env*) val))
                                                (rplacd (assoc (cadr exp) env) val))
                                            (funcall cont val))))
-
-    ((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
+    ((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (cddr exp)
                                                              <span style="color: #5f5f87;">:env</span> env
                                                              <span style="color: #5f5f87;">:block-env</span> block-env
                                                              <span style="color: #5f5f87;">:go-env</span> go-env
@@ -2060,17 +2061,17 @@ NB: делаем implicit progn в body и в closure
                                                 cont
                                                 block-env)
                                          go-env catch-env errcont cont))
-    ((equal (car exp)
-            'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (funcall errcont
-                                              (format nil
-                                                      <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
-                                                                             (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
+    ((equal (car exp) 'return-from)
+     (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
+         (funcall errcont
+                  (format nil
+                          <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
+         (myeval (caddr exp) env block-env go-env catch-env errcont
+                 (<span style="color: #af00ff;">lambda</span> (x)
+                   (assoc-2 (cadr exp) block-env
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
+                                                 (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
@@ -2094,17 +2095,17 @@ NB: делаем implicit progn в body и в closure
                                                               (<span style="color: #af00ff;">lambda</span> (key)
                                                                 (funcall errcont
                                                                          (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
-    ((equal (car exp)
-            'return-from)        (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
-                                     (funcall errcont
-                                              (format nil
-                                                      <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
-                                     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                             (<span style="color: #af00ff;">lambda</span> (x)
-                                               (assoc-2 (cadr exp) block-env
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
-                                                        (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
-                                                                             (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
+    ((equal (car exp) 'return-from)
+     (<span style="color: #af00ff;">if</span> (not (symbolp (cadr exp)))
+         (funcall errcont
+                  (format nil
+                          <span style="color: #87005f;">"return-from: first argument not a symbol"</span>))
+         (myeval (caddr exp) env block-env go-env catch-env errcont
+                 (<span style="color: #af00ff;">lambda</span> (x)
+                   (assoc-2 (cadr exp) block-env
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall y x))
+                            (<span style="color: #af00ff;">lambda</span> (y) (funcall errcont
+                                                 (format nil <span style="color: #87005f;">"return-from: undefined return block ~A"</span> y))))))))
     ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
                                          (<span style="color: #af00ff;">lambda</span> (symb-res)
                                            (<span style="color: #af00ff;">if</span> (not (symbolp symb-res))
@@ -2147,7 +2148,6 @@ NB: делаем implicit progn в body и в closure
                                             (funcall x))
                                           (<span style="color: #af00ff;">lambda</span> (x)
                                             (funcall errcont (format nil <span style="color: #87005f;">"go: wrong target ~A"</span> x)))))
-
     ((equal (car exp) 'labels)   (<span style="color: #af00ff;">let*</span> ((alist (mapcar (<span style="color: #af00ff;">lambda</span> (label) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1092;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1087;&#1072;&#1088; (&#1080;&#1084;&#1103; . nil)</span>
                                                          (cons (car label) nil))
                                                        (cadr exp)))
@@ -2341,7 +2341,9 @@ NB: делаем implicit progn в body и в closure
                (myeval '(list (+ a b) (* b c) 42)
                        '((a . 1) (b . 2) (c . 3) (d . 4))
                        nil nil nil #'err #'ok)))
-
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; CALL/CC</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 14 (myeval '(+ 1 2 (call/cc (<span style="color: #af00ff;">lambda</span> (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
+                          nil nil nil nil #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYEVAL</span>
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1072;&#1084;&#1086;&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1092;&#1086;&#1088;&#1084;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal T (myeval 'T nil nil nil nil #'err #'ok)))
@@ -2597,8 +2599,8 @@ NB: делаем implicit progn в body и в closure
                                      (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
                                        (<span style="color: #af00ff;">block</span> in-lambda-block
                                          (<span style="color: #af00ff;">return-from</span> in-lambda-block
-                                           (+ x 2)))
-                                       777)
+                                           (+ x 2))
+                                         777))
                                      (foo 10))
                                    nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
                                    #'ok)
@@ -2638,8 +2640,8 @@ NB: делаем implicit progn в body и в closure
                                      (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
                                        (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
                                          (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                           (+ x 2)))
-                                       777)
+                                           (+ x 2))
+                                         777))
                                      (foo 10))
                                    nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
                                    #'ok)
@@ -2682,11 +2684,11 @@ NB: делаем implicit progn в body и в closure
                                   alfa)
                                 nil nil nil nil #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LABELS</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #af00ff;">labels</span> ((zzz (lst acc)
-                                    (<span style="color: #af00ff;">cond</span> ((null lst) acc)
-                                          (t (zzz (cdr lst) (+ 1 acc))))))
-                           (zzz '(1 2 3) 0))
-                         nil nil nil nil #'err #'ok)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 3 (myeval '(labels ((zzz (lst acc)</span>
+<span style="color: #af0000;">;;                                     </span><span style="color: #af0000;">(cond ((null lst) acc)</span>
+<span style="color: #af0000;">;;                                           </span><span style="color: #af0000;">(t (zzz (cdr lst) (+ 1 acc))))))</span>
+<span style="color: #af0000;">;;                            </span><span style="color: #af0000;">(zzz '(1 2 3) 0))</span>
+<span style="color: #af0000;">;;                          </span><span style="color: #af0000;">nil nil nil nil #'err #'ok)))</span>
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RESET</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #af00ff;">progn</span>
                            (+ 1 (reset (+ 2 3)) 2))
@@ -2699,6 +2701,7 @@ NB: делаем implicit progn в body и в closure
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">REPL</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> (prompt catch-env errcont cont)
   (format t <span style="color: #87005f;">"~%~A&gt; "</span> prompt)
+  (finish-output)
   (myeval (read) nil nil nil (acons 'exit cont catch-env)
           #'(<span style="color: #af00ff;">lambda</span> (x)
               (princ x)

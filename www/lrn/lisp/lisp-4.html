@@ -1633,24 +1633,19 @@ MYAPPLY.
 Выполняем CPS-преобразование (очень похоже на EVCOND)
 </p>
 
-<p>
-Тут есть ошибки возрата значений из CPS-функций.
-</p>
-
-<p>
-[TODO:gmm] Сделать тесты вида <code>(+ 7 (and ...))</code>
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evand_4">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x)))) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1091;&#1090; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072; &#1085;&#1091;&#1078;&#1077;&#1085; (funcall cont (and x)) &#1074;&#1084;&#1077;&#1089;&#1090;&#1086; (and x) - &#1080; &#1076;&#1072;&#1083;&#1077;&#1077; &#1090;&#1072;&#1084; &#1087;&#1086;&#1083;&#1085;&#1099;&#1081; &#1073;&#1088;&#1077;&#1076;</span>
-        (t                 (and (myeval (car lst) env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst) env errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst) env errcont cont))))))))
 </pre>
 </div>
 
@@ -1689,7 +1684,7 @@ MYAPPLY.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_and_4">((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
+<pre class="src src-lisp" id="myeval_and_4">((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
 </pre>
 </div>
 
@@ -1743,10 +1738,13 @@ MYAPPLY.
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst) env errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst) env errcont cont))))))))
 </pre>
 </div>
 
@@ -1788,7 +1786,7 @@ MYAPPLY.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_or_4">((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+<pre class="src src-lisp" id="myeval_or_4">((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
 </pre>
 </div>
 
@@ -2137,7 +2135,7 @@ cps
 <div class="outline-text-2" id="text-unnumbered-34">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="repl_5">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
+<pre class="src src-lisp" id="repl_4">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
     (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
     (finish-output)
     (princ (myeval (read) nil #'identity #'identity))
@@ -2297,18 +2295,24 @@ cps
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
         ((null (cdr lst))  (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (and x))))
-        (t                 (and (myeval (car lst) env errcont
-                                        (<span style="color: #af00ff;">lambda</span> (x)
-                                          (and x (evand (cdr lst) env errcont cont))))))))
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env errcont
+                                   (<span style="color: #af00ff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst) env errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env errcont cont)
   (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
         ((null (cdr lst))  (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x))))
+                                     (funcall cont
+                                              (or x)))))
         (t                 (myeval (car lst) env errcont
                                    (<span style="color: #af00ff;">lambda</span> (x)
-                                     (or x (evor (cdr lst) env errcont cont)))))))
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst) env errcont cont))))))))
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">mypairlis</span> (lst1 lst2 alist)
   (<span style="color: #af00ff;">cond</span> ((and (null lst1) (null lst2))  alist)
         ((or  (null lst1) (null lst2))  (<span style="color: #ff0000; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #5f5f87;">:lst1</span> lst1 <span style="color: #5f5f87;">:lst2</span> lst2))
@@ -2344,12 +2348,12 @@ cps
                                            (<span style="color: #af00ff;">if</span> x
                                                (myeval (caddr exp)  env errcont cont)
                                                (myeval (cadddr exp) env errcont cont)))))
-    ((equal (car exp) 'cond)     (funcall cont (evcond (cdr exp) env errcont cont)))
+    ((equal (car exp) 'cond)     (evcond (cdr exp) env errcont cont))
     ((equal (car exp) 'progn)    (evprogn (cdr exp) env errcont cont))
     <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; PRINT, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
     <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; LIST, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
-    ((equal (car exp) 'and)      (funcall cont (evand (cdr exp) env errcont cont)))
-    ((equal (car exp) 'or)       (funcall cont (evor  (cdr exp) env errcont cont)))
+    ((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
+    ((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
     ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
                                         (mapcar #'cadr (cadr exp))
                                         nil
@@ -2788,6 +2792,7 @@ cps
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">REPL</span>
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">repl</span> ()
   (princ <span style="color: #87005f;">"microlisp&gt;"</span>)
+  (finish-output)
   (princ (myeval (read) nil #'identity #'identity))
   (terpri)
   (finish-output)
