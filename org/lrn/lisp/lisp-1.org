@@ -330,11 +330,13 @@ LIST определяем почти без изменений:
 
 #+NAME: evand_1
 #+BEGIN_SRC lisp
-  (defun evand (lst env)
-    (cond ((null lst)        (and))
-          ((null (cdr lst))  (and (myeval (car lst) env)))
-          (t                 (and (myeval (car lst) env)
-                                  (evand (cdr lst) env)))))
+  (defun evand (args env)
+    (cond ((null args)        T)
+          ((null (cdr args))  (myeval (car args) env))
+          (t                  (let ((tmp (myeval (car args) env)))
+                                (if (null tmp)
+                                    nil
+                                    (evand (cdr args) env))))))
 #+END_SRC
 
 Добавим тесты ~evand~ в окружении:
@@ -348,6 +350,7 @@ LIST определяем почти без изменений:
   (assert (equal (and 1 nil)     (evand '(1 nil) nil)))
   (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil)))
   (assert (equal (and 1 2 3)     (evand '(1 2 3) nil)))
+  (assert (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil)))
   ;; Тесты для EVAND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -369,6 +372,12 @@ LIST определяем почти без изменений:
                        (c 3))
                    (and a b c))
                  (evand '(a b c) '((a . 1) (b . 2) (c . 3)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil)
+                       (d 3))
+                   (and a b c d))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
 #+END_SRC
 
 Добавляем параметр ~env~:
@@ -383,13 +392,15 @@ LIST определяем почти без изменений:
 #+NAME: and_1_test
 #+BEGIN_SRC lisp
   ;; Тесты для AND
-  (assert (equal (and)                (myeval '(and) nil)))
-  (assert (equal (and 1)              (myeval '(and 1) nil)))
-  (assert (equal (and nil)            (myeval '(and nil) nil)))
-  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil)))
-  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil)))
-  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil)))
+  (assert (equal (and)                  (myeval '(and) nil)))
+  (assert (equal (and 1)                (myeval '(and 1) nil)))
+  (assert (equal (and nil)              (myeval '(and nil) nil)))
+  (assert (equal (and 1 nil)            (myeval '(and 1 nil) nil)))
+  (assert (equal (and 1 2 nil)          (myeval '(and 1 2 nil) nil)))
+  (assert (equal (and 1 2 3)            (myeval '(and 1 2 3) nil)))
+  (assert (equal (and 1 2 nil 3)        (myeval '(and 1 2 nil 3) nil)))
+  (assert (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3) nil)))
+  (assert (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil)))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -411,6 +422,22 @@ LIST определяем почти без изменений:
                        (c 3))
                    (and a b c))
                  (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil)
+                       (d 3))
+                   (and a b c d))
+                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)))))
+  (assert (equal (let ((a 1)
+                       (b nil)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)))))
 #+END_SRC
 
 * OR

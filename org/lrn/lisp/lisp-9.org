@@ -926,42 +926,28 @@ assoc-2 не являются продолжениями интерпретат�
     env)
 #+END_SRC
 
-Теперь ~evand~, в случае получения непустого COND будет создавать эту структуру и
-передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для единообразия мы
-переименовали ~lst~ в ~exps~. Так как логика проксирования ~and~ для нашего хост-языка
-не отличается передаем мы один аргумент или два - мы можем выбросить из обработки тот
-случай, где мы передаем один аргумент.
+Теперь ~evand~, в случае получения непустого списка аргументов будет создавать эту
+структуру и передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для
+единообразия мы переименовали ~args~ в ~exps~.
 
 #+NAME: myeval_evand_9
 #+BEGIN_SRC lisp
   ;; было
-  (defun evand (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)        (funcall cont (and)))
-          ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (and x)))))
-          (t                 (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (and x
-                                                     (evand (cdr lst)
-                                                            env block-env go-env catch-env
-                                                            errcont cont))))))))
+  (defun evand (args env block-env catch-env go-env errcont cont)
+    (cond ((null args)        (funcall cont T))
+          ((null (cdr args))  (myeval (car args) env block-env catch-env go-env errcont cont))
+          (t                  (myeval (car args) env block-env catch-env go-env errcont
+                                      (lambda (x)
+                                        (if (null x)
+                                            (funcall cont nil)
+                                            (evand (cdr args) env block-env catch-env go-env
+                                                   errcont cont)))))))
   ;; стало
   (defun evand (exps env block-env go-env catch-env errcont cont)
-    (cond ((null exps)       (apply-continuation cont (and)))
-          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
-                                     (make-or-cont
-                                      :exps (cdr exps)
-                                      :env env
-                                      :block-env block-env
-                                      :go-env go-env
-                                      :catch-env catch-env
-                                      :errcont errcont
-                                      :cont cont)))
+    (cond ((null exps)       (apply-continuation cont T))
+          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont cont))
           (t                 (myeval (car exps) env block-env go-env catch-env errcont
-                                     (make-or-cont
+                                     (make-and-cont
                                       :exps (cdr exps)
                                       :env env
                                       :block-env block-env
@@ -972,15 +958,15 @@ assoc-2 не являются продолжениями интерпретат�
 #+END_SRC
 
 А саму логику из лямбды переместим в ~apply-continuation~. В этот момент аргументы уже
-вычислены. Если аргумент истинный, то возвращаем применение продолжения, которое берем
-из структуры, к аргументу (потому что ~and~ возвращает свой аргумент). В противном
-случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
-вызываем ~evand~.
+вычислены. Если аргумент ложный, то возвращаем применение продолжения к nil (потому что
+~and~ возвращает nil, если встречает ложный аргумент). Это продолжение берем из
+структуры . В противном случае нам надо продолжить вычисление, оценивая другие
+формы. Для этого рекурсивно вызываем ~evand~.
 
 #+NAME: apply_cont_evand_9
 #+BEGIN_SRC lisp
-  ((and-cont-p cont)      (if (not (null arg))
-                              (apply-continuation (and-cont-cont cont) arg)
+  ((and-cont-p cont)      (if (null arg)
+                              (apply-continuation (and-cont-cont cont) nil)
                               (evand (and-cont-exps cont)
                                      (and-cont-env cont)
                                      (and-cont-block-env cont)
@@ -999,6 +985,7 @@ assoc-2 не являются продолжениями интерпретат�
   (assert (equal (and 1 nil)     (evand '(1 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil nil nil nil #'err #'ok)))
   ;; Тесты для EVAND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -1020,6 +1007,12 @@ assoc-2 не являются продолжениями интерпретат�
                        (c 3))
                    (and a b c))
                  (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil)
+                       (d 3))
+                   (and a b c d))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) nil nil nil #'err #'ok)))
 #+END_SRC
 
 #+NAME: myeval_and_9
@@ -1038,7 +1031,10 @@ assoc-2 не являются продолжениями интерпретат�
   (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil
+                                              #'err #'ok)))
+  (assert (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
+                                                #'err #'ok)))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -1060,6 +1056,18 @@ assoc-2 не являются продолжениями интерпретат�
                        (c 3))
                    (and a b c))
                  (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
+                         #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b nil)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
+                         #'err #'ok)))
 #+END_SRC
 
 ** OR

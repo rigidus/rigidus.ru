@@ -322,17 +322,27 @@ List - это функция, которая вычисляет свои арг�
 
 * AND
 
-Подобно ~evlis~, ~evand~ рекурсивно вычисляет список, применяя к результатам
-~and~. Подобно ~evprogn~, в случае передачи списка из одного аргумента ~evand~
-завершается с возвращением результата вычисления ~and~ от одного элемента.
+Возможны три ситуации:
+- при передаче пустого списка аргументов ~and~ возвращает T
+- при передаче списка из одного элемента ~and~ возвращает результат оценки этого
+  элемента
+- в ином случае ~and~ оценивает первый аргумент
+  - если он равен ~nil~ - возвращает nil
+  - иначе возвращает результат рекурсивного вызова от остатка списка аргументов
+
+
+ возвращаемое значение вычисляется как результат операции ~and~ над
+  оценкой первого элемента и возвратом рекурсивного вызова
 
 #+NAME: evand_0
 #+BEGIN_SRC lisp
-  (defun evand (lst)
-    (cond ((null lst)        (and))
-          ((null (cdr lst))  (and (myeval (car lst))))
-          (t                 (and (myeval (car lst))
-                                  (evand (cdr lst))))))
+  (defun evand (args)
+    (cond ((null args)        T)
+          ((null (cdr args))  (myeval (car args)))
+          (t                  (let ((tmp (myeval (car args))))
+                                (if (null tmp)
+                                    nil
+                                    (evand (cdr args)))))))
 #+END_SRC
 
 Протестируем ~evand~:
@@ -346,6 +356,7 @@ List - это функция, которая вычисляет свои арг�
   (assert (equal (and 1 nil)     (evand '(1 nil ))))
   (assert (equal (and 1 2 nil)   (evand '(1 2 nil))))
   (assert (equal (and 1 2 3)     (evand '(1 2 3))))
+  (assert (equal (and 1 2 nil 3) (evand '(1 2 nil 3))))
 #+END_SRC
 
 Теперь мы можем определить ~and~:
@@ -360,13 +371,15 @@ List - это функция, которая вычисляет свои арг�
 #+NAME: and_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для AND
-  (assert (equal (and)                (myeval '(and))))
-  (assert (equal (and 1)              (myeval '(and 1))))
-  (assert (equal (and nil)            (myeval '(and nil))))
-  (assert (equal (and 1 nil)          (myeval '(and 1 nil))))
-  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil))))
-  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3))))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3))))
+  (assert (equal (and)                  (myeval '(and))))
+  (assert (equal (and 1)                (myeval '(and 1))))
+  (assert (equal (and nil)              (myeval '(and nil))))
+  (assert (equal (and 1 nil)            (myeval '(and 1 nil))))
+  (assert (equal (and 1 2 nil)          (myeval '(and 1 2 nil))))
+  (assert (equal (and 1 2 3)            (myeval '(and 1 2 3))))
+  (assert (equal (and 1 2 nil 3)        (myeval '(and 1 2 nil 3))))
+  (assert (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3))))
+  (assert (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3))))
 #+END_SRC
 
 * OR

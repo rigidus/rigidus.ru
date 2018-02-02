@@ -684,19 +684,15 @@
 
 #+NAME: myeval_evand_6
 #+BEGIN_SRC lisp
-  (defun evand (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)        (funcall cont (and)))
-          ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (and x)))))
-          (t                  (myeval (car lst) env block-env go-env catch-env errcont
+  (defun evand (args env block-env catch-env go-env errcont cont)
+    (cond ((null args)        (funcall cont T))
+          ((null (cdr args))  (myeval (car args) env block-env catch-env go-env errcont cont))
+          (t                  (myeval (car args) env block-env catch-env go-env errcont
                                       (lambda (x)
-                                        (funcall cont
-                                                 (and x
-                                                      (evand (cdr lst)
-                                                             env block-env go-env catch-env
-                                                             errcont cont))))))))
+                                        (if (null x)
+                                            (funcall cont nil)
+                                            (evand (cdr args) env block-env catch-env go-env
+                                                   errcont cont)))))))
 #+END_SRC
 
 Поправим тесты
@@ -710,6 +706,7 @@
   (assert (equal (and 1 nil)     (evand '(1 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil nil nil nil #'err #'ok)))
   ;; Тесты для EVAND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -731,15 +728,21 @@
                        (c 3))
                    (and a b c))
                  (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil)
+                       (d 3))
+                   (and a b c d))
+                 (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) nil nil nil #'err #'ok)))
 #+END_SRC
 
 Добавим параметры в вызов
 
 #+NAME: myeval_and_6
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                    env block-env go-env catch-env
-                                                    errcont cont)))
+  ((equal (car exp) 'and)      (evand (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont))
 #+END_SRC
 
 Поправим тесты
@@ -753,7 +756,10 @@
   (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok)))
   (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil
+                                              #'err #'ok)))
+  (assert (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
+                                                #'err #'ok)))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
@@ -775,6 +781,18 @@
                        (c 3))
                    (and a b c))
                  (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
+                         #'err #'ok)))
+  (assert (equal (let ((a 1)
+                       (b nil)
+                       (c 3))
+                   (and a (and a b) c))
+                 (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
+                         #'err #'ok)))
 #+END_SRC
 
 ** OR
