@@ -792,29 +792,26 @@ clauses в ~myeval~ и ~myapply~.
 
 #+NAME: myeval_evor_8
 #+BEGIN_SRC lisp
-  (defun evor (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x)))))
-          (t                 (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x
-                                                    (evor (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+  (defun evor (args env block-env go-env catch-env errcont cont)
+    (cond ((null args)        (funcall cont nil))
+          ((null (cdr args))  (myeval (car args) env block-env go-env catch-env errcont cont))
+          (t                  (myeval (car args) env block-env go-env catch-env errcont
+                                      (lambda (x)
+                                        (if (not (null x))
+                                            (funcall cont x)
+                                            (evor (cdr args) env block-env go-env catch-env
+                                                  errcont cont)))))))
 #+END_SRC
 
 #+NAME: myeval_evor_8_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or)                   (evor '() nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)             (evor '(nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil nil nil nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
@@ -836,6 +833,13 @@ clauses в ~myeval~ и ~myapply~.
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3)
+                       (d nil))
+                   (or a b c d))
+                 (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) nil nil nil
+                       #'err #'ok)))
 #+END_SRC
 
 #+NAME: myeval_or_8
@@ -874,6 +878,13 @@ clauses в ~myeval~ и ~myapply~.
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                         nil nil nil #'err #'ok)))
 #+END_SRC
 
 ** LET
@@ -1347,18 +1358,7 @@ NB: делаем implicit progn в body и в closure
                                   nil nil nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO LABELS
-
-[TODO:gmm] добавить impicit progn
-
-Здесь мы воплощаем новую функциональность - LABELS. Она нужна нам для того чтобы иметь
-возможность делать рекурсивные лямбды в лексическом окружении. В этом есть следующая
-сложность: в момент определения такой лямбды необходимо, чтобы окружение, в котором она
-определяется, содержало символ, указывающий на саму лямбду.
-
-Чтобы это сделать, мы сначала сформируем окружение, в котором есть символ определяемой
-лямбды, но он указывает на NIL. Затем, после определения лямбды мы пройдем по созданным
-ссылкам и установим им правильное значение.
+** LABELS
 
 #+NAME: myeval_labels_8
 #+BEGIN_SRC lisp
@@ -1368,7 +1368,7 @@ NB: делаем implicit progn в body и в closure
                                       (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                       (closures (mapcar (lambda (label)
                                                           ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
-                                                          (make-closure :body (caddr label)
+                                                          (make-closure :body (cons 'progn (cddr label)) ;;implicit progn
                                                                         :block-env block-env
                                                                         :env new-env
                                                                         :go-env go-env
@@ -1388,14 +1388,39 @@ NB: делаем implicit progn в body и в closure
                                  (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
 #+END_SRC
 
+[TODO:gmm] Тесты не проходят
+
 #+NAME: myeval_labels_8_test
 #+BEGIN_SRC lisp
   ;; Тесты для LABELS
-  (assert (equal 3 (myeval '(labels ((zzz (lst acc)
+  (assert (equal (labels ((zzz (lst acc)
+                            (print acc)
+                            (cond ((null lst) acc)
+                                  (t (zzz (cdr lst) (+ 1 acc))))))
+                   (print 888)
+                   (zzz '(1 2 3) 0))
+                 (myeval '(labels ((zzz (lst acc)
+                                    (print acc)
+                                    (cond ((null lst) acc)
+                                          (t (zzz (cdr lst) (+ 1 acc))))))
+                           (print 888)
+                           (zzz '(1 2 3) 0))
+                           nil nil nil nil #'err #'ok)))
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (labels ((zzz (lst acc)
+                              (print acc)
+                              (cond ((null lst) acc)
+                                    (t (zzz (cdr lst) (+ 1 acc))))))
+                     (print 888)
+                     (zzz '(1 2 3) 0)))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(labels ((zzz (lst acc)
+                                      (print acc)
                                       (cond ((null lst) acc)
                                             (t (zzz (cdr lst) (+ 1 acc))))))
+                             (print 888)
                              (zzz '(1 2 3) 0))
-                           nil nil nil nil #'err #'ok)))
+                           nil nil nil nil #'err #'identity))))
 #+END_SRC
 
 ** RESET

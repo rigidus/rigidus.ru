@@ -801,19 +801,15 @@
 
 #+NAME: myeval_evor_6
 #+BEGIN_SRC lisp
-  (defun evor (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x)))))
-          (t                 (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x
-                                                    (evor (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+  (defun evor (args env block-env go-env catch-env errcont cont)
+    (cond ((null args)        (funcall cont nil))
+          ((null (cdr args))  (myeval (car args) env block-env go-env catch-env errcont cont))
+          (t                  (myeval (car args) env block-env go-env catch-env errcont
+                                      (lambda (x)
+                                        (if (not (null x))
+                                            (funcall cont x)
+                                            (evor (cdr args) env block-env go-env catch-env
+                                                  errcont cont)))))))
 #+END_SRC
 
 Тесты получают дополнительный nil
@@ -821,11 +817,12 @@
 #+NAME: myeval_evor_6_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or)                   (evor '() nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)             (evor '(nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil nil nil nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
@@ -847,6 +844,13 @@
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3)
+                       (d nil))
+                   (or a b c d))
+                 (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) nil nil nil
+                       #'err #'ok)))
 #+END_SRC
 
 Добавим параметры в вызов
@@ -889,6 +893,13 @@
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                         nil nil nil #'err #'ok)))
 #+END_SRC
 
 ** LET

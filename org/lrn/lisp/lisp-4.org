@@ -1286,39 +1286,27 @@ MYAPPLY.
 
 Выполняем CPS-преобразование (очень похоже на EVCOND)
 
-[TODO:gmm] Здесь и далее выполнить CPS-проеобразование OR
-
 #+NAME: myeval_evor_4
 #+BEGIN_SRC lisp
-  (defun evor (args env)
-    (cond ((null args)        nil)
-          ((null (cdr args))  (myeval (car args) env))
-          (t                  (let ((tmp (myeval (car args) env)))
-                                (if (not (null tmp))
-                                    tmp
-                                    (evor (cdr args) env))))))
-
-  (defun evor (lst env errcont cont)
-    (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x)))))
-          (t                 (myeval (car lst) env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x
-                                                    (evor (cdr lst) env errcont cont))))))))
+  (defun evor (args env errcont cont)
+    (cond ((null args)        (funcall cont nil))
+          ((null (cdr args))  (myeval (car args) env errcont cont))
+          (t                  (myeval (car args) env errcont
+                                      (lambda (x)
+                                        (if (not (null x))
+                                            (funcall cont x)
+                                            (evor (cdr args) env errcont cont)))))))
 #+END_SRC
 
 #+NAME: myeval_evor_4_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil #'err #'ok)))
+  (assert (equal (or)                   (evor '() nil #'err #'ok)))
+  (assert (equal (or nil 1)             (evor '(nil 1) nil #'err #'ok)))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1) nil #'err #'ok)))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2) nil #'err #'ok)))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3) nil #'err #'ok)))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
@@ -1340,6 +1328,12 @@ MYAPPLY.
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3)
+                       (d nil))
+                   (or a b c d))
+                 (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) #'err #'ok)))
 #+END_SRC
 
 Теперь мы можем определить ~or~:
@@ -1380,6 +1374,13 @@ MYAPPLY.
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                         #'err #'ok)))
 #+END_SRC
 
 ** LET

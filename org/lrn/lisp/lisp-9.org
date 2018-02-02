@@ -1084,40 +1084,24 @@ assoc-2 не являются продолжениями интерпретат�
 
 Теперь ~evor~, в случае получения непустого списка параметров будет создавать эту
 структуру и передавать её в качестве продолжения в ~myeval~, вместо лямбды. Для
-единообразия мы переименовали ~lst~ в ~exps~.
-
-[ Так как логика проксирования ~or~ для нашего хост-языка не отличается передаем мы
-один аргумент или два - мы можем выбросить из обработки тот случай, где мы передаем
-один аргумент. ]
+единообразия мы переименовали ~args~ в ~exps~.
 
 #+NAME: myeval_evor_9
 #+BEGIN_SRC lisp
   ;; было
-  (defun evor (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)        (funcall cont (or)))
-          ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x)))))
-          (t                 (myeval (car lst) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (funcall cont
-                                                (or x
-                                                    (evor (cdr lst)
-                                                          env block-env go-env catch-env
-                                                          errcont cont))))))))
+  (defun evor (args env block-env go-env catch-env errcont cont)
+    (cond ((null args)        (funcall cont nil))
+          ((null (cdr args))  (myeval (car args) env block-env go-env catch-env errcont cont))
+          (t                  (myeval (car args) env block-env go-env catch-env errcont
+                                      (lambda (x)
+                                        (if (not (null x))
+                                            (funcall cont x)
+                                            (evor (cdr args) env block-env go-env catch-env
+                                                  errcont cont)))))))
   ;; стало
   (defun evor (exps env block-env go-env catch-env errcont cont)
-    (cond ((null exps)       (apply-continuation cont (or)))
-          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont
-                                     (make-or-cont
-                                      :exps (cdr exps)
-                                      :env env
-                                      :block-env block-env
-                                      :go-env go-env
-                                      :catch-env catch-env
-                                      :errcont errcont
-                                      :cont cont)))
+    (cond ((null exps)       (apply-continuation cont nil))
+          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont cont))
           (t                 (myeval (car exps) env block-env go-env catch-env errcont
                                      (make-or-cont
                                       :exps (cdr exps)
@@ -1130,10 +1114,10 @@ assoc-2 не являются продолжениями интерпретат�
 #+END_SRC
 
 А саму логику из лямбды переместим в ~apply-continuation~. В этот момент аргументы уже
-вычислены. Если аргумент истинный, то возвращаем применение продолжения, которое берем
-из структуры, к аргументу (потому что ~or~ возвращает свой аргумент). В противном
-случае нам надо продолжить вычисление, оценивая другие формы. Для этого рекурсивно
-вызываем ~evor~.
+вычислены. Если аргумент истинный, то возвращаем применение продолжения к аргументу
+(потому что ~or~ возвращает свой аргумент). Это продолжение берем из структуры, . В
+противном случае нам надо продолжить вычисление, оценивая другие формы. Для этого
+рекурсивно вызываем ~evor~.
 
 #+NAME: apply_cont_evor_9
 #+BEGIN_SRC lisp
@@ -1151,11 +1135,12 @@ assoc-2 не являются продолжениями интерпретат�
 #+NAME: myeval_evor_9_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or)                   (evor '() nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1)             (evor '(nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil nil nil nil #'err #'ok)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
@@ -1177,6 +1162,13 @@ assoc-2 не являются продолжениями интерпретат�
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3)
+                       (d nil))
+                   (or a b c d))
+                 (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) nil nil nil
+                       #'err #'ok)))
 #+END_SRC
 
 #+NAME: myeval_or_9
@@ -1215,6 +1207,13 @@ assoc-2 не являются продолжениями интерпретат�
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                         nil nil nil #'err #'ok)))
 #+END_SRC
 
 ** LET
@@ -2110,28 +2109,31 @@ assoc-2 не являются продолжениями интерпретат�
 
 ** LABELS
 
-[TODO:gmm] impicit progn
-
-Без изменений
-
 #+NAME: myeval_labels_9
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label)
+  ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
                                                        (cons (car label) nil))
                                                      (cadr exp)))
-                                      (new-env (append alist env))
+                                      (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                       (closures (mapcar (lambda (label)
-                                                          (make-closure :body (caddr label)
+                                                          ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
+                                                          (make-closure :body (cons 'progn (cddr label)) ;;implicit progn
                                                                         :block-env block-env
                                                                         :env new-env
                                                                         :go-env go-env
                                                                         :args (cadr label)))
                                                         (cadr exp))))
+                                 ;; alist:    '((zzz . nil) (xxx . nil))
+                                 ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
+                                 ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
                                  (assert (equal (length alist) (length closures)))
                                  (loop
                                     :for aelt     :in alist
                                     :for closure  :in closures
                                     :do (rplacd aelt closure))
+                                 ;; получаем:
+                                 ;; alist:    '((zzz . #:closure) (xxx . #:closure))
+                                 ;; И передаем new-env в качестве окружения
                                  (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
 #+END_SRC
 
@@ -2139,11 +2141,34 @@ assoc-2 не являются продолжениями интерпретат�
 #+NAME: myeval_labels_9_test
 #+BEGIN_SRC lisp
   ;; Тесты для LABELS
-  (assert (equal 3 (myeval '(labels ((zzz (lst acc)
+  (assert (equal (labels ((zzz (lst acc)
+                            (print acc)
+                            (cond ((null lst) acc)
+                                  (t (zzz (cdr lst) (+ 1 acc))))))
+                   (print 888)
+                   (zzz '(1 2 3) 0))
+                 (myeval '(labels ((zzz (lst acc)
+                                    (print acc)
+                                    (cond ((null lst) acc)
+                                          (t (zzz (cdr lst) (+ 1 acc))))))
+                           (print 888)
+                           (zzz '(1 2 3) 0))
+                           nil nil nil nil #'err #'ok)))
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (labels ((zzz (lst acc)
+                              (print acc)
+                              (cond ((null lst) acc)
+                                    (t (zzz (cdr lst) (+ 1 acc))))))
+                     (print 888)
+                     (zzz '(1 2 3) 0)))
+                 (with-output-to-string (*standard-output*)
+                   (myeval '(labels ((zzz (lst acc)
+                                      (print acc)
                                       (cond ((null lst) acc)
                                             (t (zzz (cdr lst) (+ 1 acc))))))
+                             (print 888)
                              (zzz '(1 2 3) 0))
-                           nil nil nil nil #'err #'ok)))
+                           nil nil nil nil #'err #'identity))))
 #+END_SRC
 
 ** RESET
