@@ -446,11 +446,13 @@ LIST определяем почти без изменений:
 
 #+NAME: evor_1
 #+BEGIN_SRC lisp
-  (defun evor (lst env)
-    (cond ((null lst)        (or))
-          ((null (cdr lst))  (or (myeval (car lst) env)))
-          (t                 (or (myeval (car lst) env)
-                                 (evor (cdr lst) env)))))
+  (defun evor (args env)
+    (cond ((null args)        nil)
+          ((null (cdr args))  (myeval (car args) env))
+          (t                  (let ((tmp (myeval (car args) env)))
+                                (if (not (null tmp))
+                                    tmp
+                                    (evor (cdr args) env))))))
 #+END_SRC
 
 Добавим тесты ~evor~ в окружении:
@@ -458,11 +460,12 @@ LIST определяем почти без изменений:
 #+NAME: evor_1_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '() nil)))
-  (assert (equal (or nil 1)     (evor '(nil 1) nil)))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1) nil)))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2) nil)))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3) nil)))
+  (assert (equal (or)                   (evor '() nil)))
+  (assert (equal (or nil 1)             (evor '(nil 1) nil)))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1) nil)))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2) nil)))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3) nil)))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil)))
   ;; Тесты для EVOR в окружении
   (assert (equal (let ((a nil))
                    (or a))
@@ -484,6 +487,12 @@ LIST определяем почти без изменений:
                        (c 2))
                    (or a b c))
                  (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3)
+                       (d nil))
+                   (or a b c d))
+                 (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)))))
 #+END_SRC
 
 Добавляем параметр ~env~:
@@ -524,6 +533,12 @@ LIST определяем почти без изменений:
                        (c 2))
                    (or a b c))
                  (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2)))))
 #+END_SRC
 
 * Встроенные функции арифметики

@@ -323,7 +323,7 @@ List - это функция, которая вычисляет свои арг�
 * AND
 
 Возможны три ситуации:
-- при передаче пустого списка аргументов ~and~ возвращает T
+- при передаче пустого списка аргументов ~and~ возвращает ~T~
 - при передаче списка из одного элемента ~and~ возвращает результат оценки этого
   элемента
 - в ином случае ~and~ оценивает первый аргумент
@@ -384,15 +384,23 @@ List - это функция, которая вычисляет свои арг�
 
 * OR
 
-Определение ~or~ полностью аналогочно определению ~and~:
+Возможны три ситуации:
+- при передаче пустого списка аргументов ~or~ возвращает ~nil~
+- при передаче списка из одного элемента ~or~ возвращает результат оценки этого
+  элемента
+- в ином случае ~or~ оценивает первый аргумент
+  - если он НЕ равен ~nil~ - возвращает его
+  - иначе возвращает результат рекурсивного вызова от остатка списка аргументов
 
 #+NAME: evor_0
 #+BEGIN_SRC lisp
-  (defun evor (lst)
-    (cond ((null lst)        (or))
-          ((null (cdr lst))  (or (myeval (car lst))))
-          (t                 (or (myeval (car lst))
-                                 (evor (cdr lst))))))
+  (defun evor (args)
+    (cond ((null args)        nil)
+          ((null (cdr args))  (myeval (car args)))
+          (t                  (let ((tmp (myeval (car args))))
+                                (if (not (null tmp))
+                                    tmp
+                                    (evor (cdr args)))))))
 #+END_SRC
 
 Тесты
@@ -400,11 +408,12 @@ List - это функция, которая вычисляет свои арг�
 #+NAME: evor_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для EVOR
-  (assert (equal (or)           (evor '())))
-  (assert (equal (or nil 1)     (evor '(nil 1))))
-  (assert (equal (or nil nil 1) (evor '(nil nil 1))))
-  (assert (equal (or nil 1 2)   (evor '(nil 1 2))))
-  (assert (equal (or 1 2 3)     (evor '(1 2 3))))
+  (assert (equal (or)                   (evor '())))
+  (assert (equal (or nil 1)             (evor '(nil 1))))
+  (assert (equal (or nil nil 1)         (evor '(nil nil 1))))
+  (assert (equal (or nil 1 2)           (evor '(nil 1 2))))
+  (assert (equal (or 1 2 3)             (evor '(1 2 3))))
+  (assert (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil))))
 #+END_SRC
 
 Теперь мы можем определить ~or~:
@@ -419,11 +428,12 @@ List - это функция, которая вычисляет свои арг�
 #+NAME: or_0_test
 #+BEGIN_SRC lisp
   ;; Тесты для OR
-  (assert (equal (or)                  (myeval '(or))))
-  (assert (equal (or nil 1)            (myeval '(or nil 1))))
-  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1))))
-  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2))))
-  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2))))
+  (assert (equal (or)                      (myeval '(or))))
+  (assert (equal (or nil 1)                (myeval '(or nil 1))))
+  (assert (equal (or nil nil 1)            (myeval '(or nil nil 1))))
+  (assert (equal (or nil 1 2)              (myeval '(or nil 1 2))))
+  (assert (equal (or nil (or 3 2) 2)       (myeval '(or nil (or 3 2) 2))))
+  (assert (equal (or nil (or nil nil) 2)   (myeval '(or nil (or nil nil) 2))))
 #+END_SRC
 
 * Встроенные функции арифметики
