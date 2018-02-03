@@ -302,13 +302,13 @@ clauses в ~myeval~ и ~myapply~.
 #+NAME: myapply_closure_8
 #+BEGIN_SRC lisp
   ((closure-p fn)              (evprogn (closure-body fn)
-                                       (pairlis (closure-args fn)
-                                                args
-                                                (closure-env fn))
-                                       (closure-block-env fn)
-                                       (closure-go-env fn)
-                                       catch-env
-                                       errcont cont))
+                                        (pairlis (closure-args fn)
+                                                 args
+                                                 (closure-env fn))
+                                        (closure-block-env fn)
+                                        (closure-go-env fn)
+                                        catch-env
+                                        errcont cont))
 #+END_SRC
 
 #+NAME: myapply_closure_8_test
@@ -1003,11 +1003,7 @@ clauses в ~myeval~ и ~myapply~.
                                     nil nil nil nil #'err #'ok)))
 #+END_SRC
 
-** TODO DEFUN
-
-[TODO:gmm] В текущей реализации мы не перезаписываем уже определенную функцию!
-
-NB: делаем implicit progn в body и в closure
+** DEFUN
 
 #+NAME: myeval_defun_8
 #+BEGIN_SRC lisp
@@ -1030,6 +1026,16 @@ NB: делаем implicit progn в body и в closure
                       (myeval '(defun alfa (x) (* x x)) nil nil nil nil #'err #'ok)
                       (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
                         (setf *glob-env* nil)))))
+  ;; Тесты на IMPLICIT-PROGN в DEFUN
+  (assert (equal 384 (progn
+                       (setf *glob-env* nil)
+                       (myeval '(let ((y 3))
+                                 (defun alfa (x)
+                                   (setq y 6)
+                                   (* x x y)))
+                               nil nil nil nil #'err #'ok)
+                       (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
+                         (setf *glob-env* nil)))))
 #+END_SRC
 
 ** SETQ
@@ -1101,6 +1107,12 @@ NB: делаем implicit progn в body и в closure
   ;; Тесты для LAMBDA в окружении
   (assert (equal 5 (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
+                           nil nil nil nil #'err #'ok)))
+  ;; Тесты на IMPLICIT-PROGN в LAMBDA
+  (assert (equal 8 (myeval '(let ((y 3))
+                             ((lambda (x)
+                                (setq y 6)
+                                (+ y x)) 2))
                            nil nil nil nil #'err #'ok)))
 #+END_SRC
 
@@ -1368,7 +1380,7 @@ NB: делаем implicit progn в body и в closure
                                       (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                       (closures (mapcar (lambda (label)
                                                           ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
-                                                          (make-closure :body (cons 'progn (cddr label)) ;;implicit progn
+                                                          (make-closure :body (cddr label) ;;implicit progn
                                                                         :block-env block-env
                                                                         :env new-env
                                                                         :go-env go-env
@@ -1387,8 +1399,6 @@ NB: делаем implicit progn в body и в closure
                                  ;; И передаем new-env в качестве окружения
                                  (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
 #+END_SRC
-
-[TODO:gmm] Тесты не проходят
 
 #+NAME: myeval_labels_8_test
 #+BEGIN_SRC lisp

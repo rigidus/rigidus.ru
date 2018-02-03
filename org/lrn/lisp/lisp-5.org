@@ -311,16 +311,16 @@
 
 #+NAME: myapply_closure_5
 #+BEGIN_SRC lisp
-  ((closure-p fn)              (myeval (closure-body fn)
-                                       (pairlis (closure-args fn)
-                                                args
-                                                (closure-env fn))
-                                       (closure-block-env fn)
-                                       catch-env
-                                       errcont cont))
+  ((closure-p fn)              (evprogn (closure-body fn)
+                                        (pairlis (closure-args fn)
+                                                 args
+                                                 (closure-env fn))
+                                        (closure-block-env fn)
+                                        catch-env
+                                        errcont cont))
 #+END_SRC
 
-Нам также надо написать тесты, чтобы убедиться, что это работает правильно:
+Добавляем параметры в тесты
 
 #+NAME: myapply_closure_5_test
 #+BEGIN_SRC lisp
@@ -1035,7 +1035,7 @@
 #+BEGIN_SRC lisp
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
-                                                  (make-closure :body (cadddr exp)
+                                                  (make-closure :body (cdddr exp)
                                                                 :env env
                                                                 :block-env block-env
                                                                 :args (caddr exp)))
@@ -1051,6 +1051,16 @@
                       (myeval '(defun alfa (x) (* x x)) nil nil nil #'err #'ok)
                       (prog1 (myeval '(alfa 8) nil nil nil #'err #'ok)
                         (setf *glob-env* nil)))))
+  ;; Тесты на IMPLICIT-PROGN в DEFUN
+  (assert (equal 384 (progn
+                       (setf *glob-env* nil)
+                       (myeval '(let ((y 3))
+                                 (defun alfa (x)
+                                   (setq y 6)
+                                   (* x x y)))
+                               nil nil nil #'err #'ok)
+                       (prog1 (myeval '(alfa 8) nil nil nil #'err #'ok)
+                         (setf *glob-env* nil)))))
 #+END_SRC
 
 ** SETQ
@@ -1114,7 +1124,7 @@
 
 #+NAME: myeval_lambda_5
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (caddr exp)
+  ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (cddr exp)
                                                            :env env
                                                            :block-env block-env
                                                            :args (cadr exp))))
@@ -1129,6 +1139,12 @@
   (assert (equal 5 (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
                            nil nil nil #'err #'ok)))
+  ;; Тесты на IMPLICIT-PROGN в LAMBDA
+  (assert (equal 8 (myeval '(let ((y 3))
+                             ((lambda (x)
+                                (setq y 6)
+                                (+ y x)) 2))
+                           nil nil nil  #'err #'ok)))
 #+END_SRC
 
 ** BLOCK
@@ -1244,7 +1260,7 @@
 
 #+END_SRC
 
-** TODO THROW
+** THROW
 
 Когда мы бросаем исключение, мы извлекаем из окружения ~catch-env~ соответствующее
 продолжение и вызываем его.
@@ -1282,21 +1298,21 @@
                               (defun foo (x)
                                 (catch 'in-lambda-catch
                                   (throw 'in-lambda-catch
-                                    (+ x 2)))
-                                777)
+                                    (+ x 2))
+                                  777))
                               (foo 10))
                             nil nil nil (lambda (x) "error")
                             #'ok)))
   ;; Тест THROW в динамической области видимости (должно сработать)
   (assert (equal 12 (myeval '(progn
-                                   (defun foo (x)
-                                     (throw 'in-lambda-catch
-                                       (+ x 2))
-                                     777)
-                                   (catch 'in-lambda-catch
-                                     (foo 10)))
-                                 nil nil nil (lambda (x) "error")
-                                 #'ok)))
+                              (defun foo (x)
+                                (throw 'in-lambda-catch
+                                  (+ x 2))
+                                777)
+                              (catch 'in-lambda-catch
+                                (foo 10)))
+                            nil nil nil (lambda (x) "error")
+                            #'ok)))
 #+END_SRC
 
 * REPL

@@ -2,8 +2,6 @@
 
 * План работ
 
-[TODO:gmm] Добавить call/cc, shift и reset, а также repl
-
 Продолжаем дефункционализацию.
 
 Наша задача - заменить вызовы ~myeval~ на возврат значения таким образом, чтобы внешний
@@ -200,6 +198,7 @@
     catch-env
     errcont
     cont)
+  <<construct_9>>
 #+END_SRC
 
 * MyApply
@@ -227,6 +226,7 @@
       <<myapply_closure_10>>
       <<myapply_print_10>>
       <<myapply_list_10>>
+      <<myapply_callcc_10>>
       (t (error 'unknown-function :fn fn))))
 #+END_SRC
 
@@ -241,6 +241,7 @@
   <<myapply_print_10_test>>
   <<myapply_evlis_10_test>>
   <<myapply_list_10_test>>
+  <<myapply_callcc_10_test>>
 #+END_SRC
 
 ** Работа с CONS-ячейками
@@ -418,26 +419,29 @@
 
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 
+[TODO:gmm] Так как мы добавили ~implicit progn~ изменения относительно возврата
+eval-фрейма стали некорректны
+
 #+NAME: myapply_closure_10
 #+BEGIN_SRC lisp
   ;; стало
-  ((closure-p fn)              (list 'eval (closure-body fn)
-                                     (pairlis (closure-args fn)
-                                              args
-                                              (closure-env fn))
-                                     (closure-block-env fn)
-                                     (closure-go-env fn)
-                                     catch-env
-                                     errcont cont))
+  ;; ((closure-p fn)              (list 'eval (closure-body fn)
+  ;;                                    (pairlis (closure-args fn)
+  ;;                                             args
+  ;;                                             (closure-env fn))
+  ;;                                    (closure-block-env fn)
+  ;;                                    (closure-go-env fn)
+  ;;                                    catch-env
+  ;;                                    errcont cont))
   ;; было
-  ((closure-p fn)              (myeval (closure-body fn)
-                                       (pairlis (closure-args fn)
-                                                args
-                                                (closure-env fn))
-                                       (closure-block-env fn)
-                                       (closure-go-env fn)
-                                       catch-env
-                                       errcont cont))
+  ((closure-p fn)              (evprogn (closure-body fn)
+                                        (pairlis (closure-args fn)
+                                                 args
+                                                 (closure-env fn))
+                                        (closure-block-env fn)
+                                        (closure-go-env fn)
+                                        catch-env
+                                        errcont cont))
 #+END_SRC
 
 #+NAME: myapply_closure_10_test
@@ -564,13 +568,27 @@
                          nil nil nil #'err #'ok)))
 #+END_SRC
 
+** CALL/CC
+
+#+NAME: myapply_callcc_10
+#+BEGIN_SRC lisp
+  ((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
+  ((functionp fn)              (apply fn args))      ; interim hack
+#+END_SRC
+
+#+NAME: myapply_callcc_10_test
+#+BEGIN_SRC lisp
+  ;; Тесты для CALL/CC
+  ;; (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
+  ;;                           nil nil nil nil #'err #'ok)))
+#+END_SRC
+
 * MyEval
 
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 
 #+NAME: myeval_10
 #+BEGIN_SRC lisp
-  <<evcond_cont_10>>
   <<myeval_evcond_10>>
   <<myeval_evprogn_10>>
   <<myeval_evand_10>>
@@ -604,6 +622,8 @@
       <<myeval_tagbody_10>>
       <<myeval_go_10>>
       <<myeval_labels_10>>
+      <<myeval_reset_10>>
+      <<myeval_shift_10>>
       (t
        (list 'eval (car exp) env block-env go-env catch-env errcont
                (lambda (x)
@@ -651,7 +671,7 @@
 #+BEGIN_SRC lisp
   ((null exp)                  (list 'return cont 'nil))
   ((equal 't exp)              (list 'return cont 't))
-  ((member exp '(+ * car cdr cons null print or and))  (list 'return cont exp))
+  ((member exp '(+ * car cdr cons null print list call/cc repl))  (list 'return cont exp))
   ((numberp exp)               (list 'return cont exp))
 #+END_SRC
 
@@ -734,9 +754,7 @@
 
 ** DONE COND
 
-Изменим структуру так, чтобы наследоваться от ~unicont~
-
-#+NAME: evcond_cont_10
+#+NAME: construct_10
 #+BEGIN_SRC lisp
   (defstruct (evcond-cont (:include unicont))
     clauses
@@ -1252,7 +1270,7 @@
   ;; стало
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
-                                                  (make-closure :body (cadddr exp)
+                                                  (make-closure :body (cdddr exp)
                                                                 :block-env block-env
                                                                 :env env
                                                                 :go-env go-env
@@ -1262,7 +1280,7 @@
   ;; было
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
-                                                  (make-closure :body (cadddr exp)
+                                                  (make-closure :body (cdddr exp)
                                                                 :block-env block-env
                                                                 :env env
                                                                 :go-env go-env
@@ -1279,6 +1297,16 @@
                       (myeval '(defun alfa (x) (* x x)) nil nil nil nil #'err #'ok)
                       (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
                         (setf *glob-env* nil)))))
+  ;; Тесты на IMPLICIT-PROGN в DEFUN
+  (assert (equal 384 (progn
+                       (setf *glob-env* nil)
+                       (myeval '(let ((y 3))
+                                 (defun alfa (x)
+                                   (setq y 6)
+                                   (* x x y)))
+                               nil nil nil nil #'err #'ok)
+                       (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
+                         (setf *glob-env* nil)))))
 #+END_SRC
 
 ** SETQ
@@ -1352,7 +1380,7 @@
 #+NAME: myeval_lambda_10
 #+BEGIN_SRC lisp
   ;; стало
-  ((equal (car exp) 'lambda)   (list 'return cont (make-closure :body (caddr exp)
+  ((equal (car exp) 'lambda)   (list 'return cont (make-closure :body (cddr exp)
                                                                 :block-env block-env
                                                                 :env env
                                                                 :go-env go-env
@@ -1367,6 +1395,12 @@
   ;; Тесты для LAMBDA в окружении
   (assert (equal 5 (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
+                           nil nil nil nil #'err #'ok)))
+  ;; Тесты на IMPLICIT-PROGN в LAMBDA
+  (assert (equal 8 (myeval '(let ((y 3))
+                             ((lambda (x)
+                                (setq y 6)
+                                (+ y x)) 2))
                            nil nil nil nil #'err #'ok)))
 #+END_SRC
 
@@ -1737,7 +1771,7 @@
                                       (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
                                       (closures (mapcar (lambda (label)
                                                           ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
-                                                          (make-closure :body (cons 'progn (cddr label)) ;;implicit progn
+                                                          (make-closure :body (cddr label) ;; implicit progn
                                                                         :block-env block-env
                                                                         :env new-env
                                                                         :go-env go-env
@@ -1789,6 +1823,51 @@
                              (print 888)
                              (zzz '(1 2 3) 0))
                            nil nil nil nil #'err #'identity))))
+#+END_SRC
+
+** RESET
+
+#+NAME: myeval_reset_10
+#+BEGIN_SRC lisp
+  ((equal (car exp) 'reset)    (apply-continuation cont (myeval (cadr exp)
+                                                                env block-env go-env catch-env
+                                                                errcont #'identity)))
+#+END_SRC
+
+Тест так себе, но ничего более умного не придумалось
+
+#+NAME: myeval_reset_10_test
+#+BEGIN_SRC lisp
+  ;; Тесты для RESET
+  (assert (equal 8 (myeval '(progn
+                              (+ 1 (reset (+ 2 3)) 2))
+                              nil nil nil nil #'err #'ok)))
+#+END_SRC
+
+** SHIFT
+
+В выражении ~(shift x form)~ SHIFT биндит к переменной ~x~ продолжение ~cont~. Поэтому
+(даже снаружи формы) можно будет вызвать ~x~ как функцию и перейти в это продолжение. В
+этом это похоже на ~call/cc~.
+
+#+NAME: myeval_shift_10
+#+BEGIN_SRC lisp
+  ((equal (car exp) 'shift)    (myeval (caddr exp)
+                                       (acons (cadr exp) cont env)
+                                       block-env go-env catch-env
+                                       errcont cont))
+#+END_SRC
+
+Тут мы сохраняем продолжение в переменной и используем его, чтобы возвращаться в него и
+вычислять то что происходит между ~reset~ и ~shift~.
+
+#+NAME: myeval_shift_10_test
+#+BEGIN_SRC lisp
+  ;; Тесты для SHIFT/RESET
+  (assert (equal 44 (myeval '(let ((foo))
+                              (+ 1 (reset (+ 2 (shift f (progn (setq foo f) 4)))))
+                              (foo 42))
+                            nil nil nil nil #'err #'ok)))
 #+END_SRC
 
 * Итоги

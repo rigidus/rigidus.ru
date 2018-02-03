@@ -183,18 +183,25 @@ sitizens): позволяюn передавать функции в качест
 #+END_SRC
 
 Когда нам нужно передать лямбду в функцию ~apply~ мы будем оборачивать ее в замыкание,
-сохраняя окружение функции в нем:
+сохраняя окружение функции в нем.
+
+Если во время применения функции ~fn~ к аргументам (т.е. в ~apply~) в параметре ~fn~ мы
+получаем структуру типа ~closure~, то мы должны выполнить (т.е. сделать ~eval~) ее поле
+~closure-body~ в составном окружении. Это составное окружение состоит из замкнутого
+окружения, которое мы получаем из поля ~closure-env~ структуры и полученных функцией
+~myapply~ аргументов ~args~.
+
+Чтобы обеспечить ~implicit progn~ делаем ~eval~ через ~evprogn~.
 
 #+NAME: myapply_closure_3
 #+BEGIN_SRC lisp
-  ((closure-p fn)              (myeval (closure-body fn)
-                                       (pairlis (closure-args fn)
-                                                args
-                                                (closure-env fn))))
+  ((closure-p fn)              (evprogn (closure-body fn)
+                                        (pairlis (closure-args fn)
+                                                 args
+                                                 (closure-env fn))))
 #+END_SRC
 
 Этим куском кода мы заменяем обработку ~lambda~ внутри ~myapply~.
-
 
 #+NAME: errors_3
 #+BEGIN_SRC lisp
@@ -204,6 +211,18 @@ sitizens): позволяюn передавать функции в качест
      (lambda (condition stream)
        (format stream "Error in MYAPPLY: unknown-function: ~A"
                (fn condition)))))
+#+END_SRC
+
+Нам также надо написать тесты, чтобы убедиться, что это работает правильно:
+
+#+NAME: myapply_closure_3_test
+#+BEGIN_SRC lisp
+  ;; Тесты для применения CLOSURE
+  (assert (equal 1 (myeval '(((lambda (x)
+                                (lambda (y) x))
+                              1)
+                             2)
+                           nil)))
 #+END_SRC
 
 #+NAME: myapply_3
@@ -227,7 +246,6 @@ sitizens): позволяюn передавать функции в качест
   <<evaddmul_3_test>>
   <<myapply_ariph_3_test>>
   <<myapply_func_symb_3_test>>
-  ;; TODO : нужен тест для closure в apply
   <<myapply_closure_3_test>>
 #+END_SRC
 
@@ -1031,13 +1049,13 @@ sitizens): позволяюn передавать функции в качест
 ** DEFUN
 
 При создании функции мы создаем замыкание, в которое кладем тело функции, текущее
-окружение и аргументы функции.
+окружение и аргументы функции. Обеспечиваем ~implicit-progn~ в ~body~.
 
 #+NAME: myeval_defun_3
 #+BEGIN_SRC lisp
   ((equal (car lst) 'defun)         (progn
                                       (push (cons (cadr lst)
-                                                  (make-closure :body (cadddr lst)
+                                                  (make-closure :body (cdddr lst)
                                                                 :env env
                                                                 :args (caddr lst)))
                                             ,*glob-env*)
@@ -1054,6 +1072,16 @@ sitizens): позволяюn передавать функции в качест
                       (myeval '(defun alfa (x) (* x x)) nil)
                       (prog1 (myeval '(alfa 8) nil)
                         (setf *glob-env* nil)))))
+  ;; Тесты на IMPLICIT-PROGN в DEFUN
+  (assert (equal 384 (progn
+                       (setf *glob-env* nil)
+                       (myeval '(let ((y 3))
+                                 (defun alfa (x)
+                                   (setq y 6)
+                                   (* x x y)))
+                               nil)
+                       (prog1 (myeval '(alfa 8) nil)
+                         (setf *glob-env* nil)))))
 #+END_SRC
 
 ** SETQ
@@ -1086,11 +1114,12 @@ sitizens): позволяюn передавать функции в качест
 
 ** LAMBDA
 
-При обработке формы, начинающейся с вызова ~lambda~ мы должны создать замыкание:
+При обработке формы, начинающейся с вызова ~lambda~ мы должны создать замыкание.
+Обеспечиваем ~implicit-progn~ в ~body~.
 
 #+NAME: myeval_lambda_3
 #+BEGIN_SRC lisp
-  ((equal (car lst) 'lambda)   (make-closure :body (caddr lst) :env env :args (cadr lst)))
+  ((equal (car lst) 'lambda)   (make-closure :body (cddr lst) :env env :args (cadr lst)))
 #+END_SRC
 
 #+NAME: myeval_lambda_3_test
@@ -1101,6 +1130,12 @@ sitizens): позволяюn передавать функции в качест
   ;; Тесты для LAMBDA в окружении
   (assert (equal 5 (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
+                           nil)))
+  ;; Тесты на IMPLICIT-PROGN в LAMBDA
+  (assert (equal 8 (myeval '(let ((y 3))
+                             ((lambda (x)
+                                (setq y 6)
+                                (+ y x)) 2))
                            nil)))
 #+END_SRC
 
