@@ -181,7 +181,7 @@ IF и.т.д. в непосредственном режиме, то они не 
   +---------------------------+   |
   | addr of true part 1  cAFA |   |
   +---------------------------+   |
-  | addr of ture part 2  cAFA |   |
+  | addr of true part 2  cAFA |   |
   +---------------------------+   |
   | ...                  cAFA |   |
   +---------------------------+<--+
@@ -238,7 +238,7 @@ IF и.т.д. в непосредственном режиме, то они не 
   +---------------------------+   |
   | addr of true part 1  cAFA |   |
   +---------------------------+   |
-  | addr of ture part 2  cAFA |   |
+  | addr of true part 2  cAFA |   |
   +---------------------------+   |
   | ...                  cAFA |   |
   +---------------------------+   |
@@ -430,24 +430,65 @@ IF - это НЕМЕДЛЕННОЕ слово, которое компилиру
 
 *** BEGIN - WHILE - REPEAT
 
+Это цикл с предусловием.
+
 #+BEGIN_SRC forth
-  BEGIN condition WHILE loop-part REPEAT
+  BEGIN condition
+  WHILE
+          loop-part-1
+          loop-part-2
+          ...
+  REPEAT
+  rest-1
+  rest-1
 #+END_SRC
 
 компилируется в:
 
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-control-05.png
+  | ...                       |
+  +---------------------------+<------+
+  | addr of condition    cAAF |       |
+  +---------------------------+       |
+  | addr of 0BRANCH      cC44 |       |
+  +---------------------------+       |
+  | OFFSET REST          cC44 +---+   |
+  +---------------------------+   |   |
+  | addr of loop part 1  cAFA |   |   |
+  +---------------------------+   |   |
+  | addr of loop part 2  cAFA |   |   |
+  +---------------------------+   |   |
+  | ...                  cAFA |   |   |
+  +---------------------------+   |   |
+  | addr of BRANCH       c7A7 |   |   |
+  +---------------------------+   |   |
+  | OFFSET-BACK          c7A7 +---|---+
+  +---------------------------+<--+
+  | rest 1               cAAF |
+  +---------------------------+
+  | rest 2               cAAF |
+  +---------------------------+
+  | ...                       |
+#+END_SRC
+
+
 #+BEGIN_SRC forth
-  condition 0BRANCH OFFSET2 loop-part BRANCH OFFSET
+  condition
+  0BRANCH OFFSET-REST loop-part-1 loop-part-1
+  BRANCH OFFSET-BACK
+  rest-1 rest1
 #+END_SRC
 
 где OFFSET указывает назад на условие (в начало) и OFFSET2 указывает в конец, на
-позицию после всего фрагмента кода. Это похоже на следующий пример из Си:
+позицию (REST) после всего фрагмента кода. Это похоже на следующий пример из Си:
 
 #+BEGIN_SRC c
   while (condition) {
       loop-part
   }
 #+END_SRC
+
+Вот как это реализуется:
 
 #+NAME: forth_while_repeat
 #+BEGIN_SRC forth
