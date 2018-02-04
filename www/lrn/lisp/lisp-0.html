@@ -519,18 +519,39 @@ List - это функция, которая вычисляет свои арг�
 <h2 id="unnumbered-11">AND</h2>
 <div class="outline-text-2" id="text-unnumbered-11">
 <p>
-Подобно <code>evlis</code>, <code>evand</code> рекурсивно вычисляет список, применяя к результатам
-<code>and</code>. Подобно <code>evprogn</code>, в случае передачи списка из одного аргумента <code>evand</code>
-завершается с возвращением результата вычисления <code>and</code> от одного элемента.
+Возможны три ситуации:
+</p>
+<ul class="org-ul">
+<li>при передаче пустого списка аргументов <code>and</code> возвращает <code>T</code>
+</li>
+<li>при передаче списка из одного элемента <code>and</code> возвращает результат оценки этого
+элемента
+</li>
+<li>в ином случае <code>and</code> оценивает первый аргумент
+<ul class="org-ul">
+<li>если он равен <code>nil</code> - возвращает nil
+</li>
+<li>иначе возвращает результат рекурсивного вызова от остатка списка аргументов
+</li>
+</ul>
+</li>
+</ul>
+
+
+<p>
+возвращаемое значение вычисляется как результат операции <code>and</code> над
+ оценкой первого элемента и возвратом рекурсивного вызова
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evand_0">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
-        ((null (cdr lst))  (and (myeval (car lst))))
-        (t                 (and (myeval (car lst))
-                                (evand (cdr lst))))))
+<pre class="src src-lisp" id="evand_0">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (args)
+  (<span style="color: #af00ff;">cond</span> ((null args)        T)
+        ((null (cdr args))  (myeval (car args)))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args))))
+                              (<span style="color: #af00ff;">if</span> (null tmp)
+                                  nil
+                                  (evand (cdr args)))))))
 </pre>
 </div>
 
@@ -547,6 +568,7 @@ List - это функция, которая вычисляет свои арг�
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil ))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil))))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3))))
 </pre>
 </div>
 
@@ -567,13 +589,15 @@ List - это функция, которая вычисляет свои арг�
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="and_0_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                (myeval '(and))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)              (myeval '(and 1))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)            (myeval '(and nil))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)          (myeval '(and 1 nil))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)        (myeval '(and 1 2 nil))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)          (myeval '(and 1 2 3))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                  (myeval '(and))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)                (myeval '(and 1))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)              (myeval '(and nil))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)            (myeval '(and 1 nil))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)          (myeval '(and 1 2 nil))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)            (myeval '(and 1 2 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3)        (myeval '(and 1 2 nil 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3))))
 </pre>
 </div>
 </div>
@@ -583,16 +607,33 @@ List - это функция, которая вычисляет свои арг�
 <h2 id="unnumbered-12">OR</h2>
 <div class="outline-text-2" id="text-unnumbered-12">
 <p>
-Определение <code>or</code> полностью аналогочно определению <code>and</code>:
+Возможны три ситуации:
 </p>
+<ul class="org-ul">
+<li>при передаче пустого списка аргументов <code>or</code> возвращает <code>nil</code>
+</li>
+<li>при передаче списка из одного элемента <code>or</code> возвращает результат оценки этого
+элемента
+</li>
+<li>в ином случае <code>or</code> оценивает первый аргумент
+<ul class="org-ul">
+<li>если он НЕ равен <code>nil</code> - возвращает его
+</li>
+<li>иначе возвращает результат рекурсивного вызова от остатка списка аргументов
+</li>
+</ul>
+</li>
+</ul>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evor_0">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (or))
-        ((null (cdr lst))  (or (myeval (car lst))))
-        (t                 (or (myeval (car lst))
-                               (evor (cdr lst))))))
+<pre class="src src-lisp" id="evor_0">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (args)
+  (<span style="color: #af00ff;">cond</span> ((null args)        nil)
+        ((null (cdr args))  (myeval (car args)))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args))))
+                              (<span style="color: #af00ff;">if</span> (not (null tmp))
+                                  tmp
+                                  (evor (cdr args)))))))
 </pre>
 </div>
 
@@ -603,11 +644,12 @@ List - это функция, которая вычисляет свои арг�
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="evor_0_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)           (evor '())))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)     (evor '(nil 1))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1) (evor '(nil nil 1))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)   (evor '(nil 1 2))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)     (evor '(1 2 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                   (evor '())))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil))))
 </pre>
 </div>
 
@@ -628,11 +670,12 @@ List - это функция, которая вычисляет свои арг�
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="or_0_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                  (myeval '(or))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)            (myeval '(or nil 1))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)        (myeval '(or nil nil 1))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)          (myeval '(or nil 1 2))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                      (myeval '(or))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)                (myeval '(or nil 1))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)            (myeval '(or nil nil 1))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)              (myeval '(or nil 1 2))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil (or 3 2) 2)       (myeval '(or nil (or 3 2) 2))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil (or nil nil) 2)   (myeval '(or nil (or nil nil) 2))))
 </pre>
 </div>
 </div>

@@ -275,22 +275,33 @@ microlisp&gt;
 
 <p>
 Когда нам нужно передать лямбду в функцию <code>apply</code> мы будем оборачивать ее в замыкание,
-сохраняя окружение функции в нем:
+сохраняя окружение функции в нем.
+</p>
+
+<p>
+Если во время применения функции <code>fn</code> к аргументам (т.е. в <code>apply</code>) в параметре <code>fn</code> мы
+получаем структуру типа <code>closure</code>, то мы должны выполнить (т.е. сделать <code>eval</code>) ее поле
+<code>closure-body</code> в составном окружении. Это составное окружение состоит из замкнутого
+окружения, которое мы получаем из поля <code>closure-env</code> структуры и полученных функцией
+<code>myapply</code> аргументов <code>args</code>.
+</p>
+
+<p>
+Чтобы обеспечить <code>implicit progn</code> делаем <code>eval</code> через <code>evprogn</code>.
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_closure_3">((closure-p fn)              (myeval (closure-body fn)
-                                     (pairlis (closure-args fn)
-                                              args
-                                              (closure-env fn))))
+<pre class="src src-lisp" id="myapply_closure_3">((closure-p fn)              (evprogn (closure-body fn)
+                                      (pairlis (closure-args fn)
+                                               args
+                                               (closure-env fn))))
 </pre>
 </div>
 
 <p>
 Этим куском кода мы заменяем обработку <code>lambda</code> внутри <code>myapply</code>.
 </p>
-
 
 <div class="org-src-container">
 
@@ -300,6 +311,21 @@ microlisp&gt;
    (<span style="color: #af00ff;">lambda</span> (condition stream)
      (format stream <span style="color: #87005f;">"Error in MYAPPLY: unknown-function: ~A"</span>
              (fn condition)))))
+</pre>
+</div>
+
+<p>
+Нам также надо написать тесты, чтобы убедиться, что это работает правильно:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_closure_3_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1087;&#1088;&#1080;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; CLOSURE</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (myeval '(((<span style="color: #af00ff;">lambda</span> (x)
+                              (<span style="color: #af00ff;">lambda</span> (y) x))
+                            1)
+                           2)
+                         nil)))
 </pre>
 </div>
 
@@ -327,7 +353,6 @@ microlisp&gt;
 &lt;&lt;evaddmul_3_test&gt;&gt;
 &lt;&lt;myapply_ariph_3_test&gt;&gt;
 &lt;&lt;myapply_func_symb_3_test&gt;&gt;
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">TODO : &#1085;&#1091;&#1078;&#1077;&#1085; &#1090;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; closure &#1074; apply</span>
 &lt;&lt;myapply_closure_3_test&gt;&gt;
 </pre>
 </div>
@@ -535,6 +560,9 @@ microlisp&gt;
 
 <p>
 И тест видоизменяется, чтобы проверить вычисление в глобальном окружении
+</p>
+
+<p>
 [TODO:gmm] Тут я не уверен что правильный тест
 </p>
 
@@ -929,14 +957,15 @@ microlisp&gt;
 <div class="outline-text-3" id="text-unnumbered-17">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evand_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
-        ((null (cdr lst))  (and (myeval (car lst) env)))
-        (t                 (and (myeval (car lst) env)
-                                (evand (cdr lst) env)))))
+<pre class="src src-lisp" id="myeval_evand_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (args env)
+  (<span style="color: #af00ff;">cond</span> ((null args)        T)
+        ((null (cdr args))  (myeval (car args) env))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args) env)))
+                              (<span style="color: #af00ff;">if</span> (null tmp)
+                                  nil
+                                  (evand (cdr args) env))))))
 </pre>
 </div>
-
 
 <div class="org-src-container">
 
@@ -947,6 +976,7 @@ microlisp&gt;
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -968,6 +998,12 @@ microlisp&gt;
                      (c 3))
                  (and a b c))
                (evand '(a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
 </pre>
 </div>
 
@@ -982,13 +1018,15 @@ microlisp&gt;
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_and_3_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                (myeval '(and) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)              (myeval '(and 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)            (myeval '(and nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)          (myeval '(and 1 nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)          (myeval '(and 1 2 3) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                  (myeval '(and) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)                (myeval '(and 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)              (myeval '(and nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)            (myeval '(and 1 nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)          (myeval '(and 1 2 nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)            (myeval '(and 1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3)        (myeval '(and 1 2 nil 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -1010,6 +1048,22 @@ microlisp&gt;
                      (c 3))
                  (and a b c))
                (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b nil)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)))))
 </pre>
 </div>
 </div>
@@ -1020,22 +1074,25 @@ microlisp&gt;
 <div class="outline-text-3" id="text-unnumbered-18">
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evor_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (or))
-        ((null (cdr lst))  (or (myeval (car lst) env)))
-        (t                 (or (myeval (car lst) env)
-                               (evor (cdr lst) env)))))
+<pre class="src src-lisp" id="myeval_evor_3">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (args env)
+  (<span style="color: #af00ff;">cond</span> ((null args)        nil)
+        ((null (cdr args))  (myeval (car args) env))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args) env)))
+                              (<span style="color: #af00ff;">if</span> (not (null tmp))
+                                  tmp
+                                  (evor (cdr args) env))))))
 </pre>
 </div>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evor_3_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)           (evor '() nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)     (evor '(nil 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1) (evor '(nil nil 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)   (evor '(nil 1 2) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)     (evor '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                   (evor '() nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (or a))
@@ -1057,22 +1114,20 @@ microlisp&gt;
                      (c 2))
                  (or a b c))
                (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3)
+                     (d nil))
+                 (or a b c d))
+               (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)))))
 </pre>
 </div>
-
-<p>
-Теперь мы можем определить <code>or</code>:
-</p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_or_3">((equal (car lst) 'or)       (evor  (cdr lst) env))
 </pre>
 </div>
-
-<p>
-Протестируем <code>or</code>:
-</p>
 
 <div class="org-src-container">
 
@@ -1103,6 +1158,12 @@ microlisp&gt;
                      (c 2))
                  (or a b c))
                (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c nil)
+                     (d 2))
+                 (or a (or b c) d))
+               (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2)))))
 </pre>
 </div>
 </div>
@@ -1216,14 +1277,14 @@ microlisp&gt;
 <div class="outline-text-3" id="text-unnumbered-21">
 <p>
 При создании функции мы создаем замыкание, в которое кладем тело функции, текущее
-окружение и аргументы функции.
+окружение и аргументы функции. Обеспечиваем <code>implicit-progn</code> в <code>body</code>.
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_defun_3">((equal (car lst) 'defun)         (<span style="color: #af00ff;">progn</span>
                                     (push (cons (cadr lst)
-                                                (make-closure <span style="color: #5f5f87;">:body</span> (cadddr lst)
+                                                (make-closure <span style="color: #5f5f87;">:body</span> (cdddr lst)
                                                               <span style="color: #5f5f87;">:env</span> env
                                                               <span style="color: #5f5f87;">:args</span> (caddr lst)))
                                           *glob-env*)
@@ -1243,6 +1304,16 @@ microlisp&gt;
                     (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil)
                     (<span style="color: #af00ff;">prog1</span> (myeval '(alfa 8) nil)
                       (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; DEFUN</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 384 (<span style="color: #af00ff;">progn</span>
+                     (setf *glob-env* nil)
+                     (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
+                               (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x)
+                                 (setq y 6)
+                                 (* x x y)))
+                             nil)
+                     (<span style="color: #af00ff;">prog1</span> (myeval '(alfa 8) nil)
+                       (setf *glob-env* nil)))))
 </pre>
 </div>
 </div>
@@ -1285,12 +1356,13 @@ microlisp&gt;
 <h3 id="unnumbered-23">LAMBDA</h3>
 <div class="outline-text-3" id="text-unnumbered-23">
 <p>
-При обработке формы, начинающейся с вызова <code>lambda</code> мы должны создать замыкание:
+При обработке формы, начинающейся с вызова <code>lambda</code> мы должны создать замыкание.
+Обеспечиваем <code>implicit-progn</code> в <code>body</code>.
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_lambda_3">((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (caddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
+<pre class="src src-lisp" id="myeval_lambda_3">((equal (car lst) 'lambda)   (make-closure <span style="color: #5f5f87;">:body</span> (cddr lst) <span style="color: #5f5f87;">:env</span> env <span style="color: #5f5f87;">:args</span> (cadr lst)))
 </pre>
 </div>
 
@@ -1302,6 +1374,12 @@ microlisp&gt;
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 5 (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
                            ((<span style="color: #af00ff;">lambda</span> (x) (+ y x)) 2))
+                         nil)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; LAMBDA</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
+                           ((<span style="color: #af00ff;">lambda</span> (x)
+                              (setq y 6)
+                              (+ y x)) 2))
                          nil)))
 </pre>
 </div>

@@ -483,11 +483,13 @@ LIST определяем почти без изменений:
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evand_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (and))
-        ((null (cdr lst))  (and (myeval (car lst) env)))
-        (t                 (and (myeval (car lst) env)
-                                (evand (cdr lst) env)))))
+<pre class="src src-lisp" id="evand_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (args env)
+  (<span style="color: #af00ff;">cond</span> ((null args)        T)
+        ((null (cdr args))  (myeval (car args) env))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args) env)))
+                              (<span style="color: #af00ff;">if</span> (null tmp)
+                                  nil
+                                  (evand (cdr args) env))))))
 </pre>
 </div>
 
@@ -504,6 +506,7 @@ LIST определяем почти без изменений:
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -525,6 +528,12 @@ LIST определяем почти без изменений:
                      (c 3))
                  (and a b c))
                (evand '(a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
 </pre>
 </div>
 
@@ -545,13 +554,15 @@ LIST определяем почти без изменений:
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="and_1_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                (myeval '(and) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)              (myeval '(and 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)            (myeval '(and nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)          (myeval '(and 1 nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)          (myeval '(and 1 2 3) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)                  (myeval '(and) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)                (myeval '(and 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)              (myeval '(and nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)            (myeval '(and 1 nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)          (myeval '(and 1 2 nil) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)            (myeval '(and 1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3)        (myeval '(and 1 2 nil 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -573,6 +584,22 @@ LIST определяем почти без изменений:
                      (c 3))
                  (and a b c))
                (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . nil) (d . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b nil)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)))))
 </pre>
 </div>
 </div>
@@ -587,11 +614,13 @@ LIST определяем почти без изменений:
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="evor_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (or))
-        ((null (cdr lst))  (or (myeval (car lst) env)))
-        (t                 (or (myeval (car lst) env)
-                               (evor (cdr lst) env)))))
+<pre class="src src-lisp" id="evor_1">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (args env)
+  (<span style="color: #af00ff;">cond</span> ((null args)        nil)
+        ((null (cdr args))  (myeval (car args) env))
+        (t                  (<span style="color: #af00ff;">let</span> ((tmp (myeval (car args) env)))
+                              (<span style="color: #af00ff;">if</span> (not (null tmp))
+                                  tmp
+                                  (evor (cdr args) env))))))
 </pre>
 </div>
 
@@ -602,11 +631,12 @@ LIST определяем почти без изменений:
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="evor_1_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)           (evor '() nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)     (evor '(nil 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1) (evor '(nil nil 1) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)   (evor '(nil 1 2) nil)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)     (evor '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                   (evor '() nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3) nil)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (or a))
@@ -628,6 +658,12 @@ LIST определяем почти без изменений:
                      (c 2))
                  (or a b c))
                (evor '(a b c) '((a . nil) (b . 1) (c . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3)
+                     (d nil))
+                 (or a b c d))
+               (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)))))
 </pre>
 </div>
 
@@ -674,6 +710,12 @@ LIST определяем почти без изменений:
                      (c 2))
                  (or a b c))
                (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c nil)
+                     (d 2))
+                 (or a (or b c) d))
+               (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2)))))
 </pre>
 </div>
 </div>

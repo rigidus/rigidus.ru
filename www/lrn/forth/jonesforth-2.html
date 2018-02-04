@@ -417,8 +417,15 @@ rest-2
 
 <p>
 IF - это НЕМЕДЛЕННОЕ слово, которое компилирует 0BRANCH, за которым следует фиктивное
-смещение, и помещает адрес 0BRANCH в стек. Позже, когда мы увидим THEN, мы вытолкнем
-этот адрес из стека, вычислим смещение и заполним смещение.
+смещение (ноль), и помещает адрес этого смещения в стек. Позже, когда мы увидим THEN,
+мы вытолкнем этот адрес из стека, вычислим смещение и заполним смещение.
+</p>
+
+<p>
+В случае, если вместо THEN будет обнаружен ELSE - мы скомпилируем еще один BRANCH, на
+этот раз безусловный, вкомпилируем второе фиктивное смещение, сохранив его позицию в
+стеке, а дальше выполним настройку предыдущего фиктивного смещения так, чтобы оно
+указывало  правильное место - т.е. фактически выполним работу THEN.
 </p>
 
 <div class="org-src-container">
@@ -462,7 +469,11 @@ IF - это НЕМЕДЛЕННОЕ слово, которое компилиру
 <div class="outline-text-4" id="text-unnumbered-12">
 <div class="org-src-container">
 
-<pre class="src src-forth">BEGIN loop-part condition <span style="color: #ff0000; font-weight: bold;">UNTIL</span>
+<pre class="src src-forth"><span style="color: #ff0000; font-weight: bold;">BEGIN</span>
+    loop-part-1
+    loop-part-2
+    ...
+condition <span style="color: #ff0000; font-weight: bold;">UNTIL</span>
 </pre>
 </div>
 
@@ -470,14 +481,26 @@ IF - это НЕМЕДЛЕННОЕ слово, которое компилиру
 компилируется в:
 </p>
 
+
+<div class="figure">
+<p><img src="../../../img/forth-interpret-control-03.png" alt="forth-interpret-control-03.png">
+</p>
+</div>
+
+<p>
+Или, в текстовой нотации:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-forth">loop-part condition 0BRANCH OFFSET
+<pre class="src src-forth">loop-part-1
+loop-part-2
+condition 0BRANCH OFFSET
 </pre>
 </div>
 
 <p>
-где <code>OFFSET</code> указатель обратно на <code>loop-part</code>. Это похоже на следующий пример из Си:
+где <code>OFFSET</code> указатель обратно на <code>loop-part-1</code>. Это похоже на следующий пример из Си:
 </p>
 
 <div class="org-src-container">
@@ -487,6 +510,12 @@ IF - это НЕМЕДЛЕННОЕ слово, которое компилиру
 } <span style="color: #af00ff;">while</span> (condition)
 </pre>
 </div>
+
+<p>
+Посмотрим, как это реализуется. BEGIN просто запоминаем в стеке точку, на которую надо
+прыгнуть, а UNTIL компилирует 0BRANCH и использует ее чтобы правильно скомпилировать
+смещение:
+</p>
 
 <div class="org-src-container">
 

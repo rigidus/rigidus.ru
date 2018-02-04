@@ -411,14 +411,14 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myapply_closure_6">((closure-p fn)              (myeval (closure-body fn)
-                                     (pairlis (closure-args fn)
-                                              args
-                                              (closure-env fn))
-                                     (closure-block-env fn)
-                                     (closure-go-env fn)
-                                     catch-env
-                                     errcont cont))
+<pre class="src src-lisp" id="myapply_closure_6">((closure-p fn)              (evprogn (closure-body fn)
+                                      (pairlis (closure-args fn)
+                                               args
+                                               (closure-env fn))
+                                      (closure-block-env fn)
+                                      (closure-go-env fn)
+                                      catch-env
+                                      errcont cont))
 </pre>
 </div>
 
@@ -895,19 +895,15 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evand_6">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (lst env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (and)))
-        ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                   (<span style="color: #af00ff;">lambda</span> (x)
-                                     (funcall cont
-                                              (and x)))))
-        (t                  (myeval (car lst) env block-env go-env catch-env errcont
+<pre class="src src-lisp" id="myeval_evand_6">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evand</span> (args env block-env catch-env go-env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null args)        (funcall cont T))
+        ((null (cdr args))  (myeval (car args) env block-env catch-env go-env errcont cont))
+        (t                  (myeval (car args) env block-env catch-env go-env errcont
                                     (<span style="color: #af00ff;">lambda</span> (x)
-                                      (funcall cont
-                                               (and x
-                                                    (evand (cdr lst)
-                                                           env block-env go-env catch-env
-                                                           errcont cont))))))))
+                                      (<span style="color: #af00ff;">if</span> (null x)
+                                          (funcall cont nil)
+                                          (evand (cdr args) env block-env catch-env go-env
+                                                 errcont cont)))))))
 </pre>
 </div>
 
@@ -924,6 +920,7 @@
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil nil nil nil #'err #'ok)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil nil #'err #'ok)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil nil nil nil #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -945,6 +942,12 @@
                      (c 3))
                  (and a b c))
                (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) nil nil nil #'err #'ok)))
 </pre>
 </div>
 
@@ -954,9 +957,9 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_and_6">((equal (car exp) 'and)      (funcall cont (evand (cdr exp)
-                                                  env block-env go-env catch-env
-                                                  errcont cont)))
+<pre class="src src-lisp" id="myeval_and_6">((equal (car exp) 'and)      (evand (cdr exp)
+                                    env block-env go-env catch-env
+                                    errcont cont))
 </pre>
 </div>
 
@@ -973,7 +976,10 @@
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil nil #'err #'ok)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok)))
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil
+                                            #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
+                                              #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (and nil))
@@ -995,6 +1001,18 @@
                      (c 3))
                  (and a b c))
                (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
+                       #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
+                     (b nil)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
+                       #'err #'ok)))
 </pre>
 </div>
 </div>
@@ -1009,19 +1027,15 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_evor_6">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (lst env block-env go-env catch-env errcont cont)
-  (<span style="color: #af00ff;">cond</span> ((null lst)        (funcall cont (or)))
-        ((null (cdr lst))  (myeval (car lst) env block-env go-env catch-env errcont
-                                   (<span style="color: #af00ff;">lambda</span> (x)
-                                     (funcall cont
-                                              (or x)))))
-        (t                 (myeval (car lst) env block-env go-env catch-env errcont
-                                   (<span style="color: #af00ff;">lambda</span> (x)
-                                     (funcall cont
-                                              (or x
-                                                  (evor (cdr lst)
-                                                        env block-env go-env catch-env
-                                                        errcont cont))))))))
+<pre class="src src-lisp" id="myeval_evor_6">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evor</span> (args env block-env go-env catch-env errcont cont)
+  (<span style="color: #af00ff;">cond</span> ((null args)        (funcall cont nil))
+        ((null (cdr args))  (myeval (car args) env block-env go-env catch-env errcont cont))
+        (t                  (myeval (car args) env block-env go-env catch-env errcont
+                                    (<span style="color: #af00ff;">lambda</span> (x)
+                                      (<span style="color: #af00ff;">if</span> (not (null x))
+                                          (funcall cont x)
+                                          (evor (cdr args) env block-env go-env catch-env
+                                                errcont cont)))))))
 </pre>
 </div>
 
@@ -1032,11 +1046,12 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_evor_6_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)           (evor '() nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)     (evor '(nil 1) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1) (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)   (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)     (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                   (evor '() nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3) nil nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil nil nil nil #'err #'ok)))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
                  (or a))
@@ -1058,6 +1073,13 @@
                      (c 2))
                  (or a b c))
                (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3)
+                     (d nil))
+                 (or a b c d))
+               (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) nil nil nil
+                     #'err #'ok)))
 </pre>
 </div>
 
@@ -1106,6 +1128,13 @@
                      (c 2))
                  (or a b c))
                (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
+                     (b nil)
+                     (c nil)
+                     (d 2))
+                 (or a (or b c) d))
+               (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                       nil nil nil #'err #'ok)))
 </pre>
 </div>
 </div>
@@ -1287,7 +1316,7 @@
 
 <pre class="src src-lisp" id="myeval_defun_6">((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
                                     (push (cons (cadr exp)
-                                                (make-closure <span style="color: #5f5f87;">:body</span> (cadddr exp)
+                                                (make-closure <span style="color: #5f5f87;">:body</span> (cdddr exp)
                                                               <span style="color: #5f5f87;">:env</span> env
                                                               <span style="color: #5f5f87;">:block-env</span> block-env
                                                               <span style="color: #5f5f87;">:go-env</span> go-env
@@ -1309,6 +1338,16 @@
                     (myeval '(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x) (* x x)) nil nil nil nil #'err #'ok)
                     (<span style="color: #af00ff;">prog1</span> (myeval '(alfa 8) nil nil nil nil #'err #'ok)
                       (setf *glob-env* nil)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; DEFUN</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 384 (<span style="color: #af00ff;">progn</span>
+                     (setf *glob-env* nil)
+                     (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
+                               (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">alfa</span> (x)
+                                 (setq y 6)
+                                 (* x x y)))
+                             nil nil nil nil #'err #'ok)
+                     (<span style="color: #af00ff;">prog1</span> (myeval '(alfa 8) nil nil nil nil #'err #'ok)
+                       (setf *glob-env* nil)))))
 </pre>
 </div>
 </div>
@@ -1386,7 +1425,7 @@
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_lambda_6">((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (caddr exp)
+<pre class="src src-lisp" id="myeval_lambda_6">((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (cddr exp)
                                                          <span style="color: #5f5f87;">:env</span> env
                                                          <span style="color: #5f5f87;">:block-env</span> block-env
                                                          <span style="color: #5f5f87;">:go-env</span> go-env
@@ -1406,6 +1445,12 @@
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 5 (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
                            ((<span style="color: #af00ff;">lambda</span> (x) (+ y x)) 2))
+                         nil nil nil nil #'err #'ok)))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; LAMBDA</span>
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #af00ff;">let</span> ((y 3))
+                           ((<span style="color: #af00ff;">lambda</span> (x)
+                              (setq y 6)
+                              (+ y x)) 2))
                          nil nil nil nil #'err #'ok)))
 </pre>
 </div>
@@ -1600,8 +1645,8 @@
                                      (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
                                        (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
                                          (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                           (+ x 2)))
-                                       777)
+                                           (+ x 2))
+                                       777))
                                      (foo 10))
                                    nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
                                    #'ok)
