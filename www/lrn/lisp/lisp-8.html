@@ -588,6 +588,7 @@ clauses в <code>myeval</code> и <code>myapply</code>.
 &lt;&lt;myeval_mypairlis_8&gt;&gt;
 &lt;&lt;myeval_evlet_8&gt;&gt;
 &lt;&lt;myeval_evletstar_8&gt;&gt;
+&lt;&lt;myeval_evthrow_8&gt;&gt;
 &lt;&lt;myeval_evtagbody_8&gt;&gt;
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">myeval</span> (exp env block-env go-env catch-env errcont cont)
   (<span style="color: #af00ff;">cond</span>
@@ -1475,18 +1476,39 @@ clauses в <code>myeval</code> и <code>myapply</code>.
 <div id="outline-container-unnumbered-30" class="outline-3">
 <h3 id="unnumbered-30">THROW</h3>
 <div class="outline-text-3" id="text-unnumbered-30">
+<p>
+Для того, чтобы облегчить себе следующий этап, определим вспомогательную функцию
+<code>evthrow</code>:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_throw_8">((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                     (<span style="color: #af00ff;">lambda</span> (symb-res)
-                                       (myeval (caddr exp) env block-env go-env catch-env errcont
-                                               (<span style="color: #af00ff;">lambda</span> (exp-res)
-                                                 (assoc-2 symb-res catch-env
-                                                          (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                                            (funcall cont-res exp-res))
-                                                          (<span style="color: #af00ff;">lambda</span> (key)
-                                                            (funcall errcont
-                                                                     (format nil <span style="color: #87005f;">"throw: matching ~A catch is not found"</span> key)))))))))
+<pre class="src src-lisp" id="myeval_evthrow_8">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">evthrow</span> (exp env block-env go-env catch-env errcont cont)
+  (myeval (cadr exp) env block-env go-env catch-env errcont
+          (<span style="color: #af00ff;">lambda</span> (symb-res)
+            (myeval (caddr exp) env block-env go-env catch-env errcont
+                    (<span style="color: #af00ff;">lambda</span> (exp-res)
+                      (assoc-2 symb-res catch-env
+                               (<span style="color: #af00ff;">lambda</span> (cont-res)
+                                 (funcall cont-res exp-res))
+                               (<span style="color: #af00ff;">lambda</span> (key)
+                                 (funcall errcont
+                                          (format
+                                           nil
+                                           <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
+                                           key)))))))))
+</pre>
+</div>
+
+<p>
+Тогда вызов из функции <code>myeval</code> станет таким:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_throw_8">((equal (car exp) 'throw)    (evthrow exp
+                                      env block-env go-env catch-env
+                                      errcont cont))
 </pre>
 </div>
 
