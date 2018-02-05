@@ -438,6 +438,7 @@ clauses в ~myeval~ и ~myapply~.
   <<myeval_mypairlis_8>>
   <<myeval_evlet_8>>
   <<myeval_evletstar_8>>
+  <<myeval_evthrow_8>>
   <<myeval_evtagbody_8>>
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
@@ -1222,18 +1223,34 @@ clauses в ~myeval~ и ~myapply~.
 
 ** THROW
 
+Для того, чтобы облегчить себе следующий этап, определим вспомогательную функцию
+~evthrow~:
+
+#+NAME: myeval_evthrow_8
+#+BEGIN_SRC lisp
+  (defun evthrow (exp env block-env go-env catch-env errcont cont)
+    (myeval (cadr exp) env block-env go-env catch-env errcont
+            (lambda (symb-res)
+              (myeval (caddr exp) env block-env go-env catch-env errcont
+                      (lambda (exp-res)
+                        (assoc-2 symb-res catch-env
+                                 (lambda (cont-res)
+                                   (funcall cont-res exp-res))
+                                 (lambda (key)
+                                   (funcall errcont
+                                            (format
+                                             nil
+                                             "throw: matching ~A catch is not found"
+                                             key)))))))))
+#+END_SRC
+
+Тогда вызов из функции ~myeval~ станет таким:
+
 #+NAME: myeval_throw_8
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                       (lambda (symb-res)
-                                         (myeval (caddr exp) env block-env go-env catch-env errcont
-                                                 (lambda (exp-res)
-                                                   (assoc-2 symb-res catch-env
-                                                            (lambda (cont-res)
-                                                              (funcall cont-res exp-res))
-                                                            (lambda (key)
-                                                              (funcall errcont
-                                                                       (format nil "throw: matching ~A catch is not found" key)))))))))
+  ((equal (car exp) 'throw)    (evthrow exp
+                                        env block-env go-env catch-env
+                                        errcont cont))
 #+END_SRC
 
 #+NAME: myeval_throw_8_test
