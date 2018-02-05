@@ -5,10 +5,12 @@
 Продолжаем дефункционализацию.
 
 Наша задача - заменить вызовы ~myeval~ на возврат значения таким образом, чтобы внешний
-вычислитель мог получить это значение и выполнить действие. Также заменяем вызовы
-~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+вычислитель мог получить это значение и выполнить действие.
 
-Ну и собственно напишем этот внешний вычислитель, который назовем STEPPER
+Также заменяем вызовы ~apply-continuation~ на возврат списка, начинающегося с символа
+~return~.
+
+Ну и собственно напишем этот внешний вычислитель, который назовем ~stepper~
 
 * Stepper
 
@@ -27,59 +29,7 @@
           ((equal (car frame) 'eval)   (stepper (apply #'myeval (cdr frame))))))
 #+END_SRC
 
-* Apply-continuation
-
-#+NAME: errors_10
-#+BEGIN_SRC lisp
-  (define-condition unknown-continuation (error)
-    ((cont :initarg :cont  :reader cont))
-    (:report
-     (lambda (condition stream)
-       (format stream "Error in APPLY-CONTINUATION: unknown-continuation: ~A"
-               (cont condition)))))
-#+END_SRC
-
-Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-
-#+NAME: apply_continuation_10
-#+BEGIN_SRC lisp
-  (defun apply-continuation (cont arg)
-    (cond ((and (functionp cont)
-                (equal arg 'NOT-A-PARAM))
-                                  (funcall cont))
-          ((functionp cont)       (funcall cont arg))
-          ((evcond-cont-p cont)   (if arg
-                                      (list 'eval (cadar (evcond-cont-clauses cont))
-                                              (evcond-cont-env cont)
-                                              (evcond-cont-block-env cont)
-                                              (evcond-cont-go-env cont)
-                                              (evcond-cont-catch-env cont)
-                                              (evcond-cont-errcont cont)
-                                              (evcond-cont-cont cont))
-                                      (evcond (cdr (evcond-cont-clauses cont))
-                                              (evcond-cont-env cont)
-                                              (evcond-cont-block-env cont)
-                                              (evcond-cont-go-env cont)
-                                              (evcond-cont-catch-env cont)
-                                              (evcond-cont-errcont cont)
-                                              (evcond-cont-cont cont))))
-          ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
-                                         (cdr (evlis-cont-unevaled cont))
-                                         (cons arg (evlis-cont-evaled cont))
-                                         (evlis-cont-env cont)
-                                         (evlis-cont-block-env cont)
-                                         (evlis-cont-go-env cont)
-                                         (evlis-cont-catch-env cont)
-                                         (evlis-cont-errcont cont)
-                                         (evlis-cont-cont cont)))
-          (t (error 'bad-cont))))
-#+END_SRC
-
 * Глобальное окружение
-
-[TODO:gmm] Эти продолжения не часть интерпретатора. Поэтому переименовываем их в
-~success~ и ~failure~. И работаем с ними не через механизмы интерпретатора. Необходимо
-бэкпортить это
 
 #+NAME: assoc_10
 #+BEGIN_SRC lisp
@@ -103,10 +53,6 @@
 #+END_SRC
 
 Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
-
-[TODO:gmm] Тут странно что передача ~cont~ во втором вызове ~assoc-2~ превратилась в
-~(apply continuation cont nil)~. Там скорее всего была ошибка - пропала лябмда -
-проверить в предыдущих файлах
 
 #+NAME: lookup_10
 #+BEGIN_SRC lisp
@@ -182,14 +128,6 @@
 
 * Структура UNICONT
 
-Определим структуру ~unicont~, которая будет хранить
-- block-env
-- go-env
-- catch-env
-- errcont
-- cont
-продолжения. Остальные структуры разнотипных продолжений будем наследовать от нее.
-
 #+NAME: unicont_10
 #+BEGIN_SRC lisp
   (defstruct unicont
@@ -198,7 +136,41 @@
     catch-env
     errcont
     cont)
-  <<construct_9>>
+  <<construct_10>>
+#+END_SRC
+
+* Применение продолжений
+
+#+NAME: errors_10
+#+BEGIN_SRC lisp
+  (define-condition unknown-continuation (error)
+    ((cont :initarg :cont  :reader cont))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in APPLY-CONTINUATION: unknown-continuation: ~A"
+               (cont condition)))))
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+
+#+NAME: apply_continuation_10
+#+BEGIN_SRC lisp
+  (defun apply-continuation (cont arg)
+    (cond ((functionp cont)       (funcall cont arg))
+          <<apply_cont_if_10>>
+          <<apply_cont_evcond_10>>
+          <<apply_cont_evcond_10>>
+          <<apply_cont_evand_10>>
+          <<apply_cont_evor_10>>
+          <<apply_cont_evlet_10>>
+          <<apply_cont_evletstar_10>>
+          <<apply_cont_setq_10>>
+          <<apply_cont_catch_10>>
+          <<apply_cont_throw_10>>
+          <<apply_cont_throw2_10>>
+          <<apply_cont_evtagbody_10>>
+          <<apply_cont_evlis_10>>
+          (t (error 'unknown-continuation :cont cont))))
 #+END_SRC
 
 * MyApply
@@ -417,23 +389,8 @@
 
 ** CLOSURE
 
-Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-
-[TODO:gmm] Так как мы добавили ~implicit progn~ изменения относительно возврата
-eval-фрейма стали некорректны
-
 #+NAME: myapply_closure_10
 #+BEGIN_SRC lisp
-  ;; стало
-  ;; ((closure-p fn)              (list 'eval (closure-body fn)
-  ;;                                    (pairlis (closure-args fn)
-  ;;                                             args
-  ;;                                             (closure-env fn))
-  ;;                                    (closure-block-env fn)
-  ;;                                    (closure-go-env fn)
-  ;;                                    catch-env
-  ;;                                    errcont cont))
-  ;; было
   ((closure-p fn)              (evprogn (closure-body fn)
                                         (pairlis (closure-args fn)
                                                  args
@@ -456,7 +413,7 @@ eval-фрейма стали некорректны
 
 ** PRINT
 
-[TODO:gmm] Сделать проверку аргументов
+[TODO:gmm] Сделать проверку кол-ва аргументов
 
 Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
@@ -489,9 +446,7 @@ eval-фрейма стали некорректны
                          nil nil nil #'err #'ok)))
 #+END_SRC
 
-** DONE LIST
-
-Изменим структуру так, чтобы наследоваться от ~unicont~
+** LIST
 
 #+NAME: evlis_cont_10
 #+BEGIN_SRC lisp
@@ -506,21 +461,6 @@ eval-фрейма стали некорректны
 
 #+NAME: evlis_10
 #+BEGIN_SRC lisp
-  ;; было
-  (defun evlis (fn unevaled evaled env block-env go-env catch-env errcont cont)
-    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
-          (t                (myeval (car unevaled) env block-env go-env catch-env errcont
-                                    (make-evlis-cont
-                                     :fn fn
-                                     :unevaled unevaled
-                                     :evaled evaled
-                                     :env env
-                                     :block-env block-env
-                                     :go-env go-env
-                                     :catch-env catch-env
-                                     :errcont errcont
-                                     :cont cont)))))
-  ;; стало
   (defun evlis (fn unevaled evaled env block-env go-env catch-env errcont cont)
     (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
           (t                (list 'eval (car unevaled) env block-env go-env catch-env errcont
@@ -536,11 +476,24 @@ eval-фрейма стали некорректны
                                      :cont cont)))))
 #+END_SRC
 
-[TODO:gmm] Этого вообще нет в исходнике почему-то. APPLY-CONTINUATIONS?
+#+NAME: apply_cont_evlis_10
+#+BEGIN_SRC lisp
+  ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
+                                 (cdr (evlis-cont-unevaled cont))
+                                 (cons arg (evlis-cont-evaled cont))
+                                 (evlis-cont-env cont)
+                                 (unicont-block-env cont)
+                                 (unicont-go-env cont)
+                                 (unicont-catch-env cont)
+                                 (unicont-errcont cont)
+                                 (unicont-cont cont)))
+#+END_SRC
+
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myapply_list_10
 #+BEGIN_SRC lisp
-  ((equal fn 'list)            (funcall cont args))
+  ((equal fn 'list)            (list 'return cont args))
 #+END_SRC
 
 #+NAME: myapply_evlis_10_test
@@ -574,13 +527,15 @@ eval-фрейма стали некорректны
 #+BEGIN_SRC lisp
   ((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
   ((functionp fn)              (apply fn args))      ; interim hack
+  ((unicont-p fn)              (apply-continuation fn (car args)))
+  ;;  ((identity-cont-p fn)        (apply-continuation fn (car args))) ;; for identity
 #+END_SRC
 
 #+NAME: myapply_callcc_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для CALL/CC
-  ;; (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
-  ;;                           nil nil nil nil #'err #'ok)))
+  (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
+                            nil nil nil nil #'err #'ok)))
 #+END_SRC
 
 * MyEval
@@ -596,7 +551,11 @@ eval-фрейма стали некорректны
   <<myeval_mypairlis_10>>
   <<myeval_evlet_10>>
   <<myeval_evletstar_10>>
+  <<myeval_evthrow_10>>
   <<myeval_evtagbody_10>>
+  <<myeval_is_cont_subset_10>>
+  <<myeval_make_goenv_10>>
+  <<myeval_apply_go_continuation_10>>
   (defun myeval (exp env block-env go-env catch-env errcont cont)
     (cond
       <<myeval_number_10>>
@@ -613,9 +572,6 @@ eval-фрейма стали некорректны
       <<myeval_setq_10>>
       <<myeval_lambda_10>>
       <<myeval_block_10>>
-      <<myeval_return_from_10>>
-      <<myeval_catch_10>>
-      <<myeval_throw_10>>
       <<myeval_return_from_10>>
       <<myeval_catch_10>>
       <<myeval_throw_10>>
@@ -661,6 +617,8 @@ eval-фрейма стали некорректны
   <<myeval_tagbody_10_test>>
   <<myeval_go_10_test>>
   <<myeval_labels_10_test>>
+  <<myeval_reset_10_test>>
+  <<myeval_shift_10_test>>
 #+END_SRC
 
 ** Самовычисляемые формы
@@ -716,31 +674,49 @@ eval-фрейма стали некорректны
 
 ** Условное выполнение IF
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (if-cont (:include unicont))
+    clauses
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 
 #+NAME: myeval_if_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'if)       (list 'eval (cadr exp) env block-env go-env catch-env errcont
-                                     (lambda (x)
-                                       (if x
-                                           (list 'eval (caddr exp)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)
-                                           (list 'eval (cadddr exp)
-                                                 env block-env go-env catch-env
-                                                 errcont cont)))))
-  ;; было
-  ((equal (car exp) 'if)       (myeval (cadr exp) env block-env go-env catch-env errcont
-                                       (lambda (x)
-                                         (if x
-                                             (myeval (caddr exp)
-                                                     env block-env go-env catch-env
-                                                     errcont cont)
-                                             (myeval (cadddr exp)
-                                                     env block-env go-env catch-env
-                                                     errcont cont)))))
+                                     (make-if-cont
+                                      :clauses exp
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))
 #+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+
+#+NAME: apply_cont_if_10
+#+BEGIN_SRC lisp
+  ((if-cont-p cont)       (if arg
+                              (list 'eval (caddr (if-cont-clauses cont))
+                                    (if-cont-env cont)
+                                    (if-cont-block-env cont)
+                                    (if-cont-go-env cont)
+                                    (if-cont-catch-env cont)
+                                    (if-cont-errcont cont)
+                                    (if-cont-cont cont))
+                              (list 'eval (cadddr (if-cont-clauses cont))
+                                    (if-cont-env cont)
+                                    (if-cont-block-env cont)
+                                    (if-cont-go-env cont)
+                                    (if-cont-catch-env cont)
+                                    (if-cont-errcont cont)
+                                    (if-cont-cont cont))))
+#+END_SRC
+
 
 #+NAME: myeval_if_10_test
 #+BEGIN_SRC lisp
@@ -752,7 +728,7 @@ eval-фрейма стали некорректны
   (assert (equal 1 (myeval '(if a 1 2) '((a . 1)) nil nil nil #'err #'ok)))
 #+END_SRC
 
-** DONE COND
+** COND
 
 #+NAME: construct_10
 #+BEGIN_SRC lisp
@@ -766,19 +742,6 @@ eval-фрейма стали некорректны
 
 #+NAME: myeval_evcond_10
 #+BEGIN_SRC lisp
-  ;; было
-  (defun evcond (clauses env block-env go-env catch-env errcont cont)
-    (cond ((null clauses)  (apply-continuation cont nil))
-          (t               (myeval (caar clauses) env block-env go-env catch-env errcont
-                                   (make-evcond-cont
-                                    :clauses clauses
-                                    :env env
-                                    :block-env block-env
-                                    :go-env go-env
-                                    :catch-env catch-env
-                                    :errcont errcont
-                                    :cont cont)))))
-  ;; стало
   (defun evcond (clauses env block-env go-env catch-env errcont cont)
     (cond ((null clauses)  (list 'return cont nil))
           (t               (list 'eval (caar clauses) env block-env go-env catch-env errcont
@@ -791,6 +754,28 @@ eval-фрейма стали некорректны
                                   :errcont errcont
                                   :cont cont)))))
 #+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+
+#+NAME: apply_cont_evcond_10
+#+BEGIN_SRC lisp
+  ((evcond-cont-p cont)   (if arg
+                              (list 'eval (cadar (evcond-cont-clauses cont))
+                                    (evcond-cont-env cont)
+                                    (evcond-cont-block-env cont)
+                                    (evcond-cont-go-env cont)
+                                    (evcond-cont-catch-env cont)
+                                    (evcond-cont-errcont cont)
+                                    (evcond-cont-cont cont))
+                              (evcond (cdr (evcond-cont-clauses cont))
+                                      (evcond-cont-env cont)
+                                      (evcond-cont-block-env cont)
+                                      (evcond-cont-go-env cont)
+                                      (evcond-cont-catch-env cont)
+                                      (evcond-cont-errcont cont)
+                                      (evcond-cont-cont cont))))
+#+END_SRC
+
 
 #+NAME: myeval_evcond_10_test
 #+BEGIN_SRC lisp
@@ -809,12 +794,7 @@ eval-фрейма стали некорректны
 
 #+NAME: myeval_cond_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'cond)     (evcond (cdr exp) env block-env go-env catch-env errcont cont))
-  ;; было
-  ((equal (car exp) 'cond)     (evcond (cdr exp)
-                                       env block-env go-env catch-env
-                                       errcont cont)))
 #+END_SRC
 
 #+NAME: myeval_cond_10_test
@@ -838,35 +818,43 @@ eval-фрейма стали некорректны
 
 ** PROGN
 
-[TODO:gmm] Нет продолжения ~evprogn-cont~ в исходнике почему-то
-[TODO:gmm] Новый ~evprogn~ отличается только вызовом ~apply-continuation~
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (evprogn-cont (:include unicont))
+    clauses
+    env)
+#+END_SRC
 
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myeval_evprogn_10
 #+BEGIN_SRC lisp
-  ;; было
-  (defun evprogn (lst env block-env go-env catch-env errcont cont)
-    (cond ((null lst)         (apply-continuation cont nil))
-          ((null (cdr lst))   (myeval (car lst) env block-env go-env catch-env errcont cont))
-          (t                  (myeval (car lst) env block-env go-env catch-env errcont
-                                      (lambda (x)
-                                        (declare (ignore x))
-                                        (evprogn (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont))))))
-  ;; стало
   (defun evprogn (lst env block-env go-env catch-env errcont cont)
     (cond ((null lst)         (list 'return cont nil))
           ((null (cdr lst))   (list 'eval (car lst) env block-env go-env catch-env errcont cont))
           (t                  (list 'eval (car lst) env block-env go-env catch-env errcont
-                                      (lambda (x)
-                                        (declare (ignore x))
-                                        (evprogn (cdr lst)
-                                                 env block-env go-env catch-env
-                                                 errcont cont))))))
+                                    (make-evprogn-cont
+                                     :clauses lst
+                                     :env env
+                                     :block-env block-env
+                                     :go-env go-env
+                                     :catch-env catch-env
+                                     :errcont errcont
+                                     :cont cont)))))
 #+END_SRC
+
+#+NAME: apply_cont_evcond_10
+#+BEGIN_SRC lisp
+  ((evprogn-cont-p cont)  (evprogn (cdr (evprogn-cont-clauses cont))
+                                   (evprogn-cont-env cont)
+                                   (evprogn-cont-block-env cont)
+                                   (evprogn-cont-go-env cont)
+                                   (evprogn-cont-catch-env cont)
+                                   (evprogn-cont-errcont cont)
+                                   (evprogn-cont-cont cont)))
+#+END_SRC
+
 
 #+NAME: myeval_evprogn_10_test
 #+BEGIN_SRC lisp
@@ -896,21 +884,47 @@ eval-фрейма стали некорректны
 
 ** AND
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (and-cont (:include unicont))
+    exps
+    env)
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
 #+NAME: myeval_evand_10
 #+BEGIN_SRC lisp
   (defun evand (exps env block-env go-env catch-env errcont cont)
-    (cond ((null exps)       (apply-continuation cont T))
-          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont cont))
-          (t                 (myeval (car exps) env block-env go-env catch-env errcont
-                                     (make-and-cont
-                                      :exps (cdr exps)
-                                      :env env
-                                      :block-env block-env
-                                      :go-env go-env
-                                      :catch-env catch-env
-                                      :errcont errcont
-                                      :cont cont)))))
+    (cond ((null exps)       (list 'return cont T))
+          ((null (cdr exps)) (list 'eval (car exps) env block-env go-env catch-env errcont cont))
+          (t                 (list 'eval (car exps) env block-env go-env catch-env errcont
+                                   (make-and-cont
+                                    :exps (cdr exps)
+                                    :env env
+                                    :block-env block-env
+                                    :go-env go-env
+                                    :catch-env catch-env
+                                    :errcont errcont
+                                    :cont cont)))))
 #+END_SRC
+
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: apply_cont_evand_10
+#+BEGIN_SRC lisp
+  ((and-cont-p cont)      (if (null arg)
+                              (list 'return (and-cont-cont cont) nil)
+                              (evand (and-cont-exps cont)
+                                     (and-cont-env cont)
+                                     (and-cont-block-env cont)
+                                     (and-cont-go-env cont)
+                                     (and-cont-catch-env cont)
+                                     (and-cont-errcont cont)
+                                     (and-cont-cont cont))))
+#+END_SRC
+
 
 #+NAME: myeval_evand_10_test
 #+BEGIN_SRC lisp
@@ -1008,22 +1022,45 @@ eval-фрейма стали некорректны
 
 ** OR
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (or-cont (:include unicont))
+    exps
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myeval_evor_10
 #+BEGIN_SRC lisp
   (defun evor (exps env block-env go-env catch-env errcont cont)
-    (cond ((null exps)       (apply-continuation cont nil))
-          ((null (cdr exps)) (myeval (car exps) env block-env go-env catch-env errcont cont))
-          (t                 (myeval (car exps) env block-env go-env catch-env errcont
-                                     (make-or-cont
-                                      :exps (cdr exps)
-                                      :env env
-                                      :block-env block-env
-                                      :go-env go-env
-                                      :catch-env catch-env
-                                      :errcont errcont
-                                      :cont cont)))))
+    (cond ((null exps)       (list 'return cont nil))
+          ((null (cdr exps)) (list 'eval (car exps) env block-env go-env catch-env errcont cont))
+          (t                 (list 'eval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    :exps (cdr exps)
+                                    :env env
+                                    :block-env block-env
+                                    :go-env go-env
+                                    :catch-env catch-env
+                                    :errcont errcont
+                                    :cont cont)))))
+#+END_SRC
+
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: apply_cont_evor_10
+#+BEGIN_SRC lisp
+  ((or-cont-p cont)       (if (not (null arg))
+                              (list 'return (or-cont-cont cont) arg)
+                              (evor (or-cont-exps cont)
+                                    (or-cont-env cont)
+                                    (or-cont-block-env cont)
+                                    (or-cont-go-env cont)
+                                    (or-cont-catch-env cont)
+                                    (or-cont-errcont cont)
+                                    (or-cont-cont cont))))
 #+END_SRC
 
 #+NAME: myeval_evor_10_test
@@ -1069,14 +1106,9 @@ eval-фрейма стали некорректны
 
 #+NAME: myeval_or_10
 #+BEGIN_SRC lisp
-  ;; стало
-  ((equal (car exp) 'or)       (list 'return cont (evor  (cdr exp)
-                                                         env block-env go-env catch-env
-                                                         errcont cont)))
-  ;; было
-  ((equal (car exp) 'or)       (apply-continuation cont (evor  (cdr exp)
-                                                               env block-env go-env catch-env
-                                                               errcont cont)))
+  ((equal (car exp) 'or)       (evor  (cdr exp)
+                                      env block-env go-env catch-env
+                                      errcont cont))
 #+END_SRC
 
 #+NAME: myeval_or_10_test
@@ -1155,32 +1187,51 @@ eval-фрейма стали некорректны
                    (MYPAIRLIS-ERROR (condition) "error"))))
 #+END_SRC
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (evlet-cont (:include unicont))
+    vars
+    exps
+    evald-exps
+    exp
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 
 #+NAME: myeval_evlet_10
 #+BEGIN_SRC lisp
-  ;; было
-  (defun evlet (vars exps evald-exps exp env block-env go-env catch-env errcont cont)
-    (cond ((null exps)  (evprogn exp
-                                 (pairlis vars (reverse evald-exps) env)
-                                 block-env go-env catch-env
-                                 errcont cont))
-          (t            (myeval (car exps) env block-env go-env catch-env errcont
-                                (lambda (x)
-                                  (evlet vars (cdr exps) (cons x evald-exps) exp
-                                         env block-env go-env catch-env
-                                         errcont cont))))))
-  ;; стало
   (defun evlet (vars exps evald-exps exp env block-env go-env catch-env errcont cont)
     (cond ((null exps)  (evprogn exp
                                  (pairlis vars (reverse evald-exps) env)
                                  block-env go-env catch-env
                                  errcont cont))
           (t            (list 'eval (car exps) env block-env go-env catch-env errcont
-                                (lambda (x)
-                                  (evlet vars (cdr exps) (cons x evald-exps) exp
-                                         env block-env go-env catch-env
-                                         errcont cont))))))
+                              (make-evlet-cont
+                               :vars vars
+                               :exps exps
+                               :evald-exps evald-exps
+                               :exp exp
+                               :env env
+                               :block-env block-env
+                               :go-env go-env
+                               :catch-env catch-env
+                               :errcont errcont
+                               :cont cont)))))
+#+END_SRC
+
+#+NAME: apply_cont_evlet_10
+#+BEGIN_SRC lisp
+  ((evlet-cont-p cont)    (evlet (evlet-cont-vars cont)
+                                 (cdr (evlet-cont-exps cont))
+                                 (cons arg (evlet-cont-evald-exps cont))
+                                 (evlet-cont-exp cont)
+                                 (evlet-cont-env cont)
+                                 (evlet-cont-block-env cont)
+                                 (evlet-cont-go-env cont)
+                                 (evlet-cont-catch-env cont)
+                                 (evlet-cont-errcont cont)
+                                 (evlet-cont-cont cont)))
 #+END_SRC
 
 #+NAME: myeval_evlet_10_test
@@ -1188,8 +1239,6 @@ eval-фрейма стали некорректны
   ;; Тесты для EVLET
   (assert (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil nil nil nil #'err #'ok)))
 #+END_SRC
-
-Без изменений
 
 #+NAME: myeval_let_10
 #+BEGIN_SRC lisp
@@ -1213,26 +1262,44 @@ eval-фрейма стали некорректны
 
 ** LET*
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (evletstar-cont (:include unicont))
+    varpairs
+    exp
+    env)
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+
 #+NAME: myeval_evletstar_10
 #+BEGIN_SRC lisp
-  ;; было
   (defun evletstar (varpairs exp env block-env go-env catch-env errcont cont)
     (cond ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
-          (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
-                                    (lambda (x)
-                                      (evletstar (cdr varpairs) exp
-                                                 (acons (caar varpairs) x env)
-                                                 block-env go-env catch-env
-                                                 errcont cont))))))
-  ;; стало
-  (defun evletstar (varpairs exp env block-env go-env catch-env errcont cont)
-    (cond ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
-          (t                (myeval (cadar varpairs) env block-env go-env catch-env errcont
-                                    (lambda (x)
-                                      (evletstar (cdr varpairs) exp
-                                                 (acons (caar varpairs) x env)
-                                                 block-env go-env catch-env
-                                                 errcont cont))))))
+          (t                (list 'eval (cadar varpairs) env block-env go-env catch-env errcont
+                                  (make-evletstar-cont
+                                   :varpairs varpairs
+                                   :exp exp
+                                   :env env
+                                   :block-env block-env
+                                   :go-env go-env
+                                   :catch-env catch-env
+                                   :errcont errcont
+                                   :cont cont)))))
+#+END_SRC
+
+#+NAME: apply_cont_evletstar_10
+#+BEGIN_SRC lisp
+  ((evletstar-cont-p cont) (evletstar (cdr (evletstar-cont-varpairs cont))
+                                      (evletstar-cont-exp cont)
+                                      (acons (caar (evletstar-cont-varpairs cont))
+                                             arg
+                                             (evletstar-cont-env cont))
+                                      (evletstar-cont-block-env cont)
+                                      (evletstar-cont-go-env cont)
+                                      (evletstar-cont-catch-env cont)
+                                      (evletstar-cont-errcont cont)
+                                      (evletstar-cont-cont cont)))
 #+END_SRC
 
 #+NAME: myeval_evletstar_10_test
@@ -1261,13 +1328,10 @@ eval-фрейма стали некорректны
 
 ** DEFUN
 
-[TODO:gmm] В текущей реализации мы не перезаписываем уже определенную функцию!
-
 Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myeval_defun_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
                                                   (make-closure :body (cdddr exp)
@@ -1277,16 +1341,6 @@ eval-фрейма стали некорректны
                                                                 :args (caddr exp)))
                                             ,*glob-env*)
                                       (list 'return cont (cadr exp))))
-  ;; было
-  ((equal (car exp) 'defun)         (progn
-                                      (push (cons (cadr exp)
-                                                  (make-closure :body (cdddr exp)
-                                                                :block-env block-env
-                                                                :env env
-                                                                :go-env go-env
-                                                                :args (caddr exp)))
-                                            ,*glob-env*)
-                                      (apply-continuation cont (cadr exp))))
 #+END_SRC
 
 #+NAME: myeval_defun_10_test
@@ -1311,31 +1365,51 @@ eval-фрейма стали некорректны
 
 ** SETQ
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (setq-cont (:include unicont))
+    clauses
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myeval_setq_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'setq)     (list 'eval (caddr exp) env block-env go-env catch-env errcont
-                                       (lambda (val)
-                                         (if (null (assoc (cadr exp) env))
-                                             (if (null (assoc (cadr exp) *glob-env*))
-                                                 (push (cons (cadr exp) val)
-                                                       ,*glob-env*)
-                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
-                                             (rplacd (assoc (cadr exp) env) val))
-                                         (list 'return cont val))))
-  ;; было
-  ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                       (lambda (val)
-                                         (if (null (assoc (cadr exp) env))
-                                             (if (null (assoc (cadr exp) *glob-env*))
-                                                 (push (cons (cadr exp) val)
-                                                       ,*glob-env*)
-                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
-                                             (rplacd (assoc (cadr exp) env) val))
-                                         (apply-continuation cont val))))
+                                       (make-setq-cont
+                                        :clauses exp
+                                        :env env
+                                        :block-env block-env
+                                        :go-env go-env
+                                        :catch-env catch-env
+                                        :errcont errcont
+                                        :cont cont)))
+#+END_SRC
+
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: apply_cont_setq_10
+#+BEGIN_SRC lisp
+  ((setq-cont-p cont)     (progn
+                            (if (null (assoc (cadr (setq-cont-clauses cont))
+                                             (setq-cont-env cont)))
+                                ;; if-null
+                                (if (null (assoc (cadr (setq-cont-clauses cont))
+                                                 ,*glob-env*))
+                                    ;; then
+                                    (push (cons (cadr (setq-cont-clauses cont))
+                                                arg)
+                                          ,*glob-env*)
+                                    ;; else
+                                    (rplacd (assoc (cadr (setq-cont-clauses cont))
+                                                   ,*glob-env*)
+                                            arg))
+                                ;; if-not-null
+                                (rplacd (assoc (cadr (setq-cont-clauses cont))
+                                               (setq-cont-env cont))
+                                        arg))
+                            (list 'return (setq-cont-cont cont) arg)))
 #+END_SRC
 
 #+NAME: myeval_setq_10_test
@@ -1417,13 +1491,6 @@ eval-фрейма стали некорректны
                                             cont
                                             block-env)
                                      go-env catch-env errcont cont))
-  ;; было
-  ((equal (car exp) 'block)    (myeval (caddr exp)
-                                       env
-                                       (acons (cadr exp)
-                                              cont
-                                              block-env)
-                                       go-env catch-env errcont cont))
 #+END_SRC
 
 #+NAME: myeval_block_10_test
@@ -1437,14 +1504,11 @@ eval-фрейма стали некорректны
 
 ** RETURN-FROM
 
-Мы вызываем ~is-cont-subset~ чтобы сделать одноразовый выход из блока. Впервые
-появляется в ~hello9.lisp~. [TODO:gmm] Описать как это работает.
-
-#+NAME: is_cont_subset_10
+#+NAME: myeval_is_cont_subset_10
 #+BEGIN_SRC lisp
   (defun is-cont-subset (target-cont cont)
-    (cond ((equal target-cont cont) t)
-          ((functionp cont) nil)
+    (cond ((equal target-cont cont) t)    ;; positive
+          ((functionp cont) nil)          ;; negative
           (t (is-cont-subset target-cont (cdr cont)))))
 #+END_SRC
 
@@ -1453,32 +1517,25 @@ eval-фрейма стали некорректны
 
 #+NAME: myeval_return_from_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'return-from)
-                                (if (not (symbolp (cadr exp)))
-                                   (list 'return errcont
-                                         (format nil "return-from: first argument not a symbol"))
+                               (if (not (symbolp (cadr exp)))
+                                   (list 'return
+                                         errcont
+                                         (format
+                                          nil
+                                          "return-from: first argument not a symbol"))
                                    (list 'eval (caddr exp) env block-env go-env catch-env errcont
                                          (lambda (x)
                                            (assoc-2 (cadr exp) block-env
                                                     (lambda (y)
                                                       (if (is-cont-subset y cont)
                                                           (list 'return y x)
-                                                          (list 'return errcont
-                                                                (format nil "return-from: attempt to RETURN-FROM to ~A that no longer exists" (cadr exp)))))
-                                                    (lambda (y) (list 'return errcont
-                                                                      (format nil "return-from: undefined return block ~A" y))))))))
-  ;; было
-  ((equal (car exp) 'return-from)
-                               (if (not (symbolp (cadr exp)))
-                                   (apply-continuation errcont
-                                                       (format nil
-                                                               "return-from: first argument not a symbol"))
-                                   (myeval (caddr exp) env block-env go-env catch-env errcont
-                                           (lambda (x)
-                                             (assoc-2 (cadr exp) block-env
-                                                      (lambda (y) (apply-continuation y x))
-                                                      (lambda (y) (apply-continuation errcont (format nil "return-from: undefined return block ~A" y))))))))
+                                                          (list 'return
+                                                           errcont
+                                                           (format nil "return-from: attempt to RETURN-FROM to ~A that no longer exists" (cadr exp)))))
+                                                    (lambda (y)
+                                                      (list 'return
+                                                       errcont (format nil "return-from: undefined return block ~A" y))))))))
 #+END_SRC
 
 #+NAME: myeval_return_from_10_test
@@ -1517,47 +1574,58 @@ eval-фрейма стали некорректны
                                           nil nil nil nil (lambda (x) "error")
                                           #'ok)
                              (setf *glob-env* nil)))))
+  ;; Тест на ошибку недостижимого блока
+  (assert (equal "error" (myeval '((block the-block (lambda () (return-from the-block nil))))
+                                 nil nil nil nil (lambda (x) "error")
+                                 #'ok)))
+  ;; Тест на отсутствие ошибки при возврате в достижимый блок
+  (assert (equal 123 (myeval '(block the-block (return-from the-block 123))
+                             nil nil nil nil (lambda (x) "error")
+                             #'ok)))
 #+END_SRC
 
 ** CATCH
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (catch-cont (:include unicont))
+    clauses
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
 
 #+NAME: myeval_catch_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'catch)    (list 'eval (cadr exp) env block-env go-env catch-env errcont
-                                     (lambda (symb-res)
-                                       (if (not (symbolp symb-res))
-                                           (list 'return
-                                            errcont
-                                            (format nil "catch: first argument not a symbol"))
-                                           (list 'eval (caddr exp)
-                                                 env
-                                                 block-env
-                                                 go-env
-                                                 (acons symb-res
-                                                        cont
-                                                        catch-env)
-                                                 errcont
-                                                 cont)))))
-  ;; было
-  ((equal (car exp) 'catch)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                       (lambda (symb-res)
-                                         (if (not (symbolp symb-res))
-                                             (apply-continuation
-                                              errcont
-                                              (format nil "catch: first argument not a symbol"))
-                                             (myeval (caddr exp)
-                                                     env
-                                                     block-env
-                                                     go-env
-                                                     (acons symb-res
-                                                            cont
-                                                            catch-env)
-                                                     errcont
-                                                     cont)))))
+                                     (make-catch-cont
+                                      :clauses exp
+                                      :env env
+                                      :block-env block-env
+                                      :go-env go-env
+                                      :catch-env catch-env
+                                      :errcont errcont
+                                      :cont cont)))
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: apply_cont_catch_10
+#+BEGIN_SRC lisp
+  ((catch-cont-p cont)    (if (not (symbolp arg))
+                              (list 'return
+                                    errcont
+                                    (format nil "catch: first argument not a symbol"))
+                              (list 'eval (caddr (catch-cont-clauses cont))
+                                    (catch-cont-env cont)
+                                    (catch-cont-block-env cont)
+                                    (catch-cont-go-env cont)
+                                    (acons arg
+                                           (catch-cont-cont cont)
+                                           (catch-cont-catch-env cont))
+                                    (catch-cont-errcont cont)
+                                    (catch-cont-cont cont))))
 #+END_SRC
 
 #+NAME: myeval_catch_10_test
@@ -1571,41 +1639,74 @@ eval-фрейма стали некорректны
 
 ** THROW
 
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (throw-cont (:include unicont))
+    clauses
+    env)
+#+END_SRC
+
 Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: myeval_evthrow_10
+#+BEGIN_SRC lisp
+  (defun evthrow (exp env block-env go-env catch-env errcont cont)
+    (list 'eval (cadr exp) env block-env go-env catch-env errcont
+          (make-throw-cont
+           :clauses exp
+           :env env
+           :block-env block-env
+           :go-env go-env
+           :catch-env catch-env
+           :errcont errcont
+           :cont cont)))
+#+END_SRC
 
 #+NAME: myeval_throw_10
 #+BEGIN_SRC lisp
-  ;; стало
-  ((equal (car exp) 'throw)    (list 'eval (cadr exp) env block-env go-env catch-env errcont
-                                     (lambda (symb-res)
-                                       (list 'eval (caddr exp) env block-env go-env catch-env errcont
-                                             (lambda (exp-res)
-                                               (assoc-2 symb-res catch-env
-                                                        (lambda (cont-res)
-                                                          (list 'return cont-res exp-res))
-                                                        (lambda (key)
-                                                          (list 'return
-                                                                errcont
-                                                                (format
-                                                                 nil
-                                                                 "throw: matching ~A catch is not found"
-                                                                 key)))))))))
-  ;; было
-  ((equal (car exp) 'throw)    (myeval (cadr exp) env block-env go-env catch-env errcont
-                                       (lambda (symb-res)
-                                         (myeval (caddr exp) env block-env go-env catch-env errcont
-                                                 (lambda (exp-res)
-                                                   (assoc-2 symb-res catch-env
-                                                            (lambda (cont-res)
-                                                              (apply-continuation cont-res exp-res))
-                                                            (lambda (key)
-                                                              (apply-continuation
-                                                               errcont
-                                                               (format
-                                                                nil
-                                                                "throw: matching ~A catch is not found"
-                                                                key)))))))))
+  ((equal (car exp) 'throw)    (evthrow exp
+                                        env block-env go-env catch-env
+                                        errcont cont))
+#+END_SRC
+
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct throw2-cont
+    prev-arg
+    catch-env
+    errcont)
+#+END_SRC
+
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
+#+NAME: apply_cont_throw2_10
+#+BEGIN_SRC lisp
+  ((throw2-cont-p cont)   (assoc-2 (throw2-cont-prev-arg cont)
+                                   (throw2-cont-catch-env cont)
+                                   (lambda (cont-res)
+                                     (list 'return cont-res arg))
+                                   (lambda (key)
+                                     (list 'return (throw2-cont-errcont cont)
+                                              (format
+                                               nil
+                                               "throw: matching ~A catch is not found"
+                                               key)))))
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+
+#+NAME: apply_cont_throw_10
+#+BEGIN_SRC lisp
+  ((throw-cont-p cont)    (list 'eval (caddr (throw-cont-clauses cont))
+                                (throw-cont-env cont)
+                                (throw-cont-block-env cont)
+                                (throw-cont-go-env cont)
+                                (throw-cont-catch-env cont)
+                                (throw-cont-errcont cont)
+                                (make-throw2-cont
+                                 :prev-arg arg
+                                 :catch-env (throw-cont-catch-env cont)
+                                 :errcont (throw-cont-errcont cont))))
 #+END_SRC
 
 #+NAME: myeval_throw_10_test
@@ -1650,10 +1751,15 @@ eval-фрейма стали некорректны
 
 ** TAGBODY
 
-Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
-Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+#+NAME: tagbody_slice_10
+#+BEGIN_SRC lisp
+  (defun tagbody-slice (exp res)
+    (cond ((null exp) res)
+          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+          (t                    (tagbody-slice (cdr exp) res))))
+#+END_SRC
 
-#+NAME: myeval_evtagbody_10
+#+NAME: tagbody_check_tag_10
 #+BEGIN_SRC lisp
   (defun tagbody-check-tag (exp cont errcont)
     (cond ((null exp) (funcall cont))
@@ -1661,58 +1767,65 @@ eval-фрейма стали некорректны
                 (member (car exp) (cdr exp)))
            (funcall errcont (car exp)))
           (t (tagbody-check-tag (cdr exp) cont errcont))))
-  ;; было
-  (defun evtagbody (body env block-env go-env catch-env errcont cont)
-    (cond ((null (car body))      (apply-continuation cont nil))
-          ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
-          (t                      (myeval (car body) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (declare (ignore x))
-                                            (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-  ;; стало
+#+END_SRC
+
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (evtagbody-cont (:include unicont))
+    body
+    env)
+#+END_SRC
+
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа
+~return~.
+
+#+NAME: myeval_evtagbody_10
+#+BEGIN_SRC lisp
+  <<tagbody_check_tag_10>>
   (defun evtagbody (body env block-env go-env catch-env errcont cont)
     (cond ((null (car body))      (list 'return cont nil))
           ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
           (t                      (list 'eval (car body) env block-env go-env catch-env errcont
-                                          (lambda (x)
-                                            (declare (ignore x))
-                                            (evtagbody (cdr body) env block-env go-env catch-env errcont cont))))))
-  (defun tagbody-slice (exp)
-    (cond ((null exp)           nil)
-          ((symbolp (car exp))  (cons exp  (tagbody-slice (cdr exp))))
-          (t                    (tagbody-slice (cdr exp)))))
-  (defun tagbody-slice (exp res)
-    (cond ((null exp) res)
-          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
-          (t                   (tagbody-slice (cdr exp) res))))
+                                        (make-evtagbody-cont
+                                         :body (cdr body)
+                                         :env  env
+                                         :block-env block-env
+                                         :go-env go-env
+                                         :catch-env catch-env
+                                         :errcont errcont
+                                         :cont cont)))))
+  <<tagbody_slice_10>>
 #+END_SRC
-
 
 #+NAME: myeval_tagbody_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'tagbody)  (tagbody-check-tag
                                 (cdr exp)
                                 (lambda ()
-                                  (setq go-env
-                                        (append (mapcar #'(lambda (x)
-                                                            (cons (car x)
-                                                                  (lambda ()
-                                                                    (evtagbody x
-                                                                               env
-                                                                               block-env
-                                                                               go-env
-                                                                               catch-env
-                                                                               errcont cont))))
-                                                        (tagbody-slice (cdr exp) nil))
-                                                go-env))
-                                  (evtagbody (cdr exp) env block-env go-env catch-env errcont cont))
+                                  (evtagbody (cdr exp) env block-env
+                                             (make-go-env (cdr exp)
+                                                          env block-env go-env catch-env
+                                                          errcont cont)
+                                             catch-env errcont cont))
                                 (lambda (x)
                                   (list 'return
                                    errcont
                                    (format
                                     nil
-                                    "tagbody: The tag ~A appears more than once in a tagbody" x)))))
+                                    "tagbody: The tag ~A appears more than once in a tagbody"
+                                    x)))))
+#+END_SRC
+
+#+NAME: apply_cont_evtagbody_10
+#+BEGIN_SRC lisp
+  ((evtagbody-cont-p cont) (evtagbody (evtagbody-cont-body cont)
+                                      (evtagbody-cont-env cont)
+                                      (unicont-block-env cont)
+                                      (unicont-go-env cont)
+                                      (unicont-catch-env cont)
+                                      (unicont-errcont cont)
+                                      (unicont-cont cont)))
 #+END_SRC
 
 #+NAME: myeval_tagbody_10_test
@@ -1726,16 +1839,65 @@ eval-фрейма стали некорректны
 
 ** GO
 
+Перемещаем все связанное с ~go-cont~ сюда из предыдущего раздела
+
+#+NAME: construct_10
+#+BEGIN_SRC lisp
+  (defstruct (go-cont (:include unicont))
+    slice
+    env)
+#+END_SRC
+
+#+NAME: myeval_make_goenv_10
+#+BEGIN_SRC lisp
+  (defun make-go-env (tagbody-body env block-env go-env catch-env errcont cont)
+    (let* ((conts (mapcar #'(lambda (x) ;; продолжения, нарезанные из tagbody
+                              (make-go-cont
+                               :slice x
+                               :env env
+                               :block-env block-env
+                               :go-env go-env ;; этот слот будем setf-эфить
+                               :catch-env  catch-env
+                               :errcont errcont
+                               :cont cont))
+                          (tagbody-slice tagbody-body nil)))
+           ;; пары (символ . продолжение) нарезанные из
+           ;; tagbody и добавленные в окружение
+           (new-go-env (append (mapcar #'(lambda (go-cont)
+                                           (cons (car (go-cont-slice go-cont))
+                                                 go-cont))
+                                       conts)
+                               go-env)))
+      ;; изменяем поля go-env, записывая в них new-go-env
+      ;; во всех созданных продолжениях
+      (loop :for elt-cont :in conts :do
+         (setf (go-cont-go-env elt-cont)
+               new-go-env))
+      ;; возвращаем новое окружение
+      new-go-env))
+#+END_SRC
+
+#+NAME: myeval_apply_go_continuation_10
+#+BEGIN_SRC lisp
+(defun apply-go-continuation (go-cont)
+  (evtagbody (go-cont-slice go-cont)
+             (go-cont-env go-cont)
+             (go-cont-block-env go-cont)
+             (go-cont-go-env go-cont)
+             (go-cont-catch-env go-cont)
+             (go-cont-errcont go-cont)
+             (go-cont-cont go-cont)))
+#+END_SRC
+
 #+NAME: myeval_go_10
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
-                                        (lambda (x)
-                                          (list 'return x 'NOT-A-PARAM))
-                                        (lambda (x)
-                                          (list 'return
+                                        (lambda (go-cont)
+                                          (apply-go-continuation go-cont))
+                                        (lambda (go-label)
+                                          (apply-continuation
                                            errcont
-                                           (format nil "go: wrong target ~A" x)))))
+                                           (format nil "go: wrong target ~A" go-label)))))
 #+END_SRC
 
 #+NAME: myeval_go_10_test
@@ -1827,11 +1989,13 @@ eval-фрейма стали некорректны
 
 ** RESET
 
+Заменяем вызов ~apply-continuation~ на возврат списка, начинающегося с символа ~return~.
+
 #+NAME: myeval_reset_10
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'reset)    (apply-continuation cont (myeval (cadr exp)
-                                                                env block-env go-env catch-env
-                                                                errcont #'identity)))
+  ((equal (car exp) 'reset)    (list 'return cont (myeval (cadr exp)
+                                                          env block-env go-env catch-env
+                                                          errcont #'identity)))
 #+END_SRC
 
 Тест так себе, но ничего более умного не придумалось
@@ -1846,16 +2010,14 @@ eval-фрейма стали некорректны
 
 ** SHIFT
 
-В выражении ~(shift x form)~ SHIFT биндит к переменной ~x~ продолжение ~cont~. Поэтому
-(даже снаружи формы) можно будет вызвать ~x~ как функцию и перейти в это продолжение. В
-этом это похоже на ~call/cc~.
+Заменяем вызов ~myeval~ на возврат списка, начинающегося с символа ~eval~.
 
 #+NAME: myeval_shift_10
 #+BEGIN_SRC lisp
-  ((equal (car exp) 'shift)    (myeval (caddr exp)
-                                       (acons (cadr exp) cont env)
-                                       block-env go-env catch-env
-                                       errcont cont))
+  ((equal (car exp) 'shift)    (list 'eval (caddr exp)
+                                     (acons (cadr exp) cont env)
+                                     block-env go-env catch-env
+                                     errcont cont))
 #+END_SRC
 
 Тут мы сохраняем продолжение в переменной и используем его, чтобы возвращаться в него и

@@ -37,14 +37,8 @@ assoc-2 не являются продолжениями интерпретат�
 
 #+NAME: assoc_9_test
 #+BEGIN_SRC lisp
-  (assert (equal "ok:123"
-                 (assoc-2 'alfa '((alfa . 123))
-                          (lambda (x) (format nil "ok:~A" x))
-                          (lambda (x) (format nil "err:~A" x)))))
-  (assert (equal "err:ALFA"
-                 (assoc-2 'alfa '((beta . 123))
-                          (lambda (x) (format nil "ok:~A" x))
-                          (lambda (x) (format nil "err:~A" x)))))
+  (assert (equal 123 (lookup 'aaa '((aaa . 123)) #'err #'ok)))
+  (assert (equal "stub"  (lookup 'aaa '((bbb . 123)) #'stub #'ok)))
 #+END_SRC
 
 Заменяем передачу продолжения ~cont~ в ~assoc~ на ~(apply-continuation cont ...)~. Также
@@ -75,18 +69,18 @@ assoc-2 не являются продолжениями интерпретат�
                             key env *glob-env*)))))))
 #+END_SRC
 
+Изменяем тесты так чтобы они использовали ~stub~ в качестве продолжения
+
 #+NAME: lookup_9_test
 #+BEGIN_SRC lisp
   ;; test lookup
-  (assert (equal "ok:123" (lookup 'aaa '((aaa . 123))
-                                  (lambda (x) (format nil "err:~A" x))
-                                  (lambda (x) (format nil "ok:~A" x)))))
-  (assert (equal nil      (lookup 'aaa '((bbb . 123))
-                                  (lambda (x) (declare (ignore x)) nil)
-                                  (lambda (x) (format nil "ok:~A" x)))))
+  (assert (equal 123 (lookup 'aaa '((aaa . 123)) #'err #'ok)))
+  (assert (equal "stub"  (lookup 'aaa '((bbb . 123)) #'stub #'ok)))
 #+END_SRC
 
 * Функции для тестирования
+
+Добавляем функцию ~stub~ для тестирования продолжений ошибки
 
 #+NAME: ok_err_9
 #+BEGIN_SRC lisp
@@ -96,6 +90,9 @@ assoc-2 не являются продолжениями интерпретат�
   (defun err (x)
     (format t "~%err: ~A" x)
     x)
+  (defun stub (x)
+    (format t "~%stub: ~A" x)
+    "stub")
 #+END_SRC
 
 * Структура замыкания
@@ -156,7 +153,10 @@ assoc-2 не являются продолжениями интерпретат�
 #+NAME: apply_continuation_9
 #+BEGIN_SRC lisp
   (defun apply-continuation (cont arg)
-    (cond ((functionp cont)       (funcall cont arg))
+    (cond ((eq #'ok   cont)       (funcall cont arg))
+          ((eq #'err  cont)       (funcall cont arg))
+          ((eq #'stub cont)       (funcall cont arg))
+          ((functionp cont)       (funcall cont arg)) ;; tmp
           <<apply_cont_if_9>>
           <<apply_cont_evcond_9>>
           <<apply_cont_evcond_9>>
@@ -169,7 +169,6 @@ assoc-2 не являются продолжениями интерпретат�
           <<apply_cont_throw_9>>
           <<apply_cont_throw2_9>>
           <<apply_cont_evtagbody_9>>
-
           <<apply_cont_evlis_9>>
           (t (error 'unknown-continuation :cont cont))))
 #+END_SRC
@@ -579,9 +578,6 @@ assoc-2 не являются продолжениями интерпретат�
       <<myeval_return_from_9>>
       <<myeval_catch_9>>
       <<myeval_throw_9>>
-      <<myeval_return_from_9>>
-      <<myeval_catch_9>>
-      <<myeval_throw_9>>
       <<myeval_tagbody_9>>
       <<myeval_go_9>>
       <<myeval_labels_9>>
@@ -630,7 +626,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 ** Самовычисляемые формы
 
-Замена ~funcall cont~ на ~apply-continauation~
+Замена ~funcall cont~ на ~apply-continuaation~
 
 #+NAME: myeval_number_9
 #+BEGIN_SRC lisp
@@ -774,12 +770,12 @@ assoc-2 не являются продолжениями интерпретат�
 #+BEGIN_SRC lisp
   ((evcond-cont-p cont)   (if arg
                               (myeval (cadar (evcond-cont-clauses cont))
-                                      (evcond-cont-env cont)
-                                      (evcond-cont-block-env cont)
-                                      (evcond-cont-go-env cont)
-                                      (evcond-cont-catch-env cont)
-                                      (evcond-cont-errcont cont)
-                                      (evcond-cont-cont cont))
+                                    (evcond-cont-env cont)
+                                    (evcond-cont-block-env cont)
+                                    (evcond-cont-go-env cont)
+                                    (evcond-cont-catch-env cont)
+                                    (evcond-cont-errcont cont)
+                                    (evcond-cont-cont cont))
                               (evcond (cdr (evcond-cont-clauses cont))
                                       (evcond-cont-env cont)
                                       (evcond-cont-block-env cont)
@@ -1353,8 +1349,6 @@ assoc-2 не являются продолжениями интерпретат�
   (assert (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil nil nil nil #'err #'ok)))
 #+END_SRC
 
-Без изменений
-
 #+NAME: myeval_letstar_9
 #+BEGIN_SRC lisp
   ((equal (car exp) 'let*)     (evletstar (cadr exp)
@@ -1379,7 +1373,6 @@ assoc-2 не являются продолжениями интерпретат�
 
 #+NAME: myeval_defun_9
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'defun)         (progn
                                       (push (cons (cadr exp)
                                                   (make-closure :body (cdddr exp)
@@ -1389,16 +1382,6 @@ assoc-2 не являются продолжениями интерпретат�
                                                                 :args (caddr exp)))
                                             ,*glob-env*)
                                       (apply-continuation cont (cadr exp))))
-  ;; было
-  ((equal (car exp) 'defun)         (progn
-                                      (push (cons (cadr exp)
-                                                  (make-closure :body (cdddr exp)
-                                                                :env env
-                                                                :block-env block-env
-                                                                :go-env go-env
-                                                                :args (caddr exp)))
-                                            ,*glob-env*)
-                                      (funcall cont (cadr exp))))
 #+END_SRC
 
 #+NAME: myeval_defun_9_test
@@ -1440,7 +1423,6 @@ assoc-2 не являются продолжениями интерпретат�
 
 #+NAME: myeval_setq_9
 #+BEGIN_SRC lisp
-  ;; стало
   ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                        (make-setq-cont
                                         :clauses exp
@@ -1450,16 +1432,6 @@ assoc-2 не являются продолжениями интерпретат�
                                         :catch-env catch-env
                                         :errcont errcont
                                         :cont cont)))
-  ;; было
-  ((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                       (lambda (val)
-                                         (if (null (assoc (cadr exp) env))
-                                             (if (null (assoc (cadr exp) *glob-env*))
-                                                 (push (cons (cadr exp) val)
-                                                       ,*glob-env*)
-                                                 (rplacd (assoc (cadr exp) *glob-env*) val))
-                                             (rplacd (assoc (cadr exp) env) val))
-                                         (funcall cont val))))
 #+END_SRC
 
 А саму логику из лямбды переместим в ~apply-continuation~, заменив ~funcall~ на
@@ -1535,12 +1507,6 @@ assoc-2 не являются продолжениями интерпретат�
                                                                       :env env
                                                                       :go-env go-env
                                                                       :args (cadr exp))))
-  ;; было
-  ((equal (car exp) 'lambda)   (funcall cont (make-closure :body (cddr exp)
-                                                           :env env
-                                                           :block-env block-env
-                                                           :go-env go-env
-                                                           :args (cadr exp))))
 #+END_SRC
 
 #+NAME: myeval_lambda_9_test
@@ -1837,9 +1803,9 @@ assoc-2 не являются продолжениями интерпретат�
                                   (lambda (exp-res)
                                     (assoc-2 arg catch-env
                                              (lambda (cont-res)
-                                               (funcall cont-res exp-res))
+                                               (apply-continuation cont-res exp-res))
                                              (lambda (key)
-                                               (funcall errcont
+                                               (apply-continuation errcont
                                                         (format
                                                          nil
                                                          "throw: matching ~A catch is not found"
@@ -1865,9 +1831,9 @@ assoc-2 не являются продолжениями интерпретат�
   ((throw2-cont-p cont)   (assoc-2 (throw2-cont-prev-arg cont)
                                    (throw2-cont-catch-env cont)
                                    (lambda (cont-res)
-                                     (funcall cont-res arg))
+                                     (apply-continuation cont-res arg))
                                    (lambda (key)
-                                     (funcall (throw2-cont-errcont cont)
+                                     (apply-continuation (throw2-cont-errcont cont)
                                               (format
                                                nil
                                                "throw: matching ~A catch is not found"
