@@ -115,14 +115,8 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="assoc_9_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"ok:123"</span>
-               (assoc-2 'alfa '((alfa . 123))
-                        (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"ok:~A"</span> x))
-                        (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"err:~A"</span> x)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"err:ALFA"</span>
-               (assoc-2 'alfa '((beta . 123))
-                        (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"ok:~A"</span> x))
-                        (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"err:~A"</span> x)))))
+<pre class="src src-lisp" id="assoc_9_test">(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 123 (lookup 'aaa '((aaa . 123)) #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"stub"</span>  (lookup 'aaa '((bbb . 123)) #'stub #'ok)))
 </pre>
 </div>
 
@@ -159,15 +153,15 @@ assoc-2 не являются продолжениями интерпретат�
 </pre>
 </div>
 
+<p>
+Изменяем тесты так чтобы они использовали <code>stub</code> в качестве продолжения
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="lookup_9_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">test lookup</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"ok:123"</span> (lookup 'aaa '((aaa . 123))
-                                (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"err:~A"</span> x))
-                                (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"ok:~A"</span> x)))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal nil      (lookup 'aaa '((bbb . 123))
-                                (<span style="color: #af00ff;">lambda</span> (x) (<span style="color: #af00ff;">declare</span> (ignore x)) nil)
-                                (<span style="color: #af00ff;">lambda</span> (x) (format nil <span style="color: #87005f;">"ok:~A"</span> x)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 123 (lookup 'aaa '((aaa . 123)) #'err #'ok)))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"stub"</span>  (lookup 'aaa '((bbb . 123)) #'stub #'ok)))
 </pre>
 </div>
 </div>
@@ -176,6 +170,10 @@ assoc-2 не являются продолжениями интерпретат�
 <div id="outline-container-unnumbered-3" class="outline-2">
 <h2 id="unnumbered-3">Функции для тестирования</h2>
 <div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Добавляем функцию <code>stub</code> для тестирования продолжений ошибки
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="ok_err_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">ok</span> (x)
@@ -184,6 +182,9 @@ assoc-2 не являются продолжениями интерпретат�
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">err</span> (x)
   (format t <span style="color: #87005f;">"~%err: ~A"</span> x)
   x)
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">stub</span> (x)
+  (format t <span style="color: #87005f;">"~%stub: ~A"</span> x)
+  <span style="color: #87005f;">"stub"</span>)
 </pre>
 </div>
 </div>
@@ -272,7 +273,10 @@ assoc-2 не являются продолжениями интерпретат�
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="apply_continuation_9">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">apply-continuation</span> (cont arg)
-  (<span style="color: #af00ff;">cond</span> ((functionp cont)       (funcall cont arg))
+  (<span style="color: #af00ff;">cond</span> ((eq #'ok   cont)       (funcall cont arg))
+        ((eq #'err  cont)       (funcall cont arg))
+        ((eq #'stub cont)       (funcall cont arg))
+        ((functionp cont)       (funcall cont arg)) <span style="color: #af0000;">;; </span><span style="color: #af0000;">tmp</span>
         &lt;&lt;apply_cont_if_9&gt;&gt;
         &lt;&lt;apply_cont_evcond_9&gt;&gt;
         &lt;&lt;apply_cont_evcond_9&gt;&gt;
@@ -285,7 +289,6 @@ assoc-2 не являются продолжениями интерпретат�
         &lt;&lt;apply_cont_throw_9&gt;&gt;
         &lt;&lt;apply_cont_throw2_9&gt;&gt;
         &lt;&lt;apply_cont_evtagbody_9&gt;&gt;
-
         &lt;&lt;apply_cont_evlis_9&gt;&gt;
         (t (<span style="color: #ff0000; font-weight: bold;">error</span> 'unknown-continuation <span style="color: #5f5f87;">:cont</span> cont))))
 </pre>
@@ -765,9 +768,6 @@ assoc-2 не являются продолжениями интерпретат�
     &lt;&lt;myeval_return_from_9&gt;&gt;
     &lt;&lt;myeval_catch_9&gt;&gt;
     &lt;&lt;myeval_throw_9&gt;&gt;
-    &lt;&lt;myeval_return_from_9&gt;&gt;
-    &lt;&lt;myeval_catch_9&gt;&gt;
-    &lt;&lt;myeval_throw_9&gt;&gt;
     &lt;&lt;myeval_tagbody_9&gt;&gt;
     &lt;&lt;myeval_go_9&gt;&gt;
     &lt;&lt;myeval_labels_9&gt;&gt;
@@ -823,7 +823,7 @@ assoc-2 не являются продолжениями интерпретат�
 <h3 id="unnumbered-16">Самовычисляемые формы</h3>
 <div class="outline-text-3" id="text-unnumbered-16">
 <p>
-Замена <code>funcall cont</code> на <code>apply-continauation</code>
+Замена <code>funcall cont</code> на <code>apply-continuaation</code>
 </p>
 
 <div class="org-src-container">
@@ -1006,12 +1006,12 @@ assoc-2 не являются продолжениями интерпретат�
 
 <pre class="src src-lisp" id="apply_cont_evcond_9">((evcond-cont-p cont)   (<span style="color: #af00ff;">if</span> arg
                             (myeval (cadar (evcond-cont-clauses cont))
-                                    (evcond-cont-env cont)
-                                    (evcond-cont-block-env cont)
-                                    (evcond-cont-go-env cont)
-                                    (evcond-cont-catch-env cont)
-                                    (evcond-cont-errcont cont)
-                                    (evcond-cont-cont cont))
+                                  (evcond-cont-env cont)
+                                  (evcond-cont-block-env cont)
+                                  (evcond-cont-go-env cont)
+                                  (evcond-cont-catch-env cont)
+                                  (evcond-cont-errcont cont)
+                                  (evcond-cont-cont cont))
                             (evcond (cdr (evcond-cont-clauses cont))
                                     (evcond-cont-env cont)
                                     (evcond-cont-block-env cont)
@@ -1670,10 +1670,6 @@ assoc-2 не являются продолжениями интерпретат�
 </pre>
 </div>
 
-<p>
-Без изменений
-</p>
-
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_letstar_9">((equal (car exp) 'let*)     (evletstar (cadr exp)
@@ -1705,8 +1701,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_defun_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
+<pre class="src src-lisp" id="myeval_defun_9">((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
                                     (push (cons (cadr exp)
                                                 (make-closure <span style="color: #5f5f87;">:body</span> (cdddr exp)
                                                               <span style="color: #5f5f87;">:block-env</span> block-env
@@ -1715,16 +1710,6 @@ assoc-2 не являются продолжениями интерпретат�
                                                               <span style="color: #5f5f87;">:args</span> (caddr exp)))
                                           *glob-env*)
                                     (apply-continuation cont (cadr exp))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'defun)         (<span style="color: #af00ff;">progn</span>
-                                    (push (cons (cadr exp)
-                                                (make-closure <span style="color: #5f5f87;">:body</span> (cdddr exp)
-                                                              <span style="color: #5f5f87;">:env</span> env
-                                                              <span style="color: #5f5f87;">:block-env</span> block-env
-                                                              <span style="color: #5f5f87;">:go-env</span> go-env
-                                                              <span style="color: #5f5f87;">:args</span> (caddr exp)))
-                                          *glob-env*)
-                                    (funcall cont (cadr exp))))
 </pre>
 </div>
 
@@ -1778,8 +1763,7 @@ assoc-2 не являются продолжениями интерпретат�
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="myeval_setq_9"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1090;&#1072;&#1083;&#1086;</span>
-((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
+<pre class="src src-lisp" id="myeval_setq_9">((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
                                      (make-setq-cont
                                       <span style="color: #5f5f87;">:clauses</span> exp
                                       <span style="color: #5f5f87;">:env</span> env
@@ -1788,16 +1772,6 @@ assoc-2 не являются продолжениями интерпретат�
                                       <span style="color: #5f5f87;">:catch-env</span> catch-env
                                       <span style="color: #5f5f87;">:errcont</span> errcont
                                       <span style="color: #5f5f87;">:cont</span> cont)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'setq)     (myeval (caddr exp) env block-env go-env catch-env errcont
-                                     (<span style="color: #af00ff;">lambda</span> (val)
-                                       (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) env))
-                                           (<span style="color: #af00ff;">if</span> (null (assoc (cadr exp) *glob-env*))
-                                               (push (cons (cadr exp) val)
-                                                     *glob-env*)
-                                               (rplacd (assoc (cadr exp) *glob-env*) val))
-                                           (rplacd (assoc (cadr exp) env) val))
-                                       (funcall cont val))))
 </pre>
 </div>
 
@@ -1883,12 +1857,6 @@ assoc-2 не являются продолжениями интерпретат�
                                                                     <span style="color: #5f5f87;">:env</span> env
                                                                     <span style="color: #5f5f87;">:go-env</span> go-env
                                                                     <span style="color: #5f5f87;">:args</span> (cadr exp))))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1073;&#1099;&#1083;&#1086;</span>
-((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #5f5f87;">:body</span> (cddr exp)
-                                                         <span style="color: #5f5f87;">:env</span> env
-                                                         <span style="color: #5f5f87;">:block-env</span> block-env
-                                                         <span style="color: #5f5f87;">:go-env</span> go-env
-                                                         <span style="color: #5f5f87;">:args</span> (cadr exp))))
 </pre>
 </div>
 
@@ -2240,9 +2208,9 @@ assoc-2 не являются продолжениями интерпретат�
                                 (<span style="color: #af00ff;">lambda</span> (exp-res)
                                   (assoc-2 arg catch-env
                                            (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                             (funcall cont-res exp-res))
+                                             (apply-continuation cont-res exp-res))
                                            (<span style="color: #af00ff;">lambda</span> (key)
-                                             (funcall errcont
+                                             (apply-continuation errcont
                                                       (format
                                                        nil
                                                        <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>
@@ -2274,9 +2242,9 @@ assoc-2 не являются продолжениями интерпретат�
 <pre class="src src-lisp" id="apply_cont_throw2_9">((throw2-cont-p cont)   (assoc-2 (throw2-cont-prev-arg cont)
                                  (throw2-cont-catch-env cont)
                                  (<span style="color: #af00ff;">lambda</span> (cont-res)
-                                   (funcall cont-res arg))
+                                   (apply-continuation cont-res arg))
                                  (<span style="color: #af00ff;">lambda</span> (key)
-                                   (funcall (throw2-cont-errcont cont)
+                                   (apply-continuation (throw2-cont-errcont cont)
                                             (format
                                              nil
                                              <span style="color: #87005f;">"throw: matching ~A catch is not found"</span>

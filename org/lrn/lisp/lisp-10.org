@@ -91,6 +91,7 @@
 Нам понадобится фреймы DONE и ERROR - на этих точках мы будем прерывать
 рекурсию. IDENTITY-continuations (~ok~ и ~err~) будет возвращать 'done и 'error.
 
+#+NAME: stepper_10
 #+BEGIN_SRC lisp
   (defun stepper (frame)
     (cond ((equal (car frame) 'done)   (cadr frame))
@@ -99,7 +100,7 @@
           ((equal (car frame) 'eval)   (stepper (apply #'myeval (cdr frame))))))
 #+END_SRC
 
-* Глобальное окружение
+* TODO Глобальное окружение
 
 #+NAME: assoc_10
 #+BEGIN_SRC lisp
@@ -128,27 +129,15 @@
 #+BEGIN_SRC lisp
   ;; environment
   (defparameter *glob-env* nil)
-  ;; lookup (old)
-  (defun lookup (symb env errcont cont)
-    (assoc-2 symb env
-             (lambda (x)
-               (apply-continuation cont x))
-             (lambda (key)
-               (assoc-2 key *glob-env* cont
-                        (lambda (key)
-                          (apply-continuation
-                           errcont
-                           (format
-                            nil "UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"
-                            key env *glob-env*)))))))
-  ;; lookup (new)
+  ;; lookup
   (defun lookup (symb env errcont cont)
     (assoc-2 symb env
              (lambda (x)
                (list 'return cont x))
              (lambda (key)
                (assoc-2 key *glob-env*
-                        (list 'return cont nil) ;; todo here
+                        (lambda (x) ;; возможно ошибка (была) тут
+                          (list 'return cont x))
                         (lambda (key)
                           (list 'return
                                 errcont
@@ -157,15 +146,19 @@
                                  key env *glob-env*)))))))
 #+END_SRC
 
+Модифицируем тесты
+
 #+NAME: lookup_10_test
 #+BEGIN_SRC lisp
   ;; test lookup
-  (assert (equal "ok:123" (lookup 'aaa '((aaa . 123))
-                                  (lambda (x) (format nil "err:~A" x))
-                                  (lambda (x) (format nil "ok:~A" x)))))
-  (assert (equal nil      (lookup 'aaa '((bbb . 123))
-                                  (lambda (x) (declare (ignore x)) nil)
-                                  (lambda (x) (format nil "ok:~A" x)))))
+  (assert (equal "ok:123" (let ((retval (lookup 'aaa '((aaa . 123))
+                                                (lambda (x) (format nil "err:~A" x))
+                                                (lambda (x) (format nil "ok:~A" x)))))
+                            (apply-continuation (cadr retval) (caddr retval)))))
+  (assert (equal nil      (let ((retval (lookup 'aaa '((bbb . 123))
+                                                (lambda (x) (declare (ignore x)) nil)
+                                                (lambda (x) (format nil "ok:~A" x)))))
+                            (apply-continuation (cadr retval) (caddr retval)))))
 #+END_SRC
 
 * Функции для тестирования
@@ -174,11 +167,9 @@
 
 #+NAME: ok_err_10
 #+BEGIN_SRC lisp
-  ;; test function ok
   (defun ok (x)
     (format t "~%ok: ~A" x)
     (list 'done x))
-  ;; test function err
   (defun err (x)
     (format t "~%err: ~A" x)
     (list 'error x))
@@ -300,16 +291,18 @@
 #+NAME: myapply_car_cdr_cons_10_test
 #+BEGIN_SRC lisp
   ;; Тесты cons, car, cdr
-  (assert (equal '(1 . 2) (myeval '(cons 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil nil nil nil #'err #'ok)))
-  (assert (equal 2 (myeval '(car (cons 2 3)) nil nil nil nil #'err #'ok)))
-  (assert (equal 3 (myeval '(cdr (cons 2 3)) nil nil nil nil #'err #'ok)))
-  (assert (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil nil nil nil #'err #'ok)))
-  (assert (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil nil nil nil #'err #'ok)))
+  (assert (equal '(1 . 2) (stepper (myeval '(cons 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal '((1 . 2) 3 . 4) (stepper (myeval '(cons (cons 1 2) (cons 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(car (cons 2 3)) nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(cdr (cons 2 3)) nil nil nil nil #'err #'ok))))
+  (assert (equal '(1 . 2) (stepper (myeval '(car (cons (cons 1 2) (cons 3 4)))
+                                           nil nil nil nil #'err #'ok))))
+  (assert (equal '(3 . 4) (stepper (myeval '(cdr (cons (cons 1 2) (cons 3 4)))
+                                           nil nil nil nil #'err #'ok))))
   ;; Тесты для cons-ячеек, вычисляемых в окружении
-  (assert (equal 1 (myeval '(car a) '((a . (1 . 2))) nil nil nil #'err #'ok)))
-  (assert (equal 2 (myeval '(cdr a) '((a . (1 . 2))) nil nil nil #'err #'ok)))
-  (assert (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) nil nil nil #'err #'ok)))
+  (assert (equal 1 (stepper (myeval '(car a) '((a . (1 . 2))) nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(cdr a) '((a . (1 . 2))) nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** NULL-предикат
@@ -336,13 +329,13 @@
 #+NAME: myapply_null_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для NULL
-  (assert (equal T (myeval '(null ()) nil nil nil nil #'err #'ok)))
-  (assert (equal T (myeval '(null nil) nil nil nil nil #'err #'ok)))
-  (assert (equal NIL (myeval '(null T) nil nil nil nil #'err #'ok)))
-  (assert (equal T (myeval '(null a) '((a . ())) nil nil nil #'err #'ok)))
+  (assert (equal T (stepper (myeval '(null ()) nil nil nil nil #'err #'ok))))
+  (assert (equal T (stepper (myeval '(null nil) nil nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval '(null T) nil nil nil nil #'err #'ok))))
+  (assert (equal T (stepper (myeval '(null a) '((a . ())) nil nil nil #'err #'ok))))
   ;; Тесты для NULL, с аргументом, вычисляемые в окружении
-  (assert (equal NIL (myeval '(null a) '((a . T)) nil nil nil #'err #'ok)))
-  (assert (equal NIL (myeval '(null a) '((a . 1)) nil nil nil #'err #'ok)))
+  (assert (equal NIL (stepper (myeval '(null a) '((a . T)) nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval '(null a) '((a . 1)) nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** Встроенные функции арифметики
@@ -386,75 +379,75 @@
 #+NAME: myapply_ariph_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для сложения
-  (assert (equal 0                (myeval '(+) nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 2)            (myeval '(+ 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 2 3)          (myeval '(+ 2 3) nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 2 3 4)        (myeval '(+ 2 3 4) nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 2 (+ 3 4))    (myeval '(+ 2 (+ 3 4)) nil nil nil nil #'err #'ok)))
-  (assert (equal (+ 2 (+ 3 4) 5)  (myeval '(+ 2 (+ 3 4) 5) nil nil nil nil #'err #'ok)))
+  (assert (equal 0                (stepper (myeval '(+) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2)            (stepper (myeval '(+ 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 3)          (stepper (myeval '(+ 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 3 4)        (stepper (myeval '(+ 2 3 4) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 (+ 3 4))    (stepper (myeval '(+ 2 (+ 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 (+ 3 4) 5)  (stepper (myeval '(+ 2 (+ 3 4) 5) nil nil nil nil #'err #'ok))))
   ;; Тесты для умножения
-  (assert (equal 1                (myeval '(*) nil nil nil nil #'err #'ok)))
-  (assert (equal (* 2)            (myeval '(* 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (* 2 3)          (myeval '(* 2 3) nil nil nil nil #'err #'ok)))
-  (assert (equal (* 2 3 4)        (myeval '(* 2 3 4) nil nil nil nil #'err #'ok)))
-  (assert (equal (* 2 (* 3 4))    (myeval '(* 2 (* 3 4)) nil nil nil nil #'err #'ok)))
-  (assert (equal (* 2 (* 3 4) 5)  (myeval '(* 2 (* 3 4) 5) nil nil nil nil #'err #'ok)))
+  (assert (equal 1                (stepper (myeval '(*) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2)            (stepper (myeval '(* 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 3)          (stepper (myeval '(* 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 3 4)        (stepper (myeval '(* 2 3 4) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 (* 3 4))    (stepper (myeval '(* 2 (* 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 (* 3 4) 5)  (stepper (myeval '(* 2 (* 3 4) 5) nil nil nil nil #'err #'ok))))
   ;; Тесты для сложения в окружении
   (assert (equal 0
-                 (myeval '(+) nil nil nil nil #'err #'ok)))
+                 (stepper (myeval '(+) nil nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2))
                    (+ a))
-                 (myeval '(+ a)
+                 (stepper (myeval '(+ a)
                          '((a . 2))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3))
                    (+ a b))
-                 (myeval '(+ a b)
+                 (stepper (myeval '(+ a b)
                          '((a . 2) (b . 3))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4))
                    (+ a b c))
-                 (myeval '(+ a b c)
+                 (stepper (myeval '(+ a b c)
                          '((a . 2) (b . 3) (c . 4))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4))
                    (+ a (+ b c)))
-                 (myeval '(+ a (+ b c))
+                 (stepper (myeval '(+ a (+ b c))
                          '((a . 2) (b . 3) (c . 4))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
                    (+ a (+ b c) d))
-                 (myeval '(+ a (+ b c) d)
+                 (stepper (myeval '(+ a (+ b c) d)
                          '((a . 2) (b . 3) (c . 4) (d . 5))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   ;; Тесты для умножения  в окружении
   (assert (equal 1
-                 (myeval '(*) nil nil nil nil #'err #'ok)))
+                 (stepper (myeval '(*) nil nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2))
                    (* a))
-                 (myeval '(* a)
+                 (stepper (myeval '(* a)
                          '((a . 2))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3))
                    (* a b))
-                 (myeval '(* a b)
+                 (stepper (myeval '(* a b)
                          '((a . 2) (b . 3))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4))
                    (* a b c))
-                 (myeval '(* a b c)
+                 (stepper (myeval '(* a b c)
                          '((a . 2) (b . 3) (c . 4))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4))
                    (* a (* b c)))
-                 (myeval '(* a (* b c))
+                 (stepper (myeval '(* a (* b c))
                          '((a . 2) (b . 3) (c . 4))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
   (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
                    (* a (* b c) d))
-                 (myeval '(* a (* b c) d)
+                 (stepper (myeval '(* a (* b c) d)
                          '((a . 2) (b . 3) (c . 4) (d . 5))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** CLOSURE
@@ -474,11 +467,11 @@
 #+NAME: myapply_closure_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для применения CLOSURE
-  (assert (equal 1 (myeval '(((lambda (x)
-                                (lambda (y) x))
-                              1)
-                             2)
-                           nil nil nil nil #'err #'ok)))
+  (assert (equal 1 (stepper (myeval '(((lambda (x)
+                                         (lambda (y) x))
+                                       1)
+                                      2)
+                                    nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** PRINT
@@ -495,28 +488,24 @@
 #+NAME: myapply_print_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для PRINT в сравнении с host-овым print
-  (assert (equal (with-output-to-string (*standard-output*)
-                   (print 12))
+  (assert (equal (format nil "~%~A ~%ok: ~A" 12 12)
                  (with-output-to-string (*standard-output*)
-                   (myeval '(print 12) nil nil nil nil #'err #'identity))))
+                   (stepper (myeval '(print 12) nil nil nil nil #'err #'ok)))))
   (assert (equal (print 12)
-                 (myeval '(print 12) nil nil nil nil #'err #'ok)))
+                 (stepper (myeval '(print 12) nil nil nil nil #'err #'ok))))
   ;; Тесты для PRINT в окружении
-  (assert (equal (with-output-to-string (*standard-output*)
-                   (let ((a 12))
-                     (print a)))
+  (assert (equal (format nil "~%~A ~%ok: ~A" 12 12)
                  (with-output-to-string (*standard-output*)
-                   (myeval '(print a)
-                           '((b . 23) (a . 12))
-                           nil nil nil #'err #'identity))))
-  (assert (equal (let ((a 12))
-                   (print a))
-                 (myeval '(print a)
-                         '((b . 23) (a . 12))
-                         nil nil nil #'err #'ok)))
+                   (stepper (myeval '(print a)
+                                    '((b . 23) (a . 12))
+                                    nil nil nil #'err #'ok)))))
+  (assert (equal (print 12)
+                 (stepper (myeval '(print a)
+                                  '((b . 23) (a . 12))
+                                  nil nil nil #'err #'ok))))
 #+END_SRC
 
-** LIST
+** TODO LIST
 
 #+NAME: evlis_cont_10
 #+BEGIN_SRC lisp
@@ -581,14 +570,14 @@
 #+NAME: myapply_list_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для LIST
-  (assert (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
-                                 nil nil nil nil #'err #'ok)))
+  (assert (equal '(1 14) (stepper (myeval '(list 1 (+ 2 (* 3 4)))
+                                 nil nil nil nil #'err #'ok))))
   (assert (equal '(3 6 42)
-                 (myeval '(list (+ 1 2) (* 2 3) 42) nil nil nil nil #'err #'ok)))
+                 (stepper (myeval '(list (+ 1 2) (* 2 3) 42) nil nil nil nil #'err #'ok))))
   (assert (equal '(3 6 42)
-                 (myeval '(list (+ a b) (* b c) 42)
+                 (stepper (myeval '(list (+ a b) (* b c) 42)
                          '((a . 1) (b . 2) (c . 3) (d . 4))
-                         nil nil nil #'err #'ok)))
+                         nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** CALL/CC
@@ -604,8 +593,8 @@
 #+NAME: myapply_callcc_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для CALL/CC
-  (assert (equal 14 (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
-                            nil nil nil nil #'err #'ok)))
+  (assert (equal 14 (stepper (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
+                                     nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 * MyEval
@@ -706,12 +695,12 @@
 #+NAME: myeval_number_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для самовычисляемых форм
-  (assert (equal T (myeval 'T nil nil nil nil #'err #'ok)))
-  (assert (equal NIL (myeval 'NIL nil nil nil nil #'err #'ok)))
-  (assert (equal 999 (myeval 999 nil nil nil nil #'err #'ok)))
+  (assert (equal T (stepper (myeval 'T nil nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval 'NIL nil nil nil nil #'err #'ok))))
+  (assert (equal 999 (stepper (myeval 999 nil nil nil nil #'err #'ok))))
 #+END_SRC
 
-** Вычисление символов
+** TODO Вычисление символов
 
 #+NAME: myeval_symb_10
 #+BEGIN_SRC lisp
@@ -721,10 +710,10 @@
 #+NAME: myeval_symb_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для вычисления символов
-  (assert (equal 6 (myeval 'b '((a . 3) (b . 6)) nil nil nil #'err #'ok)))
-  (assert (equal "error" (car (myeval 'b nil nil nil nil
-                                      #'(lambda (x) (cons "error" x))
-                                      #'ok))))
+  (assert (equal 6 (stepper (myeval 'b '((a . 3) (b . 6)) nil nil nil #'err #'ok))))
+  (assert (equal "error" (car (stepper (myeval 'b nil nil nil nil
+                                               #'(lambda (x) (cons "error" x))
+                                               #'ok)))))
 #+END_SRC
 
 ** Цитирование
@@ -739,7 +728,7 @@
 #+NAME: myeval_quote_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для QUOTE
-  (assert (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil nil nil nil #'err #'ok)))
+  (assert (equal '(+ 1 2) (stepper (myeval '(quote (+ 1 2)) nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** Условное выполнение IF
@@ -791,14 +780,14 @@
 #+NAME: myeval_if_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для IF
-  (assert (equal 2 (myeval '(if () 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal 1 (myeval '(if (null ()) 1 2) nil nil nil nil #'err #'ok)))
+  (assert (equal 2 (stepper (myeval '(if () 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(if (null ()) 1 2) nil nil nil nil #'err #'ok))))
   ;; Тесты для IF, где условие вычисляется в окружении
-  (assert (equal 2 (myeval '(if a 1 2) '((a . ())) nil nil nil #'err #'ok)))
-  (assert (equal 1 (myeval '(if a 1 2) '((a . 1)) nil nil nil #'err #'ok)))
+  (assert (equal 2 (stepper (myeval '(if a 1 2) '((a . ())) nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(if a 1 2) '((a . 1)) nil nil nil #'err #'ok))))
 #+END_SRC
 
-** COND
+** TODO COND
 
 #+NAME: construct_10
 #+BEGIN_SRC lisp
@@ -870,23 +859,23 @@
 #+NAME: myeval_cond_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для COND
-  (assert (equal 2 (myeval '(cond
+  (assert (equal 2 (stepper (myeval '(cond
                              (() 1)
                              (1 2))
-                           nil nil nil nil #'err #'ok)))
-  (assert (equal 2 (myeval '(cond
+                           nil nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(cond
                              (a 1)
                              (b 2))
                            '((a . ()) (b . 1))
-                           nil nil nil #'err #'ok)))
-  (assert (equal 1 (myeval '(cond
+                           nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(cond
                              (a 1)
                              (b 2))
                            '((a . 1) (b . ()))
-                           nil nil nil #'err #'ok)))
+                           nil nil nil #'err #'ok))))
 #+END_SRC
 
-** PROGN
+** TODO PROGN
 
 #+NAME: construct_10
 #+BEGIN_SRC lisp
@@ -946,13 +935,13 @@
 #+NAME: myeval_progn_10_test
 #+BEGIN_SRC lisp
   ;; Тест для PROGN
-  (assert (equal 3 (myeval '(progn 1 2 3) nil nil nil nil #'err #'ok)))
+  (assert (equal 3 (stepper (myeval '(progn 1 2 3) nil nil nil nil #'err #'ok))))
   ;; Тест для PROGN в окружении
-  (assert (equal 3 (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
-                           nil nil nil #'err #'ok)))
+  (assert (equal 3 (stepper (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
+                           nil nil nil #'err #'ok))))
 #+END_SRC
 
-** AND
+** TODO AND
 
 #+NAME: construct_10
 #+BEGIN_SRC lisp
@@ -1045,49 +1034,49 @@
 #+NAME: myeval_and_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для AND
-  (assert (equal (and)                (myeval '(and) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1)              (myeval '(and 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (and nil)            (myeval '(and nil) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 nil)          (myeval '(and 1 nil) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 2 3)          (myeval '(and 1 2 3) nil nil nil nil #'err #'ok)))
-  (assert (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil nil nil nil
-                                              #'err #'ok)))
-  (assert (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
-                                                #'err #'ok)))
+  (assert (equal (and)                (stepper (myeval '(and) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1)              (stepper (myeval '(and 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (and nil)            (stepper (myeval '(and nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 nil)          (stepper (myeval '(and 1 nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 2 nil)        (stepper (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 2 3)          (stepper (myeval '(and 1 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 (and 1 2) 3)  (stepper (myeval '(and 1 (and 1 2) 3) nil nil nil nil
+                                              #'err #'ok))))
+  (assert (equal (and 1 (and 1 nil) 3)  (stepper (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
+                                                #'err #'ok))))
   ;; Тесты для AND в окружении
   (assert (equal (let ((a nil))
                    (and nil))
-                 (myeval '(and a) '((a . nil)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(and a) '((a . nil)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1))
                    (and a))
-                 (myeval '(and a) '((a . 1)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(and a) '((a . 1)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1)
                        (b nil))
                    (and a b))
-                 (myeval '(and a b) '((a . 1) (b . nil)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(and a b) '((a . 1) (b . nil)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c nil))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a b c))
-                 (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1)
                        (b 2)
                        (c 3))
                    (and a (and a b) c))
-                 (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
-                         #'err #'ok)))
+                 (stepper (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
+                         #'err #'ok))))
   (assert (equal (let ((a 1)
                        (b nil)
                        (c 3))
                    (and a (and a b) c))
-                 (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
-                         #'err #'ok)))
+                 (stepper (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
+                         #'err #'ok))))
 #+END_SRC
 
 ** OR
@@ -1184,39 +1173,39 @@
 #+NAME: myeval_or_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для OR
-  (assert (equal (or)                  (myeval '(or) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1)            (myeval '(or nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil nil 1)        (myeval '(or nil nil 1) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil 1 2)          (myeval '(or nil 1 2) nil nil nil nil #'err #'ok)))
-  (assert (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil nil nil nil #'err #'ok)))
+  (assert (equal (or)                  (stepper (myeval '(or) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil 1)            (stepper (myeval '(or nil 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil nil 1)        (stepper (myeval '(or nil nil 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil 1 2)          (stepper (myeval '(or nil 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil (or 3 2) 2)   (stepper (myeval '(or nil (or 3 2) 2) nil nil nil nil #'err #'ok))))
   ;; Тесты для OR в окружении
   (assert (equal (let ((a nil))
                    (or a))
-                 (myeval '(or a) '((a . nil)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or a) '((a . nil)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a 1))
                    (or a))
-                 (myeval '(or a) '((a . 1)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or a) '((a . 1)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a nil)
                        (b 1))
                    (or a b))
-                 (myeval '(or a b) '((a . nil) (b . 1)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or a b) '((a . nil) (b . 1)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c 3))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a nil)
                        (b 1)
                        (c 2))
                    (or a b c))
-                 (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok))))
   (assert (equal (let ((a nil)
                        (b nil)
                        (c nil)
                        (d 2))
                    (or a (or b c) d))
-                 (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
-                         nil nil nil #'err #'ok)))
+                 (stepper (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                         nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** LET
@@ -1323,11 +1312,11 @@
 #+NAME: myeval_let_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для LET
-  (assert (equal '(1 . 2) (myeval '(let ((a 1)
-                                         (b 2))
-                                    (cons a b))
-                                    nil nil nil nil
-                                    #'err #'ok)))
+  (assert (equal '(1 . 2) (stepper (myeval '(let ((a 1)
+                                                  (b 2))
+                                             (cons a b))
+                                           nil nil nil nil
+                                           #'err #'ok))))
 #+END_SRC
 
 ** LET*
@@ -1389,11 +1378,11 @@
 #+NAME: myeval_letstar_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для LET*
-  (assert (equal '(3 1 . 2) (myeval '(let* ((a 1)
-                                            (b 2)
-                                            (c (+ a b)))
-                                      (cons c (cons a b)))
-                                    nil nil nil nil #'err #'ok)))
+  (assert (equal '(3 1 . 2) (stepper (myeval '(let* ((a 1)
+                                                     (b 2)
+                                                     (c (+ a b)))
+                                               (cons c (cons a b)))
+                                             nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** DEFUN
@@ -1418,18 +1407,18 @@
   ;; Тесты для DEFUN
   (assert (equal 64 (progn
                       (setf *glob-env* nil)
-                      (myeval '(defun alfa (x) (* x x)) nil nil nil nil #'err #'ok)
-                      (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
+                      (stepper (myeval '(defun alfa (x) (* x x)) nil nil nil nil #'err #'ok))
+                      (prog1 (stepper (myeval '(alfa 8) nil nil nil nil #'err #'ok))
                         (setf *glob-env* nil)))))
   ;; Тесты на IMPLICIT-PROGN в DEFUN
   (assert (equal 384 (progn
                        (setf *glob-env* nil)
-                       (myeval '(let ((y 3))
+                       (stepper (myeval '(let ((y 3))
                                  (defun alfa (x)
                                    (setq y 6)
                                    (* x x y)))
-                               nil nil nil nil #'err #'ok)
-                       (prog1 (myeval '(alfa 8) nil nil nil nil #'err #'ok)
+                               nil nil nil nil #'err #'ok))
+                       (prog1 (stepper (myeval '(alfa 8) nil nil nil nil #'err #'ok))
                          (setf *glob-env* nil)))))
 #+END_SRC
 
@@ -1489,30 +1478,30 @@
   (assert (equal '((2 . 2) ((alfa . 0)))
                  (progn
                    (setf *glob-env* '((alfa . 0)))
-                   (prog1 (list (myeval '(cons (setq alfa 2)
+                   (prog1 (list (stepper (myeval '(cons (setq alfa 2)
                                           alfa)
                                         '((alfa . 1))
-                                        nil nil nil #'err #'ok)
+                                        nil nil nil #'err #'ok))
                                 ,*glob-env*)
                      (setf *glob-env* nil)))))
   ;; Изменение значения несуществующей переменной (создание глобальной переменной)
   (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
                  (progn
                    (setf *glob-env* '((beta . 222)))
-                   (prog1 (list (myeval '(cons
+                   (prog1 (list (stepper (myeval '(cons
                                           (setq alfa 1)
                                           alfa)
-                                        nil nil nil nil #'err #'ok)
+                                        nil nil nil nil #'err #'ok))
                                 ,*glob-env*)
                      (setf *glob-env* nil)))))
   ;; Изменение значения существующей глобальной переменной
   (assert (equal '((1 . 1) ((BETA . 1)))
                  (progn
                    (setf *glob-env* '((beta . 222)))
-                   (prog1 (list (myeval '(cons
+                   (prog1 (list (stepper (myeval '(cons
                                           (setq beta 1)
                                           beta)
-                                        nil nil nil nil #'err #'ok)
+                                        nil nil nil nil #'err #'ok))
                                 ,*glob-env*)
                      (setf *glob-env* nil)))))
 #+END_SRC
@@ -1534,18 +1523,18 @@
 #+NAME: myeval_lambda_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для LAMBDA
-  (assert (equal 3 (myeval '((lambda (x) (+ 1  x)) 2)
-                           nil nil nil nil #'err #'ok)))
+  (assert (equal 3 (stepper (myeval '((lambda (x) (+ 1  x)) 2)
+                           nil nil nil nil #'err #'ok))))
   ;; Тесты для LAMBDA в окружении
-  (assert (equal 5 (myeval '(let ((y 3))
+  (assert (equal 5 (stepper (myeval '(let ((y 3))
                              ((lambda (x) (+ y x)) 2))
-                           nil nil nil nil #'err #'ok)))
+                           nil nil nil nil #'err #'ok))))
   ;; Тесты на IMPLICIT-PROGN в LAMBDA
-  (assert (equal 8 (myeval '(let ((y 3))
+  (assert (equal 8 (stepper (myeval '(let ((y 3))
                              ((lambda (x)
                                 (setq y 6)
                                 (+ y x)) 2))
-                           nil nil nil nil #'err #'ok)))
+                           nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** BLOCK
@@ -1566,10 +1555,10 @@
 #+NAME: myeval_block_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для BLOCK
-  (assert (equal nil (myeval '(block testblock)
-                             nil nil nil nil #'err #'ok)))
-  (assert (equal 3 (myeval '(block testblock 3)
-                           nil nil nil nil #'err #'ok)))
+  (assert (equal nil (stepper (myeval '(block testblock)
+                             nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(block testblock 3)
+                           nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** RETURN-FROM
@@ -1611,17 +1600,17 @@
 #+NAME: myeval_return_from_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для RETURN-FROM
-  (assert (equal 3 (myeval '(block testblock (return-from testblock (+ 1 2)) 777)
-                           nil nil nil nil #'err #'ok)))
-  (assert (equal "error" (myeval '(block testblock (return-from notblock (+ 1 2)) 777)
-                                 nil nil nil nil #'(lambda (x) "error") #'ok)))
-  (assert (equal "error" (myeval '(progn (return-from not-found-block (+ 1 2)) 777)
+  (assert (equal 3 (stepper (myeval '(block testblock (return-from testblock (+ 1 2)) 777)
+                           nil nil nil nil #'err #'ok))))
+  (assert (equal "error" (stepper (myeval '(block testblock (return-from notblock (+ 1 2)) 777)
+                                 nil nil nil nil #'(lambda (x) "error") #'ok))))
+  (assert (equal "error" (stepper (myeval '(progn (return-from not-found-block (+ 1 2)) 777)
                                  nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+                                 #'ok))))
   ;; Тест RETURN-FROM в лексической области видимости
   (assert (equal 12 (progn
                       (setf *glob-env* nil)
-                      (prog1 (myeval '(progn
+                      (prog1 (stepper (myeval '(progn
                                        (defun foo (x)
                                          (block in-lambda-block
                                            (return-from in-lambda-block
@@ -1629,12 +1618,12 @@
                                            777))
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
-                                     #'ok)
+                                     #'ok))
                         (setf *glob-env* nil)))))
   ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
   (assert (equal "error" (progn
                            (setf *glob-env* nil)
-                           (prog1 (myeval '(progn
+                           (prog1 (stepper (myeval '(progn
                                             (defun foo (x)
                                               (return-from in-lambda-block
                                                 (+ x 2))
@@ -1642,16 +1631,16 @@
                                             (block in-lambda-block
                                               (foo 10)))
                                           nil nil nil nil (lambda (x) "error")
-                                          #'ok)
+                                          #'ok))
                              (setf *glob-env* nil)))))
   ;; Тест на ошибку недостижимого блока
-  (assert (equal "error" (myeval '((block the-block (lambda () (return-from the-block nil))))
+  (assert (equal "error" (stepper (myeval '((block the-block (lambda () (return-from the-block nil))))
                                  nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+                                 #'ok))))
   ;; Тест на отсутствие ошибки при возврате в достижимый блок
-  (assert (equal 123 (myeval '(block the-block (return-from the-block 123))
+  (assert (equal 123 (stepper (myeval '(block the-block (return-from the-block 123))
                              nil nil nil nil (lambda (x) "error")
-                             #'ok)))
+                             #'ok))))
 #+END_SRC
 
 ** CATCH
@@ -1701,10 +1690,10 @@
 #+NAME: myeval_catch_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для CATCH
-  (assert (equal nil (myeval '(catch 'zzz)
-                             nil nil nil nil #'err #'ok)))
-  (assert (equal 3 (myeval '(catch 'zzz 3)
-                           nil nil nil nil #'err #'ok)))
+  (assert (equal nil (stepper (myeval '(catch 'zzz)
+                             nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(catch 'zzz 3)
+                           nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** THROW
@@ -1782,19 +1771,19 @@
 #+NAME: myeval_throw_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для THROW
-  (assert (equal 3 (myeval '(catch 'testcatch (throw 'testcatch (+ 1 2)) 777)
-                           nil nil nil nil #'err #'ok)))
-  (assert (equal "error" (myeval '(catch 'testcatch (throw 'notcatch (+ 1 2)) 777)
+  (assert (equal 3 (stepper (myeval '(catch 'testcatch (throw 'testcatch (+ 1 2)) 777)
+                           nil nil nil nil #'err #'ok))))
+  (assert (equal "error" (stepper (myeval '(catch 'testcatch (throw 'notcatch (+ 1 2)) 777)
                                  nil nil nil nil
                                  #'(lambda (x) "error")
-                                 #'ok)))
-  (assert (equal "error" (myeval '(progn (throw 'not-found-catch (+ 1 2)) 777)
+                                 #'ok))))
+  (assert (equal "error" (stepper (myeval '(progn (throw 'not-found-catch (+ 1 2)) 777)
                                  nil nil nil nil (lambda (x) "error")
-                                 #'ok)))
+                                 #'ok))))
   ;; Тест THROW в лексической области видимости
   (assert (equal 12 (progn
                       (setf *glob-env* nil)
-                      (prog1 (myeval '(progn
+                      (prog1 (stepper (myeval '(progn
                                        (defun foo (x)
                                          (catch 'in-lambda-catch
                                            (throw 'in-lambda-catch
@@ -1802,12 +1791,12 @@
                                          777)
                                        (foo 10))
                                      nil nil nil nil (lambda (x) "error")
-                                     #'ok)
+                                     #'ok))
                         (setf *glob-env* nil)))))
   ;; Тест THROW в динамической области видимости (должно сработать)
   (assert (equal 12 (progn
                       (setf *glob-env* nil)
-                      (prog1 (myeval '(progn
+                      (prog1 (stepper (myeval '(progn
                                        (defun foo (x)
                                          (throw 'in-lambda-catch
                                            (+ x 2))
@@ -1815,7 +1804,7 @@
                                        (catch 'in-lambda-catch
                                          (foo 10)))
                                      nil nil nil nil (lambda (x) "error")
-                                     #'ok)
+                                     #'ok))
                         (setf *glob-env* nil)))))
 #+END_SRC
 
@@ -1901,10 +1890,10 @@
 #+NAME: myeval_tagbody_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для TAGBODY
-  (assert (equal nil (myeval '(tagbody a 1)
-                             nil nil nil nil #'err #'ok)))
-  (assert (equal nil (myeval '(tagbody a 1 b 2)
-                             nil nil nil nil #'err #'ok)))
+  (assert (equal nil (stepper (myeval '(tagbody a 1)
+                             nil nil nil nil #'err #'ok))))
+  (assert (equal nil (stepper (myeval '(tagbody a 1 b 2)
+                             nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** GO
@@ -1973,16 +1962,16 @@
 #+NAME: myeval_go_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для GO
-  (assert (equal '(1 . 4) (myeval '(let ((alfa 0))
+  (assert (equal '(1 . 4) (stepper (myeval '(let ((alfa 0))
                                     (tagbody
                                      a (setq alfa 1)
                                      b (go d)
                                      c (setq alfa (cons alfa 3))
                                      d (setq alfa (cons alfa 4)))
                                     alfa)
-                                  nil nil nil nil #'err #'ok)))
+                                  nil nil nil nil #'err #'ok))))
   ;; Тесты для "обратного хода" GO
-  (assert (equal '(1 . 5) (myeval '(let ((alfa 0))
+  (assert (equal '(1 . 5) (stepper (myeval '(let ((alfa 0))
                                     (tagbody
                                      a (go d)
                                      b (setq alfa 1)
@@ -1990,7 +1979,7 @@
                                      d (go b)
                                      e (setq alfa (cons alfa 5)))
                                     alfa)
-                                  nil nil nil nil #'err #'ok)))
+                                  nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** LABELS
@@ -2033,13 +2022,13 @@
                                   (t (zzz (cdr lst) (+ 1 acc))))))
                    (print 888)
                    (zzz '(1 2 3) 0))
-                 (myeval '(labels ((zzz (lst acc)
+                 (stepper (myeval '(labels ((zzz (lst acc)
                                     (print acc)
                                     (cond ((null lst) acc)
                                           (t (zzz (cdr lst) (+ 1 acc))))))
                            (print 888)
                            (zzz '(1 2 3) 0))
-                           nil nil nil nil #'err #'ok)))
+                           nil nil nil nil #'err #'ok))))
   (assert (equal (with-output-to-string (*standard-output*)
                    (labels ((zzz (lst acc)
                               (print acc)
@@ -2048,13 +2037,13 @@
                      (print 888)
                      (zzz '(1 2 3) 0)))
                  (with-output-to-string (*standard-output*)
-                   (myeval '(labels ((zzz (lst acc)
+                   (stepper (myeval '(labels ((zzz (lst acc)
                                       (print acc)
                                       (cond ((null lst) acc)
                                             (t (zzz (cdr lst) (+ 1 acc))))))
                              (print 888)
                              (zzz '(1 2 3) 0))
-                           nil nil nil nil #'err #'identity))))
+                           nil nil nil nil #'err #'identity)))))
 #+END_SRC
 
 ** RESET
@@ -2073,9 +2062,9 @@
 #+NAME: myeval_reset_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для RESET
-  (assert (equal 8 (myeval '(progn
+  (assert (equal 8 (stepper (myeval '(progn
                               (+ 1 (reset (+ 2 3)) 2))
-                              nil nil nil nil #'err #'ok)))
+                              nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 ** SHIFT
@@ -2096,13 +2085,15 @@
 #+NAME: myeval_shift_10_test
 #+BEGIN_SRC lisp
   ;; Тесты для SHIFT/RESET
-  (assert (equal 44 (myeval '(let ((foo))
+  (assert (equal 44 (stepper (myeval '(let ((foo))
                               (+ 1 (reset (+ 2 (shift f (progn (setq foo f) 4)))))
                               (foo 42))
-                            nil nil nil nil #'err #'ok)))
+                            nil nil nil nil #'err #'ok))))
 #+END_SRC
 
 * REPL
+
+[TODO:gmm] Тут как-то странно поменялся репл - непонятно почему
 
 #+NAME: repl_10
 #+BEGIN_SRC lisp
@@ -2137,16 +2128,14 @@
 
 #+BEGIN_SRC lisp :tangle lisp-10.lisp :noweb tangle :exports code :padline no :comments none
   (setq *print-circle* T)
-  ;; IS-CONT-SUBSET
-  <<is_cont_subset_10>>
-  ;; UNICONT
+  ;; Классы ошибок
+  <<errors_10>>
+  ;; Структуры
   <<unicont_10>>
   ;; APPLY-CONTINUATION
   <<apply_continuation_10>>
   ;; CPS-версия ASSOC
   <<assoc_10>>
-  ;; Классы ошибок
-  <<errors_10>>
   ;; Новая функция lookup
   <<lookup_10>>
   ;; Структура замыкания
@@ -2155,6 +2144,8 @@
   <<myapply_10>>
   ;; CPS-вариант MYEVAL и все что к нему относится
   <<myeval_10>>
+  ;; STEPPER
+  <<stepper_10>>
   ;; Тестируем новый lookup
   <<lookup_10_test>>
   ;; Функции для тестирования CPS-функций
