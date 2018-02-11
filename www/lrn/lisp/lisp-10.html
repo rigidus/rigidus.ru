@@ -350,6 +350,10 @@
 Заменяем вызов <code>myeval</code> на возврат списка, начинающегося с символа <code>eval</code>.
 </p>
 
+<p>
+[TODO:gmm] Дефункционализировать <code>cont</code> и <code>errcont</code> и убрать <code>((functionp cont) (funcall cont arg))</code>
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="apply_continuation_10">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">apply-continuation</span> (cont arg)
@@ -414,7 +418,6 @@
 &lt;&lt;myapply_ariph_10_test&gt;&gt;
 &lt;&lt;myapply_closure_10_test&gt;&gt;
 &lt;&lt;myapply_print_10_test&gt;&gt;
-&lt;&lt;myapply_evlis_10_test&gt;&gt;
 &lt;&lt;myapply_list_10_test&gt;&gt;
 &lt;&lt;myapply_callcc_10_test&gt;&gt;
 </pre>
@@ -746,18 +749,9 @@
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myapply_evlis_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVLIS</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 4           (evlis '+     '(1 (+ 1 2))   nil nil nil nil nil  #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (+ 1 3 5)   (evlis '+     '(1 (+ 1 2) 5) nil nil nil nil nil  #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(1 3 5)    (evlis 'list  '(1 (+ 1 2) 5) nil nil nil nil nil  #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal '(0 3 6 42) (evlis 'list  '(0 (+ a b) (* b c) 42)
-                                  nil
-                                  '((a . 1) (b . 2) (c . 3) (d . 4))
-                                  nil nil nil  #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evlis</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -860,18 +854,12 @@
 &lt;&lt;myeval_symb_10_test&gt;&gt;
 &lt;&lt;myeval_quote_10_test&gt;&gt;
 &lt;&lt;myeval_if_10_test&gt;&gt;
-&lt;&lt;myeval_evcond_10_test&gt;&gt;
 &lt;&lt;myeval_cond_10_test&gt;&gt;
-&lt;&lt;myeval_evprogn_10_test&gt;&gt;
 &lt;&lt;myeval_progn_10_test&gt;&gt;
-&lt;&lt;myeval_evand_10_test&gt;&gt;
 &lt;&lt;myeval_and_10_test&gt;&gt;
-&lt;&lt;myeval_evor_10_test&gt;&gt;
 &lt;&lt;myeval_or_10_test&gt;&gt;
 &lt;&lt;myeval_mypairlis_10_test&gt;&gt;
-&lt;&lt;myeval_evlet_10_test&gt;&gt;
 &lt;&lt;myeval_let_10_test&gt;&gt;
-&lt;&lt;myeval_evletstar_10_test&gt;&gt;
 &lt;&lt;myeval_letstar_10_test&gt;&gt;
 &lt;&lt;myeval_defun_10_test&gt;&gt;
 &lt;&lt;myeval_setq_10_test&gt;&gt;
@@ -925,13 +913,15 @@
 </pre>
 </div>
 
+<p>
+Немного модифицируем тест на ошибку
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_symb_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1077;&#1085;&#1080;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 6 (stepper (myeval 'b '((a . 3) (b . 6)) nil nil nil #'err #'ok))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (car (stepper (myeval 'b nil nil nil nil
-                                             #'(<span style="color: #af00ff;">lambda</span> (x) (cons <span style="color: #87005f;">"error"</span> x))
-                                             #'ok)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal #'err (cadr (myeval 'b nil nil nil nil #'err #'ok))))
 </pre>
 </div>
 </div>
@@ -1082,22 +1072,9 @@
 </pre>
 </div>
 
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evcond_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2   (evcond '((t 2)   (t 1)) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1   (evcond '((nil 2) (t 1)) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal nil (evcond '((nil 2) (nil 1)) nil nil nil nil #'err #'ok)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND, &#1075;&#1076;&#1077; &#1091;&#1095;&#1072;&#1089;&#1090;&#1074;&#1091;&#1077;&#1090; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evcond '((a 2) (b 1))
-                         '((a . 1) (b . ()))
-                         nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 1 (evcond '((a 2) (b 1))
-                         '((a . nil) (b . T))
-                         nil nil nil #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evcond</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -1172,17 +1149,9 @@
 </pre>
 </div>
 
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evprogn_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evprogn '(1 2) nil nil nil nil  #'err #'ok)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (evprogn '(a b c)
-                          '((a . 1) (b . 2) (c . 3))
-                           nil nil nil #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evprogn</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -1255,46 +1224,9 @@
 </pre>
 </div>
 
-
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evand_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and)           (evand '() nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1)         (evand '(1) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and nil)       (evand '(nil) nil nil nil  nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil nil nil nil #'err #'ok)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
-                 (and nil))
-               (evand '(a) '((a . nil)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1))
-                 (and a))
-               (evand '(a) '((a . 1)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
-                     (b nil))
-                 (and a b))
-               (evand '(a b) '((a . 1) (b . nil)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
-                     (b 2)
-                     (c nil))
-                 (and a b c))
-               (evand '(a b c) '((a . 1) (b . 2) (c . nil)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
-                     (b 2)
-                     (c 3))
-                 (and a b c))
-               (evand '(a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1)
-                     (b 2)
-                     (c nil)
-                     (d 3))
-                 (and a b c d))
-               (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) nil nil nil #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evand</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -1406,45 +1338,9 @@
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evor_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or)                   (evor '() nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3) nil nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil nil nil nil #'err #'ok)))
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil))
-                 (or a))
-               (evor '(a) '((a . nil)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a 1))
-                 (or a))
-               (evor '(a) '((a . 1)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
-                     (b 1))
-                 (or a b))
-               (evor '(a b) '((a . nil) (b . 1)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
-                     (b nil)
-                     (c 3))
-                 (or a b c))
-               (evor '(a b c) '((a . nil) (b . nil) (c . 3)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
-                     (b 1)
-                     (c 2))
-                 (or a b c))
-               (evor '(a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok)))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal (<span style="color: #af00ff;">let</span> ((a nil)
-                     (b nil)
-                     (c 3)
-                     (d nil))
-                 (or a b c d))
-               (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) nil nil nil
-                     #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evor</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <p>
 Заменяем вызов <code>apply-continuation</code> на возврат списка, начинающегося с символа <code>return</code>.
@@ -1593,12 +1489,9 @@
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evlet_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLET</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil nil nil nil #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evlet</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -1672,12 +1565,9 @@
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-lisp" id="myeval_evletstar_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLETSTAR</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil nil nil nil #'err #'ok)))
-</pre>
-</div>
+<p>
+Убираем тесты <code>evletstar</code>, т.к. теперь мы не можем тестировать без <code>stepper</code>
+</p>
 
 <div class="org-src-container">
 
@@ -1950,50 +1840,53 @@
 </pre>
 </div>
 
+<p>
+Слегка модифицируем тесты на ошибку
+</p>
+
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_return_from_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RETURN-FROM</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (stepper (myeval '(<span style="color: #af00ff;">block</span> testblock (<span style="color: #af00ff;">return-from</span> testblock (+ 1 2)) 777)
-                         nil nil nil nil #'err #'ok))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (stepper (myeval '(<span style="color: #af00ff;">block</span> testblock (<span style="color: #af00ff;">return-from</span> notblock (+ 1 2)) 777)
-                               nil nil nil nil #'(<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>) #'ok))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span> (<span style="color: #af00ff;">return-from</span> not-found-block (+ 1 2)) 777)
-                               nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                               #'ok))))
+                                  nil nil nil nil #'err #'ok))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal  <span style="color: #87005f;">"return-from: undefined return block NOTBLOCK"</span>
+                (stepper (myeval '(<span style="color: #af00ff;">block</span> testblock (<span style="color: #af00ff;">return-from</span> notblock (+ 1 2)) 777)
+                                 nil nil nil nil #'err #'ok))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"return-from: undefined return block NOT-FOUND-BLOCK"</span>
+               (stepper (myeval '(<span style="color: #af00ff;">progn</span> (<span style="color: #af00ff;">return-from</span> not-found-block (+ 1 2)) 777)
+                                nil nil nil nil #'err #'ok))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; RETURN-FROM &#1074; &#1083;&#1077;&#1082;&#1089;&#1080;&#1095;&#1077;&#1089;&#1082;&#1086;&#1081; &#1086;&#1073;&#1083;&#1072;&#1089;&#1090;&#1080; &#1074;&#1080;&#1076;&#1080;&#1084;&#1086;&#1089;&#1090;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 12 (<span style="color: #af00ff;">progn</span>
                     (setf *glob-env* nil)
                     (<span style="color: #af00ff;">prog1</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span>
-                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
-                                       (<span style="color: #af00ff;">block</span> in-lambda-block
-                                         (<span style="color: #af00ff;">return-from</span> in-lambda-block
-                                           (+ x 2))
-                                         777))
-                                     (foo 10))
-                                   nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                                   #'ok))
+                                              (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
+                                                (<span style="color: #af00ff;">block</span> in-lambda-block
+                                                  (<span style="color: #af00ff;">return-from</span> in-lambda-block
+                                                    (+ x 2))
+                                                  777))
+                                              (foo 10))
+                                            nil nil nil nil #'err #'ok))
                       (setf *glob-env* nil)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; RETURN-FROM &#1074; &#1076;&#1080;&#1085;&#1072;&#1084;&#1080;&#1095;&#1077;&#1089;&#1082;&#1086;&#1081; &#1086;&#1073;&#1083;&#1072;&#1089;&#1090;&#1080; &#1074;&#1080;&#1076;&#1080;&#1084;&#1086;&#1089;&#1090;&#1080; (&#1076;&#1086;&#1083;&#1078;&#1085;&#1072; &#1073;&#1099;&#1090;&#1100; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;)</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (<span style="color: #af00ff;">progn</span>
-                         (setf *glob-env* nil)
-                         (<span style="color: #af00ff;">prog1</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span>
-                                          (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
-                                            (<span style="color: #af00ff;">return-from</span> in-lambda-block
-                                              (+ x 2))
-                                            777)
-                                          (<span style="color: #af00ff;">block</span> in-lambda-block
-                                            (foo 10)))
-                                        nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                                        #'ok))
-                           (setf *glob-env* nil)))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"return-from: undefined return block IN-LAMBDA-BLOCK"</span>
+               (<span style="color: #af00ff;">progn</span>
+                 (setf *glob-env* nil)
+                 (<span style="color: #af00ff;">prog1</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span>
+                                           (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
+                                             (<span style="color: #af00ff;">return-from</span> in-lambda-block
+                                               (+ x 2))
+                                             777)
+                                           (<span style="color: #af00ff;">block</span> in-lambda-block
+                                             (foo 10)))
+                                         nil nil nil nil #'err #'ok))
+                   (setf *glob-env* nil)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1085;&#1072; &#1086;&#1096;&#1080;&#1073;&#1082;&#1091; &#1085;&#1077;&#1076;&#1086;&#1089;&#1090;&#1080;&#1078;&#1080;&#1084;&#1086;&#1075;&#1086; &#1073;&#1083;&#1086;&#1082;&#1072;</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (stepper (myeval '((<span style="color: #af00ff;">block</span> the-block (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> the-block nil))))
-                               nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                               #'ok))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"return-from: attempt to RETURN-FROM to THE-BLOCK that no longer exists"</span>
+               (stepper (myeval '((<span style="color: #af00ff;">block</span> the-block (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> the-block nil))))
+                                nil nil nil nil #'err #'ok))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; &#1085;&#1072; &#1086;&#1090;&#1089;&#1091;&#1090;&#1089;&#1090;&#1074;&#1080;&#1077; &#1086;&#1096;&#1080;&#1073;&#1082;&#1080; &#1087;&#1088;&#1080; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1077; &#1074; &#1076;&#1086;&#1089;&#1090;&#1080;&#1078;&#1080;&#1084;&#1099;&#1081; &#1073;&#1083;&#1086;&#1082;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 123 (stepper (myeval '(<span style="color: #af00ff;">block</span> the-block (<span style="color: #af00ff;">return-from</span> the-block 123))
-                           nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                           #'ok))))
+                           nil nil nil nil #'err #'ok))))
 </pre>
 </div>
 </div>
@@ -2153,38 +2046,35 @@
 <pre class="src src-lisp" id="myeval_throw_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; THROW</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 3 (stepper (myeval '(<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">testcatch</span> (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">testcatch</span> (+ 1 2)) 777)
                          nil nil nil nil #'err #'ok))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (stepper (myeval '(<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">testcatch</span> (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">notcatch</span> (+ 1 2)) 777)
-                               nil nil nil nil
-                               #'(<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                               #'ok))))
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"error"</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span> (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">not-found-catch</span> (+ 1 2)) 777)
-                               nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                               #'ok))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"throw: matching NOTCATCH catch is not found"</span>
+               (stepper (myeval '(<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">testcatch</span> (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">notcatch</span> (+ 1 2)) 777)
+                                nil nil nil nil #'err #'ok))))
+(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal <span style="color: #87005f;">"throw: matching NOT-FOUND-CATCH catch is not found"</span>
+               (stepper (myeval '(<span style="color: #af00ff;">progn</span> (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">not-found-catch</span> (+ 1 2)) 777)
+                                nil nil nil nil #'err #'ok))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; THROW &#1074; &#1083;&#1077;&#1082;&#1089;&#1080;&#1095;&#1077;&#1089;&#1082;&#1086;&#1081; &#1086;&#1073;&#1083;&#1072;&#1089;&#1090;&#1080; &#1074;&#1080;&#1076;&#1080;&#1084;&#1086;&#1089;&#1090;&#1080;</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 12 (<span style="color: #af00ff;">progn</span>
                     (setf *glob-env* nil)
                     (<span style="color: #af00ff;">prog1</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span>
-                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
-                                       (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                         (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                           (+ x 2)))
-                                       777)
-                                     (foo 10))
-                                   nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                                   #'ok))
+                                              (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
+                                                (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
+                                                  (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
+                                                    (+ x 2))
+                                                  777))
+                                              (foo 10))
+                                            nil nil nil nil #'err #'ok))
                       (setf *glob-env* nil)))))
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090; THROW &#1074; &#1076;&#1080;&#1085;&#1072;&#1084;&#1080;&#1095;&#1077;&#1089;&#1082;&#1086;&#1081; &#1086;&#1073;&#1083;&#1072;&#1089;&#1090;&#1080; &#1074;&#1080;&#1076;&#1080;&#1084;&#1086;&#1089;&#1090;&#1080; (&#1076;&#1086;&#1083;&#1078;&#1085;&#1086; &#1089;&#1088;&#1072;&#1073;&#1086;&#1090;&#1072;&#1090;&#1100;)</span>
 (<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 12 (<span style="color: #af00ff;">progn</span>
                     (setf *glob-env* nil)
                     (<span style="color: #af00ff;">prog1</span> (stepper (myeval '(<span style="color: #af00ff;">progn</span>
-                                     (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
-                                       (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                         (+ x 2))
-                                       777)
-                                     (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
-                                       (foo 10)))
-                                   nil nil nil nil (<span style="color: #af00ff;">lambda</span> (x) <span style="color: #87005f;">"error"</span>)
-                                   #'ok))
+                                              (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">foo</span> (x)
+                                                (<span style="color: #af00ff;">throw</span> '<span style="color: #008787;">in-lambda-catch</span>
+                                                  (+ x 2))
+                                                777)
+                                              (<span style="color: #af00ff;">catch</span> '<span style="color: #008787;">in-lambda-catch</span>
+                                                (foo 10)))
+                                            nil nil nil nil #'err #'ok))
                       (setf *glob-env* nil)))))
 </pre>
 </div>
@@ -2442,15 +2332,16 @@
                             (<span style="color: #af00ff;">cond</span> ((null lst) acc)
                                   (t (zzz (cdr lst) (+ 1 acc))))))
                    (print 888)
-                   (zzz '(1 2 3) 0)))
+                   (zzz '(1 2 3) 0)
+                   (format t <span style="color: #87005f;">"~%ok: 3"</span>)))
                (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
                  (stepper (myeval '(<span style="color: #af00ff;">labels</span> ((zzz (lst acc)
-                                    (print acc)
-                                    (<span style="color: #af00ff;">cond</span> ((null lst) acc)
-                                          (t (zzz (cdr lst) (+ 1 acc))))))
-                           (print 888)
-                           (zzz '(1 2 3) 0))
-                         nil nil nil nil #'err #'identity)))))
+                                             (print acc)
+                                             (<span style="color: #af00ff;">cond</span> ((null lst) acc)
+                                                   (t (zzz (cdr lst) (+ 1 acc))))))
+                                    (print 888)
+                                    (zzz '(1 2 3) 0))
+                                  nil nil nil nil #'err #'ok)))))
 </pre>
 </div>
 </div>
@@ -2478,9 +2369,9 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_reset_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; RESET</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 8 (stepper (myeval '(<span style="color: #af00ff;">progn</span>
-                            (+ 1 (reset (+ 2 3)) 2))
-                            nil nil nil nil #'err #'ok))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 8 (stepper (myeval '(progn</span>
+<span style="color: #af0000;">;;                             </span><span style="color: #af0000;">(+ 1 (reset (+ 2 3)) 2))</span>
+<span style="color: #af0000;">;;                             </span><span style="color: #af0000;">nil nil nil nil #'err #'ok))))</span>
 </pre>
 </div>
 </div>
@@ -2510,10 +2401,10 @@
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="myeval_shift_10_test"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SHIFT/RESET</span>
-(<span style="color: #ff0000; font-weight: bold;">assert</span> (equal 44 (stepper (myeval '(<span style="color: #af00ff;">let</span> ((foo))
-                            (+ 1 (reset (+ 2 (shift f (<span style="color: #af00ff;">progn</span> (setq foo f) 4)))))
-                            (foo 42))
-                          nil nil nil nil #'err #'ok))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(assert (equal 44 (stepper (myeval '(let ((foo))</span>
+<span style="color: #af0000;">;;                             </span><span style="color: #af0000;">(+ 1 (reset (+ 2 (shift f (progn (setq foo f) 4)))))</span>
+<span style="color: #af0000;">;;                             </span><span style="color: #af0000;">(foo 42))</span>
+<span style="color: #af0000;">;;                           </span><span style="color: #af0000;">nil nil nil nil #'err #'ok))))</span>
 </pre>
 </div>
 </div>
