@@ -2041,5 +2041,1170 @@
 Получиться должен вот такой результат:
 
 #+BEGIN_SRC lisp
-
+  (setq *print-circle* T)
+  ;; Классы ошибок
+  (define-condition unknown-continuation (error)
+    ((cont :initarg :cont  :reader cont))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in APPLY-CONTINUATION: unknown-continuation: ~A"
+               (cont condition)))))
+  (define-condition unknown-function (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: unknown-function: ~A"
+               (fn condition)))))
+  (define-condition invalid-number-of-arguments (error)
+    ((fn :initarg :fn  :reader fn))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYAPPLY: invalid-number-of-arguments: ~A"
+               (fn condition)))))
+  (define-condition mypairlis-error (error)
+    ((lst1 :initarg :lst1  :reader lst1)
+     (lst2 :initarg :lst2  :reader lst2))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in MYPAIRLIS: wrong params:~%'~A~%'~A"
+               (lst1 condition) (lst2 condition)))))
+  ;; Структуры
+  (defstruct unicont
+    block-env
+    go-env
+    catch-env
+    errcont
+    cont)
+  (defstruct (if-cont (:include unicont))
+    clauses
+    env)
+  (defstruct (evcond-cont (:include unicont))
+    clauses
+    env)
+  (defstruct (evprogn-cont (:include unicont))
+    clauses
+    env)
+  (defstruct (and-cont (:include unicont))
+    exps
+    env)
+  (defstruct (or-cont (:include unicont))
+    exps
+    env)
+  (defstruct (evlet-cont (:include unicont))
+    vars
+    exps
+    evald-exps
+    exp
+    env)
+  (defstruct (evletstar-cont (:include unicont))
+    varpairs
+    exp
+    env)
+  (defstruct (setq-cont (:include unicont))
+    clauses
+    env)
+  (defstruct (catch-cont (:include unicont))
+    clauses
+    env)
+  (defstruct (throw-cont (:include unicont))
+    clauses
+    env)
+  (defstruct throw2-cont
+    prev-arg
+    catch-env
+    errcont)
+  (defstruct (evtagbody-cont (:include unicont))
+    body
+    env)
+  (defstruct (go-cont (:include unicont))
+    slice
+    env)
+  ;; APPLY-CONTINUATION
+  (defun apply-continuation (cont arg)
+    (cond ((functionp cont)       (funcall cont arg))
+          ((if-cont-p cont)       (if arg
+                                      (list 'eval (caddr (if-cont-clauses cont))
+                                            (if-cont-env cont)
+                                            (if-cont-block-env cont)
+                                            (if-cont-go-env cont)
+                                            (if-cont-catch-env cont)
+                                            (if-cont-errcont cont)
+                                            (if-cont-cont cont))
+                                      (list 'eval (cadddr (if-cont-clauses cont))
+                                            (if-cont-env cont)
+                                            (if-cont-block-env cont)
+                                            (if-cont-go-env cont)
+                                            (if-cont-catch-env cont)
+                                            (if-cont-errcont cont)
+                                            (if-cont-cont cont))))
+          ((evcond-cont-p cont)   (if arg
+                                      (list 'eval (cadar (evcond-cont-clauses cont))
+                                            (evcond-cont-env cont)
+                                            (evcond-cont-block-env cont)
+                                            (evcond-cont-go-env cont)
+                                            (evcond-cont-catch-env cont)
+                                            (evcond-cont-errcont cont)
+                                            (evcond-cont-cont cont))
+                                      (evcond (cdr (evcond-cont-clauses cont))
+                                              (evcond-cont-env cont)
+                                              (evcond-cont-block-env cont)
+                                              (evcond-cont-go-env cont)
+                                              (evcond-cont-catch-env cont)
+                                              (evcond-cont-errcont cont)
+                                              (evcond-cont-cont cont))))
+          ((evprogn-cont-p cont)  (evprogn (cdr (evprogn-cont-clauses cont))
+                                           (evprogn-cont-env cont)
+                                           (evprogn-cont-block-env cont)
+                                           (evprogn-cont-go-env cont)
+                                           (evprogn-cont-catch-env cont)
+                                           (evprogn-cont-errcont cont)
+                                           (evprogn-cont-cont cont)))
+          ((evcond-cont-p cont)   (if arg
+                                      (list 'eval (cadar (evcond-cont-clauses cont))
+                                            (evcond-cont-env cont)
+                                            (evcond-cont-block-env cont)
+                                            (evcond-cont-go-env cont)
+                                            (evcond-cont-catch-env cont)
+                                            (evcond-cont-errcont cont)
+                                            (evcond-cont-cont cont))
+                                      (evcond (cdr (evcond-cont-clauses cont))
+                                              (evcond-cont-env cont)
+                                              (evcond-cont-block-env cont)
+                                              (evcond-cont-go-env cont)
+                                              (evcond-cont-catch-env cont)
+                                              (evcond-cont-errcont cont)
+                                              (evcond-cont-cont cont))))
+          ((evprogn-cont-p cont)  (evprogn (cdr (evprogn-cont-clauses cont))
+                                           (evprogn-cont-env cont)
+                                           (evprogn-cont-block-env cont)
+                                           (evprogn-cont-go-env cont)
+                                           (evprogn-cont-catch-env cont)
+                                           (evprogn-cont-errcont cont)
+                                           (evprogn-cont-cont cont)))
+          ((and-cont-p cont)      (if (null arg)
+                                      (list 'return (and-cont-cont cont) nil)
+                                      (evand (and-cont-exps cont)
+                                             (and-cont-env cont)
+                                             (and-cont-block-env cont)
+                                             (and-cont-go-env cont)
+                                             (and-cont-catch-env cont)
+                                             (and-cont-errcont cont)
+                                             (and-cont-cont cont))))
+          ((or-cont-p cont)       (if (not (null arg))
+                                      (list 'return (or-cont-cont cont) arg)
+                                      (evor (or-cont-exps cont)
+                                            (or-cont-env cont)
+                                            (or-cont-block-env cont)
+                                            (or-cont-go-env cont)
+                                            (or-cont-catch-env cont)
+                                            (or-cont-errcont cont)
+                                            (or-cont-cont cont))))
+          ((evlet-cont-p cont)    (evlet (evlet-cont-vars cont)
+                                         (cdr (evlet-cont-exps cont))
+                                         (cons arg (evlet-cont-evald-exps cont))
+                                         (evlet-cont-exp cont)
+                                         (evlet-cont-env cont)
+                                         (evlet-cont-block-env cont)
+                                         (evlet-cont-go-env cont)
+                                         (evlet-cont-catch-env cont)
+                                         (evlet-cont-errcont cont)
+                                         (evlet-cont-cont cont)))
+          ((evletstar-cont-p cont) (evletstar (cdr (evletstar-cont-varpairs cont))
+                                              (evletstar-cont-exp cont)
+                                              (acons (caar (evletstar-cont-varpairs cont))
+                                                     arg
+                                                     (evletstar-cont-env cont))
+                                              (evletstar-cont-block-env cont)
+                                              (evletstar-cont-go-env cont)
+                                              (evletstar-cont-catch-env cont)
+                                              (evletstar-cont-errcont cont)
+                                              (evletstar-cont-cont cont)))
+          ((setq-cont-p cont)     (progn
+                                    (if (null (assoc (cadr (setq-cont-clauses cont))
+                                                     (setq-cont-env cont)))
+                                        ;; if-null
+                                        (if (null (assoc (cadr (setq-cont-clauses cont))
+                                                         ,*glob-env*))
+                                            ;; then
+                                            (push (cons (cadr (setq-cont-clauses cont))
+                                                        arg)
+                                                  ,*glob-env*)
+                                            ;; else
+                                            (rplacd (assoc (cadr (setq-cont-clauses cont))
+                                                           ,*glob-env*)
+                                                    arg))
+                                        ;; if-not-null
+                                        (rplacd (assoc (cadr (setq-cont-clauses cont))
+                                                       (setq-cont-env cont))
+                                                arg))
+                                    (list 'return (setq-cont-cont cont) arg)))
+          ((catch-cont-p cont)    (if (not (symbolp arg))
+                                      (list 'return
+                                            errcont
+                                            (format nil "catch: first argument not a symbol"))
+                                      (list 'eval (caddr (catch-cont-clauses cont))
+                                            (catch-cont-env cont)
+                                            (catch-cont-block-env cont)
+                                            (catch-cont-go-env cont)
+                                            (acons arg
+                                                   (catch-cont-cont cont)
+                                                   (catch-cont-catch-env cont))
+                                            (catch-cont-errcont cont)
+                                            (catch-cont-cont cont))))
+          ((throw-cont-p cont)    (list 'eval (caddr (throw-cont-clauses cont))
+                                        (throw-cont-env cont)
+                                        (throw-cont-block-env cont)
+                                        (throw-cont-go-env cont)
+                                        (throw-cont-catch-env cont)
+                                        (throw-cont-errcont cont)
+                                        (make-throw2-cont
+                                         :prev-arg arg
+                                         :catch-env (throw-cont-catch-env cont)
+                                         :errcont (throw-cont-errcont cont))))
+          ((throw2-cont-p cont)   (assoc-2 (throw2-cont-prev-arg cont)
+                                           (throw2-cont-catch-env cont)
+                                           (lambda (cont-res)
+                                             (list 'return cont-res arg))
+                                           (lambda (key)
+                                             (list 'return (throw2-cont-errcont cont)
+                                                   (format
+                                                    nil
+                                                    "throw: matching ~A catch is not found"
+                                                    key)))))
+          ((evtagbody-cont-p cont) (evtagbody (evtagbody-cont-body cont)
+                                              (evtagbody-cont-env cont)
+                                              (unicont-block-env cont)
+                                              (unicont-go-env cont)
+                                              (unicont-catch-env cont)
+                                              (unicont-errcont cont)
+                                              (unicont-cont cont)))
+          ((evlis-cont-p cont)    (evlis (evlis-cont-fn cont)
+                                         (cdr (evlis-cont-unevaled cont))
+                                         (cons arg (evlis-cont-evaled cont))
+                                         (evlis-cont-env cont)
+                                         (unicont-block-env cont)
+                                         (unicont-go-env cont)
+                                         (unicont-catch-env cont)
+                                         (unicont-errcont cont)
+                                         (unicont-cont cont)))
+          (t (error 'unknown-continuation :cont cont))))
+  ;; CPS-версия ASSOC
+  (defun assoc-2 (key alist success failure) ;; NB!: inverted order of continuations
+    ;; (for lookup comfort)
+    (cond ((null alist)              (funcall failure key))
+          ((equal key (caar alist))  (funcall success    (cdar alist)))
+          (t                         (assoc-2 key (cdr alist) success failure))))
+  ;; Новая функция lookup
+  ;; environment
+  (defparameter *glob-env* nil)
+  ;; lookup
+  (defun lookup (symb env errcont cont)
+    (assoc-2 symb env
+             (lambda (x)
+               (list 'return cont x))
+             (lambda (key)
+               (assoc-2 key *glob-env*
+                        (lambda (x) ;; возможно ошибка (была) тут
+                          (list 'return cont x))
+                        (lambda (key)
+                          (list 'return
+                                errcont
+                                (format
+                                 nil "UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"
+                                 key env *glob-env*)))))))
+  ;; Структура замыкания
+  (defstruct closure
+    body
+    env
+    block-env
+    go-env
+    args)
+  ;; CPS-вариант MYAPPLY и все что к нему относится
+  (defstruct (evlis-cont (:include unicont))
+    fn
+    unevaled
+    evaled
+    env)
+  (defun evadd (lst acc)
+    (cond ((null lst)        0)
+          ((null (cdr lst))  (+ acc (car lst)))
+          (t                 (evadd (cdr lst)
+                                    (+ acc (car lst))))))
+  (defun evmul (lst acc)
+    (cond ((null lst)        1)
+          ((null (cdr lst))  (* acc (car lst)))
+          (t                 (evmul (cdr lst)
+                                    (* acc (car lst))))))
+  (defun evlis (fn unevaled evaled env block-env go-env catch-env errcont cont)
+    (cond ((null unevaled)  (myapply fn (reverse evaled) catch-env errcont cont))
+          (t                (list 'eval (car unevaled) env block-env go-env catch-env errcont
+                                  (make-evlis-cont
+                                   :fn fn
+                                   :unevaled unevaled
+                                   :evaled evaled
+                                   :env env
+                                   :block-env block-env
+                                   :go-env go-env
+                                   :catch-env catch-env
+                                   :errcont errcont
+                                   :cont cont)))))
+  (defun myapply (fn args catch-env errcont cont)
+    (cond
+      ((equal fn 'car)             (list 'return cont (caar args)))
+      ((equal fn 'cdr)             (list 'return cont (cdar args)))
+      ((equal fn 'cons)            (list 'return cont (cons (car args) (cadr args))))
+      ((equal fn 'null)            (if (null (cdr args))
+                                       (list 'return cont (null (car args)))
+                                       (error 'invalid-number-of-arguments :fn fn)))
+      ((equal fn '+)             (list 'return cont (evadd args 0)))
+      ((equal fn '*)             (list 'return cont (evmul args 1)))
+      ((closure-p fn)              (evprogn (closure-body fn)
+                                            (pairlis (closure-args fn)
+                                                     args
+                                                     (closure-env fn))
+                                            (closure-block-env fn)
+                                            (closure-go-env fn)
+                                            catch-env
+                                            errcont cont))
+      ((equal fn 'print)           (list 'return cont (print (car args))))
+      ((equal fn 'list)            (list 'return cont args))
+      ((equal fn 'call/cc)         (myapply (car args) (list cont) catch-env errcont cont))
+      ((functionp fn)              (apply fn args))      ; interim hack
+      ((unicont-p fn)              (apply-continuation fn (car args)))
+      ;;  ((identity-cont-p fn)        (apply-continuation fn (car args))) ;; for identity
+      (t (error 'unknown-function :fn fn))))
+  ;; CPS-вариант MYEVAL и все что к нему относится
+  (defun evcond (clauses env block-env go-env catch-env errcont cont)
+    (cond ((null clauses)  (list 'return cont nil))
+          (t               (list 'eval (caar clauses) env block-env go-env catch-env errcont
+                                 (make-evcond-cont
+                                  :clauses clauses
+                                  :env env
+                                  :block-env block-env
+                                  :go-env go-env
+                                  :catch-env catch-env
+                                  :errcont errcont
+                                  :cont cont)))))
+  (defun evprogn (lst env block-env go-env catch-env errcont cont)
+    (cond ((null lst)         (list 'return cont nil))
+          ((null (cdr lst))   (list 'eval (car lst) env block-env go-env catch-env errcont cont))
+          (t                  (list 'eval (car lst) env block-env go-env catch-env errcont
+                                    (make-evprogn-cont
+                                     :clauses lst
+                                     :env env
+                                     :block-env block-env
+                                     :go-env go-env
+                                     :catch-env catch-env
+                                     :errcont errcont
+                                     :cont cont)))))
+  (defun evand (exps env block-env go-env catch-env errcont cont)
+    (cond ((null exps)       (list 'return cont T))
+          ((null (cdr exps)) (list 'eval (car exps) env block-env go-env catch-env errcont cont))
+          (t                 (list 'eval (car exps) env block-env go-env catch-env errcont
+                                   (make-and-cont
+                                    :exps (cdr exps)
+                                    :env env
+                                    :block-env block-env
+                                    :go-env go-env
+                                    :catch-env catch-env
+                                    :errcont errcont
+                                    :cont cont)))))
+  (defun evor (exps env block-env go-env catch-env errcont cont)
+    (cond ((null exps)       (list 'return cont nil))
+          ((null (cdr exps)) (list 'eval (car exps) env block-env go-env catch-env errcont cont))
+          (t                 (list 'eval (car exps) env block-env go-env catch-env errcont
+                                   (make-or-cont
+                                    :exps (cdr exps)
+                                    :env env
+                                    :block-env block-env
+                                    :go-env go-env
+                                    :catch-env catch-env
+                                    :errcont errcont
+                                    :cont cont)))))
+  (defun mypairlis (lst1 lst2 alist)
+    (cond ((and (null lst1) (null lst2))  alist)
+          ((or  (null lst1) (null lst2))  (error 'mypairlis-error :lst1 lst1 :lst2 lst2))
+          (t                              (cons (cons (car lst1)
+                                                      (car lst2))
+                                                (mypairlis (cdr lst1)
+                                                           (cdr lst2)
+                                                           alist)))))
+  (defun evlet (vars exps evald-exps exp env block-env go-env catch-env errcont cont)
+    (cond ((null exps)  (evprogn exp
+                                 (pairlis vars (reverse evald-exps) env)
+                                 block-env go-env catch-env
+                                 errcont cont))
+          (t            (list 'eval (car exps) env block-env go-env catch-env errcont
+                              (make-evlet-cont
+                               :vars vars
+                               :exps exps
+                               :evald-exps evald-exps
+                               :exp exp
+                               :env env
+                               :block-env block-env
+                               :go-env go-env
+                               :catch-env catch-env
+                               :errcont errcont
+                               :cont cont)))))
+  (defun evletstar (varpairs exp env block-env go-env catch-env errcont cont)
+    (cond ((null varpairs)  (evprogn exp env block-env go-env catch-env errcont cont))
+          (t                (list 'eval (cadar varpairs) env block-env go-env catch-env errcont
+                                  (make-evletstar-cont
+                                   :varpairs varpairs
+                                   :exp exp
+                                   :env env
+                                   :block-env block-env
+                                   :go-env go-env
+                                   :catch-env catch-env
+                                   :errcont errcont
+                                   :cont cont)))))
+  (defun evthrow (exp env block-env go-env catch-env errcont cont)
+    (list 'eval (cadr exp) env block-env go-env catch-env errcont
+          (make-throw-cont
+           :clauses exp
+           :env env
+           :block-env block-env
+           :go-env go-env
+           :catch-env catch-env
+           :errcont errcont
+           :cont cont)))
+  (defun tagbody-check-tag (exp cont errcont)
+    (cond ((null exp) (funcall cont))
+          ((and (symbolp (car exp))
+                (member (car exp) (cdr exp)))
+           (funcall errcont (car exp)))
+          (t (tagbody-check-tag (cdr exp) cont errcont))))
+  (defun evtagbody (body env block-env go-env catch-env errcont cont)
+    (cond ((null (car body))      (list 'return cont nil))
+          ((symbolp (car body))   (evtagbody (cdr body) env block-env go-env catch-env errcont cont))
+          (t                      (list 'eval (car body) env block-env go-env catch-env errcont
+                                        (make-evtagbody-cont
+                                         :body (cdr body)
+                                         :env  env
+                                         :block-env block-env
+                                         :go-env go-env
+                                         :catch-env catch-env
+                                         :errcont errcont
+                                         :cont cont)))))
+  (defun tagbody-slice (exp res)
+    (cond ((null exp) res)
+          ((symbolp (car exp))  (tagbody-slice (cdr exp) (cons exp res)))
+          (t                    (tagbody-slice (cdr exp) res))))
+  (defun is-cont-subset (target-cont cont)
+    (cond ((equal target-cont cont) t)    ;; positive
+          ((functionp cont) nil)          ;; negative
+          (t (is-cont-subset target-cont (cdr cont)))))
+  (defun make-go-env (tagbody-body env block-env go-env catch-env errcont cont)
+    (let* ((conts (mapcar #'(lambda (x) ;; продолжения, нарезанные из tagbody
+                              (make-go-cont
+                               :slice x
+                               :env env
+                               :block-env block-env
+                               :go-env go-env ;; этот слот будем setf-эфить
+                               :catch-env  catch-env
+                               :errcont errcont
+                               :cont cont))
+                          (tagbody-slice tagbody-body nil)))
+           ;; пары (символ . продолжение) нарезанные из
+           ;; tagbody и добавленные в окружение
+           (new-go-env (append (mapcar #'(lambda (go-cont)
+                                           (cons (car (go-cont-slice go-cont))
+                                                 go-cont))
+                                       conts)
+                               go-env)))
+      ;; изменяем поля go-env, записывая в них new-go-env
+      ;; во всех созданных продолжениях
+      (loop :for elt-cont :in conts :do
+         (setf (go-cont-go-env elt-cont)
+               new-go-env))
+      ;; возвращаем новое окружение
+      new-go-env))
+  (defun apply-go-continuation (go-cont)
+    (evtagbody (go-cont-slice go-cont)
+               (go-cont-env go-cont)
+               (go-cont-block-env go-cont)
+               (go-cont-go-env go-cont)
+               (go-cont-catch-env go-cont)
+               (go-cont-errcont go-cont)
+               (go-cont-cont go-cont)))
+  (defun myeval (exp env block-env go-env catch-env errcont cont)
+    (cond
+      ((null exp)                  (list 'return cont 'nil))
+      ((equal 't exp)              (list 'return cont 't))
+      ((member exp '(+ * car cdr cons null print list call/cc repl))  (list 'return cont exp))
+      ((numberp exp)               (list 'return cont exp))
+      ((symbolp exp)               (lookup exp env errcont cont))
+      ((equal (car exp) 'quote)    (list 'return cont (cadr exp)))
+      ((equal (car exp) 'if)       (list 'eval (cadr exp) env block-env go-env catch-env errcont
+                                         (make-if-cont
+                                          :clauses exp
+                                          :env env
+                                          :block-env block-env
+                                          :go-env go-env
+                                          :catch-env catch-env
+                                          :errcont errcont
+                                          :cont cont)))
+      ((equal (car exp) 'cond)     (evcond (cdr exp) env block-env go-env catch-env errcont cont))
+      ((equal (car exp) 'progn)    (evprogn (cdr exp)
+                                            env block-env go-env catch-env
+                                            errcont cont))
+      ((equal (car exp) 'and)      (evand (cdr exp)
+                                          env block-env go-env catch-env
+                                          errcont cont))
+      ((equal (car exp) 'or)       (evor  (cdr exp)
+                                          env block-env go-env catch-env
+                                          errcont cont))
+      ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
+                                          (mapcar #'cadr (cadr exp))
+                                          nil
+                                          (cddr exp)
+                                          env block-env go-env catch-env
+                                          errcont cont))
+      ((equal (car exp) 'let*)     (evletstar (cadr exp)
+                                              (cddr exp)
+                                              env block-env go-env catch-env
+                                              errcont cont))
+      ((equal (car exp) 'defun)         (progn
+                                          (push (cons (cadr exp)
+                                                      (make-closure :body (cdddr exp)
+                                                                    :block-env block-env
+                                                                    :env env
+                                                                    :go-env go-env
+                                                                    :args (caddr exp)))
+                                                ,*glob-env*)
+                                          (list 'return cont (cadr exp))))
+      ((equal (car exp) 'setq)     (list 'eval (caddr exp) env block-env go-env catch-env errcont
+                                         (make-setq-cont
+                                          :clauses exp
+                                          :env env
+                                          :block-env block-env
+                                          :go-env go-env
+                                          :catch-env catch-env
+                                          :errcont errcont
+                                          :cont cont)))
+      ;; стало
+      ((equal (car exp) 'lambda)   (list 'return cont (make-closure :body (cddr exp)
+                                                                    :block-env block-env
+                                                                    :env env
+                                                                    :go-env go-env
+                                                                    :args (cadr exp))))
+      ;; стало
+      ((equal (car exp) 'block)    (list 'eval (caddr exp)
+                                         env
+                                         (acons (cadr exp)
+                                                cont
+                                                block-env)
+                                         go-env catch-env errcont cont))
+      ((equal (car exp) 'return-from)
+       (if (not (symbolp (cadr exp)))
+           (list 'return
+                 errcont
+                 (format
+                  nil
+                  "return-from: first argument not a symbol"))
+           (list 'eval (caddr exp) env block-env go-env catch-env errcont
+                 (lambda (x)
+                   (assoc-2 (cadr exp) block-env
+                            (lambda (y)
+                              (if (is-cont-subset y cont)
+                                  (list 'return y x)
+                                  (list 'return
+                                        errcont
+                                        (format nil "return-from: attempt to RETURN-FROM to ~A that no longer exists" (cadr exp)))))
+                            (lambda (y)
+                              (list 'return
+                                    errcont (format nil "return-from: undefined return block ~A" y))))))))
+      ((equal (car exp) 'catch)    (list 'eval (cadr exp) env block-env go-env catch-env errcont
+                                         (make-catch-cont
+                                          :clauses exp
+                                          :env env
+                                          :block-env block-env
+                                          :go-env go-env
+                                          :catch-env catch-env
+                                          :errcont errcont
+                                          :cont cont)))
+      ((equal (car exp) 'throw)    (evthrow exp
+                                            env block-env go-env catch-env
+                                            errcont cont))
+      ((equal (car exp) 'tagbody)  (tagbody-check-tag
+                                    (cdr exp)
+                                    (lambda ()
+                                      (evtagbody (cdr exp) env block-env
+                                                 (make-go-env (cdr exp)
+                                                              env block-env go-env catch-env
+                                                              errcont cont)
+                                                 catch-env errcont cont))
+                                    (lambda (x)
+                                      (list 'return
+                                            errcont
+                                            (format
+                                             nil
+                                             "tagbody: The tag ~A appears more than once in a tagbody"
+                                             x)))))
+      ((equal (car exp) 'go)       (assoc-2 (cadr exp) go-env
+                                            (lambda (go-cont)
+                                              (apply-go-continuation go-cont))
+                                            (lambda (go-label)
+                                              (apply-continuation
+                                               errcont
+                                               (format nil "go: wrong target ~A" go-label)))))
+      ((equal (car exp) 'labels)   (let* ((alist (mapcar (lambda (label) ;; формируем список пар (имя . nil)
+                                                           (cons (car label) nil))
+                                                         (cadr exp)))
+                                          (new-env (append alist env))   ;; добавим к списку пар предыдущее окружение
+                                          (closures (mapcar (lambda (label)
+                                                              ;; создаем замыкание, указывающее (env) на созданные переменные (содержащие пока nil)
+                                                              (make-closure :body (cddr label) ;; implicit progn
+                                                                            :block-env block-env
+                                                                            :env new-env
+                                                                            :go-env go-env
+                                                                            :args (cadr label)))
+                                                            (cadr exp))))
+                                     ;; alist:    '((zzz . nil) (xxx . nil))
+                                     ;; new-env:  '((zzz . nil) (xxx . nil) (old . #:closure))
+                                     ;; closures: '(#:closure #:closure) ;; у этих замыканий :env указывает на new-env
+                                     (assert (equal (length alist) (length closures)))
+                                     (loop
+                                        :for aelt     :in alist
+                                        :for closure  :in closures
+                                        :do (rplacd aelt closure))
+                                     ;; получаем:
+                                     ;; alist:    '((zzz . #:closure) (xxx . #:closure))
+                                     ;; И передаем new-env в качестве окружения
+                                     (evprogn (cddr exp) new-env block-env go-env catch-env errcont cont)))
+      ((equal (car exp) 'reset)    (list 'return cont (myeval (cadr exp)
+                                                              env block-env go-env catch-env
+                                                              errcont #'identity)))
+      ((equal (car exp) 'shift)    (list 'eval (caddr exp)
+                                         (acons (cadr exp) cont env)
+                                         block-env go-env catch-env
+                                         errcont cont))
+      (t
+       (list 'eval (car exp) env block-env go-env catch-env errcont
+             (lambda (x)
+               (evlis x (cdr exp) nil env block-env go-env catch-env errcont cont))))))
+  ;; STEPPER
+  (defun stepper (frame)
+    (cond ((equal (car frame) 'done)   (cadr frame))
+          ((equal (car frame) 'error)  (cadr frame))
+          ((equal (car frame) 'return) (stepper (apply #'apply-continuation (cdr frame))))
+          ((equal (car frame) 'eval)   (stepper (apply #'myeval (cdr frame))))))
+  ;; Тестируем новый lookup
+  ;; test lookup
+  (assert (equal "ok:123" (let ((retval (lookup 'aaa '((aaa . 123))
+                                                (lambda (x) (format nil "err:~A" x))
+                                                (lambda (x) (format nil "ok:~A" x)))))
+                            (apply-continuation (cadr retval) (caddr retval)))))
+  (assert (equal nil      (let ((retval (lookup 'aaa '((bbb . 123))
+                                                (lambda (x) (declare (ignore x)) nil)
+                                                (lambda (x) (format nil "ok:~A" x)))))
+                            (apply-continuation (cadr retval) (caddr retval)))))
+  ;; Функции для тестирования CPS-функций
+  (defun ok (x)
+    (format t "~%ok: ~A" x)
+    (list 'done x))
+  (defun err (x)
+    (format t "~%err: ~A" x)
+    (list 'error x))
+  ;; Тесты для MYAPPLY
+  ;; Тесты cons, car, cdr
+  (assert (equal '(1 . 2) (stepper (myeval '(cons 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal '((1 . 2) 3 . 4) (stepper (myeval '(cons (cons 1 2) (cons 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(car (cons 2 3)) nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(cdr (cons 2 3)) nil nil nil nil #'err #'ok))))
+  (assert (equal '(1 . 2) (stepper (myeval '(car (cons (cons 1 2) (cons 3 4)))
+                                           nil nil nil nil #'err #'ok))))
+  (assert (equal '(3 . 4) (stepper (myeval '(cdr (cons (cons 1 2) (cons 3 4)))
+                                           nil nil nil nil #'err #'ok))))
+  ;; Тесты для cons-ячеек, вычисляемых в окружении
+  (assert (equal 1 (stepper (myeval '(car a) '((a . (1 . 2))) nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(cdr a) '((a . (1 . 2))) nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) nil nil nil #'err #'ok))))
+  ;; Тесты для NULL
+  (assert (equal T (stepper (myeval '(null ()) nil nil nil nil #'err #'ok))))
+  (assert (equal T (stepper (myeval '(null nil) nil nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval '(null T) nil nil nil nil #'err #'ok))))
+  (assert (equal T (stepper (myeval '(null a) '((a . ())) nil nil nil #'err #'ok))))
+  ;; Тесты для NULL, с аргументом, вычисляемые в окружении
+  (assert (equal NIL (stepper (myeval '(null a) '((a . T)) nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval '(null a) '((a . 1)) nil nil nil #'err #'ok))))
+  ;; Тесты для EVADD
+  (assert (equal 0                (evadd '() 0)))
+  (assert (equal 2                (evadd '(2) 0)))
+  (assert (equal 5                (evadd '(2 3) 0)))
+  (assert (equal (+ 2 3 4)        (evadd '(2 3 4) 0)))
+  ;; Тесты для EVMUL
+  (assert (equal 1                (evmul '() 1)))
+  (assert (equal 2                (evmul '(2) 1)))
+  (assert (equal 6                (evmul '(2 3) 1)))
+  (assert (equal (* 2 3 4)        (evmul '(2 3 4) 1)))
+  ;; Тесты для сложения
+  (assert (equal 0                (stepper (myeval '(+) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2)            (stepper (myeval '(+ 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 3)          (stepper (myeval '(+ 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 3 4)        (stepper (myeval '(+ 2 3 4) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 (+ 3 4))    (stepper (myeval '(+ 2 (+ 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal (+ 2 (+ 3 4) 5)  (stepper (myeval '(+ 2 (+ 3 4) 5) nil nil nil nil #'err #'ok))))
+  ;; Тесты для умножения
+  (assert (equal 1                (stepper (myeval '(*) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2)            (stepper (myeval '(* 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 3)          (stepper (myeval '(* 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 3 4)        (stepper (myeval '(* 2 3 4) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 (* 3 4))    (stepper (myeval '(* 2 (* 3 4)) nil nil nil nil #'err #'ok))))
+  (assert (equal (* 2 (* 3 4) 5)  (stepper (myeval '(* 2 (* 3 4) 5) nil nil nil nil #'err #'ok))))
+  ;; Тесты для сложения в окружении
+  (assert (equal 0
+                 (stepper (myeval '(+) nil nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2))
+                   (+ a))
+                 (stepper (myeval '(+ a)
+                                  '((a . 2))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3))
+                   (+ a b))
+                 (stepper (myeval '(+ a b)
+                                  '((a . 2) (b . 3))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (+ a b c))
+                 (stepper (myeval '(+ a b c)
+                                  '((a . 2) (b . 3) (c . 4))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (+ a (+ b c)))
+                 (stepper (myeval '(+ a (+ b c))
+                                  '((a . 2) (b . 3) (c . 4))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
+                   (+ a (+ b c) d))
+                 (stepper (myeval '(+ a (+ b c) d)
+                                  '((a . 2) (b . 3) (c . 4) (d . 5))
+                                  nil nil nil #'err #'ok))))
+  ;; Тесты для умножения  в окружении
+  (assert (equal 1
+                 (stepper (myeval '(*) nil nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2))
+                   (* a))
+                 (stepper (myeval '(* a)
+                                  '((a . 2))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3))
+                   (* a b))
+                 (stepper (myeval '(* a b)
+                                  '((a . 2) (b . 3))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (* a b c))
+                 (stepper (myeval '(* a b c)
+                                  '((a . 2) (b . 3) (c . 4))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4))
+                   (* a (* b c)))
+                 (stepper (myeval '(* a (* b c))
+                                  '((a . 2) (b . 3) (c . 4))
+                                  nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 2) (b 3) (c 4) (d 5))
+                   (* a (* b c) d))
+                 (stepper (myeval '(* a (* b c) d)
+                                  '((a . 2) (b . 3) (c . 4) (d . 5))
+                                  nil nil nil #'err #'ok))))
+  ;; Тесты для применения CLOSURE
+  (assert (equal 1 (stepper (myeval '(((lambda (x)
+                                         (lambda (y) x))
+                                       1)
+                                      2)
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты для PRINT в сравнении с host-овым print
+  (assert (equal (format nil "~%~A ~%ok: ~A" 12 12)
+                 (with-output-to-string (*standard-output*)
+                   (stepper (myeval '(print 12) nil nil nil nil #'err #'ok)))))
+  (assert (equal (print 12)
+                 (stepper (myeval '(print 12) nil nil nil nil #'err #'ok))))
+  ;; Тесты для PRINT в окружении
+  (assert (equal (format nil "~%~A ~%ok: ~A" 12 12)
+                 (with-output-to-string (*standard-output*)
+                   (stepper (myeval '(print a)
+                                    '((b . 23) (a . 12))
+                                    nil nil nil #'err #'ok)))))
+  (assert (equal (print 12)
+                 (stepper (myeval '(print a)
+                                  '((b . 23) (a . 12))
+                                  nil nil nil #'err #'ok))))
+  ;; Тесты для LIST
+  (assert (equal '(1 14) (stepper (myeval '(list 1 (+ 2 (* 3 4)))
+                                          nil nil nil nil #'err #'ok))))
+  (assert (equal '(3 6 42)
+                 (stepper (myeval '(list (+ 1 2) (* 2 3) 42) nil nil nil nil #'err #'ok))))
+  (assert (equal '(3 6 42)
+                 (stepper (myeval '(list (+ a b) (* b c) 42)
+                                  '((a . 1) (b . 2) (c . 3) (d . 4))
+                                  nil nil nil #'err #'ok))))
+  ;; Тесты для CALL/CC
+  (assert (equal 14 (stepper (myeval '(+ 1 2 (call/cc (lambda (x) (+ 3 4) (x (+ 5 6)) (+7 8))))
+                                     nil nil nil nil #'err #'ok))))
+  ;; Тесты для MYEVAL
+  ;; Тесты для самовычисляемых форм
+  (assert (equal T (stepper (myeval 'T nil nil nil nil #'err #'ok))))
+  (assert (equal NIL (stepper (myeval 'NIL nil nil nil nil #'err #'ok))))
+  (assert (equal 999 (stepper (myeval 999 nil nil nil nil #'err #'ok))))
+  ;; Тесты для вычисления символов
+  (assert (equal 6 (stepper (myeval 'b '((a . 3) (b . 6)) nil nil nil #'err #'ok))))
+  (assert (equal #'err (cadr (myeval 'b nil nil nil nil #'err #'ok))))
+  ;; Тесты для QUOTE
+  (assert (equal '(+ 1 2) (stepper (myeval '(quote (+ 1 2)) nil nil nil nil #'err #'ok))))
+  ;; Тесты для IF
+  (assert (equal 2 (stepper (myeval '(if () 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(if (null ()) 1 2) nil nil nil nil #'err #'ok))))
+  ;; Тесты для IF, где условие вычисляется в окружении
+  (assert (equal 2 (stepper (myeval '(if a 1 2) '((a . ())) nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(if a 1 2) '((a . 1)) nil nil nil #'err #'ok))))
+  ;; Тесты для COND
+  (assert (equal 2 (stepper (myeval '(cond
+                                      (() 1)
+                                      (1 2))
+                                    nil nil nil nil #'err #'ok))))
+  (assert (equal 2 (stepper (myeval '(cond
+                                      (a 1)
+                                      (b 2))
+                                    '((a . ()) (b . 1))
+                                    nil nil nil #'err #'ok))))
+  (assert (equal 1 (stepper (myeval '(cond
+                                      (a 1)
+                                      (b 2))
+                                    '((a . 1) (b . ()))
+                                    nil nil nil #'err #'ok))))
+  ;; Тест для PROGN
+  (assert (equal 3 (stepper (myeval '(progn 1 2 3) nil nil nil nil #'err #'ok))))
+  ;; Тест для PROGN в окружении
+  (assert (equal 3 (stepper (myeval '(progn a b c) '((a . 1) (b . 2) (c . 3))
+                                    nil nil nil #'err #'ok))))
+  ;; Тесты для AND
+  (assert (equal (and)                (stepper (myeval '(and) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1)              (stepper (myeval '(and 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (and nil)            (stepper (myeval '(and nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 nil)          (stepper (myeval '(and 1 nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 2 nil)        (stepper (myeval '(and 1 2 nil) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 2 3)          (stepper (myeval '(and 1 2 3) nil nil nil nil #'err #'ok))))
+  (assert (equal (and 1 (and 1 2) 3)  (stepper (myeval '(and 1 (and 1 2) 3) nil nil nil nil
+                                                       #'err #'ok))))
+  (assert (equal (and 1 (and 1 nil) 3)  (stepper (myeval '(and 1 (and 1 nil) 3) nil nil nil nil
+                                                         #'err #'ok))))
+  ;; Тесты для AND в окружении
+  (assert (equal (let ((a nil))
+                   (and nil))
+                 (stepper (myeval '(and a) '((a . nil)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1))
+                   (and a))
+                 (stepper (myeval '(and a) '((a . 1)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1)
+                       (b nil))
+                   (and a b))
+                 (stepper (myeval '(and a b) '((a . 1) (b . nil)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c nil))
+                   (and a b c))
+                 (stepper (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a b c))
+                 (stepper (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1)
+                       (b 2)
+                       (c 3))
+                   (and a (and a b) c))
+                 (stepper (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) nil nil nil
+                                  #'err #'ok))))
+  (assert (equal (let ((a 1)
+                       (b nil)
+                       (c 3))
+                   (and a (and a b) c))
+                 (stepper (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) nil nil nil
+                                  #'err #'ok))))
+  ;; Тесты для OR
+  (assert (equal (or)                  (stepper (myeval '(or) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil 1)            (stepper (myeval '(or nil 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil nil 1)        (stepper (myeval '(or nil nil 1) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil 1 2)          (stepper (myeval '(or nil 1 2) nil nil nil nil #'err #'ok))))
+  (assert (equal (or nil (or 3 2) 2)   (stepper (myeval '(or nil (or 3 2) 2) nil nil nil nil #'err #'ok))))
+  ;; Тесты для OR в окружении
+  (assert (equal (let ((a nil))
+                   (or a))
+                 (stepper (myeval '(or a) '((a . nil)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a 1))
+                   (or a))
+                 (stepper (myeval '(or a) '((a . 1)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a nil)
+                       (b 1))
+                   (or a b))
+                 (stepper (myeval '(or a b) '((a . nil) (b . 1)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c 3))
+                   (or a b c))
+                 (stepper (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a nil)
+                       (b 1)
+                       (c 2))
+                   (or a b c))
+                 (stepper (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) nil nil nil #'err #'ok))))
+  (assert (equal (let ((a nil)
+                       (b nil)
+                       (c nil)
+                       (d 2))
+                   (or a (or b c) d))
+                 (stepper (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                                  nil nil nil #'err #'ok))))
+  ;; Тесты для MYPAIRLIS
+  (assert (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+                 (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+  (assert (equal "error"
+                 (handler-case (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  (assert (equal "error"
+                 (handler-case (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                   (MYPAIRLIS-ERROR (condition) "error"))))
+  ;; Тесты для LET
+  (assert (equal '(1 . 2) (stepper (myeval '(let ((a 1)
+                                                  (b 2))
+                                             (cons a b))
+                                           nil nil nil nil
+                                           #'err #'ok))))
+  ;; Тесты для LET*
+  (assert (equal '(3 1 . 2) (stepper (myeval '(let* ((a 1)
+                                                     (b 2)
+                                                     (c (+ a b)))
+                                               (cons c (cons a b)))
+                                             nil nil nil nil #'err #'ok))))
+  ;; Тесты для DEFUN
+  (assert (equal 64 (progn
+                      (setf *glob-env* nil)
+                      (stepper (myeval '(defun alfa (x) (* x x)) nil nil nil nil #'err #'ok))
+                      (prog1 (stepper (myeval '(alfa 8) nil nil nil nil #'err #'ok))
+                        (setf *glob-env* nil)))))
+  ;; Тесты на IMPLICIT-PROGN в DEFUN
+  (assert (equal 384 (progn
+                       (setf *glob-env* nil)
+                       (stepper (myeval '(let ((y 3))
+                                          (defun alfa (x)
+                                            (setq y 6)
+                                            (* x x y)))
+                                        nil nil nil nil #'err #'ok))
+                       (prog1 (stepper (myeval '(alfa 8) nil nil nil nil #'err #'ok))
+                         (setf *glob-env* nil)))))
+  ;; Тесты для SETQ
+  ;; Проверка изменения значения локальной переменной, не затрагивая глобального окружения
+  (assert (equal '((2 . 2) ((alfa . 0)))
+                 (progn
+                   (setf *glob-env* '((alfa . 0)))
+                   (prog1 (list (stepper (myeval '(cons (setq alfa 2)
+                                                   alfa)
+                                                 '((alfa . 1))
+                                                 nil nil nil #'err #'ok))
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения несуществующей переменной (создание глобальной переменной)
+  (assert (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (stepper (myeval '(cons
+                                                   (setq alfa 1)
+                                                   alfa)
+                                                 nil nil nil nil #'err #'ok))
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Изменение значения существующей глобальной переменной
+  (assert (equal '((1 . 1) ((BETA . 1)))
+                 (progn
+                   (setf *glob-env* '((beta . 222)))
+                   (prog1 (list (stepper (myeval '(cons
+                                                   (setq beta 1)
+                                                   beta)
+                                                 nil nil nil nil #'err #'ok))
+                                ,*glob-env*)
+                     (setf *glob-env* nil)))))
+  ;; Тесты для LAMBDA
+  (assert (equal 3 (stepper (myeval '((lambda (x) (+ 1  x)) 2)
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты для LAMBDA в окружении
+  (assert (equal 5 (stepper (myeval '(let ((y 3))
+                                      ((lambda (x) (+ y x)) 2))
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты на IMPLICIT-PROGN в LAMBDA
+  (assert (equal 8 (stepper (myeval '(let ((y 3))
+                                      ((lambda (x)
+                                         (setq y 6)
+                                         (+ y x)) 2))
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты для BLOCK
+  (assert (equal nil (stepper (myeval '(block testblock)
+                                      nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(block testblock 3)
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты для RETURN-FROM
+  (assert (equal 3 (stepper (myeval '(block testblock (return-from testblock (+ 1 2)) 777)
+                                    nil nil nil nil #'err #'ok))))
+  (assert (equal  "return-from: undefined return block NOTBLOCK"
+                  (stepper (myeval '(block testblock (return-from notblock (+ 1 2)) 777)
+                                   nil nil nil nil #'err #'ok))))
+  (assert (equal "return-from: undefined return block NOT-FOUND-BLOCK"
+                 (stepper (myeval '(progn (return-from not-found-block (+ 1 2)) 777)
+                                  nil nil nil nil #'err #'ok))))
+  ;; Тест RETURN-FROM в лексической области видимости
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (stepper (myeval '(progn
+                                                (defun foo (x)
+                                                  (block in-lambda-block
+                                                    (return-from in-lambda-block
+                                                      (+ x 2))
+                                                    777))
+                                                (foo 10))
+                                              nil nil nil nil #'err #'ok))
+                        (setf *glob-env* nil)))))
+  ;; Тест RETURN-FROM в динамической области видимости (должна быть ошибка)
+  (assert (equal "return-from: undefined return block IN-LAMBDA-BLOCK"
+                 (progn
+                   (setf *glob-env* nil)
+                   (prog1 (stepper (myeval '(progn
+                                             (defun foo (x)
+                                               (return-from in-lambda-block
+                                                 (+ x 2))
+                                               777)
+                                             (block in-lambda-block
+                                               (foo 10)))
+                                           nil nil nil nil #'err #'ok))
+                     (setf *glob-env* nil)))))
+  ;; Тест на ошибку недостижимого блока
+  (assert (equal "return-from: attempt to RETURN-FROM to THE-BLOCK that no longer exists"
+                 (stepper (myeval '((block the-block (lambda () (return-from the-block nil))))
+                                  nil nil nil nil #'err #'ok))))
+  ;; Тест на отсутствие ошибки при возврате в достижимый блок
+  (assert (equal 123 (stepper (myeval '(block the-block (return-from the-block 123))
+                                      nil nil nil nil #'err #'ok))))
+  ;; Тесты для CATCH
+  (assert (equal nil (stepper (myeval '(catch 'zzz)
+                                      nil nil nil nil #'err #'ok))))
+  (assert (equal 3 (stepper (myeval '(catch 'zzz 3)
+                                    nil nil nil nil #'err #'ok))))
+  ;; Тесты для THROW
+  (assert (equal 3 (stepper (myeval '(catch 'testcatch (throw 'testcatch (+ 1 2)) 777)
+                                    nil nil nil nil #'err #'ok))))
+  (assert (equal "throw: matching NOTCATCH catch is not found"
+                 (stepper (myeval '(catch 'testcatch (throw 'notcatch (+ 1 2)) 777)
+                                  nil nil nil nil #'err #'ok))))
+  (assert (equal "throw: matching NOT-FOUND-CATCH catch is not found"
+                 (stepper (myeval '(progn (throw 'not-found-catch (+ 1 2)) 777)
+                                  nil nil nil nil #'err #'ok))))
+  ;; Тест THROW в лексической области видимости
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (stepper (myeval '(progn
+                                                (defun foo (x)
+                                                  (catch 'in-lambda-catch
+                                                    (throw 'in-lambda-catch
+                                                      (+ x 2))
+                                                    777))
+                                                (foo 10))
+                                              nil nil nil nil #'err #'ok))
+                        (setf *glob-env* nil)))))
+  ;; Тест THROW в динамической области видимости (должно сработать)
+  (assert (equal 12 (progn
+                      (setf *glob-env* nil)
+                      (prog1 (stepper (myeval '(progn
+                                                (defun foo (x)
+                                                  (throw 'in-lambda-catch
+                                                    (+ x 2))
+                                                  777)
+                                                (catch 'in-lambda-catch
+                                                  (foo 10)))
+                                              nil nil nil nil #'err #'ok))
+                        (setf *glob-env* nil)))))
+  ;; Тесты для TAGBODY
+  (assert (equal nil (stepper (myeval '(tagbody a 1)
+                                      nil nil nil nil #'err #'ok))))
+  (assert (equal nil (stepper (myeval '(tagbody a 1 b 2)
+                                      nil nil nil nil #'err #'ok))))
+  ;; Тесты для GO
+  (assert (equal '(1 . 4) (stepper (myeval '(let ((alfa 0))
+                                             (tagbody
+                                              a (setq alfa 1)
+                                              b (go d)
+                                              c (setq alfa (cons alfa 3))
+                                              d (setq alfa (cons alfa 4)))
+                                             alfa)
+                                           nil nil nil nil #'err #'ok))))
+  ;; Тесты для "обратного хода" GO
+  (assert (equal '(1 . 5) (stepper (myeval '(let ((alfa 0))
+                                             (tagbody
+                                              a (go d)
+                                              b (setq alfa 1)
+                                              c (go e)
+                                              d (go b)
+                                              e (setq alfa (cons alfa 5)))
+                                             alfa)
+                                           nil nil nil nil #'err #'ok))))
+  ;; Тесты для LABELS
+  (assert (equal (labels ((zzz (lst acc)
+                            (print acc)
+                            (cond ((null lst) acc)
+                                  (t (zzz (cdr lst) (+ 1 acc))))))
+                   (print 888)
+                   (zzz '(1 2 3) 0))
+                 (stepper (myeval '(labels ((zzz (lst acc)
+                                             (print acc)
+                                             (cond ((null lst) acc)
+                                                   (t (zzz (cdr lst) (+ 1 acc))))))
+                                    (print 888)
+                                    (zzz '(1 2 3) 0))
+                                  nil nil nil nil #'err #'ok))))
+  (assert (equal (with-output-to-string (*standard-output*)
+                   (labels ((zzz (lst acc)
+                              (print acc)
+                              (cond ((null lst) acc)
+                                    (t (zzz (cdr lst) (+ 1 acc))))))
+                     (print 888)
+                     (zzz '(1 2 3) 0)
+                     (format t "~%ok: 3")))
+                 (with-output-to-string (*standard-output*)
+                   (stepper (myeval '(labels ((zzz (lst acc)
+                                               (print acc)
+                                               (cond ((null lst) acc)
+                                                     (t (zzz (cdr lst) (+ 1 acc))))))
+                                      (print 888)
+                                      (zzz '(1 2 3) 0))
+                                    nil nil nil nil #'err #'ok)))))
+  ;; Тесты для RESET
+  ;; (assert (equal 8 (stepper (myeval '(progn
+  ;;                             (+ 1 (reset (+ 2 3)) 2))
+  ;;                             nil nil nil nil #'err #'ok))))
+  ;; Тесты для SHIFT/RESET
+  ;; (assert (equal 44 (stepper (myeval '(let ((foo))
+  ;;                             (+ 1 (reset (+ 2 (shift f (progn (setq foo f) 4)))))
+  ;;                             (foo 42))
+  ;;                           nil nil nil nil #'err #'ok))))
+  ;; REPL
+  (defun repl (prompt catch-env errcont cont)
+    (format t "~%~A> " prompt)
+    (finish-output)
+    (myeval (read) nil nil nil (acons 'exit cont catch-env)
+            #'(lambda (x)
+                (princ x)
+                (terpri)
+                (finish-output)
+                (repl prompt catch-env errcont cont))
+            #'(lambda (x)
+                (princ x)
+                (terpri)
+                (finish-output)
+                (repl prompt catch-env errcont cont))))
+  (defun repl ()
+    (princ "microlisp>")
+    (finish-output)
+    (stepper (list 'eval (read) nil nil nil nil #'err #'ok))
+    (terpri)
+    (finish-output)
+    (repl))
+  ;; (repl)
 #+END_SRC
