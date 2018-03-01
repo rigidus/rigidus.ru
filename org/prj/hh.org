@@ -26,7 +26,38 @@
 принимают один параметр. Если вакансия есть, она будет передана в ~success~, иначе
 ошибка будет передана в ~failure~.
 
-** Генератор вакансий для HeadHunter hh-get-vacancy
+* Фабрика генераторов
+
+Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
+функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
+для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию:
+
+#+NAME: factory
+#+BEGIN_SRC lisp
+  (defgeneric factory (vac-src &optional &key &allow-other-keys)
+    (:documentation "Return the function-generator of vacancyes"))
+#+END_SRC
+
+* Специализация дла HeadHunter
+
+Все что выше было определено довольно абстрактно. Теперь конкретизируем абстракции для
+одного из возможных источников:
+
+** Фабрика генераторов для HeadHunter
+
+#+NAME: hh_factory
+#+BEGIN_SRC lisp
+  (defmethod factory ((vac-src (eql 'hh)) &optional &key teaser-url      idx  ref
+                                                      cookie-jar         src-account
+                                                      get-page-fn        parse-teasers-fn
+                                                      (teasers nil)
+                                                      &allow-other-keys)
+    (dbg ":factory:")
+    <<hh_vac_gen>>
+    )
+#+END_SRC
+
+** Генератор вакансий для HeadHunter
 
 Генератор вакансий для HeadHunter хранит внутри себя некоторое количество ~тизеров
 вакансий~. Каждый раз, когда генератор бывает вызван, он берет очередной ~тизер~,
@@ -262,32 +293,6 @@
         (if (contains html (src_fio src-account))
             (funcall success cookie-jar-2 html)
             (funcall failure 'login-failed "login failed" html)))))
-#+END_SRC
-
-* Фабрика генераторов
-
-Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
-функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
-для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию:
-
-#+NAME: factory
-#+BEGIN_SRC lisp
-  (defgeneric factory (vac-src &optional &key &allow-other-keys)
-    (:documentation "Return the function-generator of vacancyes"))
-#+END_SRC
-
-** Фабрика генераторов для HeadHunter
-
-#+NAME: hh_factory
-#+BEGIN_SRC lisp
-  (defmethod factory ((vac-src (eql 'hh)) &optional &key teaser-url  idx  ref
-                                                      cookie-jar     src-account
-                                                      get-page-fn    parse-teasers-fn
-                                                      (teasers nil)
-                                                      &allow-other-keys)
-    (dbg ":factory:")
-    <<hh_vac_gen>>
-    )
 #+END_SRC
 
 * Разбор тизеров вакансий
