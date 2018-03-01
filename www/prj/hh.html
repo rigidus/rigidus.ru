@@ -15,6 +15,47 @@
 <div id="text-table-of-contents">
 <ul>
 <li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Источник вакансий</a></li>
+<li><a href="#unnumbered-3">Генератор вакансий</a>
+<ul>
+<li><a href="#unnumbered-4">Генератор вакансий для HeadHunter hh-get-vacancy</a>
+<ul>
+<li><a href="#unnumbered-5">Функция, возвращающая следующий тизер вакансии</a></li>
+<li><a href="#unnumbered-6">Функция, загружающая следующие тизеры</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#unnumbered-10">Фабрика генераторов</a>
+<ul>
+<li><a href="#unnumbered-11">Фабрика генераторов для HeadHunter</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-12">Разбор тизеров вакансий</a>
+<ul>
+<li><a href="#unnumbered-13">Парсер html в s-exps</a></li>
+<li><a href="#unnumbered-14">Экстрактор поисковых результатов</a></li>
+<li><a href="#unnumbered-15">Фильтр-преобразователь дерева</a></li>
+<li><a href="#unnumbered-16">Макрос для создания преобразователей</a></li>
+<li><a href="#unnumbered-17">Макрос для создания экстракторов</a></li>
+<li><a href="#unnumbered-18">Функция для разбора зарплаты</a></li>
+<li><a href="#unnumbered-19">Функция для разбора валюты</a></li>
+<li><a href="#unnumbered-20">Набор преобразователей для тизеров</a></li>
+<li><a href="#unnumbered-21">Функция-предикат для plists</a></li>
+<li><a href="#unnumbered-22">Функция слияния plists</a></li>
+<li><a href="#unnumbered-23">Функция предикат tree-plists</a></li>
+<li><a href="#unnumbered-24">Трансформация дерева</a></li>
+<li><a href="#unnumbered-27">Линеаризатор тизера</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-28">Сбор тизеров</a></li>
+<li><a href="#unnumbered-29">Сборка</a>
+<ul>
+<li><a href="#unnumbered-30">Макросы для корректного вывода ошибок</a></li>
+<li><a href="#unnumbered-31">Отладочный вывод</a></li>
+<li><a href="#unnumbered-32">Макросы для преобразования порядка аргументов</a></li>
+</ul>
+</li>
 </ul>
 </div>
 </div>
@@ -23,17 +64,1407 @@
 <h2 id="unnumbered-1">Интро</h2>
 <div class="outline-text-2" id="text-unnumbered-1">
 <p>
-Все программисты ищут (или искали) работу на профильных сайтах и
-каждый из них хоть раз задумывался об автоматизации рутинных
-операций.
+Большинство программистов ищут (или искали) работу на профильных сайтах и каждый из них
+хоть раз задумывался об автоматизации рутинных операций.
 </p>
 
 <p>
-Я решил пойти дальше и разработал экспертную систему с элементами
-искусственного интеллекта, которая ищет работу за меня в полностью
-автоматическом режиме - от подбора вакансий до автоматической
-адаптации резюме.
+Я решил пойти дальше и разработал экспертную систему, которая ищет работу за меня в
+автоматическом режиме. Здесь я опишу как она устроена и работает.
 </p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Источник вакансий</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Источник вакансий - это сущность, откуда можно получать вакансии. Например, это может
+быть сайт <a href="http://hh.ru">HeadHunter.ru</a>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Генератор вакансий</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Генератор вакансий - это функция, которая при каждом своем вызове возвращает
+вакансию. Это наш способ получать вакансии по одной. Внутри генератора есть какое-то
+состояние, чтобы каждый раз отдавать новую вакансию.
+</p>
+
+<p>
+Генератор вакансии - это полупредикат, следующей вакансии может не быть (кончились),
+поэтому мы передаем ему два продолжения - <code>success</code> и <code>failure</code>. Оба продолжения
+принимают один параметр. Если вакансия есть, она будет передана в <code>success</code>, иначе
+ошибка будет передана в <code>failure</code>.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Генератор вакансий для HeadHunter hh-get-vacancy</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Генератор вакансий для HeadHunter хранит внутри себя некоторое количество <code>тизеров
+вакансий</code>. Каждый раз, когда генератор бывает вызван, он берет очередной <code>тизер</code>,
+прогоняет его через функцию <code>sucess</code> и возвращает результат (если результат не <code>nil</code>,
+иначе - обрабатываем следующий тизер). Функция <code>success</code> превращает <code>тизеры</code> в
+<code>вакансии</code> и будет описана позднее, сейчас достаточно сказать, что она возвращает
+<code>nil</code>, если тизер был отброшен.
+</p>
+
+<p>
+Если <code>тизеры вакансий</code> закончились, генератор вызывает <code>load-next-teasers-page</code>, чтобы
+загрузить в себя тизеры со следующей по счету страницы поисковых результатов сайта. Для
+этого генератор хранит <code>url</code> и <code>idx</code> этой страницы в своем состоянии.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_vac_gen"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1101;&#1090;&#1072; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; &#1074;&#1099;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090;&#1089;&#1103; &#1080;&#1079; &#1075;&#1077;&#1085;&#1077;&#1088;&#1072;&#1090;&#1086;&#1088;&#1072; get-vacancy</span>
+&lt;&lt;hh_process_teaser&gt;&gt;
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1102;-&#1075;&#1077;&#1085;&#1077;&#1088;&#1072;&#1090;&#1086;&#1088; &#1074; &#1083;&#1077;&#1082;&#1089;&#1080;&#1095;&#1077;&#1089;&#1082;&#1086;&#1084; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1080;,</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1082;&#1086;&#1090;&#1086;&#1088;&#1072;&#1103; &#1087;&#1088;&#1080;&#1085;&#1080;&#1084;&#1072;&#1077;&#1090; &#1076;&#1074;&#1072; &#1087;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(alexandria:named-lambda hh-get-vacancy (failure success)
+  (<span style="color: #af00ff;">labels</span> (
+           <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1047;&#1072;&#1075;&#1088;&#1091;&#1078;&#1072;&#1077;&#1090; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1091;&#1102; &#1089;&#1090;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091; &#1090;&#1080;&#1079;&#1077;&#1088;&#1086;&#1074; &#1074; TEASERS</span>
+           &lt;&lt;hh_load_next_teasers_page&gt;&gt;
+           <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081; &#1090;&#1080;&#1079;&#1077;&#1088; &#1080;&#1079; &#1087;&#1091;&#1083;&#1072; &#1090;&#1080;&#1079;&#1077;&#1088;&#1086;&#1074;.</span>
+           <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1045;&#1089;&#1083;&#1080; &#1087;&#1091;&#1083; &#1087;&#1091;&#1089;&#1090;, &#1090;&#1086; &#1074;&#1099;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; LOAD-NEXT-TEASER-PAGE &#1095;&#1090;&#1086;&#1073;&#1099; &#1085;&#1072;&#1087;&#1086;&#1083;&#1085;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086;</span>
+           &lt;&lt;hh_get_teaser&gt;&gt;
+           )
+    (<span style="color: #af00ff;">tagbody</span> get-new-teaser
+       (<span style="color: #af00ff;">let*</span> ((teaser (get-teaser))
+              (current-vacancy (funcall success teaser)))
+         (<span style="color: #af00ff;">if</span> (null current-vacancy)
+             (<span style="color: #af00ff;">go</span> get-new-teaser)
+             (<span style="color: #af00ff;">return-from</span> hh-get-vacancy current-vacancy))))))
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-4">
+<h4 id="unnumbered-5">Функция, возвращающая следующий тизер вакансии</h4>
+<div class="outline-text-4" id="text-unnumbered-5">
+<p>
+Эта функция догружает тизеры при необходимости
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_get_teaser">(GET-TEASER ()
+  (dbg <span style="color: #87005f;">":get-teaser:"</span>)
+  (<span style="color: #af00ff;">when</span> (equal 0 (length teasers))
+    (load-next-teasers-page))
+  (<span style="color: #af00ff;">prog1</span> (car teasers)
+    (setf teasers (cdr teasers))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-4">
+<h4 id="unnumbered-6">Функция, загружающая следующие тизеры</h4>
+<div class="outline-text-4" id="text-unnumbered-6">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_load_next_teasers_page">(LOAD-NEXT-TEASERS-PAGE ()
+  (dbg <span style="color: #87005f;">":load-next-teasers-page: (page=~A)"</span> idx)
+  (funcall get-page-fn (format nil teaser-url idx) cookie-jar src-account ref
+           (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
+             (dbg <span style="color: #87005f;">":load-next-teaser-page:error: ~A"</span> msg)
+             (funcall failure tag msg data))
+           (<span style="color: #af00ff;">lambda</span> (teasers-page-content new-cookie-jar new-ref) <span style="color: #af0000;">;; </span><span style="color: #af0000;">success</span>
+             (setf cookie-jar new-cookie-jar)
+             (setf ref new-ref)
+             (setf teasers (funcall parse-teasers-fn teasers-page-content))
+             (incf idx)
+             (<span style="color: #af00ff;">when</span> (equal 0 (length teasers))
+               (funcall failure 'no-more-teasers <span style="color: #87005f;">"no more teasers"</span> nil)))))
+</pre>
+</div>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-7"></a>Функция получения веб-страниц<br ><div class="outline-text-5" id="text-unnumbered-7">
+<p>
+Эта функция обеспечивает получение веб-страниц с сайта HeadHunter, для этого мы
+передаем ее как параметр в фабрику.
+</p>
+
+<p>
+Кроме того, она пытается залогиниться на сайт, поэтому мы также передаем в фабрику
+объект-аккаунт, содержащий все необходимое.
+</p>
+
+<p>
+Внутри себя она вызывает <code>hh-is-logged</code> и <code>hh-reсovery-login</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_get_page">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*user-agent*</span> <span style="color: #87005f;">"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:35.0) Gecko/20100101 Firefox/35.0"</span>)
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*additional-headers*</span> `((<span style="color: #87005f;">"Accept"</span> . <span style="color: #87005f;">"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"</span>)
+                                     (<span style="color: #87005f;">"Accept-Language"</span> . <span style="color: #87005f;">"ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3"</span>)
+                                     (<span style="color: #87005f;">"Accept-Charset"</span> . <span style="color: #87005f;">"utf-8"</span>)))
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*need-start*</span> t)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">hh-get-page</span> (url cookie-jar src-account referer failure success)
+  <span style="color: #87005f;">"&#1055;&#1086;&#1083;&#1091;&#1095;&#1077;&#1085;&#1080;&#1077; &#1089;&#1090;&#1088;&#1072;&#1085;&#1080;&#1094;&#1099;"</span>
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1045;&#1089;&#1083;&#1080; &#1085;&#1080; &#1086;&#1076;&#1085;&#1086;&#1075;&#1086; &#1079;&#1072;&#1087;&#1088;&#1086;&#1089;&#1072; &#1077;&#1097;&#1077; &#1085;&#1077; &#1073;&#1099;&#1083;&#1086; - &#1089;&#1076;&#1077;&#1083;&#1072;&#1077;&#1084; &#1079;&#1072;&#1087;&#1088;&#1086;&#1089; &#1082; &#1075;&#1083;&#1072;&#1074;&#1085;&#1086;&#1081; &#1080; &#1089;&#1085;&#1080;&#1084;&#1077;&#1084; &#1092;&#1083;&#1072;&#1075;</span>
+  (<span style="color: #af00ff;">when</span> *need-start*
+    (drakma:http-request <span style="color: #87005f;">"https://spb.hh.ru/"</span> <span style="color: #5f5f87;">:user-agent</span> *user-agent* <span style="color: #5f5f87;">:redirect</span> 10
+                         <span style="color: #5f5f87;">:force-binary</span> t      <span style="color: #5f5f87;">:cookie-jar</span> cookie-jar)
+    (setf referer <span style="color: #87005f;">"https://spb.hh.ru/"</span>)
+    (setf *need-start* nil))
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1044;&#1077;&#1083;&#1072;&#1077;&#1084; &#1086;&#1089;&#1085;&#1086;&#1074;&#1085;&#1086;&#1081; &#1079;&#1072;&#1087;&#1088;&#1086;&#1089; &#1087;&#1086; &#1091;&#1088;&#1083;&#1091; &#1080;&#1079; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;&#1086;&#1074;, &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1103; &#1088;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;</span>
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074; response &#1080; &#1086;&#1073;&#1085;&#1086;&#1074;&#1083;&#1103;&#1103; cookie-jar</span>
+  (<span style="color: #af00ff;">let</span> ((response   <span style="color: #87005f;">""</span>)
+        (repeat-cnt 0))
+    (<span style="color: #af00ff;">tagbody</span> repeat
+       (<span style="color: #af00ff;">multiple-value-bind</span> (body-or-stream status-code headers uri stream must-close reason-phrase)
+           (drakma:http-request url
+                                <span style="color: #5f5f87;">:user-agent</span> *user-agent*
+                                <span style="color: #5f5f87;">:force-binary</span> t
+                                <span style="color: #5f5f87;">:cookie-jar</span> cookie-jar
+                                <span style="color: #5f5f87;">:redirect</span> 10
+                                <span style="color: #5f5f87;">:additional-headers</span>
+                                (append *additional-headers* `((<span style="color: #87005f;">"Referer"</span> . ,referer))))
+         (dbg <span style="color: #87005f;">":hh-get-page: ~A : ~A"</span> status-code url)
+         (<span style="color: #af00ff;">if</span> (equal 404 status-code)
+             (funcall failure
+                      'hh-404-error
+                      url
+                      (flexi-streams:octets-to-string body-or-stream <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))
+             (setf response
+                   (flexi-streams:octets-to-string body-or-stream <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))
+       <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1045;&#1089;&#1083;&#1080; &#1084;&#1099; &#1085;&#1077; &#1079;&#1072;&#1083;&#1086;&#1075;&#1080;&#1085;&#1077;&#1085;&#1099;:</span>
+       (<span style="color: #af00ff;">unless</span> (is-logged response)
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1103;&#1077;&#1084;, &#1085;&#1077; &#1087;&#1088;&#1077;&#1074;&#1099;&#1096;&#1077;&#1085;&#1086; &#1083;&#1080; &#1082;&#1086;&#1083;-&#1074;&#1086; &#1087;&#1086;&#1087;&#1099;&#1090;&#1086;&#1082; &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1083;&#1077;&#1085;&#1080;&#1103;</span>
+         (<span style="color: #af00ff;">if</span> (&gt;<span style="color: #af00ff;">=</span> repeat-cnt 3)
+             <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1045;&#1089;&#1083;&#1080; &#1080;&#1093; &#1073;&#1086;&#1083;&#1100;&#1096;&#1077; &#1090;&#1088;&#1077;&#1093; - &#1089;&#1080;&#1075;&#1085;&#1072;&#1083;&#1080;&#1079;&#1080;&#1088;&#1091;&#1077;&#1084; &#1086;&#1096;&#1080;&#1073;&#1082;&#1091;</span>
+             (funcall failure 'max-recovery-login <span style="color: #87005f;">"max recovery login cnt"</span> response)
+             <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048;&#1085;&#1072;&#1095;&#1077; &#1087;&#1099;&#1090;&#1072;&#1077;&#1084;&#1089;&#1103; &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; &#1089;&#1077;&#1089;&#1089;&#1080;&#1102;</span>
+             (<span style="color: #af00ff;">progn</span>
+               (hh-recovery-login src-account
+                                  (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">recovery failure</span>
+                                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074;&#1099;&#1074;&#1086;&#1076;&#1080;&#1084; &#1089;&#1086;&#1086;&#1073;&#1097;&#1077;&#1085;&#1080;&#1077; &#1080; &#1085;&#1080;&#1095;&#1077;&#1075;&#1086; &#1085;&#1077; &#1076;&#1077;&#1083;&#1072;&#1077;&#1084; (3 &#1087;&#1086;&#1087;&#1099;&#1090;&#1082;&#1080;)</span>
+                                    (dbg <span style="color: #87005f;">"hh-get-page :: recovery failure"</span>))
+                                  (<span style="color: #af00ff;">lambda</span> (recovery-cookie-jar html)
+                                    (setf response html)
+                                    (setf cookie-jar recovery-cookie-jar)
+                                    (setf referer <span style="color: #87005f;">"https://spb.hh.ru/account/login"</span>)))
+               <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1059;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082; &#1087;&#1086;&#1087;&#1099;&#1090;&#1086;&#1082;</span>
+               (incf repeat-cnt)
+               <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1055;&#1088;&#1086;&#1073;&#1091;&#1077;&#1084; &#1079;&#1072;&#1075;&#1088;&#1091;&#1079;&#1080;&#1090;&#1100; &#1089;&#1090;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091; &#1089;&#1085;&#1086;&#1074;&#1072;</span>
+               (<span style="color: #af00ff;">go</span> repeat)))))
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1074; success-&#1087;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
+    (funcall success response cookie-jar url)))
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-8"></a>Функция проверки авторизации<br ><div class="outline-text-5" id="text-unnumbered-8">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_is_logged">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">is-logged</span> (html)
+  <span style="color: #87005f;">"&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1103;&#1077;&#1084; &#1085;&#1072;&#1083;&#1080;&#1095;&#1080;&#1077; &#1074; html &#1073;&#1083;&#1086;&#1082;&#1072; '&#1042;&#1086;&#1081;&#1090;&#1080;'"</span>
+  (<span style="color: #af00ff;">let</span> ((res (not (contains html <span style="color: #87005f;">"data-qa=\"mainmenu_loginForm\"&gt;&#1042;&#1086;&#1081;&#1090;&#1080;&lt;/div&gt;"</span>))))
+    (dbg <span style="color: #87005f;">":is-logged: ~A"</span> res)
+    res))
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-9"></a>Функция восстановления авторизации<br ><div class="outline-text-5" id="text-unnumbered-9">
+<p>
+Мы хотим в случае обрыва сессии перелогиниваться прозрачно для всего остального кода.
+</p>
+
+<p>
+Для этих целей мы передаем в <code>hh-recovery-login</code> объект <code>src-account</code>, который содержит
+все необходимое, чтобы восстановить сессию: логин, пароль и ФИО пользователя, по
+которому мы определяем, что успешно залогинились.
+</p>
+
+<p>
+Мы также передаем два продолжения.
+</p>
+
+<p>
+Продолжение <code>success</code> вызывается в случае успешного логина и получает:
+</p>
+<ul class="org-ul">
+<li>новый <code>cookie-jar</code>, который нужно использовать для работы внутри сессии
+</li>
+<li><code>html</code>
+</li>
+</ul>
+
+<p>
+Продолжение <code>failure</code> вызывается при неуспехе и ему передается:
+</p>
+<ul class="org-ul">
+<li><code>tag</code> ошибки
+</li>
+<li><code>msg</code> -сообщение для вывода
+</li>
+<li><code>data</code> - html-данные, которые представляют собой полученный ответ
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_recovery_login"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1042;&#1089;&#1087;&#1086;&#1084;&#1086;&#1075;&#1072;&#1090;&#1077;&#1083;&#1100;&#1085;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103;</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-cookies-alist</span> (cookie-jar)
+  <span style="color: #87005f;">"&#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; alist &#1089; &#1087;&#1077;&#1095;&#1077;&#1085;&#1100;&#1082;&#1072;&#1084;&#1080; &#1080;&#1079; cookie-jar"</span>
+  (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> cookie <span style="color: #5f5f87;">:in</span> (drakma:cookie-jar-cookies cookie-jar) <span style="color: #5f5f87;">:append</span>
+     (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">hh-recovery-login</span> (src-account failure success)
+  (dbg <span style="color: #87005f;">":hh-recovery-login:"</span>)
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1057;&#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1079;&#1072;&#1093;&#1086;&#1076;&#1080;&#1084; &#1085;&#1072; &#1075;&#1083;&#1072;&#1074;&#1085;&#1091;&#1102; &#1082;&#1072;&#1082; &#1073;&#1091;&#1076;&#1090;&#1086; &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1088;&#1072;&#1079;, &#1073;&#1077;&#1079; cookies</span>
+  (setf drakma:*header-stream* nil)
+  (<span style="color: #af00ff;">let*</span> ((start-uri <span style="color: #87005f;">"https://spb.hh.ru/"</span>)
+         (cookie-jar (make-instance 'drakma:cookie-jar))
+         (additional-headers *additional-headers*)
+         (response (drakma:http-request start-uri
+                                        <span style="color: #5f5f87;">:user-agent</span> *user-agent*
+                                        <span style="color: #5f5f87;">:additional-headers</span> additional-headers
+                                        <span style="color: #5f5f87;">:force-binary</span> t
+                                        <span style="color: #5f5f87;">:cookie-jar</span> cookie-jar
+                                        <span style="color: #5f5f87;">:redirect</span> 10)))
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1058;&#1077;&#1087;&#1077;&#1088;&#1100; &#1087;&#1086;&#1087;&#1088;&#1086;&#1073;&#1091;&#1077;&#1084; &#1080;&#1089;&#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1100; cookies &#1076;&#1083;&#1103; &#1083;&#1086;&#1075;&#1080;&#1085;&#1072;</span>
+    <span style="color: #af0000;">;;   </span><span style="color: #af0000;">GMT=3 ;; _xsrf=  ;; hhrole=anonymous ;; hhtoken= ;; hhuid=</span>
+    <span style="color: #af0000;">;;   </span><span style="color: #af0000;">regions=2 ;; unique_banner_user=</span>
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1048; &#1079;&#1072;&#1093;&#1086;&#1076;&#1080;&#1084; &#1089; &#1074;&#1086;&#1090;-&#1090;&#1072;&#1082;&#1080;&#1084; &#1075;&#1077;&#1090;-&#1079;&#1072;&#1087;&#1088;&#1086;&#1089;&#1086;&#1084;:</span>
+    <span style="color: #af0000;">;;   </span><span style="color: #af0000;">username=avenger-f@ya.ru ;; password=jGwPswRAfU6sKEhVXX</span>
+    <span style="color: #af0000;">;;   </span><span style="color: #af0000;">backurl=https://spb.hh.ru/ ;; remember=yes ;; action="&#1042;&#1086;&#1081;&#1090;&#1080;" ;; _xsrf=</span>
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1044;&#1083;&#1103; &#1086;&#1090;&#1083;&#1072;&#1076;&#1086;&#1095;&#1085;&#1086;&#1081; &#1087;&#1077;&#1095;&#1072;&#1090;&#1080;:</span>
+    <span style="color: #af0000;">;;   </span><span style="color: #af0000;">(setf drakma:*header-stream* *standard-output*)</span>
+    (<span style="color: #af00ff;">let*</span> ((post-parameters `((<span style="color: #87005f;">"username"</span> . ,(src_login src-account))
+                              (<span style="color: #87005f;">"password"</span> . ,(src_password src-account))
+                              (<span style="color: #87005f;">"backUrl"</span>  . <span style="color: #87005f;">"https://spb.hh.ru/"</span>)
+                              (<span style="color: #87005f;">"remember"</span> . <span style="color: #87005f;">"yes"</span>)
+                              (<span style="color: #87005f;">"action"</span>   . <span style="color: #87005f;">"%D0%92%D0%BE%D0%B9%D1%82%D0%B8"</span>)
+                              (<span style="color: #87005f;">"_xsrf"</span>    . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span>
+                                                         (get-cookies-alist cookie-jar)
+                                                         <span style="color: #5f5f87;">:test</span> #'equal)))))
+           (xsrf (cdr (assoc <span style="color: #87005f;">"_xsrf"</span> (get-cookies-alist cookie-jar) <span style="color: #5f5f87;">:test</span> #'equal)))
+           (cookie-jar-2
+            (make-instance
+             'drakma:cookie-jar
+             <span style="color: #5f5f87;">:cookies</span> (append (list (make-instance 'drakma:cookie
+                                                   <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"GMT"</span>
+                                                   <span style="color: #5f5f87;">:value</span> <span style="color: #87005f;">"3"</span>
+                                                   <span style="color: #5f5f87;">:domain</span> <span style="color: #87005f;">"spb.hh.ru"</span>)
+                                    (make-instance 'drakma:cookie
+                                                   <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"_xsrf"</span>
+                                                   <span style="color: #5f5f87;">:value</span> xsrf
+                                                   <span style="color: #5f5f87;">:domain</span> <span style="color: #87005f;">"spb.hh.ru"</span>))
+                              (remove-if #'(<span style="color: #af00ff;">lambda</span> (x)
+                                             (equal <span style="color: #87005f;">"crypted_id"</span> (drakma:cookie-name x)))
+                                         (drakma:cookie-jar-cookies cookie-jar)))))
+           (response-2
+            (drakma:http-request
+             <span style="color: #87005f;">"https://spb.hh.ru/account/login"</span>
+             <span style="color: #5f5f87;">:user-agent</span> *user-agent*
+             <span style="color: #5f5f87;">:method</span> <span style="color: #5f5f87;">:post</span>
+             <span style="color: #5f5f87;">:parameters</span> post-parameters
+             <span style="color: #5f5f87;">:additional-headers</span> (append *additional-headers* `((<span style="color: #87005f;">"Referer"</span> . ,start-uri)))
+             <span style="color: #5f5f87;">:cookie-jar</span> cookie-jar-2
+             <span style="color: #5f5f87;">:force-binary</span> t
+             <span style="color: #5f5f87;">:redirect</span> 10))
+           (html (flexi-streams:octets-to-string response-2 <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>)))
+      (<span style="color: #af00ff;">if</span> (contains html (src_fio src-account))
+          (funcall success cookie-jar-2 html)
+          (funcall failure 'login-failed <span style="color: #87005f;">"login failed"</span> html)))))
+</pre>
+</div>
+</div>
+</li></ul>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-2">
+<h2 id="unnumbered-10">Фабрика генераторов</h2>
+<div class="outline-text-2" id="text-unnumbered-10">
+<p>
+Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
+функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
+для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="factory">(<span style="color: #af00ff;">defgeneric</span> <span style="color: #0000ff;">factory</span> (vac-src <span style="color: #008700;">&amp;optional</span> <span style="color: #008700;">&amp;key</span> <span style="color: #008700;">&amp;allow-other-keys</span>)
+  (<span style="color: #5f5f87;">:documentation</span> <span style="color: #87005f;">"Return the function-generator of vacancyes"</span>))
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-3">
+<h3 id="unnumbered-11">Фабрика генераторов для HeadHunter</h3>
+<div class="outline-text-3" id="text-unnumbered-11">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_factory">(<span style="color: #af00ff;">defmethod</span> <span style="color: #0000ff;">factory</span> ((vac-src (eql 'hh)) <span style="color: #008700;">&amp;optional</span> <span style="color: #008700;">&amp;key</span> teaser-url  idx  ref
+                                                    cookie-jar     src-account
+                                                    get-page-fn    parse-teasers-fn
+                                                    (teasers nil)
+                                                    <span style="color: #008700;">&amp;allow-other-keys</span>)
+  (dbg <span style="color: #87005f;">":factory:"</span>)
+  &lt;&lt;hh_vac_gen&gt;&gt;
+  )
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-2">
+<h2 id="unnumbered-12">Разбор тизеров вакансий</h2>
+<div class="outline-text-2" id="text-unnumbered-12">
+<p>
+Эта функция разбирает html-код страницы выдачи тизеров. Мы передаем ее в фабрику, чтобы
+параметризовать генератор, который фабрика вернет.
+</p>
+
+<p>
+Функция <code>hh-parse-teasers</code> получает на вход html страницы поисковой выдачи
+и превращает его в список вакансий. Для этого она выполняет ряд операций:
+</p>
+<ul class="org-ul">
+<li>Преобразование html-кода в дерево s-выражений
+</li>
+<li>Извлечение из этого дерева части, которая содержит поисковую выдачу
+</li>
+<li>Преобразование элементов форматирования, таких как <code>div</code> и <code>span</code> в "говорящие"
+элементы дерева для повышения читаемости (названия для преобразования извлекаются из
+атрибутов <code>class</code> и <code>data-qa</code>.
+</li>
+<li>Применение набора трансформаций для получения списка тизеров в виде plists.
+</li>
+</ul>
+
+<p>
+Технические подробности о трансформациях - далее в разделе: <a href="#unnumbered-24">Трансформация дерева</a>
+</p>
+
+<p>
+Если в тизере указана зарплата, мы также получаем
+</p>
+<ul class="org-ul">
+<li>Валюту зарплаты (3х-буквенный идентификатор)
+</li>
+<li>Сумму
+</li>
+<li>Текстовое выражение, содержащее "от" или "от и до". Бывают также и варианты "от
+100000 до 200000 до вычета НДФЛ".
+</li>
+</ul>
+
+<p>
+Иногда HeadHunter синдицирует вакансии с других платформ, к примеру с CAREER.RU, тогда в
+вакансии может отсутствовать работодатель.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_parse_teasers">&lt;&lt;maptree_transform&gt;&gt;
+
+&lt;&lt;html_to_tree&gt;&gt;
+
+&lt;&lt;extract_search_results&gt;&gt;
+
+&lt;&lt;maptreefilter&gt;&gt;
+
+&lt;&lt;make_transform&gt;&gt;
+
+&lt;&lt;make_extract&gt;&gt;
+
+&lt;&lt;parse_salary_text&gt;&gt;
+
+&lt;&lt;parse_salary_currency&gt;&gt;
+
+&lt;&lt;teaser_transformors&gt;&gt;
+
+&lt;&lt;plistp&gt;&gt;
+
+&lt;&lt;my_merge_plist&gt;&gt;
+
+&lt;&lt;tree_plist_p&gt;&gt;
+
+&lt;&lt;linearize_teaser&gt;&gt;
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">advertp</span> (teaser)
+  (equal teaser '(<span style="color: #5f5f87;">:GARBAGE</span> <span style="color: #87005f;">"advert"</span>)))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*last-parse-data*</span> nil)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">hh-parse-teasers</span> (html)
+  <span style="color: #87005f;">"&#1055;&#1086;&#1083;&#1091;&#1095;&#1077;&#1085;&#1080;&#1077; &#1089;&#1087;&#1080;&#1089;&#1082;&#1072; &#1074;&#1072;&#1082;&#1072;&#1085;&#1089;&#1080;&#1081; &#1080;&#1079; html"</span>
+  (dbg <span style="color: #87005f;">":hh-parse-teasers:"</span>)
+  (setf *last-parse-data* html)
+  (-&gt;&gt; (html-to-tree html)
+       (extract-search-results)
+       (maptreefilter)
+       (transform-responder)
+       (transform-rejecter)
+       (transform-vacancy-title)
+       (transform-serp-item-title)
+       (transform-schedule)
+       (transform-employer)
+       (transform-employer-anon)
+       (transform-career)
+       (transform-metro)
+       (transform-metro-empty)
+       (transform-address)
+       (transform-meta-info)
+       (transform-insider-teaser)
+       (transform-responsibility)
+       (transform-requirement)
+       (transform-serp-item-info)
+       (transform-compensation)
+       (transform-logo)
+       (transform-item-sidebar-separator)
+       (transform-item-sidebar)
+       (transform-item-sidebar) <span style="color: #af0000;">;; </span><span style="color: #af0000;">sidebar in sidebar</span>
+       (transform-serp-item-row)
+       (transform-controls-item)
+       (transform-date)
+       (transform-controls-last)
+       (transform-trigger-button)
+       (transform-row-controls)
+       (transform-serp-premium)
+       (transform-serp-vacancy)
+       (transform-special)
+       (transform-vacancy-serp)
+       (car)
+       (remove-if #'advertp)
+       (transform-reform-meta-info)
+       (mapcar #'linearize-teaser)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(print (hh-parse-teasers *last-parse-data*))</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(print *last-parse-data*)</span>
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-3">
+<h3 id="unnumbered-13">Парсер html в s-exps</h3>
+<div class="outline-text-3" id="text-unnumbered-13">
+<p>
+Чтобы получить вакансии со страниц поисковой выдачи - напишем парсер, который переведет
+полученный html в более удобное лисп-дерево (<code>html-to-tree</code>). Тут же напишем и обратное
+преобразование - может пригодиться.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="html_to_tree">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">html-to-tree</span> (html)
+  (html5-parser:parse-html5-fragment html <span style="color: #5f5f87;">:dom</span> <span style="color: #5f5f87;">:xmls</span>))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tree-to-html</span> (tree <span style="color: #008700;">&amp;optional</span> (step 0))
+  (<span style="color: #af00ff;">macrolet</span> ((indent () `(make-string (* 3 step) <span style="color: #5f5f87;">:initial-element</span> #\Space)))
+    (<span style="color: #af00ff;">labels</span> ((paired (subtree)
+               (format nil <span style="color: #87005f;">"~A&lt;~A~A&gt;~%~A~4:*~A&lt;/~A&gt;~%"</span>
+                       (indent)
+                       (car subtree)
+                       (format nil <span style="color: #87005f;">"~:[~; ~1:*~{~A~^ ~}~]"</span>
+                               (mapcar #'(<span style="color: #af00ff;">lambda</span> (attr)
+                                           (<span style="color: #af00ff;">let</span> ((key (car attr))
+                                                 (val (cadr attr)))
+                                             (format nil <span style="color: #87005f;">"~A=\"~A\""</span> key val)))
+                                       (cadr subtree)))
+                       (format nil <span style="color: #87005f;">"~{~A~}"</span>
+                               (<span style="color: #af00ff;">progn</span>
+                                 (incf step)
+                                 (<span style="color: #af00ff;">let</span> ((ret (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
+                                                        (subtree-to-html x step))
+                                                    (cddr subtree))))
+                                   (decf step)
+                                   ret)))))
+             (singled (subtree)
+               (format nil <span style="color: #87005f;">"~A&lt;~A~A /&gt;~%"</span>
+                       (indent)
+                       (car subtree)
+                       (format nil <span style="color: #87005f;">"~:[~; ~1:*~{~A~^ ~}~]"</span>
+                               (mapcar #'(<span style="color: #af00ff;">lambda</span> (attr)
+                                           (<span style="color: #af00ff;">let</span> ((key (car attr))
+                                                 (val (cadr attr)))
+                                             (format nil <span style="color: #87005f;">"~A=\"~A\""</span> key val)))
+                                       (cadr subtree)))))
+             (subtree-to-html (subtree <span style="color: #008700;">&amp;optional</span> (step 0))
+               (<span style="color: #af00ff;">cond</span> ((stringp subtree) (format nil <span style="color: #87005f;">"~A~A~%"</span> (indent) subtree))
+                     ((numberp subtree) (format nil <span style="color: #87005f;">"~A~A~%"</span> (indent) subtree))
+                     ((listp   subtree)
+                      (<span style="color: #af00ff;">let</span> ((tag (car subtree)))
+                        (<span style="color: #af00ff;">cond</span> ((or (equal tag <span style="color: #87005f;">"img"</span>)
+                                   (equal tag <span style="color: #87005f;">"link"</span>)
+                                   (equal tag <span style="color: #87005f;">"meta"</span>))
+                               (singled subtree))
+                              (t (paired subtree)))))
+                     (t (format nil <span style="color: #87005f;">"[:err:~A]"</span> subtree)))))
+      (reduce #'(<span style="color: #af00ff;">lambda</span> (a b) (concatenate 'string a b))
+              (mapcar #'(<span style="color: #af00ff;">lambda</span> (x) (subtree-to-html x step))
+                      tree)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14">Экстрактор поисковых результатов</h3>
+<div class="outline-text-3" id="text-unnumbered-14">
+<p>
+Затем нам понадобится отделить собственно поисковые результаты, с которыми будем
+работать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="extract_search_results">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">extract-search-results</span> (tree)
+  (<span style="color: #af00ff;">block</span> subtree-extract
+    (mtm (`(<span style="color: #87005f;">"div"</span>
+            ((<span style="color: #87005f;">"data-qa"</span> <span style="color: #87005f;">"vacancy-serp__results"</span>))
+            ,@rest)
+           (<span style="color: #af00ff;">return-from</span> subtree-extract rest))
+         tree)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15">Фильтр-преобразователь дерева</h3>
+<div class="outline-text-3" id="text-unnumbered-15">
+<p>
+Поисковые результаты представляют собой список деревьев, внутри которых много
+html-кода, относящегося к разметке. Из-за этого их сложно читать и анализировать. Но
+можно преобразовать эти деревья в более удобные для анализа, следуя следующему
+алгоритму:
+</p>
+
+<ul class="org-ul">
+<li>Проходя по каждому элементу дерева
+<ul class="org-ul">
+<li>Если элемент является списком
+<ul class="org-ul">
+<li>Если элемент - это '("target" "<sub>blank</sub>"), то удаляем его, записывая остаток списка
+(cdr) на его место, потому что этот элемент не несет никакой нужной нам
+информации.
+</li>
+<li>Если элемент начинается с "script" (т.е. мы обоснованно предполагаем, что это тег
+&lt;script&gt;, потому что нигде не употребляется атрибут "script"), то поступаем
+аналогично, удаляя его
+</li>
+<li>Если элемент начинается с "div" "span" или "a", то для начала отделим атрибуты от
+его содержимого.
+<ul class="org-ul">
+<li>Если существует атрибут "data-qa", то он станет новым именем элемента, в
+противном случае
+<ul class="org-ul">
+<li>Если существует атрибут "class", то он будет новым именем элемента.
+</li>
+</ul>
+</li>
+<li>Если есть новое имя элемента:
+<ul class="org-ul">
+<li>Существуют блоки с именами, которые нам полностью неинтересны, поэтому мы
+можем прямо здесь заменить их на их строковые имена, чтобы сделать все более
+читаемым. Если мы нашли такой блок - то сделаем это. В противном случае:
+<ul class="org-ul">
+<li>Удалим атрибуты "data-qa" и "class" из списка атрибутов
+</li>
+<li>Запишем новое имя элемента на место "div" или "span"
+</li>
+<li>Запишем обновленные атрибуты на место старых
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+<p>
+Реализуем этот алгоритм. Для поиска атрибутов будем использовать функцию <code>get-attr</code>,
+которая превращает атрибуты в plist и ищет в нем.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="maptreefilter">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">attrs-to-plist</span> (attrs)
+  (mapcan #'(<span style="color: #af00ff;">lambda</span> (x)
+              (list (intern (string-upcase (car x)) <span style="color: #5f5f87;">:keyword</span>) (cadr x)))
+          attrs))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(attrs-to-plist '(("href" "/employer/3127") ("class" "bloko-link bloko-link_secondary")</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">("data-qa" "vacancy-serp__vacancy-employer")))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (:HREF "/employer/3127" :CLASS "bloko-link bloko-link_secondary" :DATA-QA</span>
+<span style="color: #af0000;">;;           </span><span style="color: #af0000;">"vacancy-serp__vacancy-employer")</span>
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">plist-to-attrs</span> (attrs)
+  (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> attr <span style="color: #5f5f87;">:in</span> attrs <span style="color: #5f5f87;">:by</span> #'cddr <span style="color: #5f5f87;">:collect</span>
+     (list (string-downcase (symbol-name attr)) (getf attrs attr))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(plist-to-attrs '(:HREF "/employer/3127" :CLASS "bloko-link bloko-link_secondary" :DATA-QA</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">"vacancy-serp__vacancy-employer"))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (("href" "/employer/3127") ("class" "bloko-link bloko-link_secondary")</span>
+<span style="color: #af0000;">;;         </span><span style="color: #af0000;">("data-qa" "vacancy-serp__vacancy-employer"))</span>
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">maptreefilter</span> (tree)
+  (<span style="color: #af00ff;">when</span> (listp tree)
+    (<span style="color: #af00ff;">when</span> (and (listp (car tree)) (equal '(<span style="color: #87005f;">"target"</span> <span style="color: #87005f;">"_blank"</span>) (car tree)))
+      (setf tree (cdr tree)))
+    (<span style="color: #af00ff;">when</span> (and (listp (car tree)) (equal <span style="color: #87005f;">"script"</span> (caar tree)))
+      (setf tree (cdr tree)))
+    (<span style="color: #af00ff;">when</span> (and (listp (car tree)) <span style="color: #af0000;">;; </span><span style="color: #af0000;">fix error if car is not list</span>
+               (or (equal <span style="color: #87005f;">"div"</span> (caar tree))
+                   (equal <span style="color: #87005f;">"span"</span> (caar tree))
+                   (equal <span style="color: #87005f;">"a"</span> (caar tree))
+                   (equal <span style="color: #87005f;">"td"</span> (caar tree))
+                   (equal <span style="color: #87005f;">"th"</span> (caar tree))
+                   (equal <span style="color: #87005f;">"table"</span> (caar tree))
+                   ))
+      (<span style="color: #af00ff;">let</span> ((attrs (attrs-to-plist (cadar tree)))
+            (rest  (cddar tree))
+            (name   nil))
+        <span style="color: #af0000;">;; </span><span style="color: #af0000;">data-qa is primary target for new name</span>
+        (aif (getf attrs <span style="color: #5f5f87;">:data-qa</span>)
+             (<span style="color: #af00ff;">progn</span>
+               (setf name it))
+             <span style="color: #af0000;">;; </span><span style="color: #af0000;">else: class is secondary target for new name</span>
+             (aif (getf attrs <span style="color: #5f5f87;">:class</span>)
+                  (<span style="color: #af00ff;">progn</span>
+                    (setf name it))))
+        (<span style="color: #af00ff;">when</span> name
+          (<span style="color: #af00ff;">if</span> (or (equal name <span style="color: #87005f;">"search-result-description__item"</span>)
+                  (equal name <span style="color: #87005f;">"search-result-item__control"</span>))
+              <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1059;&#1073;&#1080;&#1074;&#1072;&#1077;&#1084; &#1085;&#1077;&#1085;&#1091;&#1078;&#1085;&#1086;&#1077;, &#1077;&#1089;&#1083;&#1080; &#1086;&#1085;&#1086; &#1077;&#1089;&#1090;&#1100;</span>
+              (setf (car tree) name)
+              <span style="color: #af0000;">;; </span><span style="color: #af0000;">else</span>
+              (<span style="color: #af00ff;">progn</span>
+                (remf attrs <span style="color: #5f5f87;">:data-qa</span>)
+                (remf attrs <span style="color: #5f5f87;">:class</span>)
+                (setf (caar tree) name) <span style="color: #af0000;">;; </span><span style="color: #af0000;">new name</span>
+                (setf (cadar tree) (plist-to-attrs attrs)) <span style="color: #af0000;">;; </span><span style="color: #af0000;">new attrs</span>
+                ))))))
+  (<span style="color: #af00ff;">cond</span>
+    ((null tree) nil)
+    ((atom tree) tree)
+    (t (cons (maptreefilter (car tree))
+             (maptreefilter (cdr tree))))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-3">
+<h3 id="unnumbered-16">Макрос для создания преобразователей</h3>
+<div class="outline-text-3" id="text-unnumbered-16">
+<p>
+Этот макрос формирует функции вида <code>transform-*</code>, которые осуществляют преобразование
+дерева в соответствии с шаблоном, переданным в <code>body</code>. Функция в любом случае
+возвращает дерево, преобразованное или нет.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="make_transform">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">make-transform</span> ((name) <span style="color: #008700;">&amp;body</span> body)
+  (<span style="color: #af00ff;">let</span> ((param   (gensym)))
+    `(<span style="color: #af00ff;">defun</span> ,(intern (format nil <span style="color: #87005f;">"TRANSFORM-~A"</span> (string-upcase (symbol-name name)))) (,param)
+       (mtm ,@body
+            ,param))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-3">
+<h3 id="unnumbered-17">Макрос для создания экстракторов</h3>
+<div class="outline-text-3" id="text-unnumbered-17">
+<p>
+Этот макрос формирует функции вида <code>extract-*</code>, которые извлекают из дерева ветвь,
+совпавшую с шаблоном, переданным в <code>body</code>. Если такой ветви не нашлось, функция
+возвращает <code>nil</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="make_extract">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">make-extract</span> ((name retlist) <span style="color: #008700;">&amp;body</span> body)
+  (<span style="color: #af00ff;">let</span> ((param   (gensym)))
+    `(<span style="color: #af00ff;">defun</span> ,(intern (format nil <span style="color: #87005f;">"EXTRACT-~A"</span> (string-upcase (symbol-name name)))) (,param)
+       (<span style="color: #af00ff;">block</span> subtree-extract
+         (mtm (,@body
+               (<span style="color: #af00ff;">return-from</span> subtree-extract ,retlist))
+              ,param)
+         nil))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(print</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">(macroexpand-1 '(make-extract (compensation `(:compensation ,compensation))</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">`("vacancy-compensation" NIL ,compensation))))</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-18" class="outline-3">
+<h3 id="unnumbered-18">Функция для разбора зарплаты</h3>
+</div>
+<div id="outline-container-unnumbered-19" class="outline-3">
+<h3 id="unnumbered-19">Функция для разбора валюты</h3>
+<div class="outline-text-3" id="text-unnumbered-19">
+<p>
+Эта функция возвращает трехбуквенный код код валюты и измененное значение
+<code>salary-text</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="parse_salary_currency">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">parse-salary-currency</span> (salary-text currency)
+  (<span style="color: #af00ff;">cond</span> ((equal currency <span style="color: #87005f;">"RUR"</span>)
+         (setf salary-text (ppcre:regex-replace-all <span style="color: #87005f;">" &#1088;&#1091;&#1073;."</span> salary-text <span style="color: #87005f;">""</span>)))
+        ((equal currency <span style="color: #87005f;">"USD"</span>)
+         (setf salary-text (ppcre:regex-replace-all <span style="color: #87005f;">" USD"</span> salary-text <span style="color: #87005f;">""</span>)))
+        ((equal currency <span style="color: #87005f;">"EUR"</span>)
+         (setf salary-text (ppcre:regex-replace-all <span style="color: #87005f;">" EUR"</span> salary-text <span style="color: #87005f;">""</span>)))
+        ((equal currency <span style="color: #87005f;">"UAH"</span>)
+         (setf salary-text (ppcre:regex-replace-all <span style="color: #87005f;">" &#1075;&#1088;&#1085;."</span> salary-text <span style="color: #87005f;">""</span>)))
+        ((equal currency nil)
+         'nil)
+        (t (<span style="color: #af00ff;">progn</span>
+             (print currency)
+             (err 'unk-currency))))
+  (values currency salary-text))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-3">
+<h3 id="unnumbered-20">Набор преобразователей для тизеров</h3>
+<div class="outline-text-3" id="text-unnumbered-20">
+<p>
+Эти макросы по шаблону преобразуют тизер вакансии в plist
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="teaser_transformors">(make-transform (responder)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy_responded"</span>
+     ((<span style="color: #87005f;">"href"</span> ,_)) <span style="color: #87005f;">"&#1042;&#1099; &#1086;&#1090;&#1082;&#1083;&#1080;&#1082;&#1085;&#1091;&#1083;&#1080;&#1089;&#1100;"</span>)
+    `(<span style="color: #5f5f87;">:status</span> <span style="color: #87005f;">"responded"</span>)))
+
+(make-transform (rejecter)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy_rejected"</span>
+     ((<span style="color: #87005f;">"href"</span> ,_)) <span style="color: #87005f;">"&#1042;&#1072;&#1084; &#1086;&#1090;&#1082;&#1072;&#1079;&#1072;&#1083;&#1080;"</span>)
+    `(<span style="color: #5f5f87;">:status</span> <span style="color: #87005f;">"rejected"</span>)))
+
+(make-transform (vacancy-title)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-title"</span>
+      ((<span style="color: #87005f;">"href"</span> ,href) ,@rest)
+      ,title)
+    (<span style="color: #af00ff;">if</span> (search <span style="color: #87005f;">"hhcdn.ru"</span> href)
+        `(<span style="color: #5f5f87;">:href</span> ,href <span style="color: #5f5f87;">:name</span> ,title <span style="color: #5f5f87;">:archived</span> nil)
+        (<span style="color: #af00ff;">let</span> ((id (parse-integer (car (last (split-sequence:split-sequence #\/ href))))))
+          `(<span style="color: #5f5f87;">:src-id</span> ,id <span style="color: #5f5f87;">:href</span> ,href <span style="color: #5f5f87;">:name</span> ,title <span style="color: #5f5f87;">:archived</span> nil)))))
+
+(make-transform (schedule)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-work-schedule"</span>
+     NIL ,schedule)
+    `(<span style="color: #5f5f87;">:schedule</span> ,schedule)))
+
+(make-transform (responsibility)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy_snippet_responsibility"</span>
+     NIL
+     ,responsibility)
+    `(<span style="color: #5f5f87;">:responsibility</span> ,responsibility)))
+
+(make-transform (requirement)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy_snippet_requirement"</span>
+     NIL
+     ,requirement)
+    `(<span style="color: #5f5f87;">:requirement</span> ,requirement)))
+
+(make-transform (insider-teaser)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-interview-insider"</span>
+     ((<span style="color: #87005f;">"href"</span> ,insider))
+     <span style="color: #87005f;">"&#1055;&#1086;&#1089;&#1084;&#1086;&#1090;&#1088;&#1077;&#1090;&#1100; &#1080;&#1085;&#1090;&#1077;&#1088;&#1074;&#1100;&#1102; &#1086; &#1078;&#1080;&#1079;&#1085;&#1080; &#1074; &#1082;&#1086;&#1084;&#1087;&#1072;&#1085;&#1080;&#1080;"</span>)
+    `(<span style="color: #5f5f87;">:insider</span> ,insider)))
+
+(make-transform (serp-item-info)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__info"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:item-info</span> ,@rest)))
+
+(make-transform (serp-item-row)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__row"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:row</span> ,@rest)))
+
+(make-transform (employer)
+  (`(,container
+     NIL
+     (<span style="color: #87005f;">"vacancy-serp__vacancy-employer"</span>
+      ((<span style="color: #87005f;">"href"</span> ,href))
+      ,emp-name)
+     ,@rest)
+    `(<span style="color: #5f5f87;">:emp-name</span> ,emp-name <span style="color: #5f5f87;">:emp-href</span> ,href
+                <span style="color: #5f5f87;">:emp-id</span> ,(parse-integer
+                          (car (last (split-sequence:split-sequence #\/ href))) <span style="color: #5f5f87;">:junk-allowed</span> t))))
+
+(make-transform (employer-anon)
+  (`(<span style="color: #87005f;">"search-result-item__company"</span>
+     NIL
+     ,anon
+     (<span style="color: #87005f;">"bloko-link"</span> ((<span style="color: #87005f;">"href"</span> ,_))
+                   (<span style="color: #87005f;">"bloko-icon bloko-icon_done bloko-icon_initial-action"</span> NIL)))
+    `(<span style="color: #5f5f87;">:emp-name</span> ,anon <span style="color: #5f5f87;">:anon</span> t)))
+
+(make-transform (date)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-date"</span> NIL (<span style="color: #87005f;">"vacancy-serp-item__publication-date"</span> NIL ,date))
+    `(<span style="color: #5f5f87;">:date</span> ,date)))
+
+(make-transform (career)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy_career"</span> NIL <span style="color: #87005f;">"&#160;&#160;&#8226;&#160;&#160;CAREER.RU"</span>)
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"career"</span>)))
+
+(make-transform (metro)
+  (`(<span style="color: #87005f;">"metro-station"</span> NIL (<span style="color: #87005f;">"metro-point"</span> ((<span style="color: #87005f;">"style"</span> ,color))) ,metro)
+    `(<span style="color: #5f5f87;">:metro</span> ,metro <span style="color: #5f5f87;">:color</span> ,color)))
+
+(make-transform (metro-empty)
+  (`(<span style="color: #87005f;">"metro-station"</span> NIL (<span style="color: #87005f;">"metro-point"</span> ((<span style="color: #87005f;">"style"</span> ,color))))
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"metro-empty"</span>)))
+
+(make-transform (address)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-address"</span> NIL ,address ,@rest)
+    `((<span style="color: #5f5f87;">:address</span> ,address) ,@rest)))
+
+(make-transform (meta-info)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__meta-info"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:meta-info</span> ,@rest)))
+
+(make-transform (compensation)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-compensation"</span>
+     NIL
+     (<span style="color: #87005f;">"meta"</span> ((<span style="color: #87005f;">"itemprop"</span> <span style="color: #87005f;">"salaryCurrency"</span>) (<span style="color: #87005f;">"content"</span> ,currency)))
+     (<span style="color: #87005f;">"meta"</span> ((<span style="color: #87005f;">"itemprop"</span> <span style="color: #87005f;">"baseSalary"</span>) (<span style="color: #87005f;">"content"</span> ,salary)))
+     ,salary-text)
+    (<span style="color: #af00ff;">let</span> ((currency currency)
+          (salary-text (ppcre:regex-replace-all <span style="color: #87005f;">"&#160;"</span> salary-text <span style="color: #87005f;">""</span>))
+          (salary-min nil)
+          (salary-max nil))
+      (<span style="color: #af00ff;">multiple-value-bind</span> (currency salary-text)
+          (parse-salary-currency salary-text currency)
+        (<span style="color: #af00ff;">multiple-value-bind</span> (salary-min salary-max comment)
+            (parse-salary-text salary-text)
+          (<span style="color: #af00ff;">when</span> (null salary-min)
+            (setf salary-min salary-max))
+          (<span style="color: #af00ff;">when</span> (null salary-max)
+            (setf salary-max salary-min))
+          `(<span style="color: #5f5f87;">:currency</span> ,currency
+                      <span style="color: #5f5f87;">:salary</span> ,(parse-integer salary)
+                      <span style="color: #5f5f87;">:salary-text</span> ,salary-text
+                      <span style="color: #5f5f87;">:salary-min</span> ,salary-min
+                      <span style="color: #5f5f87;">:salary-max</span> ,salary-max))))))
+
+(make-transform (logo)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy-employer-logo"</span>
+     ((<span style="color: #87005f;">"href"</span> ,_))
+     (<span style="color: #87005f;">"img"</span>
+      ((<span style="color: #87005f;">"src"</span> ,logo)
+       (<span style="color: #87005f;">"alt"</span> ,_)
+       (<span style="color: #87005f;">"class"</span> <span style="color: #87005f;">"vacancy-serp-item__logo"</span>))))
+    `(<span style="color: #5f5f87;">:logo</span> ,logo)))
+
+(make-transform (item-sidebar-separator)
+  ((or `(<span style="color: #87005f;">"vacancy-serp-item__sidebar"</span> NIL)
+       `(<span style="color: #87005f;">"vacancy-serp-item__sidebar"</span> NIL <span style="color: #87005f;">"&#160;"</span>))
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"sidebar-separator"</span>)))
+
+(make-transform (item-sidebar)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__sidebar"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:item-sidebar</span> ,@rest)))
+
+(make-transform (serp-item-title)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__title"</span> NIL ,contents)
+    `(<span style="color: #5f5f87;">:item-title</span> ,contents)))
+
+(make-transform (controls-item)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__controls-item"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"controls-item"</span>)))
+
+(make-transform (controls-last)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__controls-item vacancy-serp-item__controls-item_last"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"controls-last"</span>)))
+
+(make-transform (trigger-button)
+  (`(<span style="color: #87005f;">"HH-VacancyResponseTrigger-Button"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"trigger-button"</span>)))
+
+(make-transform (row-controls)
+  (`(<span style="color: #87005f;">"vacancy-serp-item__row vacancy-serp-item__row_controls"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:row-controls</span> ,@rest)))
+
+(make-transform (serp-premium)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy vacancy-serp__vacancy_premium"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:premium</span> ,@rest)))
+
+(make-transform (serp-vacancy)
+  (`(<span style="color: #87005f;">"vacancy-serp__vacancy"</span> NIL ,@rest)
+    `(<span style="color: #5f5f87;">:vacancy</span> ,@rest)))
+
+(make-transform (special)
+  ((or `(<span style="color: #87005f;">"vacancy-serp-special vacancy-serp-special_wide"</span> NIL)
+       `(<span style="color: #87005f;">"vacancy-serp-special vacancy-serp-special_medium"</span> NIL))
+   `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"advert"</span>)))
+
+(make-transform (vacancy-serp)
+  (`(<span style="color: #87005f;">"vacancy-serp"</span> NIL ,@rest)
+    rest))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">reforming</span>
+
+(make-transform (reform-meta-info)
+  (`(<span style="color: #5f5f87;">:META-INFO</span> ,@rest)
+    (<span style="color: #af00ff;">if</span> (not (listp (car rest)))
+        `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"bad-meta-info"</span>)
+        `(<span style="color: #5f5f87;">:meta-info</span> ,@(-&gt;&gt; (car rest)
+                            (mapcar #'(<span style="color: #af00ff;">lambda</span> (x)
+                                        (<span style="color: #af00ff;">if</span> (not (listp x))
+                                            `(<span style="color: #5f5f87;">:garbage</span> <span style="color: #87005f;">"&#1080; &#1077;&#1097;&#1077; metro"</span>)
+                                            x)))
+                            (remove-if (<span style="color: #af00ff;">lambda</span> (x)
+                                         (equal (car x) <span style="color: #5f5f87;">:garbage</span>))))))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-3">
+<h3 id="unnumbered-21">Функция-предикат для plists</h3>
+<div class="outline-text-3" id="text-unnumbered-21">
+<p>
+Это функция-предикат, которая возвращает свой параметр, если он является
+правильным plist и <code>NIL</code> в противном случае.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="plistp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">plistp</span> (param)
+  <span style="color: #87005f;">"Test wheather PARAM is a properly formed pparam."</span>
+  (<span style="color: #af00ff;">when</span> (listp param)
+    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> rest <span style="color: #5f5f87;">:on</span> param <span style="color: #5f5f87;">:by</span> #'cddr
+       <span style="color: #5f5f87;">:unless</span> (and (keywordp (car rest))
+                    (cdr rest))
+       <span style="color: #5f5f87;">:do</span> (<span style="color: #af00ff;">return</span> nil)
+       <span style="color: #5f5f87;">:finally</span> (<span style="color: #af00ff;">return</span> param))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">Функция слияния plists</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
+<p>
+Это функция, которая правильным образом сливает вместе два plist-а
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="my_merge_plist">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">my-merge-plists</span> (p1 p2)
+  (<span style="color: #af00ff;">loop</span> with notfound <span style="color: #af00ff;">=</span> '#<span style="color: #5f5f87;">:notfound</span>
+     for (indicator value) on p1 by #'cddr
+     when (eq (getf p2 indicator notfound) notfound)
+     do (<span style="color: #af00ff;">progn</span>
+          (push value p2)
+          (push indicator p2)))
+  p2)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-23" class="outline-3">
+<h3 id="unnumbered-23">Функция предикат tree-plists</h3>
+<div class="outline-text-3" id="text-unnumbered-23">
+<p>
+Это функция возвращает <code>T</code> если список, переданный в параметре является правильным
+plist-деревом.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="tree_plist_p">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">tree-plist-p</span> (pl)
+  <span style="color: #87005f;">"Returns T if PL is a plist (list with alternating keyword elements). "</span>
+  (<span style="color: #af00ff;">cond</span> ((null pl)                 t)
+        ((and (listp pl)
+              (keywordp (car pl))
+              (cdr pl))
+         (tree-plist-p (cddr pl)))
+        ((and (listp pl)
+              (listp (car pl)))
+         (and (tree-plist-p (car pl))
+              (tree-plist-p (cdr pl))))
+        (t
+         (<span style="color: #af00ff;">progn</span>
+           <span style="color: #af0000;">;; </span><span style="color: #af0000;">(print pl)</span>
+           nil))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-24" class="outline-3">
+<h3 id="unnumbered-24">Трансформация дерева</h3>
+<div class="outline-text-3" id="text-unnumbered-24">
+<p>
+Описание вакансии (или ее тизера), после преобразования из html, представляет из себя
+дерево, в котором нам важна структура, так как требования, обязанности и прочее
+описываются списком. В этом списке много лишнего форматирования, для удаления которого
+нам необходимо уметь преобразовывать (трансформировать) дерево.
+</p>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-25"></a>Maptree-if<br ><div class="outline-text-5" id="text-unnumbered-25">
+<p>
+Функция <code>maptree-if</code> - рекурсивный преобразователь, который возвращает новое дерево,
+рекурсивно вызывая аргумент <code>transformer</code> на <code>sub-tree</code>, которые удовлетворяют
+аргументу <code>predicate</code>.
+</p>
+
+<p>
+Аргумент <code>predicate</code> должен быть лямбда-функцией, которая принимает на вход <code>subtree</code> и
+возвращает <code>T</code> или <code>NIL</code>
+</p>
+
+<p>
+Аргумент <code>transformer</code> должен быть лямбда-функцией, которая принимает на вход <code>subtree</code>
+и возвращает <code>atom</code> или <code>subtree</code> в первом параметре, а во втором может возвратить
+функцию <code>control</code>. Если эта функция возвращена, тогда дерево возвращается с замененным
+<code>transformer</code>-ом узлами по следующему алгоритму:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(funcall control
+         #'(<span style="color: #af00ff;">lambda</span> (x)
+             (maptree-if predicate transformer x))
+         transformed-tree)
+</pre>
+</div>
+
+<p>
+В противном случае оно возвращается как есть.
+</p>
+
+<p>
+Собственно функция <code>maptree-if</code>, которую мы помещаем в утилиты:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="f_util_contents">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">maptree-if</span> (predicate transformer tree)
+  (<span style="color: #af00ff;">multiple-value-bind</span> (t-tree control)
+      (<span style="color: #af00ff;">if</span> (funcall predicate tree)
+          (funcall transformer tree)
+          (values tree #'mapcar))
+    (<span style="color: #af00ff;">if</span> (and (consp t-tree)
+             control)
+        (funcall control
+                 #'(<span style="color: #af00ff;">lambda</span> (x)
+                     (maptree-if predicate transformer x))
+                 t-tree)
+        t-tree)))
+</pre>
+</div>
+
+<p>
+Несколько примеров работы:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp"><span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1053;&#1077;&#1088;&#1077;&#1082;&#1091;&#1088;&#1089;&#1080;&#1074;&#1085;&#1072;&#1103; &#1079;&#1072;&#1084;&#1077;&#1085;&#1072;</span>
+(maptree-if #'(<span style="color: #af00ff;">lambda</span> (x)
+                (and (consp x)
+                     (eq (car x) 'ping)))
+            #'(<span style="color: #af00ff;">lambda</span> (x)
+                `(pong ,@(cdr x)))
+            '(<span style="color: #af00ff;">progn</span> (ping (ping (ping 1)))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (PROGN (PONG (PING (PING 1))))</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1056;&#1077;&#1082;&#1091;&#1088;&#1089;&#1080;&#1074;&#1085;&#1072;&#1103; &#1079;&#1072;&#1084;&#1077;&#1085;&#1072;</span>
+(maptree-if #'(<span style="color: #af00ff;">lambda</span> (x)
+                (and (consp x)
+                     (eq (car x) 'ping)))
+            #'(<span style="color: #af00ff;">lambda</span> (x)
+                (values `(pong ,@(cdr x)) #'mapcar))
+            '(<span style="color: #af00ff;">progn</span> (ping (ping (ping 1)))
+              ping))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (PROGN (PONG (PONG (PONG 1))))</span>
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-26"></a>Maptree-transform<br ><div class="outline-text-5" id="text-unnumbered-26">
+<p>
+<code>maptree-transform</code> - это аналог <code>maptree-if</code>, но здесь одна функция
+(<code>predicate-transformer</code>) и ищет и трансформирует узел дерева:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="maptree_transform">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">maptree-transform</span> (predicate-transformer tree)
+  (<span style="color: #af00ff;">multiple-value-bind</span> (t-tree control)
+      (aif (funcall predicate-transformer tree)
+           it
+           (values tree #'mapcar))
+    (<span style="color: #af00ff;">if</span> (and (consp t-tree)
+             control)
+        (funcall control
+                 #'(<span style="color: #af00ff;">lambda</span> (x)
+                     (maptree-transform predicate-transformer x))
+                 t-tree)
+        t-tree)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">mtm - &#1089;&#1080;&#1085;&#1090;&#1072;&#1082;&#1089;&#1080;&#1095;&#1077;&#1089;&#1082;&#1080;&#1081; &#1089;&#1072;&#1093;&#1072;&#1088; &#1076;&#1083;&#1103; maptree-transform</span>
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">mtm</span> (transformer tree)
+  (<span style="color: #af00ff;">let</span> ((lambda-param (gensym)))
+    `(maptree-transform #'(<span style="color: #af00ff;">lambda</span> (,lambda-param)
+                            (values (match ,lambda-param ,transformer)
+                                    #'mapcar))
+                        ,tree)))
+</pre>
+</div>
+</div>
+</li></ul>
+</div>
+
+<div id="outline-container-unnumbered-27" class="outline-3">
+<h3 id="unnumbered-27">Линеаризатор тизера</h3>
+<div class="outline-text-3" id="text-unnumbered-27">
+<p>
+Эта функция превращает тизер в линейный plist
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="linearize_teaser">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">linearize-teaser</span> (vacancy)
+  (<span style="color: #af00ff;">cond</span> ((not (listp vacancy))
+         (err (format nil <span style="color: #87005f;">"Wrong vacancy: ~A"</span> vacancy)))
+        ((not (keywordp (car vacancy)))
+         (mapcar #'linearize-teaser (cdr vacancy)))
+        ((member (car vacancy)
+                 '(<span style="color: #5f5f87;">:status</span> <span style="color: #5f5f87;">:date</span> <span style="color: #5f5f87;">:garbage</span> <span style="color: #5f5f87;">:src-id</span> <span style="color: #5f5f87;">:href</span> <span style="color: #5f5f87;">:emp-name</span> <span style="color: #5f5f87;">:address</span> <span style="color: #5f5f87;">:metro</span> <span style="color: #5f5f87;">:currency</span>
+                   <span style="color: #5f5f87;">:responsibility</span> <span style="color: #5f5f87;">:requirement</span> <span style="color: #5f5f87;">:logo</span> <span style="color: #5f5f87;">:schedule</span> <span style="color: #5f5f87;">:insider</span>))
+         vacancy)
+        ((member (car vacancy)
+                 '(<span style="color: #5f5f87;">:premium</span> <span style="color: #5f5f87;">:vacancy</span> <span style="color: #5f5f87;">:row-controls</span> <span style="color: #5f5f87;">:row</span> <span style="color: #5f5f87;">:item-info</span> <span style="color: #5f5f87;">:item-title</span> <span style="color: #5f5f87;">:meta-info</span>
+                   <span style="color: #5f5f87;">:item-sidebar</span>))
+         (mapcan #'linearize-teaser (remove-if #'(<span style="color: #af00ff;">lambda</span> (x)
+                                                   (equal (car x) <span style="color: #5f5f87;">:garbage</span>))
+                                               (cdr vacancy))))
+        (t (err (format nil <span style="color: #87005f;">"Unknown vacancy key: ~A"</span> (car vacancy))))))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-28" class="outline-2">
+<h2 id="unnumbered-28">Сбор тизеров</h2>
+<div class="outline-text-2" id="text-unnumbered-28">
+<p>
+Со всем вышеперечисленным, чтобы получить и распечатать первые 100 тизеров вакансий нам
+нужно написать следующее:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="run">&lt;&lt;hh_get_page&gt;&gt;
+
+&lt;&lt;hh_is_logged&gt;&gt;
+
+&lt;&lt;hh_recovery_login&gt;&gt;
+
+&lt;&lt;hh_parse_teasers&gt;&gt;
+
+(<span style="color: #af00ff;">defclass</span> <span style="color: #008700;">src-account</span> ()
+  ((id            <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:id</span>           <span style="color: #5f5f87;">:accessor</span> id)
+   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1080;&#1076;&#1077;&#1085;&#1090;&#1080;&#1092;&#1080;&#1082;&#1072;&#1090;&#1086;&#1088; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103;, &#1074;&#1083;&#1072;&#1076;&#1077;&#1102;&#1097;&#1077;&#1075;&#1086; &#1083;&#1086;&#1075;&#1080;&#1085;&#1086;&#1084;</span>
+   (user_id       <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:user_id</span>      <span style="color: #5f5f87;">:accessor</span> user_id)
+   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1080;&#1076;&#1077;&#1085;&#1090;&#1080;&#1092;&#1080;&#1082;&#1072;&#1090;&#1086;&#1088; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072; ("hh" - &#1076;&#1083;&#1103; headhunter.ru :accessor "hh" )</span>
+   (src_source    <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:src_source</span>   <span style="color: #5f5f87;">:accessor</span> src_source)
+   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1083;&#1086;&#1075;&#1080;&#1085; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103; &#1085;&#1072; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1077;</span>
+   (src_login     <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:src_login</span>    <span style="color: #5f5f87;">:accessor</span> src_login)
+   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1087;&#1072;&#1088;&#1086;&#1083;&#1100; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103; &#1085;&#1072; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1077;</span>
+   (src_password  <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:src_password</span> <span style="color: #5f5f87;">:accessor</span> src_password)
+   <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1060;&#1048;&#1054; &#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1077;&#1083;&#1103;, &#1095;&#1090;&#1086;&#1073;&#1099; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100; &#1095;&#1090;&#1086; &#1074;&#1093;&#1086;&#1076; &#1074; &#1087;&#1088;&#1086;&#1092;&#1080;&#1083;&#1100;</span>
+   (src_fio       <span style="color: #5f5f87;">:initarg</span> <span style="color: #5f5f87;">:src_fio</span>      <span style="color: #5f5f87;">:accessor</span> src_fio)))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*hh-account*</span> (make-instance 'src-account
+                                          <span style="color: #5f5f87;">:user_id</span> 1
+                                          <span style="color: #5f5f87;">:src_source</span> <span style="color: #87005f;">"hh"</span>
+                                          <span style="color: #5f5f87;">:src_login</span> <span style="color: #87005f;">"avenger-f@yandex.ru"</span>
+                                          <span style="color: #5f5f87;">:src_password</span> <span style="color: #87005f;">"jGwPswRAfU6sKEhVXX"</span>
+                                          <span style="color: #5f5f87;">:src_fio</span> <span style="color: #87005f;">"&#1052;&#1080;&#1093;&#1072;&#1080;&#1083; &#1052;&#1080;&#1093;&#1072;&#1081;&#1083;&#1086;&#1074;&#1080;&#1095; &#1043;&#1083;&#1091;&#1093;&#1086;&#1074;"</span>))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*hh-teaser-url*</span> <span style="color: #87005f;">"https://spb.hh.ru/search/vacancy?clusters=true&amp;items_on_page=100&amp;enable_snippets=true&amp;specialization=1&amp;area=2&amp;page=~A"</span>)
+
+(<span style="color: #af00ff;">let</span> ((gen (factory 'hh
+                    <span style="color: #5f5f87;">:teaser-url</span>         *hh-teaser-url*
+                    <span style="color: #5f5f87;">:idx</span>                0
+                    <span style="color: #5f5f87;">:ref</span>                <span style="color: #87005f;">"https://spb.hh.ru"</span>
+                    <span style="color: #5f5f87;">:cookie-jar</span>         (make-instance 'drakma:cookie-jar)
+                    <span style="color: #5f5f87;">:src-account</span>        *hh-account*
+                    <span style="color: #5f5f87;">:get-page-fn</span>        #'hh-get-page
+                    <span style="color: #5f5f87;">:parse-teasers-fn</span>   #'hh-parse-teasers)))
+  (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 100 <span style="color: #5f5f87;">:do</span>
+     (funcall gen
+              (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
+                (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
+                (<span style="color: #ff0000; font-weight: bold;">error</span> tag))
+              (<span style="color: #af00ff;">lambda</span> (x)
+                (dbg <span style="color: #87005f;">"~%~A~%"</span> (bprint x))))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-29" class="outline-2">
+<h2 id="unnumbered-29">Сборка</h2>
+<div class="outline-text-2" id="text-unnumbered-29">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="vacancy">(ql:quickload <span style="color: #87005f;">"anaphora"</span>)
+(use-package <span style="color: #5f5f87;">:anaphora</span>)
+(ql:quickload <span style="color: #87005f;">"drakma"</span>)
+(ql:quickload <span style="color: #87005f;">"cl-html5-parser"</span>)
+(ql:quickload <span style="color: #87005f;">"optima"</span>)
+(use-package <span style="color: #5f5f87;">:optima</span>)
+(ql:quickload <span style="color: #87005f;">"fare-quasiquote-extras"</span>)
+(ql:quickload <span style="color: #87005f;">"fare-quasiquote-optima"</span>)
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">special syntax for pattern-matching - ON</span>
+(named-readtables:in-readtable <span style="color: #5f5f87;">:fare-quasiquote</span>)
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1052;&#1072;&#1082;&#1088;&#1086;&#1089;&#1099; &#1076;&#1083;&#1103; &#1082;&#1086;&#1088;&#1088;&#1077;&#1082;&#1090;&#1085;&#1086;&#1075;&#1086; &#1074;&#1099;&#1074;&#1086;&#1076;&#1072; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
+&lt;&lt;macro_bprint&gt;&gt;
+&lt;&lt;macro_err&gt;&gt;
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1054;&#1090;&#1083;&#1072;&#1076;&#1086;&#1095;&#1085;&#1099;&#1081; &#1074;&#1099;&#1074;&#1086;&#1076;</span>
+&lt;&lt;dbgout&gt;&gt;
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1052;&#1072;&#1082;&#1088;&#1086;&#1089;&#1099; &#1076;&#1083;&#1103; &#1087;&#1088;&#1077;&#1086;&#1073;&#1088;&#1072;&#1079;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; &#1087;&#1086;&#1088;&#1103;&#1076;&#1082;&#1072; &#1072;&#1088;&#1075;&#1091;&#1084;&#1077;&#1085;&#1090;&#1086;&#1074;</span>
+&lt;&lt;macro_clj&gt;&gt;
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">contains</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">contains</span> (string pattern)
+  (<span style="color: #af00ff;">if</span> (search pattern string)
+      t))
+
+&lt;&lt;factory&gt;&gt;
+
+&lt;&lt;hh_factory&gt;&gt;
+
+&lt;&lt;run&gt;&gt;
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-30" class="outline-3">
+<h3 id="unnumbered-30">Макросы для корректного вывода ошибок</h3>
+<div class="outline-text-3" id="text-unnumbered-30">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="macro_bprint">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">bprint</span> (var)
+  `(subseq (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)  (pprint ,var)) 1))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="macro_err">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">err</span> (var)
+  `(<span style="color: #ff0000; font-weight: bold;">error</span> (format nil <span style="color: #87005f;">"ERR:[~A]"</span> (bprint ,var))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-31" class="outline-3">
+<h3 id="unnumbered-31">Отладочный вывод</h3>
+<div class="outline-text-3" id="text-unnumbered-31">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="dbgout">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*dbg-enable*</span> t)
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*dbg-indent*</span> 1)
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">dbgout</span> (out)
+  (<span style="color: #af00ff;">when</span> *dbg-enable*
+    (format t (format nil <span style="color: #87005f;">"~~%~~~AT~~A"</span> *dbg-indent*) out)))
+
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">dbg</span> (frmt <span style="color: #008700;">&amp;rest</span> params)
+  `(dbgout (format nil ,frmt ,@params)))
+</pre>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-32" class="outline-3">
+<h3 id="unnumbered-32">Макросы для преобразования порядка аргументов</h3>
+<div class="outline-text-3" id="text-unnumbered-32">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="macro_clj">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">-&gt;</span> (x <span style="color: #008700;">&amp;optional</span> form <span style="color: #008700;">&amp;rest</span> more)
+  <span style="color: #87005f;">"Thread the expr through the forms. Insert X as the second item</span>
+<span style="color: #87005f;">in the first form, making a list of it if it is not a list</span>
+<span style="color: #87005f;">already. If there are more forms, insert the first form as the</span>
+<span style="color: #87005f;">second item in second form, etc."</span>
+  (<span style="color: #af00ff;">cond</span>
+    ((null form) x)
+    ((null more) (<span style="color: #af00ff;">if</span> (listp form)
+                     `(,(car form) ,x ,@(cdr form))
+                     (list form x)))
+    (<span style="color: #5f5f87;">:else</span> `(-&gt; (-&gt; ,x ,form) ,@more))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(-&gt; 5 1- ODDP)</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (-&gt; (-&gt; 5 1-) ODDP)</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (ODDP (-&gt; 5 1-))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (ODDP (1- 5))</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(sb-cltl2:macroexpand-all '(-&gt; 'first (cons 'second) (cons 'third)))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (CONS (CONS 'FIRST 'SECOND) 'THIRD)</span>
+
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">-&gt;&gt;</span> (x <span style="color: #008700;">&amp;optional</span> form <span style="color: #008700;">&amp;rest</span> more)
+  <span style="color: #87005f;">"Thread the expr through the forms. Insert X as the last item</span>
+<span style="color: #87005f;">in the first form, making a list of it if it is not a list</span>
+<span style="color: #87005f;">already. If there are more forms, insert the first form as the</span>
+<span style="color: #87005f;">last item in second form, etc."</span>
+  (<span style="color: #af00ff;">cond</span>
+    ((null form) x)
+    ((null more) (<span style="color: #af00ff;">if</span> (listp form)
+                     `(,@form ,x)
+                     (list form x)))
+    (<span style="color: #5f5f87;">:else</span> `(-&gt;&gt; (-&gt;&gt; ,x ,form) ,@more))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(sb-cltl2:macroexpand-all '(-&gt;&gt; 'first (cons 'second) (cons 'third)))</span>
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">=&gt; (CONS 'THIRD (CONS 'SECOND 'FIRST))</span>
+</pre>
+</div>
+</div>
 </div>
 </div>
 </div>

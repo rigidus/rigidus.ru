@@ -4,11 +4,1159 @@
 
 * Интро
 
-Все программисты ищут (или искали) работу на профильных сайтах и
-каждый из них хоть раз задумывался об автоматизации рутинных
-операций.
+Большинство программистов ищут (или искали) работу на профильных сайтах и каждый из них
+хоть раз задумывался об автоматизации рутинных операций.
 
-Я решил пойти дальше и разработал экспертную систему с элементами
-искусственного интеллекта, которая ищет работу за меня в полностью
-автоматическом режиме - от подбора вакансий до автоматической
-адаптации резюме.
+Я решил пойти дальше и разработал экспертную систему, которая ищет работу за меня в
+автоматическом режиме. Здесь я опишу как она устроена и работает.
+
+* Источник вакансий
+
+Источник вакансий - это сущность, откуда можно получать вакансии. Например, это может
+быть сайт [[http://hh.ru][HeadHunter.ru]]
+
+* Генератор вакансий
+
+Генератор вакансий - это функция, которая при каждом своем вызове возвращает
+вакансию. Это наш способ получать вакансии по одной. Внутри генератора есть какое-то
+состояние, чтобы каждый раз отдавать новую вакансию.
+
+Генератор вакансии - это полупредикат, следующей вакансии может не быть (кончились),
+поэтому мы передаем ему два продолжения - ~success~ и ~failure~. Оба продолжения
+принимают один параметр. Если вакансия есть, она будет передана в ~success~, иначе
+ошибка будет передана в ~failure~.
+
+** Генератор вакансий для HeadHunter hh-get-vacancy
+
+Генератор вакансий для HeadHunter хранит внутри себя некоторое количество ~тизеров
+вакансий~. Каждый раз, когда генератор бывает вызван, он берет очередной ~тизер~,
+прогоняет его через функцию ~sucess~ и возвращает результат (если результат не ~nil~,
+иначе - обрабатываем следующий тизер). Функция ~success~ превращает ~тизеры~ в
+~вакансии~ и будет описана позднее, сейчас достаточно сказать, что она возвращает
+~nil~, если тизер был отброшен.
+
+Если ~тизеры вакансий~ закончились, генератор вызывает ~load-next-teasers-page~, чтобы
+загрузить в себя тизеры со следующей по счету страницы поисковых результатов сайта. Для
+этого генератор хранит ~url~ и ~idx~ этой страницы в своем состоянии.
+
+#+NAME: hh_vac_gen
+#+BEGIN_SRC lisp
+  ;; эта функция вызывается из генератора get-vacancy
+  <<hh_process_teaser>>
+  ;; возвращает функцию-генератор в лексическом замыкании,
+  ;; которая принимает два продолжения
+  (alexandria:named-lambda hh-get-vacancy (failure success)
+    (labels (
+             ;; Загружает следующую страницу тизеров в TEASERS
+             <<hh_load_next_teasers_page>>
+             ;; Возвращает следующий тизер из пула тизеров.
+             ;; Если пул пуст, то вызывает LOAD-NEXT-TEASER-PAGE чтобы наполнить его
+             <<hh_get_teaser>>
+             )
+      (tagbody get-new-teaser
+         (let* ((teaser (get-teaser))
+                (current-vacancy (funcall success teaser)))
+           (if (null current-vacancy)
+               (go get-new-teaser)
+               (return-from hh-get-vacancy current-vacancy))))))
+#+END_SRC
+
+*** Функция, возвращающая следующий тизер вакансии
+
+Эта функция догружает тизеры при необходимости
+
+#+NAME: hh_get_teaser
+#+BEGIN_SRC lisp
+  (GET-TEASER ()
+    (dbg ":get-teaser:")
+    (when (equal 0 (length teasers))
+      (load-next-teasers-page))
+    (prog1 (car teasers)
+      (setf teasers (cdr teasers))))
+#+END_SRC
+
+*** Функция, загружающая следующие тизеры
+
+#+NAME: hh_load_next_teasers_page
+#+BEGIN_SRC lisp
+  (LOAD-NEXT-TEASERS-PAGE ()
+    (dbg ":load-next-teasers-page: (page=~A)" idx)
+    (funcall get-page-fn (format nil teaser-url idx) cookie-jar src-account ref
+             (lambda (tag msg data) ;; failure
+               (dbg ":load-next-teaser-page:error: ~A" msg)
+               (funcall failure tag msg data))
+             (lambda (teasers-page-content new-cookie-jar new-ref) ;; success
+               (setf cookie-jar new-cookie-jar)
+               (setf ref new-ref)
+               (setf teasers (funcall parse-teasers-fn teasers-page-content))
+               (incf idx)
+               (when (equal 0 (length teasers))
+                 (funcall failure 'no-more-teasers "no more teasers" nil)))))
+#+END_SRC
+
+**** Функция получения веб-страниц
+
+Эта функция обеспечивает получение веб-страниц с сайта HeadHunter, для этого мы
+передаем ее как параметр в фабрику.
+
+Кроме того, она пытается залогиниться на сайт, поэтому мы также передаем в фабрику
+объект-аккаунт, содержащий все необходимое.
+
+Внутри себя она вызывает ~hh-is-logged~ и ~hh-reсovery-login~
+
+#+NAME: hh_get_page
+#+BEGIN_SRC lisp
+  (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:35.0) Gecko/20100101 Firefox/35.0")
+
+  (defparameter *additional-headers* `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                                       ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
+                                       ("Accept-Charset" . "utf-8")))
+  (defparameter *need-start* t)
+
+  (defun hh-get-page (url cookie-jar src-account referer failure success)
+    "Получение страницы"
+    ;; Если ни одного запроса еще не было - сделаем запрос к главной и снимем флаг
+    (when *need-start*
+      (drakma:http-request "https://spb.hh.ru/" :user-agent *user-agent* :redirect 10
+                           :force-binary t      :cookie-jar cookie-jar)
+      (setf referer "https://spb.hh.ru/")
+      (setf *need-start* nil))
+    ;; Делаем основной запрос по урлу из параметров, сохраняя результат
+    ;; в response и обновляя cookie-jar
+    (let ((response   "")
+          (repeat-cnt 0))
+      (tagbody repeat
+         (multiple-value-bind (body-or-stream status-code headers uri stream must-close reason-phrase)
+             (drakma:http-request url
+                                  :user-agent *user-agent*
+                                  :force-binary t
+                                  :cookie-jar cookie-jar
+                                  :redirect 10
+                                  :additional-headers
+                                  (append *additional-headers* `(("Referer" . ,referer))))
+           (dbg ":hh-get-page: ~A : ~A" status-code url)
+           (if (equal 404 status-code)
+               (funcall failure
+                        'hh-404-error
+                        url
+                        (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))
+               (setf response
+                     (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
+         ;; Если мы не залогинены:
+         (unless (is-logged response)
+           ;; Проверяем, не превышено ли кол-во попыток восстановления
+           (if (>= repeat-cnt 3)
+               ;; Если их больше трех - сигнализируем ошибку
+               (funcall failure 'max-recovery-login "max recovery login cnt" response)
+               ;; Иначе пытаемся восстановить сессию
+               (progn
+                 (hh-recovery-login src-account
+                                    (lambda (tag msg data) ;; recovery failure
+                                      ;; выводим сообщение и ничего не делаем (3 попытки)
+                                      (dbg "hh-get-page :: recovery failure"))
+                                    (lambda (recovery-cookie-jar html)
+                                      (setf response html)
+                                      (setf cookie-jar recovery-cookie-jar)
+                                      (setf referer "https://spb.hh.ru/account/login")))
+                 ;; Увеличиваем счетчик попыток
+                 (incf repeat-cnt)
+                 ;; Пробуем загрузить страницу снова
+                 (go repeat)))))
+      ;; Возвращаем значения в success-продолжение
+      (funcall success response cookie-jar url)))
+#+END_SRC
+
+**** Функция проверки авторизации
+
+#+NAME: hh_is_logged
+#+BEGIN_SRC lisp
+  (defun is-logged (html)
+    "Проверяем наличие в html блока 'Войти'"
+    (let ((res (not (contains html "data-qa=\"mainmenu_loginForm\">Войти</div>"))))
+      (dbg ":is-logged: ~A" res)
+      res))
+#+END_SRC
+
+**** Функция восстановления авторизации
+
+Мы хотим в случае обрыва сессии перелогиниваться прозрачно для всего остального кода.
+
+Для этих целей мы передаем в ~hh-recovery-login~ объект ~src-account~, который содержит
+все необходимое, чтобы восстановить сессию: логин, пароль и ФИО пользователя, по
+которому мы определяем, что успешно залогинились.
+
+Мы также передаем два продолжения.
+
+Продолжение ~success~ вызывается в случае успешного логина и получает:
+- новый ~cookie-jar~, который нужно использовать для работы внутри сессии
+- ~html~
+
+Продолжение ~failure~ вызывается при неуспехе и ему передается:
+- ~tag~ ошибки
+- ~msg~ -сообщение для вывода
+- ~data~ - html-данные, которые представляют собой полученный ответ
+
+#+NAME: hh_recovery_login
+#+BEGIN_SRC lisp
+  ;; Вспомогательная функция
+  (defun get-cookies-alist (cookie-jar)
+    "Получаем alist с печеньками из cookie-jar"
+    (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
+       (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
+
+  (defun hh-recovery-login (src-account failure success)
+    (dbg ":hh-recovery-login:")
+    ;; Сначала заходим на главную как будто первый раз, без cookies
+    (setf drakma:*header-stream* nil)
+    (let* ((start-uri "https://spb.hh.ru/")
+           (cookie-jar (make-instance 'drakma:cookie-jar))
+           (additional-headers *additional-headers*)
+           (response (drakma:http-request start-uri
+                                          :user-agent *user-agent*
+                                          :additional-headers additional-headers
+                                          :force-binary t
+                                          :cookie-jar cookie-jar
+                                          :redirect 10)))
+      ;; Теперь попробуем использовать cookies для логина
+      ;;   GMT=3 ;; _xsrf=  ;; hhrole=anonymous ;; hhtoken= ;; hhuid=
+      ;;   regions=2 ;; unique_banner_user=
+      ;; И заходим с вот-таким гет-запросом:
+      ;;   username=avenger-f@ya.ru ;; password=jGwPswRAfU6sKEhVXX
+      ;;   backurl=https://spb.hh.ru/ ;; remember=yes ;; action="Войти" ;; _xsrf=
+      ;; Для отладочной печати:
+      ;;   (setf drakma:*header-stream* *standard-output*)
+      (let* ((post-parameters `(("username" . ,(src_login src-account))
+                                ("password" . ,(src_password src-account))
+                                ("backUrl"  . "https://spb.hh.ru/")
+                                ("remember" . "yes")
+                                ("action"   . "%D0%92%D0%BE%D0%B9%D1%82%D0%B8")
+                                ("_xsrf"    . ,(cdr (assoc "_xsrf"
+                                                           (get-cookies-alist cookie-jar)
+                                                           :test #'equal)))))
+             (xsrf (cdr (assoc "_xsrf" (get-cookies-alist cookie-jar) :test #'equal)))
+             (cookie-jar-2
+              (make-instance
+               'drakma:cookie-jar
+               :cookies (append (list (make-instance 'drakma:cookie
+                                                     :name "GMT"
+                                                     :value "3"
+                                                     :domain "spb.hh.ru")
+                                      (make-instance 'drakma:cookie
+                                                     :name "_xsrf"
+                                                     :value xsrf
+                                                     :domain "spb.hh.ru"))
+                                (remove-if #'(lambda (x)
+                                               (equal "crypted_id" (drakma:cookie-name x)))
+                                           (drakma:cookie-jar-cookies cookie-jar)))))
+             (response-2
+              (drakma:http-request
+               "https://spb.hh.ru/account/login"
+               :user-agent *user-agent*
+               :method :post
+               :parameters post-parameters
+               :additional-headers (append *additional-headers* `(("Referer" . ,start-uri)))
+               :cookie-jar cookie-jar-2
+               :force-binary t
+               :redirect 10))
+             (html (flexi-streams:octets-to-string response-2 :external-format :utf-8)))
+        (if (contains html (src_fio src-account))
+            (funcall success cookie-jar-2 html)
+            (funcall failure 'login-failed "login failed" html)))))
+#+END_SRC
+
+* Фабрика генераторов
+
+Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
+функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
+для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию:
+
+#+NAME: factory
+#+BEGIN_SRC lisp
+  (defgeneric factory (vac-src &optional &key &allow-other-keys)
+    (:documentation "Return the function-generator of vacancyes"))
+#+END_SRC
+
+** Фабрика генераторов для HeadHunter
+
+#+NAME: hh_factory
+#+BEGIN_SRC lisp
+  (defmethod factory ((vac-src (eql 'hh)) &optional &key teaser-url  idx  ref
+                                                      cookie-jar     src-account
+                                                      get-page-fn    parse-teasers-fn
+                                                      (teasers nil)
+                                                      &allow-other-keys)
+    (dbg ":factory:")
+    <<hh_vac_gen>>
+    )
+#+END_SRC
+
+* Разбор тизеров вакансий
+
+Эта функция разбирает html-код страницы выдачи тизеров. Мы передаем ее в фабрику, чтобы
+параметризовать генератор, который фабрика вернет.
+
+Функция ~hh-parse-teasers~ получает на вход html страницы поисковой выдачи
+и превращает его в список вакансий. Для этого она выполняет ряд операций:
+- Преобразование html-кода в дерево s-выражений
+- Извлечение из этого дерева части, которая содержит поисковую выдачу
+- Преобразование элементов форматирования, таких как ~div~ и ~span~ в "говорящие"
+  элементы дерева для повышения читаемости (названия для преобразования извлекаются из
+  атрибутов ~class~ и ~data-qa~.
+- Применение набора трансформаций для получения списка тизеров в виде plists.
+
+Технические подробности о трансформациях - далее в разделе: [[*Трансформация дерева][Трансформация дерева]]
+
+Если в тизере указана зарплата, мы также получаем
+- Валюту зарплаты (3х-буквенный идентификатор)
+- Сумму
+- Текстовое выражение, содержащее "от" или "от и до". Бывают также и варианты "от
+  100000 до 200000 до вычета НДФЛ".
+
+Иногда HeadHunter синдицирует вакансии с других платформ, к примеру с CAREER.RU, тогда в
+вакансии может отсутствовать работодатель.
+
+#+NAME: hh_parse_teasers
+#+BEGIN_SRC lisp
+  <<maptree_transform>>
+
+  <<html_to_tree>>
+
+  <<extract_search_results>>
+
+  <<maptreefilter>>
+
+  <<make_transform>>
+
+  <<make_extract>>
+
+  <<parse_salary_text>>
+
+  <<parse_salary_currency>>
+
+  <<teaser_transformors>>
+
+  <<plistp>>
+
+  <<my_merge_plist>>
+
+  <<tree_plist_p>>
+
+  <<linearize_teaser>>
+
+  (defun advertp (teaser)
+    (equal teaser '(:GARBAGE "advert")))
+
+  (defparameter *last-parse-data* nil)
+
+  (defun hh-parse-teasers (html)
+    "Получение списка вакансий из html"
+    (dbg ":hh-parse-teasers:")
+    (setf *last-parse-data* html)
+    (->> (html-to-tree html)
+         (extract-search-results)
+         (maptreefilter)
+         (transform-responder)
+         (transform-rejecter)
+         (transform-vacancy-title)
+         (transform-serp-item-title)
+         (transform-schedule)
+         (transform-employer)
+         (transform-employer-anon)
+         (transform-career)
+         (transform-metro)
+         (transform-metro-empty)
+         (transform-address)
+         (transform-meta-info)
+         (transform-insider-teaser)
+         (transform-responsibility)
+         (transform-requirement)
+         (transform-serp-item-info)
+         (transform-compensation)
+         (transform-logo)
+         (transform-item-sidebar-separator)
+         (transform-item-sidebar)
+         (transform-item-sidebar) ;; sidebar in sidebar
+         (transform-serp-item-row)
+         (transform-controls-item)
+         (transform-date)
+         (transform-controls-last)
+         (transform-trigger-button)
+         (transform-row-controls)
+         (transform-serp-premium)
+         (transform-serp-vacancy)
+         (transform-special)
+         (transform-vacancy-serp)
+         (car)
+         (remove-if #'advertp)
+         (transform-reform-meta-info)
+         (mapcar #'linearize-teaser)))
+
+  ;; (print (hh-parse-teasers *last-parse-data*))
+
+  ;; (print *last-parse-data*)
+#+END_SRC
+
+** Парсер html в s-exps
+
+Чтобы получить вакансии со страниц поисковой выдачи - напишем парсер, который переведет
+полученный html в более удобное лисп-дерево (~html-to-tree~). Тут же напишем и обратное
+преобразование - может пригодиться.
+
+#+NAME: html_to_tree
+#+BEGIN_SRC lisp
+  (defun html-to-tree (html)
+    (html5-parser:parse-html5-fragment html :dom :xmls))
+
+  (defun tree-to-html (tree &optional (step 0))
+    (macrolet ((indent () `(make-string (* 3 step) :initial-element #\Space)))
+      (labels ((paired (subtree)
+                 (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))
+                         (format nil "~{~A~}"
+                                 (progn
+                                   (incf step)
+                                   (let ((ret (mapcar #'(lambda (x)
+                                                          (subtree-to-html x step))
+                                                      (cddr subtree))))
+                                     (decf step)
+                                     ret)))))
+               (singled (subtree)
+                 (format nil "~A<~A~A />~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))))
+               (subtree-to-html (subtree &optional (step 0))
+                 (cond ((stringp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((numberp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((listp   subtree)
+                        (let ((tag (car subtree)))
+                          (cond ((or (equal tag "img")
+                                     (equal tag "link")
+                                     (equal tag "meta"))
+                                 (singled subtree))
+                                (t (paired subtree)))))
+                       (t (format nil "[:err:~A]" subtree)))))
+        (reduce #'(lambda (a b) (concatenate 'string a b))
+                (mapcar #'(lambda (x) (subtree-to-html x step))
+                        tree)))))
+#+END_SRC
+
+** Экстрактор поисковых результатов
+
+Затем нам понадобится отделить собственно поисковые результаты, с которыми будем
+работать:
+
+#+NAME: extract_search_results
+#+BEGIN_SRC lisp
+  (defun extract-search-results (tree)
+    (block subtree-extract
+      (mtm (`("div"
+              (("data-qa" "vacancy-serp__results"))
+              ,@rest)
+             (return-from subtree-extract rest))
+           tree)))
+#+END_SRC
+
+** Фильтр-преобразователь дерева
+
+Поисковые результаты представляют собой список деревьев, внутри которых много
+html-кода, относящегося к разметке. Из-за этого их сложно читать и анализировать. Но
+можно преобразовать эти деревья в более удобные для анализа, следуя следующему
+алгоритму:
+
+- Проходя по каждому элементу дерева
+  - Если элемент является списком
+    - Если элемент - это '("target" "_blank"), то удаляем его, записывая остаток списка
+      (cdr) на его место, потому что этот элемент не несет никакой нужной нам
+      информации.
+    - Если элемент начинается с "script" (т.е. мы обоснованно предполагаем, что это тег
+      <script>, потому что нигде не употребляется атрибут "script"), то поступаем
+      аналогично, удаляя его
+    - Если элемент начинается с "div" "span" или "a", то для начала отделим атрибуты от
+      его содержимого.
+      - Если существует атрибут "data-qa", то он станет новым именем элемента, в
+        противном случае
+        - Если существует атрибут "class", то он будет новым именем элемента.
+      - Если есть новое имя элемента:
+        - Существуют блоки с именами, которые нам полностью неинтересны, поэтому мы
+          можем прямо здесь заменить их на их строковые имена, чтобы сделать все более
+          читаемым. Если мы нашли такой блок - то сделаем это. В противном случае:
+          - Удалим атрибуты "data-qa" и "class" из списка атрибутов
+          - Запишем новое имя элемента на место "div" или "span"
+          - Запишем обновленные атрибуты на место старых
+
+Реализуем этот алгоритм. Для поиска атрибутов будем использовать функцию ~get-attr~,
+которая превращает атрибуты в plist и ищет в нем.
+
+#+NAME: maptreefilter
+#+BEGIN_SRC lisp
+  (defun attrs-to-plist (attrs)
+    (mapcan #'(lambda (x)
+                (list (intern (string-upcase (car x)) :keyword) (cadr x)))
+            attrs))
+
+  ;; (attrs-to-plist '(("href" "/employer/3127") ("class" "bloko-link bloko-link_secondary")
+  ;;                   ("data-qa" "vacancy-serp__vacancy-employer")))
+  ;; => (:HREF "/employer/3127" :CLASS "bloko-link bloko-link_secondary" :DATA-QA
+  ;;           "vacancy-serp__vacancy-employer")
+
+  (defun plist-to-attrs (attrs)
+    (loop :for attr :in attrs :by #'cddr :collect
+       (list (string-downcase (symbol-name attr)) (getf attrs attr))))
+
+  ;; (plist-to-attrs '(:HREF "/employer/3127" :CLASS "bloko-link bloko-link_secondary" :DATA-QA
+  ;;                   "vacancy-serp__vacancy-employer"))
+  ;; => (("href" "/employer/3127") ("class" "bloko-link bloko-link_secondary")
+  ;;         ("data-qa" "vacancy-serp__vacancy-employer"))
+
+  (defun maptreefilter (tree)
+    (when (listp tree)
+      (when (and (listp (car tree)) (equal '("target" "_blank") (car tree)))
+        (setf tree (cdr tree)))
+      (when (and (listp (car tree)) (equal "script" (caar tree)))
+        (setf tree (cdr tree)))
+      (when (and (listp (car tree)) ;; fix error if car is not list
+                 (or (equal "div" (caar tree))
+                     (equal "span" (caar tree))
+                     (equal "a" (caar tree))
+                     (equal "td" (caar tree))
+                     (equal "th" (caar tree))
+                     (equal "table" (caar tree))
+                     ))
+        (let ((attrs (attrs-to-plist (cadar tree)))
+              (rest  (cddar tree))
+              (name   nil))
+          ;; data-qa is primary target for new name
+          (aif (getf attrs :data-qa)
+               (progn
+                 (setf name it))
+               ;; else: class is secondary target for new name
+               (aif (getf attrs :class)
+                    (progn
+                      (setf name it))))
+          (when name
+            (if (or (equal name "search-result-description__item")
+                    (equal name "search-result-item__control"))
+                ;; Убиваем ненужное, если оно есть
+                (setf (car tree) name)
+                ;; else
+                (progn
+                  (remf attrs :data-qa)
+                  (remf attrs :class)
+                  (setf (caar tree) name) ;; new name
+                  (setf (cadar tree) (plist-to-attrs attrs)) ;; new attrs
+                  ))))))
+    (cond
+      ((null tree) nil)
+      ((atom tree) tree)
+      (t (cons (maptreefilter (car tree))
+               (maptreefilter (cdr tree))))))
+#+END_SRC
+
+** Макрос для создания преобразователей
+
+Этот макрос формирует функции вида ~transform-*~, которые осуществляют преобразование
+дерева в соответствии с шаблоном, переданным в ~body~. Функция в любом случае
+возвращает дерево, преобразованное или нет.
+
+#+NAME: make_transform
+#+BEGIN_SRC lisp
+  (defmacro make-transform ((name) &body body)
+    (let ((param   (gensym)))
+      `(defun ,(intern (format nil "TRANSFORM-~A" (string-upcase (symbol-name name)))) (,param)
+         (mtm ,@body
+              ,param))))
+#+END_SRC
+
+** Макрос для создания экстракторов
+
+Этот макрос формирует функции вида ~extract-*~, которые извлекают из дерева ветвь,
+совпавшую с шаблоном, переданным в ~body~. Если такой ветви не нашлось, функция
+возвращает ~nil~.
+
+#+NAME: make_extract
+#+BEGIN_SRC lisp
+  (defmacro make-extract ((name retlist) &body body)
+    (let ((param   (gensym)))
+      `(defun ,(intern (format nil "EXTRACT-~A" (string-upcase (symbol-name name)))) (,param)
+         (block subtree-extract
+           (mtm (,@body
+                 (return-from subtree-extract ,retlist))
+                ,param)
+           nil))))
+
+  ;; (print
+  ;;  (macroexpand-1 '(make-extract (compensation `(:compensation ,compensation))
+  ;;                   `("vacancy-compensation" NIL ,compensation))))
+#+END_SRC
+
+** Функция для разбора зарплаты
+** Функция для разбора валюты
+
+Эта функция возвращает трехбуквенный код код валюты и измененное значение
+~salary-text~.
+
+#+NAME: parse_salary_currency
+#+BEGIN_SRC lisp
+  (defun parse-salary-currency (salary-text currency)
+    (cond ((equal currency "RUR")
+           (setf salary-text (ppcre:regex-replace-all " руб." salary-text "")))
+          ((equal currency "USD")
+           (setf salary-text (ppcre:regex-replace-all " USD" salary-text "")))
+          ((equal currency "EUR")
+           (setf salary-text (ppcre:regex-replace-all " EUR" salary-text "")))
+          ((equal currency "UAH")
+           (setf salary-text (ppcre:regex-replace-all " грн." salary-text "")))
+          ((equal currency nil)
+           'nil)
+          (t (progn
+               (print currency)
+               (err 'unk-currency))))
+    (values currency salary-text))
+#+END_SRC
+
+** Набор преобразователей для тизеров
+
+Эти макросы по шаблону преобразуют тизер вакансии в plist
+
+#+NAME: teaser_transformors
+#+BEGIN_SRC lisp
+  (make-transform (responder)
+    (`("vacancy-serp__vacancy_responded"
+       (("href" ,_)) "Вы откликнулись")
+      `(:status "responded")))
+
+  (make-transform (rejecter)
+    (`("vacancy-serp__vacancy_rejected"
+       (("href" ,_)) "Вам отказали")
+      `(:status "rejected")))
+
+  (make-transform (vacancy-title)
+    (`("vacancy-serp__vacancy-title"
+        (("href" ,href) ,@rest)
+        ,title)
+      (if (search "hhcdn.ru" href)
+          `(:href ,href :name ,title :archived nil)
+          (let ((id (parse-integer (car (last (split-sequence:split-sequence #\/ href))))))
+            `(:src-id ,id :href ,href :name ,title :archived nil)))))
+
+  (make-transform (schedule)
+    (`("vacancy-serp__vacancy-work-schedule"
+       NIL ,schedule)
+      `(:schedule ,schedule)))
+
+  (make-transform (responsibility)
+    (`("vacancy-serp__vacancy_snippet_responsibility"
+       NIL
+       ,responsibility)
+      `(:responsibility ,responsibility)))
+
+  (make-transform (requirement)
+    (`("vacancy-serp__vacancy_snippet_requirement"
+       NIL
+       ,requirement)
+      `(:requirement ,requirement)))
+
+  (make-transform (insider-teaser)
+    (`("vacancy-serp__vacancy-interview-insider"
+       (("href" ,insider))
+       "Посмотреть интервью о жизни в компании")
+      `(:insider ,insider)))
+
+  (make-transform (serp-item-info)
+    (`("vacancy-serp-item__info" NIL ,@rest)
+      `(:item-info ,@rest)))
+
+  (make-transform (serp-item-row)
+    (`("vacancy-serp-item__row" NIL ,@rest)
+      `(:row ,@rest)))
+
+  (make-transform (employer)
+    (`(,container
+       NIL
+       ("vacancy-serp__vacancy-employer"
+        (("href" ,href))
+        ,emp-name)
+       ,@rest)
+      `(:emp-name ,emp-name :emp-href ,href
+                  :emp-id ,(parse-integer
+                            (car (last (split-sequence:split-sequence #\/ href))) :junk-allowed t))))
+
+  (make-transform (employer-anon)
+    (`("search-result-item__company"
+       NIL
+       ,anon
+       ("bloko-link" (("href" ,_))
+                     ("bloko-icon bloko-icon_done bloko-icon_initial-action" NIL)))
+      `(:emp-name ,anon :anon t)))
+
+  (make-transform (date)
+    (`("vacancy-serp__vacancy-date" NIL ("vacancy-serp-item__publication-date" NIL ,date))
+      `(:date ,date)))
+
+  (make-transform (career)
+    (`("vacancy-serp__vacancy_career" NIL "  •  CAREER.RU")
+      `(:garbage "career")))
+
+  (make-transform (metro)
+    (`("metro-station" NIL ("metro-point" (("style" ,color))) ,metro)
+      `(:metro ,metro :color ,color)))
+
+  (make-transform (metro-empty)
+    (`("metro-station" NIL ("metro-point" (("style" ,color))))
+      `(:garbage "metro-empty")))
+
+  (make-transform (address)
+    (`("vacancy-serp__vacancy-address" NIL ,address ,@rest)
+      `((:address ,address) ,@rest)))
+
+  (make-transform (meta-info)
+    (`("vacancy-serp-item__meta-info" NIL ,@rest)
+      `(:meta-info ,@rest)))
+
+  (make-transform (compensation)
+    (`("vacancy-serp__vacancy-compensation"
+       NIL
+       ("meta" (("itemprop" "salaryCurrency") ("content" ,currency)))
+       ("meta" (("itemprop" "baseSalary") ("content" ,salary)))
+       ,salary-text)
+      (let ((currency currency)
+            (salary-text (ppcre:regex-replace-all " " salary-text ""))
+            (salary-min nil)
+            (salary-max nil))
+        (multiple-value-bind (currency salary-text)
+            (parse-salary-currency salary-text currency)
+          (multiple-value-bind (salary-min salary-max comment)
+              (parse-salary-text salary-text)
+            (when (null salary-min)
+              (setf salary-min salary-max))
+            (when (null salary-max)
+              (setf salary-max salary-min))
+            `(:currency ,currency
+                        :salary ,(parse-integer salary)
+                        :salary-text ,salary-text
+                        :salary-min ,salary-min
+                        :salary-max ,salary-max))))))
+
+  (make-transform (logo)
+    (`("vacancy-serp__vacancy-employer-logo"
+       (("href" ,_))
+       ("img"
+        (("src" ,logo)
+         ("alt" ,_)
+         ("class" "vacancy-serp-item__logo"))))
+      `(:logo ,logo)))
+
+  (make-transform (item-sidebar-separator)
+    ((or `("vacancy-serp-item__sidebar" NIL)
+         `("vacancy-serp-item__sidebar" NIL " "))
+      `(:garbage "sidebar-separator")))
+
+  (make-transform (item-sidebar)
+    (`("vacancy-serp-item__sidebar" NIL ,@rest)
+      `(:item-sidebar ,@rest)))
+
+  (make-transform (serp-item-title)
+    (`("vacancy-serp-item__title" NIL ,contents)
+      `(:item-title ,contents)))
+
+  (make-transform (controls-item)
+    (`("vacancy-serp-item__controls-item" NIL ,@rest)
+      `(:garbage "controls-item")))
+
+  (make-transform (controls-last)
+    (`("vacancy-serp-item__controls-item vacancy-serp-item__controls-item_last" NIL ,@rest)
+      `(:garbage "controls-last")))
+
+  (make-transform (trigger-button)
+    (`("HH-VacancyResponseTrigger-Button" NIL ,@rest)
+      `(:garbage "trigger-button")))
+
+  (make-transform (row-controls)
+    (`("vacancy-serp-item__row vacancy-serp-item__row_controls" NIL ,@rest)
+      `(:row-controls ,@rest)))
+
+  (make-transform (serp-premium)
+    (`("vacancy-serp__vacancy vacancy-serp__vacancy_premium" NIL ,@rest)
+      `(:premium ,@rest)))
+
+  (make-transform (serp-vacancy)
+    (`("vacancy-serp__vacancy" NIL ,@rest)
+      `(:vacancy ,@rest)))
+
+  (make-transform (special)
+    ((or `("vacancy-serp-special vacancy-serp-special_wide" NIL)
+         `("vacancy-serp-special vacancy-serp-special_medium" NIL))
+     `(:garbage "advert")))
+
+  (make-transform (vacancy-serp)
+    (`("vacancy-serp" NIL ,@rest)
+      rest))
+
+  ;; reforming
+
+  (make-transform (reform-meta-info)
+    (`(:META-INFO ,@rest)
+      (if (not (listp (car rest)))
+          `(:garbage "bad-meta-info")
+          `(:meta-info ,@(->> (car rest)
+                              (mapcar #'(lambda (x)
+                                          (if (not (listp x))
+                                              `(:garbage "и еще metro")
+                                              x)))
+                              (remove-if (lambda (x)
+                                           (equal (car x) :garbage))))))))
+#+END_SRC
+
+** Функция-предикат для plists
+
+Это функция-предикат, которая возвращает свой параметр, если он является
+правильным plist и ~NIL~ в противном случае.
+
+#+NAME: plistp
+#+BEGIN_SRC lisp
+  (defun plistp (param)
+    "Test wheather PARAM is a properly formed pparam."
+    (when (listp param)
+      (loop :for rest :on param :by #'cddr
+         :unless (and (keywordp (car rest))
+                      (cdr rest))
+         :do (return nil)
+         :finally (return param))))
+#+END_SRC
+
+** Функция слияния plists
+
+Это функция, которая правильным образом сливает вместе два plist-а
+
+#+NAME: my_merge_plist
+#+BEGIN_SRC lisp
+  (defun my-merge-plists (p1 p2)
+    (loop with notfound = '#:notfound
+       for (indicator value) on p1 by #'cddr
+       when (eq (getf p2 indicator notfound) notfound)
+       do (progn
+            (push value p2)
+            (push indicator p2)))
+    p2)
+#+END_SRC
+
+** Функция предикат tree-plists
+
+Это функция возвращает ~T~ если список, переданный в параметре является правильным
+plist-деревом.
+
+#+NAME: tree_plist_p
+#+BEGIN_SRC lisp
+  (defun tree-plist-p (pl)
+    "Returns T if PL is a plist (list with alternating keyword elements). "
+    (cond ((null pl)                 t)
+          ((and (listp pl)
+                (keywordp (car pl))
+                (cdr pl))
+           (tree-plist-p (cddr pl)))
+          ((and (listp pl)
+                (listp (car pl)))
+           (and (tree-plist-p (car pl))
+                (tree-plist-p (cdr pl))))
+          (t
+           (progn
+             ;; (print pl)
+             nil))))
+#+END_SRC
+
+** Трансформация дерева
+
+Описание вакансии (или ее тизера), после преобразования из html, представляет из себя
+дерево, в котором нам важна структура, так как требования, обязанности и прочее
+описываются списком. В этом списке много лишнего форматирования, для удаления которого
+нам необходимо уметь преобразовывать (трансформировать) дерево.
+
+**** Maptree-if
+
+Функция ~maptree-if~ - рекурсивный преобразователь, который возвращает новое дерево,
+рекурсивно вызывая аргумент ~transformer~ на ~sub-tree~, которые удовлетворяют
+аргументу ~predicate~.
+
+Аргумент ~predicate~ должен быть лямбда-функцией, которая принимает на вход ~subtree~ и
+возвращает ~T~ или ~NIL~
+
+Аргумент ~transformer~ должен быть лямбда-функцией, которая принимает на вход ~subtree~
+и возвращает ~atom~ или ~subtree~ в первом параметре, а во втором может возвратить
+функцию ~control~. Если эта функция возвращена, тогда дерево возвращается с замененным
+~transformer~-ом узлами по следующему алгоритму:
+
+#+BEGIN_SRC lisp
+  (funcall control
+           #'(lambda (x)
+               (maptree-if predicate transformer x))
+           transformed-tree)
+#+END_SRC
+
+В противном случае оно возвращается как есть.
+
+Собственно функция ~maptree-if~, которую мы помещаем в утилиты:
+
+#+NAME: f_util_contents
+#+BEGIN_SRC lisp
+  (defun maptree-if (predicate transformer tree)
+    (multiple-value-bind (t-tree control)
+        (if (funcall predicate tree)
+            (funcall transformer tree)
+            (values tree #'mapcar))
+      (if (and (consp t-tree)
+               control)
+          (funcall control
+                   #'(lambda (x)
+                       (maptree-if predicate transformer x))
+                   t-tree)
+          t-tree)))
+#+END_SRC
+
+Несколько примеров работы:
+
+#+BEGIN_SRC lisp
+  ;; Нерекурсивная замена
+  (maptree-if #'(lambda (x)
+                  (and (consp x)
+                       (eq (car x) 'ping)))
+              #'(lambda (x)
+                  `(pong ,@(cdr x)))
+              '(progn (ping (ping (ping 1)))))
+  ;; => (PROGN (PONG (PING (PING 1))))
+
+  ;; Рекурсивная замена
+  (maptree-if #'(lambda (x)
+                  (and (consp x)
+                       (eq (car x) 'ping)))
+              #'(lambda (x)
+                  (values `(pong ,@(cdr x)) #'mapcar))
+              '(progn (ping (ping (ping 1)))
+                ping))
+  ;; => (PROGN (PONG (PONG (PONG 1))))
+#+END_SRC
+
+**** Maptree-transform
+
+~maptree-transform~ - это аналог ~maptree-if~, но здесь одна функция
+(~predicate-transformer~) и ищет и трансформирует узел дерева:
+
+#+NAME: maptree_transform
+#+BEGIN_SRC lisp
+  (defun maptree-transform (predicate-transformer tree)
+    (multiple-value-bind (t-tree control)
+        (aif (funcall predicate-transformer tree)
+             it
+             (values tree #'mapcar))
+      (if (and (consp t-tree)
+               control)
+          (funcall control
+                   #'(lambda (x)
+                       (maptree-transform predicate-transformer x))
+                   t-tree)
+          t-tree)))
+
+  ;; mtm - синтаксический сахар для maptree-transform
+  (defmacro mtm (transformer tree)
+    (let ((lambda-param (gensym)))
+      `(maptree-transform #'(lambda (,lambda-param)
+                              (values (match ,lambda-param ,transformer)
+                                      #'mapcar))
+                          ,tree)))
+#+END_SRC
+
+** Линеаризатор тизера
+
+Эта функция превращает тизер в линейный plist
+
+#+NAME: linearize_teaser
+#+BEGIN_SRC lisp
+  (defun linearize-teaser (vacancy)
+    (cond ((not (listp vacancy))
+           (err (format nil "Wrong vacancy: ~A" vacancy)))
+          ((not (keywordp (car vacancy)))
+           (mapcar #'linearize-teaser (cdr vacancy)))
+          ((member (car vacancy)
+                   '(:status :date :garbage :src-id :href :emp-name :address :metro :currency
+                     :responsibility :requirement :logo :schedule :insider))
+           vacancy)
+          ((member (car vacancy)
+                   '(:premium :vacancy :row-controls :row :item-info :item-title :meta-info
+                     :item-sidebar))
+           (mapcan #'linearize-teaser (remove-if #'(lambda (x)
+                                                     (equal (car x) :garbage))
+                                                 (cdr vacancy))))
+          (t (err (format nil "Unknown vacancy key: ~A" (car vacancy))))))
+#+END_SRC
+
+* Сбор тизеров
+
+Со всем вышеперечисленным, чтобы получить и распечатать первые 100 тизеров вакансий нам
+нужно написать следующее:
+
+#+NAME: run
+#+BEGIN_SRC lisp
+  <<hh_get_page>>
+
+  <<hh_is_logged>>
+
+  <<hh_recovery_login>>
+
+  <<hh_parse_teasers>>
+
+  (defclass src-account ()
+    ((id            :initarg :id           :accessor id)
+     ;; идентификатор пользователя, владеющего логином
+     (user_id       :initarg :user_id      :accessor user_id)
+     ;; идентификатор источника ("hh" - для headhunter.ru :accessor "hh" )
+     (src_source    :initarg :src_source   :accessor src_source)
+     ;; логин пользователя на источнике
+     (src_login     :initarg :src_login    :accessor src_login)
+     ;; пароль пользователя на источнике
+     (src_password  :initarg :src_password :accessor src_password)
+     ;; ФИО пользователя, чтобы определить что вход в профиль
+     (src_fio       :initarg :src_fio      :accessor src_fio)))
+
+  (defparameter *hh-account* (make-instance 'src-account
+                                            :user_id 1
+                                            :src_source "hh"
+                                            :src_login "avenger-f@yandex.ru"
+                                            :src_password "jGwPswRAfU6sKEhVXX"
+                                            :src_fio "Михаил Михайлович Глухов"))
+
+  (defparameter *hh-teaser-url* "https://spb.hh.ru/search/vacancy?clusters=true&items_on_page=100&enable_snippets=true&specialization=1&area=2&page=~A")
+
+  (let ((gen (factory 'hh
+                      :teaser-url         *hh-teaser-url*
+                      :idx                0
+                      :ref                "https://spb.hh.ru"
+                      :cookie-jar         (make-instance 'drakma:cookie-jar)
+                      :src-account        *hh-account*
+                      :get-page-fn        #'hh-get-page
+                      :parse-teasers-fn   #'hh-parse-teasers)))
+    (loop :for i :from 1 :to 100 :do
+       (funcall gen
+                (lambda (tag msg data) ;; failure
+                  (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                  (error tag))
+                (lambda (x)
+                  (dbg "~%~A~%" (bprint x))))))
+#+END_SRC
+
+* Сборка
+
+#+NAME: vacancy
+#+BEGIN_SRC lisp :tangle vacancy.lisp :noweb tangle
+  (ql:quickload "anaphora")
+  (use-package :anaphora)
+  (ql:quickload "drakma")
+  (ql:quickload "cl-html5-parser")
+  (ql:quickload "optima")
+  (use-package :optima)
+  (ql:quickload "fare-quasiquote-extras")
+  (ql:quickload "fare-quasiquote-optima")
+
+  ;; special syntax for pattern-matching - ON
+  (named-readtables:in-readtable :fare-quasiquote)
+
+  ;; Макросы для корректного вывода ошибок
+  <<macro_bprint>>
+  <<macro_err>>
+
+  ;; Отладочный вывод
+  <<dbgout>>
+
+  ;; Макросы для преобразования порядка аргументов
+  <<macro_clj>>
+
+  ;; contains
+  (defun contains (string pattern)
+    (if (search pattern string)
+        t))
+
+  <<factory>>
+
+  <<hh_factory>>
+
+  <<run>>
+#+END_SRC
+
+** Макросы для корректного вывода ошибок
+
+#+NAME: macro_bprint
+#+BEGIN_SRC lisp
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)  (pprint ,var)) 1))
+#+END_SRC
+
+#+NAME: macro_err
+#+BEGIN_SRC lisp
+  (defmacro err (var)
+    `(error (format nil "ERR:[~A]" (bprint ,var))))
+#+END_SRC
+
+** Отладочный вывод
+
+#+NAME: dbgout
+#+BEGIN_SRC lisp
+  (defparameter *dbg-enable* t)
+  (defparameter *dbg-indent* 1)
+
+  (defun dbgout (out)
+    (when *dbg-enable*
+      (format t (format nil "~~%~~~AT~~A" *dbg-indent*) out)))
+
+  (defmacro dbg (frmt &rest params)
+    `(dbgout (format nil ,frmt ,@params)))
+#+END_SRC
+** Макросы для преобразования порядка аргументов
+
+#+NAME: macro_clj
+#+BEGIN_SRC lisp
+  (defmacro -> (x &optional form &rest more)
+    "Thread the expr through the forms. Insert X as the second item
+  in the first form, making a list of it if it is not a list
+  already. If there are more forms, insert the first form as the
+  second item in second form, etc."
+    (cond
+      ((null form) x)
+      ((null more) (if (listp form)
+                       `(,(car form) ,x ,@(cdr form))
+                       (list form x)))
+      (:else `(-> (-> ,x ,form) ,@more))))
+
+  ;; (-> 5 1- ODDP)
+  ;; => (-> (-> 5 1-) ODDP)
+  ;; => (ODDP (-> 5 1-))
+  ;; => (ODDP (1- 5))
+
+  ;; (sb-cltl2:macroexpand-all '(-> 'first (cons 'second) (cons 'third)))
+  ;; => (CONS (CONS 'FIRST 'SECOND) 'THIRD)
+
+  (defmacro ->> (x &optional form &rest more)
+    "Thread the expr through the forms. Insert X as the last item
+  in the first form, making a list of it if it is not a list
+  already. If there are more forms, insert the first form as the
+  last item in second form, etc."
+    (cond
+      ((null form) x)
+      ((null more) (if (listp form)
+                       `(,@form ,x)
+                       (list form x)))
+      (:else `(->> (->> ,x ,form) ,@more))))
+
+  ;; (sb-cltl2:macroexpand-all '(->> 'first (cons 'second) (cons 'third)))
+  ;; => (CONS 'THIRD (CONS 'SECOND 'FIRST))
+#+END_SRC
