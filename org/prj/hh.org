@@ -49,8 +49,8 @@
 #+BEGIN_SRC lisp
   (defmethod factory ((vac-src (eql 'hh)) &optional &key teaser-url      idx  ref
                                                       cookie-jar         src-account
-                                                      get-page-fn        parse-teasers-fn
-                                                      (teasers nil)
+                                                      get-page-fn        split-teasers-fn
+                                                      parse-teaser-fn    (teasers nil)
                                                       &allow-other-keys)
     (dbg ":factory:")
     <<hh_vac_gen>>
@@ -94,7 +94,9 @@
 
 *** Функция, возвращающая следующий тизер вакансии
 
-Эта функция догружает тизеры при необходимости
+Эта функция извлекает очередной тизер и преобразует его с помощью функции
+~parse-teaser-fn~, чтобы получить plist. Если ~teasers~ пуст - она вызывает
+~load-next-teasers-page~ для получения следующей порции.
 
 #+NAME: hh_get_teaser
 #+BEGIN_SRC lisp
@@ -102,11 +104,16 @@
     (dbg ":get-teaser:")
     (when (equal 0 (length teasers))
       (load-next-teasers-page))
-    (prog1 (car teasers)
+    (prog1 (funcall parse-teaser-fn (car teasers))
       (setf teasers (cdr teasers))))
 #+END_SRC
 
 *** Функция, загружающая следующие тизеры
+
+Эта функция вызывается, когда генератор вакансий обнаруживает, что у него в ~teasers~
+закончились тизеры вакансий. Она загружает следующую страницу поисковой выдачи и
+применяет к ней функцию ~split-teasers-fn~ чтобы получить список тизеров, который и
+будет сохранен в ~teasers~.
 
 #+NAME: hh_load_next_teasers_page
 #+BEGIN_SRC lisp
@@ -119,7 +126,7 @@
              (lambda (teasers-page-content new-cookie-jar new-ref) ;; success
                (setf cookie-jar new-cookie-jar)
                (setf ref new-ref)
-               (setf teasers (funcall parse-teasers-fn teasers-page-content))
+               (setf teasers (funcall split-teasers-fn teasers-page-content))
                (incf idx)
                (when (equal 0 (length teasers))
                  (funcall failure 'no-more-teasers "no more teasers" nil)))))
@@ -295,108 +302,201 @@
             (funcall failure 'login-failed "login failed" html)))))
 #+END_SRC
 
-* Разбор тизеров вакансий
+* Функции преобразования
 
-Эта функция разбирает html-код страницы выдачи тизеров. Мы передаем ее в фабрику, чтобы
-параметризовать генератор, который фабрика вернет.
+Эти функции и макросы нужны для преобразования дерева s-выражений. Они используются в
+следующих разделах. Мы будем включать их единым блоком
 
-Функция ~hh-parse-teasers~ получает на вход html страницы поисковой выдачи
-и превращает его в список вакансий. Для этого она выполняет ряд операций:
-- Преобразование html-кода в дерево s-выражений
-- Извлечение из этого дерева части, которая содержит поисковую выдачу
-- Преобразование элементов форматирования, таких как ~div~ и ~span~ в "говорящие"
-  элементы дерева для повышения читаемости (названия для преобразования извлекаются из
-  атрибутов ~class~ и ~data-qa~.
-- Применение набора трансформаций для получения списка тизеров в виде plists.
-
-Технические подробности о трансформациях - далее в разделе: [[*Трансформация дерева][Трансформация дерева]]
-
-Если в тизере указана зарплата, мы также получаем
-- Валюту зарплаты (3х-буквенный идентификатор)
-- Сумму
-- Текстовое выражение, содержащее "от" или "от и до". Бывают также и варианты "от
-  100000 до 200000 до вычета НДФЛ".
-
-Иногда HeadHunter синдицирует вакансии с других платформ, к примеру с CAREER.RU, тогда в
-вакансии может отсутствовать работодатель.
-
-#+NAME: hh_parse_teasers
+#+NAME: hh_transforming
 #+BEGIN_SRC lisp
   <<maptree_transform>>
 
+  <<make_transform>>
+
+  <<make_extract>>
+#+END_SRC
+
+** Трансформация дерева
+
+Описание вакансии (или ее тизера), после преобразования из html, представляет из себя
+дерево, в котором нам важна структура, так как требования, обязанности и прочее
+описываются списком. В этом списке много лишнего форматирования, для удаления которого
+нам необходимо уметь преобразовывать (трансформировать) дерево.
+
+**** Maptree-if
+
+Функция ~maptree-if~ - рекурсивный преобразователь, который возвращает новое дерево,
+рекурсивно вызывая аргумент ~transformer~ на ~sub-tree~, которые удовлетворяют
+аргументу ~predicate~.
+
+Аргумент ~predicate~ должен быть лямбда-функцией, которая принимает на вход ~subtree~ и
+возвращает ~T~ или ~NIL~
+
+Аргумент ~transformer~ должен быть лямбда-функцией, которая принимает на вход ~subtree~
+и возвращает ~atom~ или ~subtree~ в первом параметре, а во втором может возвратить
+функцию ~control~. Если эта функция возвращена, тогда дерево возвращается с замененным
+~transformer~-ом узлами по следующему алгоритму:
+
+#+BEGIN_SRC lisp
+  (funcall control
+           #'(lambda (x)
+               (maptree-if predicate transformer x))
+           transformed-tree)
+#+END_SRC
+
+В противном случае оно возвращается как есть.
+
+Собственно функция ~maptree-if~, которую мы помещаем в утилиты:
+
+#+NAME: f_util_contents
+#+BEGIN_SRC lisp
+  (defun maptree-if (predicate transformer tree)
+    (multiple-value-bind (t-tree control)
+        (if (funcall predicate tree)
+            (funcall transformer tree)
+            (values tree #'mapcar))
+      (if (and (consp t-tree)
+               control)
+          (funcall control
+                   #'(lambda (x)
+                       (maptree-if predicate transformer x))
+                   t-tree)
+          t-tree)))
+#+END_SRC
+
+Несколько примеров работы:
+
+#+BEGIN_SRC lisp
+  ;; Нерекурсивная замена
+  (maptree-if #'(lambda (x)
+                  (and (consp x)
+                       (eq (car x) 'ping)))
+              #'(lambda (x)
+                  `(pong ,@(cdr x)))
+              '(progn (ping (ping (ping 1)))))
+  ;; => (PROGN (PONG (PING (PING 1))))
+
+  ;; Рекурсивная замена
+  (maptree-if #'(lambda (x)
+                  (and (consp x)
+                       (eq (car x) 'ping)))
+              #'(lambda (x)
+                  (values `(pong ,@(cdr x)) #'mapcar))
+              '(progn (ping (ping (ping 1)))
+                ping))
+  ;; => (PROGN (PONG (PONG (PONG 1))))
+#+END_SRC
+
+**** Maptree-transform
+
+~maptree-transform~ - это аналог ~maptree-if~, но здесь одна функция
+(~predicate-transformer~) и ищет и трансформирует узел дерева:
+
+#+NAME: maptree_transform
+#+BEGIN_SRC lisp
+  (defun maptree-transform (predicate-transformer tree)
+    (multiple-value-bind (t-tree control)
+        (aif (funcall predicate-transformer tree)
+             it
+             (values tree #'mapcar))
+      (if (and (consp t-tree)
+               control)
+          (funcall control
+                   #'(lambda (x)
+                       (maptree-transform predicate-transformer x))
+                   t-tree)
+          t-tree)))
+
+  ;; mtm - синтаксический сахар для maptree-transform
+  (defmacro mtm (transformer tree)
+    (let ((lambda-param (gensym)))
+      `(maptree-transform #'(lambda (,lambda-param)
+                              (values (match ,lambda-param ,transformer)
+                                      #'mapcar))
+                          ,tree)))
+#+END_SRC
+
+** Макрос для создания преобразователей
+
+Этот макрос формирует функции вида ~transform-*~, которые осуществляют преобразование
+дерева в соответствии с шаблоном, переданным в ~body~. Функция в любом случае
+возвращает дерево, преобразованное или нет.
+
+#+NAME: make_transform
+#+BEGIN_SRC lisp
+  (defmacro make-transform ((name) &body body)
+    (let ((param   (gensym)))
+      `(defun ,(intern (format nil "TRANSFORM-~A" (string-upcase (symbol-name name)))) (,param)
+         (mtm ,@body
+              ,param))))
+#+END_SRC
+
+** Макрос для создания экстракторов
+
+Этот макрос формирует функции вида ~extract-*~, которые извлекают из дерева ветвь,
+совпавшую с шаблоном, переданным в ~body~. Если такой ветви не нашлось, функция
+возвращает ~nil~.
+
+#+NAME: make_extract
+#+BEGIN_SRC lisp
+  (defmacro make-extract ((name retlist) &body body)
+    (let ((param   (gensym)))
+      `(defun ,(intern (format nil "EXTRACT-~A" (string-upcase (symbol-name name)))) (,param)
+         (block subtree-extract
+           (mtm (,@body
+                 (return-from subtree-extract ,retlist))
+                ,param)
+           nil))))
+
+  ;; (print
+  ;;  (macroexpand-1 '(make-extract (compensation `(:compensation ,compensation))
+  ;;                   `("vacancy-compensation" NIL ,compensation))))
+#+END_SRC
+
+* Разделение тизеров вакансий
+
+На этом этапе у нас на входе есть страницы поисковой выдачи, которые содержат тизеры
+вакансий. Нам нужно как можно скорее превратить их в список отдельных тизеров. Для
+этого функция ~hh-split-teasers~ (которую мы передаем в фабрику, чтобы параметризовать
+генератор вакансий) делает следующее:
+- преобразует html-код страницы в дерево s-выражений
+- извлекает из этого дерева часть, которая содержит поисковую выдачу
+- преобразует элементы форматирования, таких как ~div~ и ~span~ в "говорящие"
+  элементы дерева для повышения читаемости (названия для преобразования извлекаются из
+  атрибутов ~class~ и ~data-qa~.
+- трансформирует дерево и извлекает из него список тизеров
+- трасформирует элементы со вставленной рекламой и удаляет их
+
+Таким образом мы для каждой страницы поисковой выдачи получаем список необработанных
+тизеров вакансий. В этих тизерах s-выражения, соответствующие html-коду еще не
+преобразованы в plist, с которым удобно работать.
+
+#+NAME: hh_split_teasers
+#+BEGIN_SRC lisp
   <<html_to_tree>>
 
   <<extract_search_results>>
 
   <<maptreefilter>>
 
-  <<make_transform>>
-
-  <<make_extract>>
-
-  <<parse_salary_text>>
-
-  <<parse_salary_currency>>
-
-  <<teaser_transformors>>
-
-  <<plistp>>
-
-  <<my_merge_plist>>
-
-  <<tree_plist_p>>
-
-  <<linearize_teaser>>
-
   (defun advertp (teaser)
     (equal teaser '(:GARBAGE "advert")))
 
   (defparameter *last-parse-data* nil)
 
-  (defun hh-parse-teasers (html)
+  (defun hh-split-teasers (html)
     "Получение списка вакансий из html"
-    (dbg ":hh-parse-teasers:")
+    (dbg ":hh-split-teasers:")
     (setf *last-parse-data* html)
     (->> (html-to-tree html)
          (extract-search-results)
          (maptreefilter)
-         (transform-responder)
-         (transform-rejecter)
-         (transform-vacancy-title)
-         (transform-serp-item-title)
-         (transform-schedule)
-         (transform-employer)
-         (transform-employer-anon)
-         (transform-career)
-         (transform-metro)
-         (transform-metro-empty)
-         (transform-address)
-         (transform-meta-info)
-         (transform-insider-teaser)
-         (transform-responsibility)
-         (transform-requirement)
-         (transform-serp-item-info)
-         (transform-compensation)
-         (transform-logo)
-         (transform-item-sidebar-separator)
-         (transform-item-sidebar)
-         (transform-item-sidebar) ;; sidebar in sidebar
-         (transform-serp-item-row)
-         (transform-controls-item)
-         (transform-date)
-         (transform-controls-last)
-         (transform-trigger-button)
-         (transform-row-controls)
-         (transform-serp-premium)
-         (transform-serp-vacancy)
-         (transform-special)
          (transform-vacancy-serp)
          (car)
-         (remove-if #'advertp)
-         (transform-reform-meta-info)
-         (mapcar #'linearize-teaser)))
+         (transform-special)
+         (remove-if #'advertp)))
 
-  ;; (print (hh-parse-teasers *last-parse-data*))
+  ;; (print (hh-split-teasers *last-parse-data*))
 
   ;; (print *last-parse-data*)
 #+END_SRC
@@ -570,44 +670,119 @@ html-кода, относящегося к разметке. Из-за этог�
                (maptreefilter (cdr tree))))))
 #+END_SRC
 
-** Макрос для создания преобразователей
+* Разбор тизеров вакансий
 
-Этот макрос формирует функции вида ~transform-*~, которые осуществляют преобразование
-дерева в соответствии с шаблоном, переданным в ~body~. Функция в любом случае
-возвращает дерево, преобразованное или нет.
+Эта функция разбирает html-код страницы выдачи тизеров. Мы передаем ее в фабрику, чтобы
+параметризовать генератор, который фабрика вернет.
 
-#+NAME: make_transform
+Функция ~hh-parse-teasers~ получает на вход html страницы поисковой выдачи
+и превращает его в список вакансий. Для этого она выполняет ряд операций:
+- Преобразование html-кода в дерево s-выражений
+- Извлечение из этого дерева части, которая содержит поисковую выдачу
+- Преобразование элементов форматирования, таких как ~div~ и ~span~ в "говорящие"
+  элементы дерева для повышения читаемости (названия для преобразования извлекаются из
+  атрибутов ~class~ и ~data-qa~.
+- Применение набора трансформаций для получения списка тизеров в виде plists.
+
+Технические подробности о трансформациях - далее в разделе: [[*Трансформация дерева][Трансформация дерева]]
+
+Если в тизере указана зарплата, мы также получаем
+- Валюту зарплаты (3х-буквенный идентификатор)
+- Сумму
+- Текстовое выражение, содержащее "от" или "от и до". Бывают также и варианты "от
+  100000 до 200000 до вычета НДФЛ".
+
+Иногда HeadHunter синдицирует вакансии с других платформ, к примеру с CAREER.RU, тогда в
+вакансии может отсутствовать работодатель.
+
+#+NAME: hh_parse_teaser
 #+BEGIN_SRC lisp
-  (defmacro make-transform ((name) &body body)
-    (let ((param   (gensym)))
-      `(defun ,(intern (format nil "TRANSFORM-~A" (string-upcase (symbol-name name)))) (,param)
-         (mtm ,@body
-              ,param))))
-#+END_SRC
+  <<parse_salary_text>>
 
-** Макрос для создания экстракторов
+  <<parse_salary_currency>>
 
-Этот макрос формирует функции вида ~extract-*~, которые извлекают из дерева ветвь,
-совпавшую с шаблоном, переданным в ~body~. Если такой ветви не нашлось, функция
-возвращает ~nil~.
+  <<teaser_transformors>>
 
-#+NAME: make_extract
-#+BEGIN_SRC lisp
-  (defmacro make-extract ((name retlist) &body body)
-    (let ((param   (gensym)))
-      `(defun ,(intern (format nil "EXTRACT-~A" (string-upcase (symbol-name name)))) (,param)
-         (block subtree-extract
-           (mtm (,@body
-                 (return-from subtree-extract ,retlist))
-                ,param)
-           nil))))
+  <<plistp>>
 
-  ;; (print
-  ;;  (macroexpand-1 '(make-extract (compensation `(:compensation ,compensation))
-  ;;                   `("vacancy-compensation" NIL ,compensation))))
+  <<my_merge_plist>>
+
+  <<tree_plist_p>>
+
+  <<linearize_teaser>>
+
+  (defparameter *last-parse-teaser* nil)
+
+  (defun hh-parse-teaser (teaser)
+    "Получение списка вакансий из html"
+    (dbg ":hh-parse-teaser:")
+    (setf *last-parse-teaser* teaser)
+    (->> (transform-responder teaser)
+         (transform-rejecter)
+         (transform-vacancy-title)
+         (transform-vacancy-archived)
+         (transform-serp-item-title)
+         (transform-schedule)
+         (transform-employer)
+         (transform-employer-anon)
+         (transform-career)
+         (transform-metro)
+         (transform-metro-empty)
+         (transform-address)
+         (transform-meta-info)
+         (transform-insider-teaser)
+         (transform-responsibility)
+         (transform-requirement)
+         (transform-serp-item-info)
+         (transform-compensation)
+         (transform-logo)
+         (transform-item-sidebar-separator)
+         (transform-item-sidebar)
+         (transform-item-sidebar) ;; sidebar in sidebar
+         (transform-serp-item-row)
+         (transform-controls-item)
+         (transform-date)
+         (transform-controls-last)
+         (transform-trigger-button)
+         (transform-row-controls)
+         (transform-serp-premium)
+         (transform-serp-vacancy)
+         (transform-reform-meta-info)
+         (linearize-teaser)
+         ))
+
+  ;; (print (hh-parse-teaser *last-parse-teaser*))
+
+  ;; (print *last-parse-teaser*)
 #+END_SRC
 
 ** Функция для разбора зарплаты
+
+Эта функция нужна преобразователям тизеров и вакансий. Она получает на вход текстовое
+описание зарплатного предложения и возвращает минимальное, максимальное значение и
+коммент (например для описания "от 100000 до 200000 до вычета НДФЛ" будет возвращено
+100000, 200000, "до вычета НДФЛ").
+
+#+NAME: parse_salary_text
+#+BEGIN_SRC lisp
+  (defun parse-salary-text (salary-text)
+    (let ((salary-min nil)
+          (salary-max nil)
+          (comment ""))
+      (multiple-value-bind  (match-p result)
+          (ppcre:scan-to-strings "(от (\\d+))(.*)" salary-text)
+        (when match-p
+          (setf salary-min  (parse-integer (aref result 1)))
+          (setf salary-text (string-left-trim '(#\Space) (aref result 2)))))
+      (multiple-value-bind  (match-p result)
+          (ppcre:scan-to-strings "(до (\\d+))(.*)" salary-text)
+        (when match-p
+          (setf salary-max  (parse-integer (aref result 1)))
+          (setf salary-text (string-left-trim '(#\Space) (aref result 2)))))
+      (setf comment salary-text)
+      (values salary-min salary-max comment)))
+#+END_SRC
+
 ** Функция для разбора валюты
 
 Эта функция возвращает трехбуквенный код код валюты и измененное значение
@@ -638,6 +813,10 @@ html-кода, относящегося к разметке. Из-за этог�
 
 #+NAME: teaser_transformors
 #+BEGIN_SRC lisp
+  (make-transform (vacancy-serp)
+    (`("vacancy-serp" NIL ,@rest)
+      rest))
+
   (make-transform (responder)
     (`("vacancy-serp__vacancy_responded"
        (("href" ,_)) "Вы откликнулись")
@@ -655,7 +834,12 @@ html-кода, относящегося к разметке. Из-за этог�
       (if (search "hhcdn.ru" href)
           `(:href ,href :name ,title :archived nil)
           (let ((id (parse-integer (car (last (split-sequence:split-sequence #\/ href))))))
-            `(:src-id ,id :href ,href :name ,title :archived nil)))))
+            `(:src-id ,id :href ,href :name ,title)))))
+
+  (make-transform (vacancy-archived)
+    (`("strong" (("data-qa" "vacancy-serp__vacancy_archived"))
+                "Вакансия была перенесена в архив")
+      `(:archived t)))
 
   (make-transform (schedule)
     (`("vacancy-serp__vacancy-work-schedule"
@@ -682,7 +866,10 @@ html-кода, относящегося к разметке. Из-за этог�
 
   (make-transform (serp-item-info)
     (`("vacancy-serp-item__info" NIL ,@rest)
-      `(:item-info ,@rest)))
+      `(:item-info ,@(remove-if (lambda (x)
+                                  (or (equal x " (")
+                                      (equal x ")")))
+                                rest))))
 
   (make-transform (serp-item-row)
     (`("vacancy-serp-item__row" NIL ,@rest)
@@ -806,10 +993,6 @@ html-кода, относящегося к разметке. Из-за этог�
          `("vacancy-serp-special vacancy-serp-special_medium" NIL))
      `(:garbage "advert")))
 
-  (make-transform (vacancy-serp)
-    (`("vacancy-serp" NIL ,@rest)
-      rest))
-
   ;; reforming
 
   (make-transform (reform-meta-info)
@@ -882,106 +1065,6 @@ plist-деревом.
              nil))))
 #+END_SRC
 
-** Трансформация дерева
-
-Описание вакансии (или ее тизера), после преобразования из html, представляет из себя
-дерево, в котором нам важна структура, так как требования, обязанности и прочее
-описываются списком. В этом списке много лишнего форматирования, для удаления которого
-нам необходимо уметь преобразовывать (трансформировать) дерево.
-
-**** Maptree-if
-
-Функция ~maptree-if~ - рекурсивный преобразователь, который возвращает новое дерево,
-рекурсивно вызывая аргумент ~transformer~ на ~sub-tree~, которые удовлетворяют
-аргументу ~predicate~.
-
-Аргумент ~predicate~ должен быть лямбда-функцией, которая принимает на вход ~subtree~ и
-возвращает ~T~ или ~NIL~
-
-Аргумент ~transformer~ должен быть лямбда-функцией, которая принимает на вход ~subtree~
-и возвращает ~atom~ или ~subtree~ в первом параметре, а во втором может возвратить
-функцию ~control~. Если эта функция возвращена, тогда дерево возвращается с замененным
-~transformer~-ом узлами по следующему алгоритму:
-
-#+BEGIN_SRC lisp
-  (funcall control
-           #'(lambda (x)
-               (maptree-if predicate transformer x))
-           transformed-tree)
-#+END_SRC
-
-В противном случае оно возвращается как есть.
-
-Собственно функция ~maptree-if~, которую мы помещаем в утилиты:
-
-#+NAME: f_util_contents
-#+BEGIN_SRC lisp
-  (defun maptree-if (predicate transformer tree)
-    (multiple-value-bind (t-tree control)
-        (if (funcall predicate tree)
-            (funcall transformer tree)
-            (values tree #'mapcar))
-      (if (and (consp t-tree)
-               control)
-          (funcall control
-                   #'(lambda (x)
-                       (maptree-if predicate transformer x))
-                   t-tree)
-          t-tree)))
-#+END_SRC
-
-Несколько примеров работы:
-
-#+BEGIN_SRC lisp
-  ;; Нерекурсивная замена
-  (maptree-if #'(lambda (x)
-                  (and (consp x)
-                       (eq (car x) 'ping)))
-              #'(lambda (x)
-                  `(pong ,@(cdr x)))
-              '(progn (ping (ping (ping 1)))))
-  ;; => (PROGN (PONG (PING (PING 1))))
-
-  ;; Рекурсивная замена
-  (maptree-if #'(lambda (x)
-                  (and (consp x)
-                       (eq (car x) 'ping)))
-              #'(lambda (x)
-                  (values `(pong ,@(cdr x)) #'mapcar))
-              '(progn (ping (ping (ping 1)))
-                ping))
-  ;; => (PROGN (PONG (PONG (PONG 1))))
-#+END_SRC
-
-**** Maptree-transform
-
-~maptree-transform~ - это аналог ~maptree-if~, но здесь одна функция
-(~predicate-transformer~) и ищет и трансформирует узел дерева:
-
-#+NAME: maptree_transform
-#+BEGIN_SRC lisp
-  (defun maptree-transform (predicate-transformer tree)
-    (multiple-value-bind (t-tree control)
-        (aif (funcall predicate-transformer tree)
-             it
-             (values tree #'mapcar))
-      (if (and (consp t-tree)
-               control)
-          (funcall control
-                   #'(lambda (x)
-                       (maptree-transform predicate-transformer x))
-                   t-tree)
-          t-tree)))
-
-  ;; mtm - синтаксический сахар для maptree-transform
-  (defmacro mtm (transformer tree)
-    (let ((lambda-param (gensym)))
-      `(maptree-transform #'(lambda (,lambda-param)
-                              (values (match ,lambda-param ,transformer)
-                                      #'mapcar))
-                          ,tree)))
-#+END_SRC
-
 ** Линеаризатор тизера
 
 Эта функция превращает тизер в линейный plist
@@ -1013,14 +1096,6 @@ plist-деревом.
 
 #+NAME: run
 #+BEGIN_SRC lisp
-  <<hh_get_page>>
-
-  <<hh_is_logged>>
-
-  <<hh_recovery_login>>
-
-  <<hh_parse_teasers>>
-
   (defclass src-account ()
     ((id            :initarg :id           :accessor id)
      ;; идентификатор пользователя, владеющего логином
@@ -1050,7 +1125,8 @@ plist-деревом.
                       :cookie-jar         (make-instance 'drakma:cookie-jar)
                       :src-account        *hh-account*
                       :get-page-fn        #'hh-get-page
-                      :parse-teasers-fn   #'hh-parse-teasers)))
+                      :split-teasers-fn   #'hh-split-teasers
+                      :parse-teaser-fn    #'hh-parse-teaser)))
     (loop :for i :from 1 :to 100 :do
        (funcall gen
                 (lambda (tag msg data) ;; failure
@@ -1094,6 +1170,18 @@ plist-деревом.
   <<factory>>
 
   <<hh_factory>>
+
+  <<hh_get_page>>
+
+  <<hh_is_logged>>
+
+  <<hh_recovery_login>>
+
+  <<hh_transforming>>
+
+  <<hh_split_teasers>>
+
+  <<hh_parse_teaser>>
 
   <<run>>
 #+END_SRC
