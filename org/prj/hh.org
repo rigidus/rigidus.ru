@@ -10,12 +10,16 @@
 Я решил пойти дальше и разработал экспертную систему, которая ищет работу за меня в
 автоматическом режиме. Здесь я опишу как она устроена и работает.
 
-* Источник вакансий
+** Базовые Концепции
+
+Для понимания того, что написано ниже, достаточно разобраться с тремя вещами:
+
+*** Источник вакансий
 
 Источник вакансий - это сущность, откуда можно получать вакансии. Например, это может
 быть сайт [[http://hh.ru][HeadHunter.ru]]
 
-* Генератор вакансий
+*** Генератор вакансий
 
 Генератор вакансий - это функция, которая при каждом своем вызове возвращает
 вакансию. Это наш способ получать вакансии по одной. Внутри генератора есть какое-то
@@ -26,17 +30,39 @@
 принимают один параметр. Если вакансия есть, она будет передана в ~success~, иначе
 ошибка будет передана в ~failure~.
 
-* Фабрика генераторов
+*** Фабрика генераторов
 
 Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
 функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
-для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию:
+для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию с
+неопределенным числом аргументов:
 
 #+NAME: factory
 #+BEGIN_SRC lisp
   (defgeneric factory (vac-src &optional &key &allow-other-keys)
     (:documentation "Return the function-generator of vacancyes"))
 #+END_SRC
+
+** Пример использования
+
+Этого хватит для того, чтобы сделать функцию, которая получает от фабрики генератор и
+вызывает его 100 раз, или пока не наткнется на ошибку (например закончились
+вакансии). Полученные вакансии печатаются:
+
+#+BEGIN_SRC lisp
+  (defun print-all-teasers ()
+    (let ((generator (factory 'hh :some-key-param some-value ....)))
+      (loop :for i :from 1 :to 100 :do
+         (funcall generator
+                  (lambda (tag msg data) ;; failure
+                    (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                    (return-froom print-all-teasers nil))
+                  (lambda (x) ;; success
+                    (dbg "~%~A~%" (bprint x)))))))
+#+END_SRC
+
+Разумеется можно сделать нечто более умное, чем просто распечатать тизер вакансии. Об
+этом подробнее рассказывается в разделе "[[*Экспертная система][Экспертная система]]" этого документа.
 
 * Специализация дла HeadHunter
 
@@ -1094,7 +1120,30 @@ plist-деревом.
 Со всем вышеперечисленным, чтобы получить и распечатать первые 100 тизеров вакансий нам
 нужно написать следующее:
 
-#+NAME: run
+#+BEGIN_SRC lisp
+  <<creds>>
+
+  (let ((gen (factory 'hh
+                      :teaser-url         *hh-teaser-url*
+                      :idx                0
+                      :ref                "https://spb.hh.ru"
+                      :cookie-jar         (make-instance 'drakma:cookie-jar)
+                      :src-account        *hh-account*
+                      :get-page-fn        #'hh-get-page
+                      :split-teasers-fn   #'hh-split-teasers
+                      :parse-teaser-fn    #'hh-parse-teaser)))
+    (loop :for i :from 1 :to 100 :do
+       (funcall gen
+                (lambda (tag msg data) ;; failure
+                  (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                  (error tag))
+                (lambda (x)
+                  (dbg "~%~A~%" (bprint x))))))
+#+END_SRC
+
+** Необходимые входные данные
+
+#+NAME: creds
 #+BEGIN_SRC lisp
   (defclass src-account ()
     ((id            :initarg :id           :accessor id)
@@ -1117,6 +1166,24 @@ plist-деревом.
                                             :src_fio "Михаил Михайлович Глухов"))
 
   (defparameter *hh-teaser-url* "https://spb.hh.ru/search/vacancy?clusters=true&items_on_page=100&enable_snippets=true&specialization=1&area=2&page=~A")
+#+END_SRC
+
+* Экспертная система
+
+** Отсев тизеров
+
+Первое, что приходит в голову - это отсеять те тизеры, которые нам не подходят. Для
+этого воспользуемся тем, что продолжение success может вернуть ~nil~, как знак того,
+что этот тизер не нужен. Обнаружив это, генератор возьмет следующий тизер - и так до
+тех пор, пока ~success~ не будет удовлетворен.
+
+Например можно отсеивать:
+- синдицированные вакансии - у них нет поля ~src-id~
+- вакансии без указания зарплаты - у них нет поля ~salary~
+
+#+NAME: run
+#+BEGIN_SRC lisp
+  <<creds>>
 
   (let ((gen (factory 'hh
                       :teaser-url         *hh-teaser-url*
@@ -1126,15 +1193,44 @@ plist-деревом.
                       :src-account        *hh-account*
                       :get-page-fn        #'hh-get-page
                       :split-teasers-fn   #'hh-split-teasers
-                      :parse-teaser-fn    #'hh-parse-teaser)))
+                      :parse-teaser-fn    #'hh-parse-teaser))
+        (cnt 0))
     (loop :for i :from 1 :to 100 :do
-       (funcall gen
-                (lambda (tag msg data) ;; failure
-                  (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
-                  (error tag))
-                (lambda (x)
-                  (dbg "~%~A~%" (bprint x))))))
+       (dbg "OKAY (~A): ~A"
+            cnt
+            (funcall gen
+                     (lambda (tag msg data) ;; failure
+                       (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                       (error tag))
+                     (lambda (x)
+                       (prog1 (cond ((null (getf x :src-id)) (dbg "(~A) no src-id" cnt))
+                                    ((null (getf x :salary)) (dbg "(~A) no salary" cnt))
+                                    (t x))
+                         (incf cnt)))))))
 #+END_SRC
+
+** Получение вакансии
+
+Если тизер прошел через отсев, то его можно превратить в вакансию. Для этого нужно
+загрузить страницу вакансии
+
+#+NAME: run
+#+BEGIN_SRC lisp
+  (defmethod process-teaser (current-teaser src-account referer)
+    (dbg ":process-teaser:")
+    (unless (getf current-teaser :src-id)
+      (return-from process-teaser nil))
+    (let ((vac-uri (format nil "https://spb.hh.ru/vacancy/~A" (getf current-teaser :src-id))))
+      (multiple-value-bind (vacancy new-cookies ref-url)
+          (hh-get-page vac-uri cookie-jar src-account referer)
+        (setf cookie-jar new-cookies)
+        (restart-case
+            (aif (hh-parse-vacancy vacancy)
+                 (merge-plists current-teaser it)
+                 nil)
+          (skip () nil)))))
+#+END_SRC
+
 
 * Сборка
 
