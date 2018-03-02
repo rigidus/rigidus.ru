@@ -79,6 +79,8 @@
                                                       parse-teaser-fn    (teasers nil)
                                                       &allow-other-keys)
     (dbg ":factory:")
+    <<hh_process_around>>
+    <<hh_process>>
     <<hh_vac_gen>>
     )
 #+END_SRC
@@ -87,7 +89,7 @@
 
 Генератор вакансий для HeadHunter хранит внутри себя некоторое количество ~тизеров
 вакансий~. Каждый раз, когда генератор бывает вызван, он берет очередной ~тизер~,
-прогоняет его через функцию ~sucess~ и возвращает результат (если результат не ~nil~,
+прогоняет его через функцию ~success~ и возвращает результат (если результат не ~nil~,
 иначе - обрабатываем следующий тизер). Функция ~success~ превращает ~тизеры~ в
 ~вакансии~ и будет описана позднее, сейчас достаточно сказать, что она возвращает
 ~nil~, если тизер был отброшен.
@@ -98,8 +100,6 @@
 
 #+NAME: hh_vac_gen
 #+BEGIN_SRC lisp
-  ;; эта функция вызывается из генератора get-vacancy
-  <<hh_process_teaser>>
   ;; возвращает функцию-генератор в лексическом замыкании,
   ;; которая принимает два продолжения
   (alexandria:named-lambda hh-get-vacancy (failure success)
@@ -1170,20 +1170,60 @@ plist-деревом.
 
 * Экспертная система
 
-** Отсев тизеров
+Конечно, собрать все тизеры вакансий - этого недостаточно. Я бы хотел получить вакансию
+целиком, чтобы потом в отношении неё что-то решать. Однако, тизер часто дает достаточно
+информации, чтобы отказаться продолжать. В Common Lisp есть удобный механизм
+~:around~-методов, который мы можем использовать, чтобы вызывать или не вызывать
+основной метод, в зависимости от того, что мы найдем внутри тизера. Например, здесь мы
+отбрасываем тизеры без полей ~src-id~ или ~salary~:
 
-Первое, что приходит в голову - это отсеять те тизеры, которые нам не подходят. Для
-этого воспользуемся тем, что продолжение success может вернуть ~nil~, как знак того,
-что этот тизер не нужен. Обнаружив это, генератор возьмет следующий тизер - и так до
-тех пор, пока ~success~ не будет удовлетворен.
+#+NAME: hh_process_around
+#+BEGIN_SRC lisp
+  (defmethod hh-process :around (vac)
+    (dbg ":process-teaser :around:")
+    (aif (cond ((null (getf vac :src-id)) (dbg "no src-id"))
+               ((null (getf vac :salary)) (dbg "no salary"))
+               (t vac))
+         (call-next-method it)
+         nil))
+#+END_SRC
 
-Например можно отсеивать:
-- синдицированные вакансии - у них нет поля ~src-id~
-- вакансии без указания зарплаты - у них нет поля ~salary~
+Если же ~:around~-метод вызывает основной, то мы можем заняться получением страницы
+вакансии и разбором её содержимого:
+
+#+NAME: hh_process
+#+BEGIN_SRC lisp
+  (defmethod hh-process (vac)
+    (dbg ":process-teaser:")
+    (let ((vac-uri (format nil "https://spb.hh.ru/vacancy/~A" (getf vac :src-id)))
+          (ref-uri (format nil *hh-teaser-url* 1)))
+      (funcall get-page-fn vac-uri cookie-jar src-account ref-uri
+               (lambda (tag msg data) ;; failure
+                 (dbg ":hh-process:error: ~A" msg)
+                 (funcall failure tag msg data))
+               (lambda (vac-page-content new-cookie-jar new-ref) ;; success
+                 (setf cookie-jar new-cookie-jar)
+                 (let ((vacancy (funcall parse-vacancy-fn vac-page-content)))
+                   (my-merge-plists vac vacancy))))))
+#+END_SRC
+
+Разумеется, внутрь этих методов можно поместить более сложную логику - в предыдущей
+редакции здесь был пайплайн, прогонявший вакансию через правила, одно из которых
+автоматически формировало и отсылало отклик. Но пока я решил отказаться от этого
+функционала, потому что тестирование кода вместе с набором правил отнимало слишком
+много времени. Возможно я вернусь к этой идее позже, пока удобнее хачить методы прямо в
+живом образе.
+
+Мы поместим эти методы внутрь фабрики, рядом с генератором, чтобы они могли использовать
+все лексические переменные, которые предоставляет фабрика. Единственная функция,
+которую нужно передать в дополнение к ним - функция разбора вакансии -
+~parse-vacancy-fn~, которую я передаю как динамическую переменную:
 
 #+NAME: run
 #+BEGIN_SRC lisp
   <<creds>>
+
+  <<hh_parse_vacancy>>
 
   (let ((gen (factory 'hh
                       :teaser-url         *hh-teaser-url*
@@ -1193,44 +1233,312 @@ plist-деревом.
                       :src-account        *hh-account*
                       :get-page-fn        #'hh-get-page
                       :split-teasers-fn   #'hh-split-teasers
-                      :parse-teaser-fn    #'hh-parse-teaser))
-        (cnt 0))
-    (loop :for i :from 1 :to 100 :do
-       (dbg "OKAY (~A): ~A"
-            cnt
-            (funcall gen
-                     (lambda (tag msg data) ;; failure
-                       (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
-                       (error tag))
-                     (lambda (x)
-                       (prog1 (cond ((null (getf x :src-id)) (dbg "(~A) no src-id" cnt))
-                                    ((null (getf x :salary)) (dbg "(~A) no salary" cnt))
-                                    (t x))
-                         (incf cnt)))))))
+                      :parse-teaser-fn    #'hh-parse-teaser)))
+    (let ((parse-vacancy-fn #'hh-parse-vacancy))
+      (declare (special parse-vacancy-fn))
+      (loop :for i :from 1 :to 100 :do
+         (dbg "~A" (bprint (funcall gen
+                                    (lambda (tag msg data) ;; failure
+                                      (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                                      (error tag))
+                                    #'hh-process))))))
 #+END_SRC
 
-** Получение вакансии
+** Разбор вакансий
 
-Если тизер прошел через отсев, то его можно превратить в вакансию. Для этого нужно
-загрузить страницу вакансии
+Функция ~hh-parse-vacancy~ обрабатывает вакансии примерно так же как
+~hh-parse-vacancy-teaser~ обрабатывает тизеры вакансий: получает на вход html и
+превращает его в вакансию. Для этого она использует те же шаги и те же функции:
+- Преобразование html-кода в дерево s-выражений
+- Извлечение из этого дерева части, которая содержит вакансию
+- Преобразование элементов форматирования, таких как div и span в "говорящие" элементы
+  дерева для повышения читаемости (названия для преобразования извлекаются из атрибутов
+  ~class~ и ~data-qa~
+- Преобразование содержимого вакансии в plists, с отнесением отдельных элементов к
+  разным разделам информации о вакансии (sections). Для этого используются экстракторы,
+  описанные в предыдущих разделах.
+- Слияние разделов из разных plists и формирование вакансии, которая предавляет собой
+  2-х уровневое plist-дерево, в котором первый уровень - ключи разделов, а их значения
+  представляют собой второй уровень и являются plist-ами
 
-#+NAME: run
+#+NAME: hh_parse_vacancy
 #+BEGIN_SRC lisp
-  (defmethod process-teaser (current-teaser src-account referer)
-    (dbg ":process-teaser:")
-    (unless (getf current-teaser :src-id)
-      (return-from process-teaser nil))
-    (let ((vac-uri (format nil "https://spb.hh.ru/vacancy/~A" (getf current-teaser :src-id))))
-      (multiple-value-bind (vacancy new-cookies ref-url)
-          (hh-get-page vac-uri cookie-jar src-account referer)
-        (setf cookie-jar new-cookies)
-        (restart-case
-            (aif (hh-parse-vacancy vacancy)
-                 (merge-plists current-teaser it)
-                 nil)
-          (skip () nil)))))
+  <<transform_description>>
+
+  <<vacancy_extractors>>
+
+  <<vacancy_transformers>>
+
+  (defun hh-parse-vacancy (html)
+    "Получение вакансии из html"
+    (dbg ":hh-parse-vacancy:")
+    (setf *last-parse-data* html)
+    (let* ((onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" html " "))
+           (candidat (->> (html-to-tree onestring)
+                          (extract-vacancy)
+                          (maptreefilter)
+                          (transform-script)
+                          (transform-noprint)
+                          (transform-black-list)
+                          (transform-related)
+                          (transform-url)
+                          (transform-title)
+                          (transform-company-name)
+                          (transform-vacancy-compensation)
+                          (transform-longdescr)
+                          (transform-exp)
+                          (transform-jobtype)
+                          (transform-metro)
+                          ;; (transform-contacts-body)
+                          ;; (transform-contacts-fio)
+                          ;; (transform-contacts-list)
+                          ;; (transform-contacts-tr)
+                          ;; (transform-contacts-phone)
+                          ;; (transform-contacts-mail)
+                          (transform-skill-element)
+                          (transform-skills)
+                          (transform-street-address)
+                          ))
+           (vacancy `(:url ,(extract-url candidat)
+                      :title ,(extract-title candidat)
+                      :company ,(extract-company candidat)
+                      ;; :city  ,(extract-city candidat)
+                      ;; :metro ,(extract-metro candidat)
+                      :exp   ,(extract-exp candidat)
+                      ;; :long-descr ,(extract-descr candidat)
+                      :job-type ,(extract-jobtype candidat)
+                      :street-address ,(extract-street-address candidat)
+                      :skills ,(extract-skills candidat)
+                      :compensation ,(extract-compensation candidat)
+                      ;; :contacts ,(extract-contacts candidat))))
+                      )))
+      ;; (if (not (tree-plist-p vacancy))
+      ;;     (progn
+      ;;       (dbg "~A" (bprint vacancy))
+      ;;       (error 'malformed-vacancy :text))
+      ;;     (let* ((non-compacted-vacancy vacancy)
+      ;;            (compacted-vacancy (compactor vacancy))
+      ;;            )
+      ;;       ;; non-compacted-vacancy
+      ;;       compacted-vacancy
+      ;;       ))
+      candidat
+      vacancy
+      ))
+
+  ;; (print (hh-parse-vacancy *last-parse-data*))
 #+END_SRC
 
+** Преобразователь описания вакансии
+
+Теперь, можно написать функцию, которая трансформирует описание, очищая его от всего
+лишнего:
+
+#+NAME: transform_description
+#+BEGIN_SRC lisp
+  (defun transform-description (tree-descr)
+    (labels ((rem-space (tree)
+               (cond ((consp tree) (cons (rem-space (car tree))
+                                         (rem-space (remove-if #'(lambda (x) (equal x " "))
+                                                               (cdr tree)))))
+                     (t tree))))
+      (append `((:p))
+              (mtm (`("p" nil ,@in) `((:p) ,@in))
+                   (mtm (`("ul" nil ,@in) `((:ul) ,@in))
+                        (mtm (`("li" nil ,@in) `((:li) ,@in))
+                             (mtm (`("em" nil ,@in) `((:b) ,@in))
+                                  (mtm (`("strong" nil ,@in) `((:b) ,@in))
+                                       (mtm (`("br") `((:br)))
+                                            (rem-space tree-descr))))))))))
+#+END_SRC
+
+** Набор экстракторов для вакансий
+
+#+NAME: vacancy_extractors
+#+BEGIN_SRC lisp
+  (make-extract (vacancy rest)
+    `("div" (("itemscope" "itemscope") ("itemtype" "http://schema.org/JobPosting")) ,@rest))
+
+  (make-extract (url url)
+    `(:url ,url))
+
+  (make-extract (title title)
+    `(:title ,title))
+
+  (make-extract (company `(:company-name ,name :company-href ,href))
+    `(:company-name ,name :company-href ,href))
+
+  (make-extract (compensation compensation)
+    `(:compensation ,compensation))
+
+  ;; (make-extract (metro metro)
+  ;;   `("metro-station" NIL ,_ ,metro))
+
+  (make-extract (exp exp)
+    `(:exp ,exp))
+
+  (make-extract (descr rest)
+    `(:long-descr ,@rest))
+
+  (make-extract (jobtype `(:emptype ,emptype :workhours ,workhours))
+    `(:emptype ,emptype :workhours ,workhours))
+
+  (make-extract (street-address street-address)
+    `(:street-address ,street-address))
+
+  (make-extract (skills skills)
+    `(:skills ,skills))
+
+
+  ;; (make-extract (contacts `(:fio ,fio :contacts ,rest))
+  ;;   `("vacancy-contacts__body" NIL (:FIO ,fio)
+  ;;                              (:CONTACTS-LIST ,@rest)))
+#+END_SRC
+
+** Набор преобразователей для вакансий
+
+Эти макросы по шаблону преобразуют вакансии в plist
+
+#+NAME: vacancy_transformers
+#+BEGIN_SRC lisp
+  (make-transform (script)
+    (`("script" (("data-name" ,name) ("data-params" ,_)))
+      `(:garbage "script")))
+
+  (make-transform (noprint)
+    (`("vacancy-noprint" NIL ,_)
+      `(:garbage "noprint")))
+
+  (make-transform (black-list)
+    (`("vacancy-serp-item__controls-item" NIL ,@rest)
+      `(:garbage "black-list")))
+
+  (make-transform (related)
+    (`("vacancy-view-vacancies-from-search" NIL ,@rest)
+      `(:garbage "related")))
+
+  (make-transform (url)
+    (`("meta" (("itemprop" "url") ("content" ,url)))
+      `(:url ,url)))
+
+  (make-transform (title)
+    (`("h1" (("class" "header") ("data-qa" "vacancy-title")) ,title)
+      `(:title ,title)))
+
+  (make-transform (company-name)
+    (`("vacancy-company-name"
+       (("itemprop" "hiringOrganization") ("href" ,company-href))
+       ,company-name)
+      `(:company-name ,company-name :company-href ,company-href)))
+
+  (make-transform (vacancy-compensation)
+    (`("vacancy-serp__vacancy-compensation"
+       NIL
+       ("meta" (("itemprop" "salaryCurrency") ("content" ,currency)))
+       ("meta" (("itemprop" "baseSalary") ("content" ,salary)))
+       ,salary-text)
+      (let ((currency currency)
+            (salary-text (ppcre:regex-replace-all " " salary-text ""))
+            (salary-min nil)
+            (salary-max nil))
+        (multiple-value-bind (currency salary-text)
+            (parse-salary-currency salary-text currency)
+          (multiple-value-bind (salary-min salary-max comment)
+              (parse-salary-text salary-text)
+            (when (null salary-min)
+              (setf salary-min salary-max))
+            (when (null salary-max)
+              (setf salary-max salary-min))
+            `(:COMPENSATION
+              (:currency ,currency
+               :salary ,(parse-integer salary)
+               :salary-text ,salary-text
+               :salary-min ,salary-min
+               :salary-max ,salary-max
+               :salary-comment ,comment)))))))
+
+  (make-transform (longdescr)
+    (`("vacancy-description"
+       (("itemprop" "description"))
+       ,@descr)
+      `(:long-descr ,(transform-description descr))))
+
+  (make-transform (skill-element)
+    (`("skills-element"
+       (("data-tag-id" ,tag))
+       ("bloko-tag__section bloko-tag__section_text"
+        (("title" ,title))
+        ("bloko-tag__text" NIL ,tagtext)))
+      `(:skill (:tag ,tag :title ,title :tagtext ,tagtext))))
+
+  (make-transform (skills)
+    (`("vacancy-section" NIL ("h2" (("class" "header header_level-2")) "Ключевые навыки") ,@rest)
+      `(:skills ,(mapcar #'cadadr rest))))
+
+  (make-transform (street-address)
+    (`("meta"
+       (("itemprop" "streetAddress")
+        ("content" ,street-address)))
+      `(:street-address ,street-address)))
+
+  (make-transform (exp)
+    (`("vacancy-experience" NIL ,exp)
+      `(:exp ,exp)))
+
+  (make-transform (jobtype)
+    (`("p" (("data-qa" "vacancy-view-employment-mode"))
+           ("span" (("itemprop" "employmentType")) ,emptype) ", "
+           ("span" (("itemprop" "workHours")) ,workhours))
+      `(:emptype ,emptype :workhours ,workhours)))
+
+  (make-transform (metro)
+    (`("metro-station" NIL ("metro-point" (("style" ,color))) ,metro)
+      `(:metro ,metro :color ,color)))
+
+  ;; contacts not tested
+
+  ;; (make-transform (contacts-body)
+  ;;   (`("vacancy-contacts__body"
+  ;;      NIL
+  ;;      ("l-content-paddings" NIL ,@rest))
+  ;;     `(:contacts ,@rest)))
+
+  ;; (make-transform (contacts-fio)
+  ;;   (`("vacancy-contacts__fio" NIL ,fio)
+  ;;     `(:fio ,fio)))
+
+  ;; (make-transform (contacts-list)
+  ;;   (`("vacancy-contacts__list"
+  ;;      NIL
+  ;;      ("tbody" NIL ,@rest))
+  ;;     `(:contacts-list ,rest)))
+
+  ;; (make-transform (contacts-tr)
+  ;;   (`("tr" NIL
+  ;;           ("vacancy-contacts__list-title" NIL ,_)
+  ;;           ("td" NIL ,@contacts-data))
+  ;;     `(:contacts-tr ,contacts-data)))
+
+  ;; (make-transform (contacts-phone)
+  ;;   (`("vacancy-contacts__phone" NIL ,phone ,@rest)
+  ;;     `(:phone ,phone :phone-comment ,rest)))
+
+  ;; (make-transform (contacts-mail)
+  ;;   (`("vacancy-contacts__email" (("href" ,mail-link) ("rel" "nofollow")) ,email)
+  ;;     `(:mail-link ,mail-link :email ,email)))
+
+  ;; (make-transform (contacts-tr)
+  ;;   (`("tr" NIL
+  ;;           ("vacancy-contacts__list-title" NIL ,_)
+  ;;           ("td" NIL ,contacts-data))
+  ;;     `(:contacts-tr ,contacts-data)))
+
+  ;; (make-transform (contacts-list)
+  ;;   (`("vacancy-contacts__list"
+  ;;      NIL
+  ;;      ("tbody" NIL ,@rest))
+  ;;     `(:contacts-list ,rest)))
+#+END_SRC
 
 * Сборка
 
