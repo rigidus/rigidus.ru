@@ -1549,7 +1549,7 @@ plist-деревом.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="hh_process_around">(<span style="color: #af00ff;">defmethod</span> <span style="color: #0000ff;">hh-process</span> <span style="color: #5f5f87;">:around</span> (vac)
+<pre class="src src-lisp" id="hh_process_around_replaced">(<span style="color: #af00ff;">defmethod</span> <span style="color: #0000ff;">hh-process</span> <span style="color: #5f5f87;">:around</span> (vac)
   (dbg <span style="color: #87005f;">":process-teaser :around:"</span>)
   (aif (<span style="color: #af00ff;">cond</span> ((null (getf vac <span style="color: #5f5f87;">:src-id</span>)) (dbg <span style="color: #87005f;">"no src-id"</span>))
              ((null (getf vac <span style="color: #5f5f87;">:salary</span>)) (dbg <span style="color: #87005f;">"no salary"</span>))
@@ -1582,15 +1582,6 @@ plist-деревом.
 </div>
 
 <p>
-Разумеется, внутрь этих методов можно поместить более сложную логику - в предыдущей
-редакции здесь был пайплайн, прогонявший вакансию через правила, одно из которых
-автоматически формировало и отсылало отклик. Но пока я решил отказаться от этого
-функционала, потому что тестирование кода вместе с набором правил отнимало слишком
-много времени. Возможно я вернусь к этой идее позже, пока удобнее хачить методы прямо в
-живом образе.
-</p>
-
-<p>
 Мы поместим эти методы внутрь фабрики, рядом с генератором, чтобы они могли использовать
 все лексические переменные, которые предоставляет фабрика. Единственная функция,
 которую нужно передать в дополнение к ним - функция разбора вакансии -
@@ -1599,7 +1590,7 @@ plist-деревом.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="run">&lt;&lt;creds&gt;&gt;
+<pre class="src src-lisp" id="run_replaced">&lt;&lt;creds&gt;&gt;
 
 &lt;&lt;hh_parse_vacancy&gt;&gt;
 
@@ -1615,6 +1606,173 @@ plist-деревом.
   (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy))
     (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn))
     (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 100 <span style="color: #5f5f87;">:do</span>
+       (dbg <span style="color: #87005f;">"~A"</span> (bprint (funcall gen
+                                  (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
+                                    (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
+                                    (<span style="color: #ff0000; font-weight: bold;">error</span> tag))
+                                  #'hh-process))))))
+</pre>
+</div>
+
+<p>
+Разумеется, внутрь этих методов можно поместить более сложную логику - например
+пайплайн, прогоняюший тизер или вакансию через <code>набор правил</code>. Это не обязательно
+правила отсева, например, одно из правил может автоматически формировать и отсылать
+работодателю отклик на вакансию. Это уже, так называемая, <code>машина Э.Поста</code>, а все
+вместе представляет собой <code>продукционную систему</code> с прямой цепочкой вывода. Подробнее
+про продукционные системы <a href="https://www.ngpedia.ru/id429603p1.html">тут</a> и <a href="https://www.myshared.ru/slide/445840/">тут</a>.
+</p>
+
+<p>
+У нас будет два набора правил:
+</p>
+<ul class="org-ul">
+<li>для обработки тизеров
+</li>
+<li>для обработки вакансий
+</li>
+</ul>
+
+<p>
+Каждое правило должно состоять из двух частей:
+</p>
+<ul class="org-ul">
+<li>условие срабатывания (назовем его <code>antecedent</code>)
+</li>
+<li>код, который будет выполнен, в случае если <code>antecedent</code> истиненн (назоваем его
+<code>consequent</code>)
+</li>
+</ul>
+
+<p>
+Мы будем задавать набор правил, как список пар. Каждая пара состоит из двух
+лямбда-функций, первая из которых <code>antecedent</code>, вторая - <code>consequent</code>.
+</p>
+
+<p>
+Если правило сработало, оно должно возвратить два значения:
+</p>
+<ul class="org-ul">
+<li>результат применения <code>consequent</code> к тизеру или вакансии
+</li>
+<li>указание процессору правил (например, прекратить обработку)
+</li>
+</ul>
+
+<p>
+Если результат <code>nil</code> - тизер или вакансия отбрасывается.
+</p>
+
+<p>
+Процессор правил обрабатывает следущие особые случаи:
+</p>
+<ul class="org-ul">
+<li>Если какое-то из правил возвращает во втором возвращаемом значении <code>:stop</code> -
+обработка прекращается и возвращается текущий обработанный результат
+</li>
+<li>Если какое-то из правил возвращает во втором параметре <code>:renew</code> - то обработка
+текущего входного результата начинается с самого первого правила.
+</li>
+</ul>
+
+
+<div class="figure">
+<p><img src="../../img/process.png" alt="process.png">
+</p>
+</div>
+
+<p>
+По окончании обработки возвращается результирующая вакансия (или тизер), которая может
+быть модифицирована <code>consequent</code>-ами сработавших правил.
+</p>
+
+<p>
+[TODO:gmm] Если какое-то из правил вызвало ошибку времени выполнения - можно
+предоставить пользовательские перезапуски в которых можно выбрать варианты:
+</p>
+<ul class="org-ul">
+<li>пропустить (<code>:skip</code>) правило, вызвавшее ошибку
+</li>
+<li>исправить правило и перезапустить его
+</li>
+<li>остановить (<code>:stop</code>) обработку вакансии правилами
+</li>
+<li>начать обработку снова (<code>:renew</code>)
+</li>
+<li>отредактировать вакансию вручную
+</li>
+</ul>
+
+<p>
+Сформируем процессор правил:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="rule_processor">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">rule-processor</span> (vac rules)
+  (dbg <span style="color: #87005f;">":process: (count rules: ~A)"</span> (length rules))
+  (<span style="color: #af00ff;">let</span> ((vac vac))
+    (<span style="color: #af00ff;">tagbody</span>
+     renew
+       (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> (ant . con) <span style="color: #5f5f87;">:in</span> rules <span style="color: #5f5f87;">:do</span>
+          (<span style="color: #af00ff;">when</span> (funcall ant vac)
+            (<span style="color: #af00ff;">multiple-value-bind</span> (result directive)
+                (funcall con vac)
+              (setf vac result)
+              (<span style="color: #af00ff;">when</span> (equal directive <span style="color: #5f5f87;">:stop</span>)
+                (<span style="color: #af00ff;">go</span> stop))
+              (<span style="color: #af00ff;">when</span> (equal directive <span style="color: #5f5f87;">:renew</span>)
+                (<span style="color: #af00ff;">go</span> renew)))))
+     stop)
+    (values vac)))
+</pre>
+</div>
+
+<p>
+Теперь, когда у нас есть процессор правил, мы можем изменить <code>hh-process-around</code>, чтобы
+использовать его:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="hh_process_around">(<span style="color: #af00ff;">defmethod</span> <span style="color: #0000ff;">hh-process</span> <span style="color: #5f5f87;">:around</span> (vac)
+  (dbg <span style="color: #87005f;">":process-teaser :around:"</span>)
+  (aif (rule-processor vac rules-for-teasers)
+       (rule-processor (call-next-method it) rules-for-vacs)
+       nil))
+</pre>
+</div>
+
+<p>
+Нам также придется передать правила для тизеров и вакансий как динамические переменные
+<code>rules-for-teasers</code> <code>rules-for-vacs</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="run">&lt;&lt;creds&gt;&gt;
+
+&lt;&lt;hh_parse_vacancy&gt;&gt;
+
+&lt;&lt;rule_processor&gt;&gt;
+
+(<span style="color: #af00ff;">let</span> ((gen (factory 'hh
+                    <span style="color: #5f5f87;">:teaser-url</span>         *hh-teaser-url*
+                    <span style="color: #5f5f87;">:idx</span>                0
+                    <span style="color: #5f5f87;">:ref</span>                <span style="color: #87005f;">"https://spb.hh.ru"</span>
+                    <span style="color: #5f5f87;">:cookie-jar</span>         (make-instance 'drakma:cookie-jar)
+                    <span style="color: #5f5f87;">:src-account</span>        *hh-account*
+                    <span style="color: #5f5f87;">:get-page-fn</span>        #'hh-get-page
+                    <span style="color: #5f5f87;">:split-teasers-fn</span>   #'hh-split-teasers
+                    <span style="color: #5f5f87;">:parse-teaser-fn</span>    #'hh-parse-teaser)))
+  (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy)
+        (rules-for-teasers `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+                              . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
+                             (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
+                              . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>)))))
+        (rules-for-vacs nil))
+    (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
+    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 1000 <span style="color: #5f5f87;">:do</span>
        (dbg <span style="color: #87005f;">"~A"</span> (bprint (funcall gen
                                   (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
                                     (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
