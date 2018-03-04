@@ -1359,7 +1359,7 @@ plist-деревом.
 Нам также придется передать правила для тизеров и вакансий как динамические переменные
 ~rules-for-teasers~ ~rules-for-vacs~:
 
-#+NAME: run
+#+NAME: run_replaced
 #+BEGIN_SRC lisp
   <<creds>>
 
@@ -1377,10 +1377,12 @@ plist-деревом.
                       :split-teasers-fn   #'hh-split-teasers
                       :parse-teaser-fn    #'hh-parse-teaser)))
     (let ((parse-vacancy-fn #'hh-parse-vacancy)
-          (rules-for-teasers `((,(lambda (vac) (null (getf vac :src-id)))
-                                . ,(lambda (vac) (dbg "no src-id")))
-                               (,(lambda (vac) (null (getf vac :salary)))
-                                . ,(lambda (vac) (dbg "no salary")))))
+          (rules-for-teasers
+           `((,(lambda (vac) (null (getf vac :src-id)))
+               . ,(lambda (vac) (dbg "no src-id")))
+             (,(lambda (vac) (null (getf vac :salary)))
+               . ,(lambda (vac) (dbg "no salary"))))
+            )
           (rules-for-vacs nil))
       (declare (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
       (loop :for i :from 1 :to 1000 :do
@@ -1432,9 +1434,6 @@ plist-деревом.
                           (transform-noprint)
                           (transform-black-list)
                           (transform-related)
-                          (transform-url)
-                          (transform-title)
-                          ;; (transform-company-name)
                           (transform-longdescr)
                           (transform-exp)
                           (transform-jobtype)
@@ -1453,7 +1452,7 @@ plist-деревом.
                           ))
            (vacancy `(
                       (:exp   ,(extract-exp candidat))
-                      ;; (:long-descr ,(extract-descr candidat))
+                      (:long-descr ,(extract-descr candidat))
                       (:job-type ,(extract-jobtype candidat))
                       (:street-address ,(extract-street-address candidat))
                       (:skills ,(extract-skills candidat))
@@ -1691,7 +1690,53 @@ plist-деревом.
 ~:resume~.
 
 В данный момент хорошим рабочим решением будет хранить такие "составные объекты" в
-хэш-таблице, с ключем равным ~src-id~ вакансии.
+хэш-таблице, с ключем равным ~src-id~ вакансии:
+
+#+NAME: run
+#+BEGIN_SRC lisp
+  <<creds>>
+
+  <<hh_parse_vacancy>>
+
+  <<rule_processor>>
+
+  (defparameter *vacs* (make-hash-table))
+
+  (let ((gen (factory 'hh
+                      :teaser-url         *hh-teaser-url*
+                      :idx                0
+                      :ref                "https://spb.hh.ru"
+                      :cookie-jar         (make-instance 'drakma:cookie-jar)
+                      :src-account        *hh-account*
+                      :get-page-fn        #'hh-get-page
+                      :split-teasers-fn   #'hh-split-teasers
+                      :parse-teaser-fn    #'hh-parse-teaser)))
+    (let ((parse-vacancy-fn #'hh-parse-vacancy)
+          (rules-for-teasers
+           `((,(lambda (vac) (null (getf vac :src-id)))
+               . ,(lambda (vac) (dbg "no src-id")))
+             (,(lambda (vac) (null (getf vac :salary)))
+               . ,(lambda (vac) (dbg "no salary"))))
+            )
+          (rules-for-vacs nil))
+      (declare (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
+      (loop :for i :from 1 :to 1000 :do
+         (let* ((vac (funcall gen
+                              (lambda (tag msg data) ;; failure
+                                (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                                (error tag))
+                              #'hh-process))
+                (key (getf vac :src-id)))
+           (dbg "~A" (bprint vac))
+           (multiple-value-bind (old-val present)
+               (gethash key *vacs*)
+             (setf (gethash key *vacs*)
+                   (if (not present)
+                       `(:vac ,vac :domain :unsort)
+                       (err "vac-exists"))))))))
+#+END_SRC
+
+
 
 Но сначала я начну с определения возможных ~доменов~:
 

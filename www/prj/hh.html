@@ -1775,7 +1775,7 @@ plist-деревом.
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="run">&lt;&lt;creds&gt;&gt;
+<pre class="src src-lisp" id="run_replaced">&lt;&lt;creds&gt;&gt;
 
 &lt;&lt;hh_parse_vacancy&gt;&gt;
 
@@ -1791,10 +1791,12 @@ plist-деревом.
                     <span style="color: #5f5f87;">:split-teasers-fn</span>   #'hh-split-teasers
                     <span style="color: #5f5f87;">:parse-teaser-fn</span>    #'hh-parse-teaser)))
   (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy)
-        (rules-for-teasers `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
-                              . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
-                             (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
-                              . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>)))))
+        (rules-for-teasers
+         `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
+           (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
+             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>))))
+          )
         (rules-for-vacs nil))
     (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
     (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 1000 <span style="color: #5f5f87;">:do</span>
@@ -1860,9 +1862,6 @@ plist-деревом.
                         (transform-noprint)
                         (transform-black-list)
                         (transform-related)
-                        (transform-url)
-                        (transform-title)
-                        <span style="color: #af0000;">;; </span><span style="color: #af0000;">(transform-company-name)</span>
                         (transform-longdescr)
                         (transform-exp)
                         (transform-jobtype)
@@ -1881,7 +1880,7 @@ plist-деревом.
                         ))
          (vacancy `(
                     (<span style="color: #5f5f87;">:exp</span>   ,(extract-exp candidat))
-                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">(:long-descr ,(extract-descr candidat))</span>
+                    (<span style="color: #5f5f87;">:long-descr</span> ,(extract-descr candidat))
                     (<span style="color: #5f5f87;">:job-type</span> ,(extract-jobtype candidat))
                     (<span style="color: #5f5f87;">:street-address</span> ,(extract-street-address candidat))
                     (<span style="color: #5f5f87;">:skills</span> ,(extract-skills candidat))
@@ -2169,8 +2168,55 @@ plist-деревом.
 
 <p>
 В данный момент хорошим рабочим решением будет хранить такие "составные объекты" в
-хэш-таблице, с ключем равным <code>src-id</code> вакансии.
+хэш-таблице, с ключем равным <code>src-id</code> вакансии:
 </p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="run">&lt;&lt;creds&gt;&gt;
+
+&lt;&lt;hh_parse_vacancy&gt;&gt;
+
+&lt;&lt;rule_processor&gt;&gt;
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vacs*</span> (make-hash-table))
+
+(<span style="color: #af00ff;">let</span> ((gen (factory 'hh
+                    <span style="color: #5f5f87;">:teaser-url</span>         *hh-teaser-url*
+                    <span style="color: #5f5f87;">:idx</span>                0
+                    <span style="color: #5f5f87;">:ref</span>                <span style="color: #87005f;">"https://spb.hh.ru"</span>
+                    <span style="color: #5f5f87;">:cookie-jar</span>         (make-instance 'drakma:cookie-jar)
+                    <span style="color: #5f5f87;">:src-account</span>        *hh-account*
+                    <span style="color: #5f5f87;">:get-page-fn</span>        #'hh-get-page
+                    <span style="color: #5f5f87;">:split-teasers-fn</span>   #'hh-split-teasers
+                    <span style="color: #5f5f87;">:parse-teaser-fn</span>    #'hh-parse-teaser)))
+  (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy)
+        (rules-for-teasers
+         `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
+           (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
+             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>))))
+          )
+        (rules-for-vacs nil))
+    (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
+    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 1000 <span style="color: #5f5f87;">:do</span>
+       (<span style="color: #af00ff;">let*</span> ((vac (funcall gen
+                            (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
+                              (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
+                              (<span style="color: #ff0000; font-weight: bold;">error</span> tag))
+                            #'hh-process))
+              (key (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+         (dbg <span style="color: #87005f;">"~A"</span> (bprint vac))
+         (<span style="color: #af00ff;">multiple-value-bind</span> (old-val present)
+             (gethash key *vacs*)
+           (setf (gethash key *vacs*)
+                 (<span style="color: #af00ff;">if</span> (not present)
+                     `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsort</span>)
+                     (err <span style="color: #87005f;">"vac-exists"</span>))))))))
+</pre>
+</div>
+
+
 
 <p>
 Но сначала я начну с определения возможных <code>доменов</code>:
