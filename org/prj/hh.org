@@ -2988,8 +2988,9 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (setf cookie-jar new-cookie-jar)
        (resume-personal *personal*)
        (resume-education *education*)
-       (resume-position (concatenate 'string "Руководитель разработки ПО" (symbol-name (gensym)))
-                        "400000"
+       (resume-position (concatenate 'string "Senior Developer" ;; (symbol-name (gensym))
+                                     )
+                        "300000"
                         "3 221")
        (resume-expiriences *expiriences* *about*)
        (resume-languages *languages*)
@@ -3019,6 +3020,57 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   ;; keySkills.string=Nginx
 #+END_SRC
 
+* Сценарий обработки вакансий
+
+Получив вакансии я оцениваю их в порядке - от самых интересных к менее интересным. В
+общем случае чем вакансия более высокооплачиваемая - тем она должна быть интереснее, но
+иногда внутри вакансий можно искать слова (аббревиатуры), которые делают ее интересной
+вне зависимости от зарплаты.
+
+Таким образом, сценарий следующий:
+- Отсортировать вакансии
+- Двигаясь по порядку:
+  - Изменить её домен
+  - Опционально - сразу же отправить отклик на вакансию
+    - При необходимости сформировав под нее резюме
+
+** Список интересных вакансий
+
+Берем все вакансии, удаляем из них те, что без указания зарплаты, формируем их них
+список, который сортируем по зарплате
+
+#+BEGIN_SRC lisp
+  (defparameter *w*
+    (sort
+     (remove-if (lambda (x) (null (getf x :sal)))
+                (loop for key being the hash-keys of *vacs*
+                   using (hash-value val) :collect
+                     (list
+                      :src (getf (getf val :vac) :src-id)
+                      :nam (getf (getf val :vac) :name)
+                      :sal (getf (getf val :vac) :salary)
+                      :cur (getf (getf val :vac) :currency)
+                      :dat (getf (getf val :vac) :date))))
+     (lambda (a b)
+       (> (getf a :sal) (getf b :sal)))))
+
+  (length *w*)
+
+  (print *w*)
+#+END_SRC
+
+** Цикл обработки вакансий
+
+В цикле:
+- печатаем вакансию
+- запрашиваем, что с ней делать:
+  - считать неинтересной
+  - ничего не делать
+  - изменить ее домен
+  - отправить отклик
+    - отправить отклик, создав резюме
+
+* TODO Сценарий обработки отзывов
 * Сборка
 
 #+NAME: vacancy
