@@ -1732,7 +1732,7 @@ plist-деревом.
                (gethash key *vacs*)
              (setf (gethash key *vacs*)
                    (if (not present)
-                       `(:vac ,vac :domain :unsort)
+                       `(:vac ,vac :domain :unsorted)
                        (err "vac-exists"))))))))
 #+END_SRC
 
@@ -3034,25 +3034,23 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   - Опционально - сразу же отправить отклик на вакансию
     - При необходимости сформировав под нее резюме
 
-** Список интересных вакансий
+** Список отсортированых вакансий
 
-Берем все вакансии, удаляем из них те, что без указания зарплаты, формируем их них
-список, который сортируем по зарплате
+Берем все вакансии, кроме:
+- тех, что без указания зарплаты,
+- тех, у которых домен не :unsorted
+формируем их них список, который сортируем по зарплате от большей к меньшей
 
 #+BEGIN_SRC lisp
   (defparameter *w*
-    (sort
-     (remove-if (lambda (x) (null (getf x :sal)))
-                (loop for key being the hash-keys of *vacs*
-                   using (hash-value val) :collect
-                     (list
-                      :src (getf (getf val :vac) :src-id)
-                      :nam (getf (getf val :vac) :name)
-                      :sal (getf (getf val :vac) :salary)
-                      :cur (getf (getf val :vac) :currency)
-                      :dat (getf (getf val :vac) :date))))
-     (lambda (a b)
-       (> (getf a :sal) (getf b :sal)))))
+    (sort (loop
+             :for key :being :the :hash-keys :of *vacs*
+             :using (hash-value val)
+             :unless (null (getf (getf val :vac) :salary))
+             :when (equal (getf val :domain) :unsorted)
+             :collect val)
+          (lambda (a b)
+            (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
 
   (length *w*)
 
@@ -3069,6 +3067,37 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   - изменить ее домен
   - отправить отклик
     - отправить отклик, создав резюме
+
+#+BEGIN_SRC lisp
+  (tagbody
+     (loop :for vac :in *w* :do
+        (tagbody
+         show-vac
+           (format t "~%~A~%" (bprint vac))
+           (format t "~%[0] - Break~%[1] - No action~%[2] - Change domain~%[3] - Respond~%")
+         input-one-action
+           (let ((input (read-line)))
+             (cond ((equal input "0") (go fin))
+                   ((equal input "1") (go next))
+                   ((equal input "2")
+                    (progn
+                      (format t "~%Enter new domain (empty for return back without change): ")
+                      (let ((input (read-line)))
+                        (cond ((equal input "") (go show-vac))
+                              (t (setf (getf vac :domain) input)
+                                 (let ((src-id (getf (getf vac :vac) :src-id)))
+                                   (setf (gethash src-id *vacs*) vac)
+                                   (format t "[~A]" src-id)
+                                   ))))))
+                   )
+             )
+         next))
+   fin
+     (format t "loop breaked"))
+
+  (gethash 24473930 *vacs*)
+
+#+END_SRC
 
 * TODO Сценарий обработки отзывов
 * Сборка
