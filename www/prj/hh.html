@@ -105,7 +105,7 @@
 <li><a href="#unnumbered-58">Ручное создание резюме</a></li>
 <li><a href="#unnumbered-59">Сценарий обработки вакансий</a>
 <ul>
-<li><a href="#unnumbered-60">Список интересных вакансий</a></li>
+<li><a href="#unnumbered-60">Список отсортированых вакансий</a></li>
 <li><a href="#unnumbered-61">Цикл обработки вакансий</a></li>
 </ul>
 </li>
@@ -2239,7 +2239,7 @@ plist-деревом.
              (gethash key *vacs*)
            (setf (gethash key *vacs*)
                  (<span style="color: #af00ff;">if</span> (not present)
-                     `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsort</span>)
+                     `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsorted</span>)
                      (err <span style="color: #87005f;">"vac-exists"</span>))))))))
 </pre>
 </div>
@@ -2618,7 +2618,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 <h3 id="unnumbered-46">Вспомогательные макросы</h3>
 <div class="outline-text-3" id="text-unnumbered-46">
 <p>
-Нам потребуется расширить emacs функцией, которая будет генерировать код из таблиц.
+Нам потребуется расширить emacs функцией, которая будет генерировать код из таблиц,
+определенных в этом литературном исходнике
 </p>
 
 <p>
@@ -2634,10 +2635,72 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 <p>
 Напишем генератор, который собирает POST-запрос из таблицы с двумя столбцами, в первом
-из которых лежит ключ, а во втором - значение. Если значение начинается с символа
-двоеточия - то мы отправляем его "как есть" (но без двоеточия), а противном случае мы
-считаем его accessor-ом и кодируем в url-encode.
+из которых лежит ключ, а во втором - значение. Пример такой таблицы:
 </p>
+
+<table id="example_post_table">
+
+
+<colgroup>
+<col  class="left">
+
+<col  class="left">
+</colgroup>
+<tbody>
+<tr>
+<td class="left">phone.type</td>
+<td class="left">:cell</td>
+</tr>
+
+<tr>
+<td class="left">phone.country</td>
+<td class="left">cell-phone-country</td>
+</tr>
+
+<tr>
+<td class="left">phone.city</td>
+<td class="left">cell-phone-city</td>
+</tr>
+
+<tr>
+<td class="left">phone.number</td>
+<td class="left">cell-phone-number</td>
+</tr>
+
+<tr>
+<td class="left">phone.comment</td>
+<td class="left">cell-phone-comment</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Если значение начинается с символа двоеточия - то мы отправляем его "как есть" (но без
+двоеточия), а противном случае мы считаем его accessor-ом и кодируем в url-encode.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp" id="gen_org_confirm">(gen-post example_post_table)
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="test">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">set-resume-personal</span> (cookie-jar resume <span style="color: #008700;">&amp;optional</span> (resume-id <span style="color: #87005f;">""</span>))
+  (<span style="color: #af00ff;">with-set-resume-section</span> ((format nil <span style="color: #87005f;">"http://spb.hh.ru/applicant/resumes/edit/personal?resume=~A"</span> resume-id)
+                            &lt;&lt;gen_post(personal_eq, <span style="color: #87005f;">"resume"</span>)&gt;&gt;
+                            )
+    (values
+     uri
+     headers
+     (flexi-streams:octets-to-string body-or-stream <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(let ((cookie-jar (make-instance 'drakma:cookie-jar)))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(print (set-resume-personal cookie-jar (car (all-resume)))))</span>
+</pre>
+</div>
+
 
 <div class="org-src-container">
 
@@ -4269,6 +4332,39 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                `((<span style="color: #87005f;">"_xsrf"</span> . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))))
            (split-sequence:split-sequence #\<span style="color: #af00ff;">=</span> (puri:uri-query uri))))))))
 
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">resume-visibility</span> (val)
+  (<span style="color: #af00ff;">let</span> ((url (format nil <span style="color: #87005f;">"https://spb.hh.ru/applicant/resumes/edit/visibility?resume=~A"</span> resume-id)))
+    (hh-get-page
+     url cookie-jar *hh-account* referer #'stderr
+     (<span style="color: #af00ff;">lambda</span> (response new-cookie-jar url)
+       (setf cookie-jar new-cookie-jar)
+       (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
+         (send-post-multiple-values
+             (url
+              cookie-jar
+              cookie-alist
+              (append
+               `((<span style="color: #87005f;">"accessType.string"</span> . ,val))
+               `((<span style="color: #87005f;">"_xsrf"</span> . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))))
+           (split-sequence:split-sequence #\<span style="color: #af00ff;">=</span> (puri:uri-query uri))))))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">resume-touch</span> ()
+  (<span style="color: #af00ff;">let</span> ((url (format nil <span style="color: #87005f;">"https://spb.hh.ru/applicant/resumes/touch"</span>)))
+    (hh-get-page
+     url cookie-jar *hh-account* referer #'stderr
+     (<span style="color: #af00ff;">lambda</span> (response new-cookie-jar url)
+       (setf cookie-jar new-cookie-jar)
+       (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
+         (send-post-multiple-values
+             (url
+              cookie-jar
+              cookie-alist
+              (append
+               `((<span style="color: #87005f;">"resume"</span> . ,resume-id)
+                 (<span style="color: #87005f;">"publish"</span> . <span style="color: #87005f;">"next"</span>))
+               `((<span style="color: #87005f;">"_xsrf"</span> . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))))
+           (split-sequence:split-sequence #\<span style="color: #af00ff;">=</span> (puri:uri-query uri))))))))
+
 (<span style="color: #af00ff;">let*</span> ((cookie-jar (make-instance 'drakma:cookie-jar))
        (resume-id <span style="color: #87005f;">""</span>)
        (referer <span style="color: #87005f;">"https://spb.hh.ru"</span>))
@@ -4280,18 +4376,15 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
      (setf cookie-jar new-cookie-jar)
      (resume-personal *personal*)
      (resume-education *education*)
-     (resume-position (concatenate 'string <span style="color: #87005f;">"Senior Developer"</span> <span style="color: #af0000;">;; </span><span style="color: #af0000;">(symbol-name (gensym))</span>
+     (resume-position (concatenate 'string <span style="color: #87005f;">"Senior Developer "</span> (symbol-name (gensym))
                                    )
-                      <span style="color: #87005f;">"300000"</span>
+                      <span style="color: #87005f;">"400000"</span>
                       <span style="color: #87005f;">"3 221"</span>)
      (resume-expiriences *expiriences* *about*)
      (resume-languages *languages*)
-     (resume-contacts *contacts*))))
-
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">title.string=IT-%D0%B4%D0%B8%D1%80%D0%B5%D0%BA%D1%82%D0%BE%D1%80+%2F+%D0%A0%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D0%B8%D1%82%D0%B5%D0%BB%D1%8C+%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B8+%D0%9F%D0%9EG2450&amp;</span>
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">profArea=1&amp;specialization.string=221&amp;specialization.string=3&amp;salary.amount=160000&amp;salary.currency=RUR&amp;employment.string=full&amp;workSchedule.string=full_day&amp;_xsrf=5e9fb9ec46e64214f25085132e141e7e</span>
-
+     (resume-contacts *contacts*)
+     (resume-visibility <span style="color: #87005f;">"no_one"</span>)
+     (resume-touch))))
 
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1050;&#1051;&#1070;&#1063;&#1045;&#1042;&#1067;&#1045; &#1053;&#1040;&#1042;&#1067;&#1050;&#1048;</span>
 
@@ -4347,28 +4440,32 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </div>
 
 <div id="outline-container-unnumbered-60" class="outline-3">
-<h3 id="unnumbered-60">Список интересных вакансий</h3>
+<h3 id="unnumbered-60">Список отсортированых вакансий</h3>
 <div class="outline-text-3" id="text-unnumbered-60">
 <p>
-Берем все вакансии, удаляем из них те, что без указания зарплаты, формируем их них
-список, который сортируем по зарплате
+Берем все вакансии, кроме:
+</p>
+<ul class="org-ul">
+<li>тех, что без указания зарплаты,
+</li>
+<li>тех, у которых домен не :unsorted
+</li>
+</ul>
+<p>
+формируем их них список, который сортируем по зарплате от большей к меньшей
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-lisp">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*w*</span>
-  (sort
-   (remove-if (<span style="color: #af00ff;">lambda</span> (x) (null (getf x <span style="color: #5f5f87;">:sal</span>)))
-              (<span style="color: #af00ff;">loop</span> for key being the hash-keys of *vacs*
-                 using (hash-value val) <span style="color: #5f5f87;">:collect</span>
-                   (list
-                    <span style="color: #5f5f87;">:src</span> (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)
-                    <span style="color: #5f5f87;">:nam</span> (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:name</span>)
-                    <span style="color: #5f5f87;">:sal</span> (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary</span>)
-                    <span style="color: #5f5f87;">:cur</span> (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:currency</span>)
-                    <span style="color: #5f5f87;">:dat</span> (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:date</span>))))
-   (<span style="color: #af00ff;">lambda</span> (a b)
-     (&gt; (getf a <span style="color: #5f5f87;">:sal</span>) (getf b <span style="color: #5f5f87;">:sal</span>)))))
+  (sort (<span style="color: #af00ff;">loop</span>
+           <span style="color: #5f5f87;">:for</span> key <span style="color: #5f5f87;">:being</span> <span style="color: #5f5f87;">:the</span> <span style="color: #5f5f87;">:hash-keys</span> <span style="color: #5f5f87;">:of</span> *vacs*
+           <span style="color: #5f5f87;">:using</span> (hash-value val)
+           <span style="color: #5f5f87;">:unless</span> (null (getf (getf val <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary</span>))
+           <span style="color: #5f5f87;">:when</span> (equal (getf val <span style="color: #5f5f87;">:domain</span>) <span style="color: #5f5f87;">:unsorted</span>)
+           <span style="color: #5f5f87;">:collect</span> val)
+        (<span style="color: #af00ff;">lambda</span> (a b)
+          (&gt; (getf (getf a <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary</span>) (getf (getf b <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary</span>)))))
 
 (length *w*)
 
@@ -4395,15 +4492,65 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </li>
 <li>изменить ее домен
 </li>
-<li>отправить отклик
+<li>отправить отклик (TODO)
 <ul class="org-ul">
-<li>отправить отклик, создав резюме
+<li>отправить отклик, создав резюме (TODO)
 </li>
 </ul>
 </li>
 </ul>
 </li>
 </ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">tagbody</span>
+   (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> vac <span style="color: #5f5f87;">:in</span> *w* <span style="color: #5f5f87;">:do</span>
+      (<span style="color: #af00ff;">tagbody</span>
+       show-vac
+         (format t <span style="color: #87005f;">"~%~A~%"</span> (bprint vac))
+         (format t <span style="color: #87005f;">"~%[0] - Break~%[1] - No action~%[2] - Change domain~%[3] - Respond~%"</span>)
+       input-one-action
+         (<span style="color: #af00ff;">let</span> ((input (read-line)))
+           (<span style="color: #af00ff;">cond</span> ((equal input <span style="color: #87005f;">"0"</span>) (<span style="color: #af00ff;">go</span> fin))
+                 ((equal input <span style="color: #87005f;">"1"</span>) (<span style="color: #af00ff;">go</span> next))
+                 ((equal input <span style="color: #87005f;">"2"</span>) <span style="color: #af0000;">;; </span><span style="color: #af0000;">CHANGE DOMAIN</span>
+                  (<span style="color: #af00ff;">let</span> ((dms (<span style="color: #af00ff;">let</span> ((acc 0))
+                               (mapcar (<span style="color: #af00ff;">lambda</span> (x)
+                                         (cons (incf acc) x))
+                                       '(<span style="color: #5f5f87;">:unsorted</span> <span style="color: #5f5f87;">:uninterested</span> <span style="color: #5f5f87;">:interested</span> <span style="color: #5f5f87;">:responded</span>
+                                         <span style="color: #5f5f87;">:beenviewed</span> <span style="color: #5f5f87;">:invited</span>  <span style="color: #5f5f87;">:interviewed</span>  <span style="color: #5f5f87;">:offered</span>)))))
+                    (format t <span style="color: #87005f;">"~%CHANGE DOMAIN:~{~%~{[~A] - ~A~}~}"</span>
+                            (mapcar (<span style="color: #af00ff;">lambda</span> (x) (list (car x) (cdr x)))
+                                    dms))
+                    (format t <span style="color: #87005f;">"~%Enter new domain (empty for return back without change): "</span>)
+                    (<span style="color: #af00ff;">let*</span> ((input (read-line))
+                           (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t))
+                           (new   nil))
+                      (<span style="color: #af00ff;">cond</span> ((equal input <span style="color: #87005f;">""</span>)
+                             (<span style="color: #af00ff;">go</span> show-vac))
+                            ((not (null num))
+                             (setf new (cdr (assoc num dms)))))
+                      (<span style="color: #af00ff;">unless</span> (keywordp new)
+                        (setf new (intern new <span style="color: #5f5f87;">:keyword</span>)))
+                      (setf (getf vac <span style="color: #5f5f87;">:domain</span>) new)
+                      (format t <span style="color: #87005f;">"~%Domain changed. Press ENTER."</span>)
+                      (read-line))))
+                 ((equal input <span style="color: #87005f;">"3"</span>) <span style="color: #af0000;">;; </span><span style="color: #af0000;">RESPOND</span>
+                  (<span style="color: #af00ff;">progn</span>
+                    (format t <span style="color: #87005f;">"~%  wefwef"</span>)))
+                 ))
+       next))
+ fin
+   (format t <span style="color: #87005f;">"loop breaked"</span>))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">to-vacs</span> (w)
+  (mapcar (<span style="color: #af00ff;">lambda</span> (vac)
+            (<span style="color: #af00ff;">let</span> ((src-id (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
+              (setf (gethash src-id *vacs*) vac)))
+          w))
+</pre>
+</div>
 </div>
 </div>
 </div>

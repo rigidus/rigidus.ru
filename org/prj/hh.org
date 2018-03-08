@@ -1931,10 +1931,221 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 ** Вспомогательные макросы
 
-Нам потребуется расширить emacs функцией, которая будет генерировать код из таблиц.
+Этот макрос формирует тело POST-запроса из списка точечных пар, в котором первый
+элемент пары - это ключ, а второй - значение.
 
-Чтобы emacs не запрашивал подтверждение на каждое исполнение кода, установим эту
-настройку:
+#+NAME: assembly_post
+#+BEGIN_SRC lisp
+  (defmacro assembly-post (&body body)
+    `(format nil "~{~A~^&~}"
+             (mapcar #'(lambda (x)
+                         (format nil "~A=~A" (car x) (cdr x)))
+                     ,@body)))
+#+END_SRC
+
+Этот макрос отсылает POST-запрос, формируя его с помощью =assembly-post=:
+
+#+NAME: send_post
+#+BEGIN_SRC lisp
+  (defmacro send-post ((url cookie-jar cookie-alist) &body body)
+    `(drakma:http-request
+      ,url
+      :user-agent "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:42.0) Gecko/20100101 Firefox/42.0"
+      :method :post
+      :content (assembly-post ,@body)
+      :content-type "application/x-www-form-urlencoded; charset=UTF-8"
+      :redirect 10
+      :additional-headers
+      `(("Accept" . "*/*")
+        ("Accept-Language" . "en-US,en;q=0.5")
+        ("X-Xsrftoken" . ,(cdr (assoc "_xsrf" ,cookie-alist :test #'equal)))
+        ("X-Requested-With" . "XMLHttpRequest")
+        ("Referer" . ,,url)
+        ("Connection" . "keep-alive")
+        ("Pragma" . "no-cache")
+        ("Cache-Control" . "no-cache"))
+      :cookie-jar ,cookie-jar
+      :force-binary t))
+#+END_SRC
+
+Этот макрос оборачивает отправку POST-запроса в =multiple-value-bind= чтобы связать
+ответ с переменными для дальнейшего использования
+
+#+NAME: send_post_multiple_values
+#+BEGIN_SRC lisp
+  (defmacro with-post-response ((personal-url cookie-jar cookie-alist &body alist)
+                                       &body body)
+    `(multiple-value-bind (body-or-stream status-code headers
+                                          uri stream must-close reason-phrase)
+         (send-post (,personal-url ,cookie-jar ,cookie-alist) ,@alist)
+       ,@body))
+#+END_SRC
+
+Этот макрос получает из =cookie-jar= ассоциативный список ключей и значений cookie и
+связывает его с переменоой =cookie-alist=:
+
+#+NAME: with_cookie_alist
+#+BEGIN_SRC lisp
+  (defmacro with-cookie-alist ((cookie-jar) &body body)
+    `(let ((cookie-alist (mapcar #'(lambda (cookie)
+                                     (cons (drakma:cookie-name cookie)
+                                           (drakma:cookie-value cookie)))
+                                 (drakma:cookie-jar-cookies ,cookie-jar))))
+       ,@body))
+#+END_SRC
+
+Этот макрос упрощает кодирование значение в utf-8
+
+#+NAME: utf
+#+BEGIN_SRC lisp
+  (defmacro utf (value)
+    `(drakma:url-encode ,value :utf-8))
+#+END_SRC
+
+Теперь мы можем реализовать макросом основной сценарий заполения полей резюме: сначала
+запрашивем страницу конкретного резюме, потом запрашиваем страницу для заполнения одной
+из секций резюме, потом отправляем POST-запрос с заполенными полями, и наконец
+возвращаем полученный ответ:
+
+#+NAME: with_set_resume_section
+#+BEGIN_SRC lisp
+  (defmacro with-set-resume-section ((section-url &body post-data) &body body)
+    ;; Сначала запросим базовую страницу резюме
+    `(let ((resume-url (format nil "https://spb.hh.ru/resume/~A" resume-id)))
+       (hh-get-page
+        resume-url cookie-jar *hh-account* referer #'stderr
+        (lambda (response new-cookie-jar url)
+          (setf cookie-jar new-cookie-jar)
+          ;; Теперь запрашиваем section-url
+          (hh-get-page
+           section-url cookie-jar *hh-account* referer #'stderr
+           (lambda (response new-cookie-jar url)
+             (setf cookie-jar new-cookie-jar)
+             (with-cookie-alist (cookie-jar)
+               (with-post-response (,section-url cookie-jar cookie-alist ,@post-data)
+                 ,@body))))))))
+#+END_SRC
+
+Вот пример последовательного и аккуратного макрораскрытия этого макроса:
+
+#+BEGIN_SRC lisp
+  (print
+   (macroexpand-1
+    '(with-set-resume-section ((format nil "http://hh.ru/resume/edit/personal?resume=~A" resume-id)
+                               `(("phone.type" . "cell")
+                                 ("phone.country" . ,(utf (cell-phone-country container)))
+                                 ("phone.city"    . ,(utf (cell-phone-city container)))
+                                 ("phone.number"  . ,(utf (cell-phone-number container)))
+                                 ("phone.comment" . ,(utf (cell-phone-comment container)))))
+      (values uri headers
+       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8)))))
+
+  ;; MACROEXPANSION
+
+  (let ((resume-url (format nil "https://spb.hh.ru/resume/~a" resume-id)))
+    (hh-get-page
+     resume-url cookie-jar *hh-account* referer #'stderr
+     (lambda (response new-cookie-jar url) ;; success resume-url
+       (setf cookie-jar new-cookie-jar)
+       (hh-get-page
+        section-url cookie-jar *hh-account* referer #'stderr
+        (lambda (response new-cookie-jar url) ;; success section-url
+          (setf cookie-jar new-cookie-jar)
+          ;; expand of with-cookie-alist
+          (let ((cookie-alist (mapcar #'(lambda (cookie)
+                                          (cons (drakma:cookie-name cookie)
+                                                (drakma:cookie-value cookie)))
+                                      (drakma:cookie-jar-cookies cookie-jar))))
+            ;; expand of with-post-response
+            (multiple-value-bind (body-or-stream status-code headers
+                                                 uri stream must-close reason-phrase)
+                ;; expand of send-post
+                (drakma:http-request
+                 (format nil "http://hh.ru/resume/edit/personal?resume=~a" resume-id)
+                 :user-agent
+                 "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:42.0) Gecko/20100101 Firefox/42.0"
+                 :method :post
+                 :content
+                 ;; expand of assembly-post
+                 (format nil "~{~a~^&~}"
+                         (mapcar #'(lambda (x) (format nil "~a=~a" (car x) (cdr x)))
+                                 `(("phone.type" . "cell")
+                                   ("phone.country" . ,(utf (cell-phone-country container)))
+                                   ("phone.city"    . ,(utf (cell-phone-city container)))
+                                   ("phone.number"  . ,(utf (cell-phone-number container)))
+                                   ("phone.comment" . ,(utf (cell-phone-comment container))))))
+                 :content-type "application/x-www-form-urlencoded; charset=UTF-8" :redirect 10
+                 :additional-headers `(("Accept" . "*/*")
+                                       ("Accept-Language"  . "en-US,en;q=0.5")
+                                       ("X-Xsrftoken"      . ,(cdr (assoc "_xsrf" cookie-alist
+                                                                     :test #'equal)))
+                                       ("X-Requested-With" . "XMLHttpRequest")
+                                       ("Referer" . ,(format
+                                                      nil
+                                                      "http://hh.ru/resume/edit/personal?resume=~a"
+                                                      resume-id))
+                                       ("Connection"       . "keep-alive")
+                                       ("Pragma"           . "no-cache")
+                                       ("Cache-Control"    . "no-cache"))
+                 :COOKIE-JAR COOKIE-JAR :FORCE-BINARY T)
+              (values uri headers
+                      (flexi-streams:octets-to-string body-or-stream :external-format
+                                                      :utf-8)))))))))
+#+END_SRC
+
+** Вспомогательные средства кодогенерации
+*** Задача кодогенерации
+
+При создании функций, которыре отправляют данные с помощью POST-запросов, приходится
+писать слишком много шаблонного кода для построения пост запроса в стиле:
+
+#+BEGIN_SRC emacs-lisp
+  (make-post-data
+   `(("phone.type" . "cell")
+     ("phone.country" . ,(utf (cell-phone-country some-container-variable)))
+     ("phone.city" . ,(utf (cell-phone-city some-container-variable)))
+     ("phone.number" . ,(utf (cell-phone-number some-container-variable)))
+     ("phone.comment" . ,(utf (cell-phone-comment some-container-variable))))
+   )
+#+END_SRC
+
+Хочется избежать необходимости делать это вручную, заставив emacs создавать такой
+код. В качестве исходных данных у нас будет таблицы, размещенные в этом литературном
+исходнике, например такого вида:
+
+#+NAME: example_table_for_emacs_generator
+  | phone.type              | :cell              |
+  | phone.country           | cell-phone-country |
+  | phone.city              | cell-phone-city    |
+  | phone.number            | cell-phone-number  |
+  | phone.comment           | cell-phone-comment |
+
+Чтобы сгенерировать из нее кусок кода, приведенный выше, я хочу написать вызов
+процедуры генерации кода, передав ей в качестве параметров имя таблицы и имя
+переменной-контейнера, которая должна быть подставлена в генерируемый код:
+
+#+NAME: example_of_generated_code
+#+BEGIN_SRC lisp
+  (make-post-data
+    <<gen_post(example_table_for_emacs_generator, "some-container-variable")>>
+  )
+#+END_SRC
+
+Тогда после генерации я могу собрать все сгенерированные блоки и выгрузить их в файл,
+получив результат, приведенный в первом примере этого подраздела
+
+#+NAME: test
+#+BEGIN_SRC lisp :tangle test.lisp :noweb tangle :padline no
+  ...
+  <<example_of_generated_code>>
+  ...
+#+END_SRC
+
+*** Реализация кодогенерации
+
+Потребуется расширить emacs функцией, которая будет генерировать код из таких
+таблиц. Чтобы emacs не запрашивал подтверждение на каждый вызов этой функции, установим
+эту настройку:
 
 #+NAME: gen_org_confirm
 #+BEGIN_SRC emacs-lisp
@@ -1954,7 +2165,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                    (if (and (not (null match-result))
                             (= 0 (string-match ":" val)))
                        (concat "\"" (substring val 1) "\"")
-                     (format ",(drakma:url-encode (%s %s) :utf-8)" val var)))))
+                     (format ",(utf (%s %s))" val var)))))
       (let ((result))
         (push (format "`((\"%s\" . %s)"
                       (caar rows)
@@ -1992,98 +2203,12 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   (load-file "generators.el")
 #+END_SRC
 
-Этот блок необходим для генерации POST-запросов
+Этот блок необходим для генерации POST-запросов: он будет вызываться из других блоков с
+параметрами, индивидуальными для каждой генерации.
 
 #+NAME: gen_post
 #+BEGIN_SRC emacs-lisp :var personal_eq='() var="" :exports none
   (gen-post personal_eq var)
-#+END_SRC
-
-Этот макрос формирует тело POST-запроса:
-
-#+NAME: assembly_post
-#+BEGIN_SRC lisp
-  (defmacro assembly-post (&body body)
-    `(format nil "~{~A~^&~}"
-             (mapcar #'(lambda (x)
-                         (format nil "~A=~A" (car x) (cdr x)))
-                     ,@body)))
-#+END_SRC
-
-Этот макрос отсылает POST-запрос, формируя его с помощью =assembly-post=:
-
-#+NAME: send_post
-#+BEGIN_SRC lisp
-  (defmacro send-post ((url cookie-jar cookie-alist) &body body)
-    `(drakma:http-request
-      ,url
-      :user-agent "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:42.0) Gecko/20100101 Firefox/42.0"
-      :method :post
-      :content (assembly-post ,@body)
-      :content-type "application/x-www-form-urlencoded; charset=UTF-8"
-      :redirect 10
-      :additional-headers
-      `(("Accept" . "*/*")
-        ("Accept-Language" . "en-US,en;q=0.5")
-        ("X-Xsrftoken" . ,(cdr (assoc "_xsrf" ,cookie-alist :test #'equal)))
-        ("X-Requested-With" . "XMLHttpRequest")
-        ("Referer" . ,,url)
-        ("Connection" . "keep-alive")
-        ("Pragma" . "no-cache")
-        ("Cache-Control" . "no-cache"))
-      :cookie-jar ,cookie-jar
-      :force-binary t))
-#+END_SRC
-
-Этот макрос оборачивает отправку POST-запроса в =multiple-value-bind= чтобы получить
-ответ:
-
-#+NAME: send_post_multiple_values
-#+BEGIN_SRC lisp
-  (defmacro send-post-multiple-values ((personal-url cookie-jar cookie-alist &body alist) &body body)
-    `(multiple-value-bind (body-or-stream status-code headers uri stream must-close reason-phrase)
-         (send-post (,personal-url ,cookie-jar ,cookie-alist) ,@alist)
-       ,@body))
-#+END_SRC
-
-Этот макрос получает =cookie-alist= - ассоциативный список ключей и значений cookie из
-=cookie-jar=:
-
-#+NAME: with_cookie_alist
-#+BEGIN_SRC lisp
-  (defmacro with-cookie-alist ((cookie-jar) &body body)
-    `(let ((cookie-alist (mapcar #'(lambda (cookie)
-                                     (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))
-                                 (drakma:cookie-jar-cookies ,cookie-jar))))
-       ,@body))
-#+END_SRC
-
-Этот макрос упрощает кодирование значение в utf-8
-
-#+NAME: utf
-#+BEGIN_SRC lisp
-  (defmacro utf (value)
-    `(drakma:url-encode ,value :utf-8))
-#+END_SRC
-
-Теперь мы можем реализовать макросом основной сценарий заполения полей резюме: сначала
-запрашивем страницу, где размещены все резюме, потом запрашиваем страницу для
-заполнения одной из секций резюме, потом отправляем POST-запрос с заполенными полями, и
-наконец возвращаем полученный ответ:
-
-#+NAME: with_set_resume_section
-#+BEGIN_SRC lisp
-  (defmacro with-set-resume-section ((section-url &body post-data) &body body)
-    ;; Сначала запросим основную страницу резюме
-    `(let ((main-url (format nil "http://spb.hh.ru/applicant/resumes/view?resume=~A" resume-id)))
-       (multiple-value-bind (response cookie-jar url)
-           (hh-get-page main-url cookie-jar *hh_account* "http://spb.hh.ru")
-         ;; Теперь запрашиваем section-url
-         (multiple-value-bind (response cookie-jar url)
-             (hh-get-page ,section-url cookie-jar *hh_account* "http://spb.hh.ru")
-           (with-cookie-alist (cookie-jar)
-             (send-post-multiple-values (,section-url cookie-jar cookie-alist ,@post-data)
-               ,@body))))))
 #+END_SRC
 
 ** Фото (=photo=)
@@ -2552,7 +2677,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar cookie-alist
                 `(("lastName.string" . ,(utf (getf plist :last-name)))
@@ -2610,7 +2735,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2655,7 +2780,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2867,7 +2992,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2905,7 +3030,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2941,7 +3066,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2984,7 +3109,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
@@ -2993,8 +3118,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                  `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
              (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
 
-  resume=a85af791ff05288f3d0039ed1f746d79723733&publish=next&_xsrf=eb4abdd88c162392b34ef4d256418dbe
-
   (defun resume-touch ()
     (let ((url (format nil "https://spb.hh.ru/applicant/resumes/touch")))
       (hh-get-page
@@ -3002,7 +3125,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (with-cookie-alist (cookie-jar)
-           (send-post-multiple-values
+           (with-post-response
                (url
                 cookie-jar
                 cookie-alist
