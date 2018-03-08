@@ -1848,13 +1848,19 @@ plist-деревом.
 
  <<set_resume_personal>>
 
- <<set_resume_contacts>>
+ <<set_resume_education>>
 
  <<set_resume_position>>
 
- <<set_resume_education>>
+ <<set_resume_contacts>>
+
+ <<set_resume_languages>>
+
+ <<set_resume_visibility>>
 
  <<set_resume_expirience>>
+
+ <<set_resume_touch>>
 #+END_SRC
 
 ** Публикация резюме на HeadHunter
@@ -2018,7 +2024,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
           (setf cookie-jar new-cookie-jar)
           ;; Теперь запрашиваем section-url
           (hh-get-page
-           section-url cookie-jar *hh-account* referer #'stderr
+           ,section-url cookie-jar *hh-account* referer #'stderr
            (lambda (response new-cookie-jar url)
              (setf cookie-jar new-cookie-jar)
              (with-cookie-alist (cookie-jar)
@@ -2048,7 +2054,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
      (lambda (response new-cookie-jar url) ;; success resume-url
        (setf cookie-jar new-cookie-jar)
        (hh-get-page
-        section-url cookie-jar *hh-account* referer #'stderr
+        (format nil "http://hh.ru/resume/edit/personal?resume=~A" resume-id)
+        cookie-jar *hh-account* referer #'stderr
         (lambda (response new-cookie-jar url) ;; success section-url
           (setf cookie-jar new-cookie-jar)
           ;; expand of with-cookie-alist
@@ -2165,7 +2172,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                    (if (and (not (null match-result))
                             (= 0 (string-match ":" val)))
                        (concat "\"" (substring val 1) "\"")
-                     (format ",(utf (%s %s))" val var)))))
+                     (format ",(utf (getf %s :%s))" var val)))))
       (let ((result))
         (push (format "`((\"%s\" . %s)"
                       (caar rows)
@@ -2254,7 +2261,7 @@ POST http://spb.hh.ru/applicant/resumes/artifacts/remove
 id=98616186
 user=3681852
 
-** Имя, возраст, город (=personal=)
+** Имя, возраст, город (personal)
 
 Сопоставим каждому полю в POST-запросе соответствующий accessor:
 
@@ -2280,20 +2287,160 @@ user=3681852
 
 #+NAME: set_resume_personal
 #+BEGIN_SRC lisp
-  (defun set-resume-personal (cookie-jar resume &optional (resume-id ""))
-    (with-set-resume-section ((format nil "http://spb.hh.ru/applicant/resumes/edit/personal?resume=~A" resume-id)
-                              <<gen_post(personal_eq, "resume")>>
-                              )
-      (values
-       uri
-       headers
-       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
+  (defparameter *personal*
+    '(:last-name "Глухов"
+      :first-name "Михаил"
+      :middle-name "Михайлович"
+      :birthday "1982-12-15"
+      :gender "male"
+      :area "2"
+      :metro ""
+      :relocation "relocation_possible"
+      :relocation-area "1"
+      :business-trip-readiness "ready"
+      :citizen-ship "113"
+      :work-ticket "113"
+      :travel-time "any"))
 
-  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;   (print (set-resume-personal cookie-jar (car (all-resume)))))
+  (defun set-resume-personal (plist)
+    (with-set-resume-section
+        ((format nil "http://spb.hh.ru/applicant/resumes/edit/personal?resume=~A" resume-id)
+         <<gen_post(personal_eq, "plist")>>
+         )
+      (setf resume-id (cadr (split-sequence:split-sequence #\= (puri:uri-query uri))))
+      (print resume-id)))
+
+  ;; (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
+  ;;        (resume-id "")
+  ;;        (referer "https://spb.hh.ru"))
+  ;;   (declare (special cookie-jar resume-id referer))
+  ;;   ;; Сначала запросим основную страницу всех резюме
+  ;;   (resume-base
+  ;;    ;; Теперь запросим страницу personal, получая resume-id
+  ;;    (lambda (response new-cookie-jar url)
+  ;;      (setf cookie-jar new-cookie-jar)
+  ;;      ;; (resume-personal *personal*)
+  ;;      (set-resume-personal *personal*)
+  ;;      )))
 #+END_SRC
 
-** TODO Контакты (=contacts=)
+** Образование (education)
+
+На этой странице можно сразу заполнить поля, связанные с владением языками, но мы не
+будем это делать. Вместо этого воспользуемся потом страницей редактирования.
+
+#+NAME: education_eq
+| educationLevel.string             | :higher      |
+| primaryEducation.id               | :            |
+| primaryEducation.name             | name         |
+| primaryEducation.universityId     | :39864       |
+| primaryEducation.facultyId        | :            |
+| primaryEducation.organization     | organization |
+| primaryEducation.result           | result       |
+| primaryEducation.specialtyId      | specialty-id |
+| primaryEducation.year             | year         |
+| additionalEducation.id            | :            |
+| additionalEducation.name          | :            |
+| additionalEducation.organization  | :            |
+| additionalEducation.result        | :            |
+| additionalEducation.year          | :            |
+| certificate.id                    | :            |
+| certificate.type                  | :            |
+| certificate.selected              | :            |
+| certificate.ownerName             | :            |
+| certificate.transcriptionId       | :            |
+| certificate.password              | :            |
+| certificate.title                 | :            |
+| certificate.achievementDate       | :            |
+| certificate.url                   | :            |
+| attestationEducation.id           | :            |
+| attestationEducation.name         | :            |
+| attestationEducation.organization | :            |
+| attestationEducation.result       | :            |
+| attestationEducation.year         | :            |
+
+#+NAME: set_resume_education
+#+BEGIN_SRC lisp
+  (defparameter *education*
+    '(:education-id ""
+      :name "Санкт-Петербургский национальный исследовательский университет информационных технологий, механики и оптики, Санкт-Петербург"
+      :university-id "39872"
+      :faculty-id ""
+      :organization "Прикладная математика и информатика"
+      :result "Математические модели и алгоритмы в разработке программного обеспечения"
+      :specialty-id ""
+      :year "2020"))
+
+  (defun set-resume-education (plist)
+    (with-set-resume-section
+        ((format nil "http://spb.hh.ru/applicant/resumes/edit/personal?resume=~A" resume-id)
+         (append
+          <<gen_post(education_eq, "plist")>>
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))
+          ))
+      (print "education ok")))
+#+END_SRC
+
+** Желаемая должность и зарплата (position)
+
+В этой секции программист hh наверно не был слишком аккуратен, поэтому в
+POST-запросе передаются какие-то мусорные profarea. Но мы дисциплинованно передаем
+их, чтобы не отличаться от простого пользователя.
+
+#+NAME: position_eq
+  | profarea            | :         |
+  | profarea            | :1        |
+  | profarea            | :2        |
+  | profarea            | :3        |
+  | profarea            | :4        |
+  | profarea            | :5        |
+  | profarea            | :6        |
+  | profarea            | :7        |
+  | profarea            | :8        |
+  | profarea            | :9        |
+  | profarea            | :10       |
+  | profarea            | :11       |
+  | profarea            | :12       |
+  | profarea            | :13       |
+  | profarea            | :14       |
+  | profarea            | :16       |
+  | profarea            | :17       |
+  | profarea            | :18       |
+  | profarea            | :19       |
+  | profarea            | :20       |
+  | profarea            | :21       |
+  | profarea            | :22       |
+  | profarea            | :23       |
+  | profarea            | :24       |
+  | profarea            | :25       |
+  | profarea            | :26       |
+  | profarea            | :15       |
+  | profarea            | :27       |
+  | profarea            | :29       |
+  | salary.currency     | :RUR      |
+  | employment.string   | :full     |
+  | workSchedule.string | :full_day |
+
+Важно чтобы названия у разных резюме отличались, иначе возращается ошибка.
+
+#+NAME: set_resume_position
+#+BEGIN_SRC lisp
+  (defun set-resume-position (title salary-amount specializations)
+    (with-set-resume-section
+        ((format nil "http://spb.hh.ru/applicant/resumes/edit/position?resume=~A" resume-id)
+         (append
+          `(("title.string" . ,(utf title))
+            ("profArea"     . ,(utf "1")))
+          (mapcar #'(lambda (x)
+                      `("specialization.string" . ,(utf x)))
+                  (split-sequence:split-sequence #\Space specializations))
+          <<gen_post(position_eq, "plist")>>
+          `(("salary.amount" . ,(utf salary-amount)))
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (print "position ok")))
+#+END_SRC
+
+** Контакты (contacts)
 
 Страница hh.ru, которая принимает POST-запрос, изменяющий контакты, использует
 позиционные маркеры, вроде =phone.type=, которые отделяют друг от друга блоки
@@ -2302,215 +2449,271 @@ user=3681852
 остальном все работает таким же образом как и в предыдущем разделе.
 
 #+NAME: contacts_eq
-| phone.type              | :cell              |
-| phone.country           | cell-phone-country |
-| phone.city              | cell-phone-city    |
-| phone.number            | cell-phone-number  |
-| phone.comment           | cell-phone-comment |
-| phone.type              | :home              |
-| phone.country           | home-phone-country |
-| phone.city              | home-phone-city    |
-| phone.number            | home-phone-number  |
-| phone.comment           | home-phone-comment |
-| phone.type              | :work              |
-| phone.country           | home-phone-country |
-| phone.city              | home-phone-city    |
-| phone.number            | home-phone-number  |
-| phone.comment           | home-phone-comment |
-| email.string            | email-string       |
-| preferredContact.string | preferred-contact  |
-| personalSite.type       | :icq               |
-| personalSite.url        | icq                |
-| personalSite.type       | :skype             |
-| personalSite.url        | skype              |
-| personalSite.type       | :freelance         |
-| personalSite.url        | freelance          |
-| personalSite.type       | :moi_krug          |
-| personalSite.url        | moi_krug           |
-| personalSite.type       | :linkedin          |
-| personalSite.url        | linkedin           |
-| personalSite.type       | :facebook          |
-| personalSite.url        | facebook           |
-| personalSite.type       | :livejournal       |
-| personalSite.url        | livejournal        |
-| personalSite.type       | :personal          |
-| personalSite.url        | personal-site      |
+  | phone.type              | :cell              |
+  | phone.formatted         | cell-phone         |
+  | phone.comment           | cell-phone-comment |
+  | phone.type              | :home              |
+  | phone.formatted         | home-phone         |
+  | phone.comment           | home-phone-comment |
+  | phone.type              | :work              |
+  | phone.formatted         | work-phone         |
+  | phone.comment           | work-phone-comment |
+  | email.string            | email-string       |
+  | preferredContact.string | preferred-contact  |
+  | personalSite.type       | :icq               |
+  | personalSite.url        | icq                |
+  | personalSite.type       | :skype             |
+  | personalSite.url        | skype              |
+  | personalSite.type       | :freelance         |
+  | personalSite.url        | freelance          |
+  | personalSite.type       | :moi_krug          |
+  | personalSite.url        | moi_krug           |
+  | personalSite.type       | :linkedin          |
+  | personalSite.url        | linkedin           |
+  | personalSite.type       | :facebook          |
+  | personalSite.url        | facebook           |
+  | personalSite.type       | :personal          |
+  | personalSite.url        | personal           |
+  | personalSite.type       | :livejournal       |
+  | personalSite.url        | livejournal        |
+  | personalSite.type       | :personal          |
+  | personalSite.url        | personal-site      |
 
 #+NAME: set_resume_contacts
 #+BEGIN_SRC lisp
-  (defun set-resume-contacts (cookie-jar resume &optional (resume-id ""))
-    (with-set-resume-section ((format nil "http://spb.hh.ru/applicant/resumes/edit/contacts?resume=~A" resume-id)
-                              <<gen_post(contacts_eq, "resume")>>
-                              )
-      (values
-       uri
-       headers
-       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
+  (defparameter *contacts*
+    '(:cell-phone "+79112869290"
+      :cell-phone-comment ""
+      :home-phone ""
+      :home-phone-comment ""
+      :work-phone ""
+      :work-phone-comment ""
+      :email-string "avenger-f@yandex.ru"
+      :preferred-contact "email"
+      :icq ""
+      :skype ""
+      :freelance ""
+      :moi_krug ""
+      :linkedin ""
+      :facebook ""
+      :livejournal "" ;; "http://rigidus.livejournal.com"
+      :personal-site "http://rigidus.ru"))
 
-  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;   (print
-  ;;    (set-resume-contacts cookie-jar (car (all-resume))
-  ;;                         ;; "8eb43271ff030a44e00039ed1f735871443047"
-  ;;                         )))
+  (defun set-resume-contacts (plist)
+    (with-set-resume-section
+        ((format nil "http://spb.hh.ru/applicant/resumes/edit/contacts?resume=~A" resume-id)
+         (append
+          <<gen_post(contacts_eq, "plist")>>
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (print "contacts ok")))
 #+END_SRC
 
-** Желаемая должность и зарплата (=resume-position=)
+** Знание языков (languages)
 
-В этой секции программист hh наверно не был слишком аккуратен, поэтому в
-POST-запросе передаются какие-то мусорные profarea. Но мы дисциплинованно передаем
-их, чтобы не отличаться от простого пользователя.
-
-#+NAME: position_eq
-  | profarea            | :               |
-  | profarea            | :1              |
-  | profarea            | :2              |
-  | profarea            | :3              |
-  | profarea            | :4              |
-  | profarea            | :5              |
-  | profarea            | :6              |
-  | profarea            | :7              |
-  | profarea            | :8              |
-  | profarea            | :9              |
-  | profarea            | :10             |
-  | profarea            | :11             |
-  | profarea            | :12             |
-  | profarea            | :13             |
-  | profarea            | :14             |
-  | profarea            | :16             |
-  | profarea            | :17             |
-  | profarea            | :18             |
-  | profarea            | :19             |
-  | profarea            | :20             |
-  | profarea            | :21             |
-  | profarea            | :22             |
-  | profarea            | :23             |
-  | profarea            | :24             |
-  | profarea            | :25             |
-  | profarea            | :26             |
-  | profarea            | :15             |
-  | profarea            | :27             |
-  | profarea            | :29             |
-  | salary.amount       | salary-amount   |
-  | salary.currency     | salary-currency |
-  | employment.string   | employment      |
-  | workSchedule.string | work-schedule   |
-
-Важно чтобы названия у разных резюме отличались, иначе возращается ошибка.
-
-#+NAME: set_resume_position
+#+NAME: set_resume_languages
 #+BEGIN_SRC lisp
-  (defun set-resume-position (cookie-jar resume &optional (resume-id ""))
-    (with-set-resume-section ((format nil "http://spb.hh.ru/applicant/resumes/edit/position?resume=~A" resume-id)
-                              (append
-                               `(("title.string" . ,(drakma:url-encode "Программист" :utf-8))
-                                 ("profArea"     . ,(drakma:url-encode (prof-area resume) :utf-8)))
-                               (mapcar #'(lambda (x)
-                                           `("specialization.string" . ,(drakma:url-encode x :utf-8)))
-                                       (split-sequence:split-sequence #\Space (specializations resume)))
-                               <<gen_post(position_eq, "resume")>>
-                               ))
-      (values
-       uri
-       headers
-       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
+  (defparameter *languages*
+    `((:lang-id "34" :lang-degree "native")
+      (:lang-id "57" :lang-degree "can_read")
+      (:lang-id "58" :lang-degree "basic")
+      (:lang-id "59" :lang-degree "none")))
 
-  ;; (print
-  ;;  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;    (set-resume-position cookie-jar (car (all-resume))
-  ;;                         ;; "8eb43271ff030a44e00039ed1f735871443047"
-  ;;                         )))
+  (defun set-resume-languages (plist)
+    (with-set-resume-section
+        ((format
+          nil
+          "https://spb.hh.ru/applicant/resumes/edit/education?resume=~A&field=language"
+          resume-id)
+         (append
+          (loop :for lang :in plist :append
+             `(("language.id"     . ,(utf (format nil "~A" (getf lang :lang-id))))
+               ("language.degree" . ,(utf (format nil "~A" (getf lang :lang-degree))))))
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (print "languages ok")))
 #+END_SRC
 
-** Образование (=education=)
+** Видимость резюме (visibility)
 
-В этой секции требуется провести небольшой рефакторинг и убедиться что в
-POST-запросе не наблюдается дублирования полей =primaryEducation.*= и =xsrf=. Хотя
-может быть так и должно быть, т.к. в оригинальном запросе это дублирование есть.
-
-Тем не менее пока все работает и так.
-
-#+NAME: education_eq
-  | primaryEducation.id               | :                                  |
-  | primaryEducation.name             | :                                  |
-  | primaryEducation.universityId     | :                                  |
-  | primaryEducation.facultyId        | :                                  |
-  | primaryEducation.organization     | :                                  |
-  | primaryEducation.result           | :                                  |
-  | primaryEducation.specialtyId      | :                                  |
-  | primaryEducation.year             | :                                  |
-  | additionalEducation.id            | additional-education-id            |
-  | additionalEducation.name          | additional-education-name          |
-  | additionalEducation.organization  | additional-education-organization  |
-  | additionalEducation.result        | additional-education-result        |
-  | additionalEducation.year          | additional-education-year          |
-  | certificate.id                    | certificate-id                     |
-  | certificate.type                  | certificate-type                   |
-  | certificate.selected              | certificate-selected               |
-  | certificate.ownerName             | certificate-ownerName              |
-  | certificate.transcriptionId       | certificate-transcription-id       |
-  | certificate.password              | certificate-password               |
-  | certificate.title                 | certificate-title                  |
-  | certificate.achievementDate       | certificate-achievementDate        |
-  | certificate.url                   | certificate-url                    |
-  | attestationEducation.id           | attestation-education-id           |
-  | attestationEducation.name         | attestation-education-name         |
-  | attestationEducation.organization | attestation-education-organization |
-  | attestationEducation.result       | attestation-education-result       |
-  | attestationEducation.year         | attestation-education-year         |
-
-#+NAME: set_resume_education
+#+NAME: set_resume_visibility
 #+BEGIN_SRC lisp
-  (defmacro if-zero-then-empty (&body body)
-    (let ((it (gensym "IT-")))
-      `(let ((,it ,@body))
-         (if (equal 0 ,it)
-             ""
-             (drakma:url-encode (format nil "~A" ,it) :utf-8)))))
-
-  ;; (macroexpand-1 '(if-zero-then-empty (education-id education)))
-
-  (defun set-resume-education (cookie-jar resume &optional (resume-id ""))
-    (with-set-resume-section ((format nil "http://spb.hh.ru/applicant/resumes/edit/education?resume=~A" resume-id)
-                              (append
-                               `(("educationLevel.string" . ,(drakma:url-encode (education-level-string resume) :utf-8)))
-                               (let ((primary-education-id (car (split-sequence:split-sequence #\Space (educations resume)))))
-                                 (if (null primary-education-id)
-                                     (err "error education-id")
-                                     (let ((education (get-education (parse-integer primary-education-id))))
-                                       `(("primaryEducation.id"            . ,(if-zero-then-empty (education-id education)))
-                                         ("primaryEducation.name"          . ,(drakma:url-encode (name education) :utf-8))
-                                         ("primaryEducation.universityId"  . ,(drakma:url-encode (format nil "~A" (university-id education)) :utf-8))
-                                         ("primaryEducation.facultyId"     . ,(if-zero-then-empty (faculty-id education)))
-                                         ("primaryEducation.organization"  . ,(drakma:url-encode (organization education) :utf-8))
-                                         ("primaryEducation.result"        . ,(drakma:url-encode (result education) :utf-8))
-                                         ("primaryEducation.specialtyId"   . ,(drakma:url-encode (format nil "~A" (specialty-id education)) :utf-8))
-                                         ("primaryEducation.year"          . ,(drakma:url-encode (format nil "~A" (year education)) :utf-8))))))
-                               <<gen_post(education_eq, "resume")>>
-                               (let ((langs))
-                                 (mapcar #'(lambda (x)
-                                             (let ((lang (get-lang (parse-integer x))))
-                                               (push `("language.id"     . ,(drakma:url-encode (format nil "~A"(lang-id lang))     :utf-8)) langs)
-                                               (push `("language.degree" . ,(drakma:url-encode (format nil "~A" (lang-degree lang)) :utf-8)) langs)
-                                               ))
-                                         (split-sequence:split-sequence #\Space (languages resume)))
-                                 (reverse langs))
-                               `(
-                                 ("_xsrf"                          . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))
-                               )
-                              )
-      (values
-       uri
-       headers
-       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
-
-  ;; (print
-  ;;  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;    (set-resume-education cookie-jar (car (all-resume))
-  ;;                      ;; "8eb43271ff030a44e00039ed1f735871443047"
-  ;;                      )))
+  (defun set-resume-visibility (val)
+    (with-set-resume-section
+        ((format
+          nil
+          "https://spb.hh.ru/applicant/resumes/edit/visibility?resume=~A"
+          resume-id)
+         (append
+          `(("accessType.string" . ,val))
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (format t "~% visibility is ~A" val)))
 #+END_SRC
 
-** START Опыт работы (=experience=)
+** Опыт работы (experience)
+
+#+NAME: exp_val
+#+BEGIN_SRC lisp
+  (defparameter *expiriences*
+    (list
+     (job :name "ООО Автоматон"
+          :site ""
+          :position  "TeamLead, IT-Architect"
+          :start-date "2015-12-01"
+          :end-date  "" ;; "2016-07-01"
+          :description "Компания занимается разработкой и эксплуатацией автоматизированных парковок.
+
+    Я возглавил исследовательский проект по разработке новой парковочной системы: аппаратной и программной части.
+
+    Технологии:
+    - Проектирование печатных плат - Kikad, Altium Designer
+    - Программирование: С/С++, Assembler, Erlang (телефония), PHP/JS: Symfony+React (веб-интерфейс), EmacsLisp - кодогенерация для \"исполняемых спецификаций\" и утилиты для совместной удаленной работы в команде
+    - Архитектурный стек - Linux on ARM Cortex A8 и Symphony+React в интерфейсе управления.
+
+    Разработку проводил с нуля, по этапам:
+    - Найм сотрудников
+    - Выбор электронных компонентов,
+    - Создание печатных плат,
+    - Написание низкоуровневого кода, управляющего шлагбаумами и опрашивающего датчики
+    - Написание бизнес-логики и веб-интерфейсов, через которые можно управлять парковкой удаленно,
+    - Подключение интернет-телефонии, для общения с клиентом парковки
+
+    Первое внедрение состоялось через полгода от начала разработки, разработка полностью окупилась через год. Разработанное решение опережает конкурирующие.
+
+    Мои достижения:
+
+    - Спроектировал программно-аппаратную архитектуру системы автоматизации платных парковок.
+    - Спланировал и организовал работы по разработке ПО и аппаратной части, включая подбор электронных компонентов и схемотехническое проектирование.
+    - Самостоятельно реализовал бизнес-логику и уровень представления (Рабочее Место Оператора) на Symfony и React
+    - Руководил работами по реализации транспортного уровня и уровня абстракции оборудования, выполненными удаленными разработчиками (C/C++, модули ядра, драйверы устройств)
+    - Организовал паралельную разработку по модульному принципу (чтобы ускорить создание продукта) и методологии kanban
+    - Внедрил Continuous Integration и процесс управления жизненным циклом (релизы, исправление ошибок, добавление возможностей, технический контроль качества, автоматизированное тестирование)
+    - Реализовал безопасное (цифровая подпись) и отказоустойчивое (откат на предыдующую версию при провале тестов) обновление прошивок через интернет.
+    - Автоматизировал создание и хранение документации, с использованием версионирования на базе GIT и \"executable specifications\".")
+     (job :name "ООО БКН"
+          :site "http://bkn.ru"
+          :position  "ИТ-директор"
+          :start-date "2015-04-01"
+          :end-date  "2015-12-01"
+          :description "Компания - второй после \"Бюллетеня недвижимости\" информационный источник в области недвижимости по С-Пб и ЛО.
+
+    Руководил разработкой и продвижением информационных решений автоматизации бизнеса агентств недвижимости (b2b и b2c).
+
+    Стек технологий: C# и ASP.NET, ExtJs
+
+    Достижения:
+
+    - Используя данные \"межагентской БД bkn-profi\" в короткие сроки создал раздел о жилых комплексах и новостройках, который по обьему вскоре достиг 60% сайта, что позволило резко увеличить доходы от рекламы на сайте.
+    - Реализовал на сайте bkn.ru раздел поиска и подбора квартир, комнат и жилых домов первичного и вторичного рынка, интегрировал его с межагентской БД объектов недвижимости.")
+     (job :name "Тренд"
+          :site "http://trend-spb.ru"
+          :position  "Ведущий инженер-программист"
+          :start-date "2014-08-01"
+          :end-date  "2015-03-01"
+          :description "Компания - молодое быстрорастущее агенство недвижимости, специализирующееся на первичном рынке (новостройки)
+
+    Автоматизировал бизнес-процесс агенства по продажам недвижимости (новостройки).
+
+    Стек технологий: Php, Nginx, Mysql, PostgreSql
+
+    Достижения:
+
+    До моего найма агенты использовали skype и google docs для отслеживания задач. Я написал CRM, модули которой (выставление цен, интерактивный подбор объектов) автоматизировали рутинные задачи.")
+     (job :name "Частная компания (алготрейдинг)"
+          :site "http://aintsys.com"
+          :position  "Lisp/Erlang-разработчик"
+          :start-date "2012-04-01"
+          :end-date  "2014-08-01"
+          :description "Разрабатывал решения в сфере электронных валют на базе технологии BlockChain.
+
+    Стек технологий: Erlang, Common Lisp, C++
+
+    К сожалению, по условиям NDA я не имею права распространять в сети информацию о деятельности компании и моих разработках :(")
+     (job :name "ООО РАВТА"
+          :site "http://ravta.ru"
+          :position "Директор по IT"
+          :start-date "2012-01-01"
+          :end-date  "2012-04-01"
+          :description "Компания - интернет-магазин запчастей, комплектующих и расходных материалов для автомобилей.
+
+    Осуществлял руководство разработкой информационной системы предприятия, занимался постановкой задач и контролем выполнения работ. Организовывал договорную работу с подрядчиками.
+
+    Достижения:
+
+    Внедрил на фирме 1-С Предприятие и 1С-Склад и обеспечил ее интеграцию с системой TechDoc.
+    ")
+     (job :name "WizardSoft"
+          :site "http://wizardsoft.ru"
+          :position "Ведущий разработчик, архитектор"
+          :start-date "2011-05-01"
+          :end-date "2012-01-01"
+          :description "Компания занимается автоматизацией управления затратами в стоительстве.
+    Достижения:
+
+    Разработал высоконагрузочный портал для проведения строительных тендеров. Прототип реализовал на Common Lisp, Postmodern и PostgreSQL. После приемки прототип был существенно расширен и переписан на PHP")
+     (job :name "ЦиFры"
+          :site "http://www.320-8080.ru"
+          :position "Архитектор-проектировщик, веб-программист"
+          :start-date "2009-09-01"
+          :end-date "2011-04-01"
+          :description "Компания - интернет-магазин цифровой техники.
+
+    Стек технологий: PHP, MySql, Jquery, Common Lisp, Memcached
+
+    Достижения:
+
+    - На первом этапе в кратчайшие сроки подготовил legacy-код к новогодним нагрузкам путем внедрения кэширования.
+    - Затема полностью перепроектировал и реализовал на высоконагрузочный интернет-магазин.
+    ")
+     (job :name "ООО Вебдом"
+          :site  "http://webdom.net"
+          :position "Ведущий веб-разработчик"
+          :start-date "2007-01-01"
+          :end-date "2009-09-01"
+          :description "Веб-студия
+    Стек технологий: Php, Nginx, MySql
+
+    Достижения:
+
+    Cпроектировал и разработал масштабируемый фреймворк, на котором теперь работает компания. CMS на его основе поставляются клиентам.")
+     (job :name "Почин"
+          :site "http://pochin.ru"
+          :position "Программист"
+          :start-date "2005-09-01"
+          :end-date "2007-01-01"
+          :description "Компания - интернет-магазин авточехлов, автозапчастей и автоинструмента.
+
+    Стек технологий: LAMP
+
+    Первоначально начинал как фриланс-программист, но скоро сотрудничество стало постоянным.
+
+    Достижения:
+
+    - Спроектировал и разработал интернет-магазин (три версии за полтора года)")))
+#+END_SRC
+
+#+NAME: about_val
+#+BEGIN_SRC lisp
+  (defparameter *about* "Мне нравится решать сложные задачи. Более подробная информация, c проектами, которые сюда не поместились: https://rigidus.ru/about/index.html
+
+      Мой гитхаб: https://github.com/rigidus/
+
+      Ключевые компетенции:
+      - Linux, FreeBSD
+      - PHP, C/C++, Java, Common Lisp, Erlang, Forth, Assembler
+      - Nginx, Memcached, Redis, RabbitMQ
+      - MySQL, PostgreSQL
+      - Git
+      - JavaSсript, JQuery, React, Redux
+
+      Умею сниффать сниффером и профайлить профайлером.
+
+      Не боюсь регулярных выражений.
+
+      Знаю в чем разница между венгерской нотацией и обратной польской записью.
+
+      Умею управлять машиной Тьюринга и стрелять из конечного автомата.
+
+      Грамотно выражаю свои мысли на бумаге, устно, на пальцах; и с первого раза воспринимаю чужие с тех же носителей.")
+#+END_SRC
 
 #+NAME: expirience_eq
   | type                         | :PORTFOLIO                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -2520,113 +2723,66 @@ POST-запросе не наблюдается дублирования пол�
 
 #+NAME: set_resume_expirience
 #+BEGIN_SRC lisp
-  ;; дубль if-sero-then-empty
   (defmacro url-enc (&body body)
     `(let ((it ,@body))
        (if (equal 0 it)
            ""
            (drakma:url-encode (format nil "~A" it) :utf-8))))
 
-  (defun set-resume-expirience (cookie-jar resume &optional (resume-id ""))
-    (with-set-resume-section ((format nil "http://spb.hh.ru/applicant/resumes/edit/experience?resume=~A" resume-id)
-                              (let ((resume (get-resume 1)))
-                                (append
-                                 (apply 'append
-                                        (loop :for item :in (split-sequence:split-sequence #\Space (expiriences resume)) :collect
-                                           (let ((item (get-expirience (parse-integer item))))
-                                             `(("experience.companyName"      . ,(url-enc (name item)))
-                                               ("experience.companyId"        . ,(url-enc (company-id item)))
-                                               ("experience.companyAreaId"    . ,(url-enc (company-area-id item)))
-                                               ("experience.companyUrl"       . ,(url-enc (url item)))
-                                               ("experience.companyIndustryId". ,(url-enc (industry-id item)))
-                                               ("experience.companyIndustries". ,(url-enc (industries item)))
-                                               ("experience.companyIndustries". "") ;; compatibility: предположительно направления деятельности
-                                               ("experience.id"               . ,(url-enc (exp-id item)))
-                                               ("experience.position"         . ,(url-enc (job-position item)))
-                                               ("experience.startDate"        . ,(url-enc (start-date item)))
-                                               ("experience.endDate"          . ,(url-enc (end-date item)))
-                                               ("experience.description"      . ,(url-enc (description item)))
-                                               ))))
-                                 (apply 'append
-                                        (loop :for item :in (split-sequence:split-sequence #\Space (skills resume)) :collect
-                                           (let ((item (get-skill (parse-integer item))))
-                                             `(("keySkills.string"      . ,(url-enc (name item)))))))
-                                 `(("skills.string" . "%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BD%D0%B0%D1%85%D0%BE%D0%B6%D1%83%D1%81%D1%8C+%D0%BD%D0%B0+%D0%BF%D0%B5%D0%BD%D1%81%D0%B8%D0%B8.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B5%D0%B5+%D0%B2%D1%80%D0%B5%D0%BC%D1%8F+%D0%BD%D0%B0%D1%85%D0%BE%D0%B6%D1%83%D1%81%D1%8C+%D0%B2+%D0%BF%D0%BE%D0%B8%D1%81%D0%BA%D0%B0%D1%85+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BF%D1%80%D0%BE%D1%85%D0%BE%D0%B4%D0%B8%D0%BB+%D1%81%D0%BB%D1%83%D0%B6%D0%B1%D1%83+%D0%B2+%D0%B0%D1%80%D0%BC%D0%B8%D0%B8.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BF%D1%80%D0%BE%D1%85%D0%BE%D0%B4%D0%B8%D0%BB+%D0%BE%D0%B1%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D0%B5+%D0%B1%D0%B5%D0%B7+%D0%B2%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D0%B8+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B0%D1%82%D1%8C.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BD%D0%B0%D1%85%D0%BE%D0%B4%D0%B8%D0%BB%D0%B0%D1%81%D1%8C+%D0%B2+%D0%B4%D0%B5%D0%BA%D1%80%D0%B5%D1%82%D0%BD%D0%BE%D0%BC+%D0%BE%D1%82%D0%BF%D1%83%D1%81%D0%BA%D0%B5.%0D%0A"))
-                                 (apply 'append
-                                        (loop :for item :in (split-sequence:split-sequence #\Space (recommendations resume)) :collect
-                                           (let ((item (get-recommendation (parse-integer item))))
-                                             `(("recommendation.id"            . ,(url-enc (recommendation-id item)))
-                                               ("recommendation.name"          . ,(url-enc (name item)))
-                                               ("recommendation.position"      . ,(url-enc (job-position item)))
-                                               ("recommendation.organization"  . ,(url-enc (organization item)))
-                                               ("recommendation.contactInfo"   . ,(url-enc (contact-info item)))))))
-                                 <<gen_post(expirience_eq, "resume")>>
-                                 )))
-      (values
-       uri
-       headers
-       (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))
+  <<exp_val>>
 
-  ;; (print
-  ;;  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;    (set-resume-expirience cookie-jar (car (all-resume))
-  ;;                      ;; "8eb43271ff030a44e00039ed1f735871443047"
-  ;;                      )))
+  <<about_val>>
+
+  (defun set-resume-expirience (expiriences about)
+    (with-set-resume-section
+        ((format
+          nil
+          "https://spb.hh.ru/applicant/resumes/edit/experience?resume=~A&field=experience"
+          resume-id)
+         (append
+          (loop :for exp :in expiriences :append
+             (append
+              `(("experience.companyName" . ,(url-enc (getf exp :name)))
+                ("experience.companyId" . ,(url-enc (getf exp :company-id)))
+                ("experience.companyAreaId" . ,(url-enc (getf exp :company-area-id)))
+                ("experience.companyUrl" . ,(url-enc (getf exp :site)))
+                ("experience.companyIndustryId" . ,(url-enc (getf exp :industry-id))))
+              (loop :for indstr-id :in (getf exp :industries)
+                 :append
+                 `(("experience.companyIndustries" . ,(format nil "~A" indstr-id))))
+              `(("experience.companyIndustries" . "")
+                ("experience.id" . "")
+                ("experience.position" . ,(url-enc (getf exp :position)))
+                ("experience.startDate" . ,(url-enc (getf exp :start-date)))
+                ("experience.endDate" . ,(url-enc (getf exp :end-date)))
+                ("experience.description" . ,(url-enc (getf exp :description))))))
+          `(("skills.string"  . ,(url-enc about)))
+          ;; `(("skills.string" . "%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BD%D0%B0%D1%85%D0%BE%D0%B6%D1%83%D1%81%D1%8C+%D0%BD%D0%B0+%D0%BF%D0%B5%D0%BD%D1%81%D0%B8%D0%B8.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B5%D0%B5+%D0%B2%D1%80%D0%B5%D0%BC%D1%8F+%D0%BD%D0%B0%D1%85%D0%BE%D0%B6%D1%83%D1%81%D1%8C+%D0%B2+%D0%BF%D0%BE%D0%B8%D1%81%D0%BA%D0%B0%D1%85+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BF%D1%80%D0%BE%D1%85%D0%BE%D0%B4%D0%B8%D0%BB+%D1%81%D0%BB%D1%83%D0%B6%D0%B1%D1%83+%D0%B2+%D0%B0%D1%80%D0%BC%D0%B8%D0%B8.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BF%D1%80%D0%BE%D1%85%D0%BE%D0%B4%D0%B8%D0%BB+%D0%BE%D0%B1%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D0%B5+%D0%B1%D0%B5%D0%B7+%D0%B2%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D0%B8+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B0%D1%82%D1%8C.%0D%0A%D0%92+%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D0%B8%D0%B5+%D0%B3%D0%BE%D0%B4%D1%8B+%D0%BD%D0%B0%D1%85%D0%BE%D0%B4%D0%B8%D0%BB%D0%B0%D1%81%D1%8C+%D0%B2+%D0%B4%D0%B5%D0%BA%D1%80%D0%B5%D1%82%D0%BD%D0%BE%D0%BC+%D0%BE%D1%82%D0%BF%D1%83%D1%81%D0%BA%D0%B5.%0D%0A"))
+          ;; (apply 'append
+          ;;        (loop :for item :in (split-sequence:split-sequence #\Space (recommendations resume)) :collect
+          ;;           (let ((item (get-recommendation (parse-integer item))))
+          ;;             `(("recommendation.id"            . ,(url-enc (recommendation-id item)))
+          ;;               ("recommendation.name"          . ,(url-enc (name item)))
+          ;;               ("recommendation.position"      . ,(url-enc (job-position item)))
+          ;;               ("recommendation.organization"  . ,(url-enc (organization item)))
+          ;;               ("recommendation.contactInfo"   . ,(url-enc (contact-info item)))))))
+          ;; <<gen_post(expirience_eq, "resume")>>
+          `(("_xsrf"          . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (format t "~% expiriences ok")))
 #+END_SRC
 
-** TODO Публикация (=touch=)
+** Публикация (touch)
 
-#+NAME: touch
+#+NAME: set_resume_touch
 #+BEGIN_SRC lisp
-  (defun touch (cookie-jar &optional (resume-id ""))
-    ;; Сначала запросим основную страницу резюме
-    (let ((main-url "http://spb.hh.ru/applicant/resumes/view?resume="))
-      (multiple-value-bind (response cookie-jar url)
-          (hh-get-page main-url cookie-jar *hh_account* "http://spb.hh.ru")
-        ;; Теперь запрашиваем touch
-        (let ((touch-url "http://spb.hh.ru/applicant/resumes/edit/touch?resume="))
-          (multiple-value-bind (response cookie-jar url)
-              (hh-get-page touch-url cookie-jar *hh_account* "http://spb.hh.ru")
-            ;; Получаем ключ-значения cookies
-            (let ((cookie-alist (mapcar #'(lambda (cookie)
-                                            (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))
-                                        (drakma:cookie-jar-cookies cookie-jar))))
-              ;; Отправляем POST
-               (multiple-value-bind (body-or-stream status-code headers uri stream must-close reason-phrase)
-                   (drakma:http-request
-                    touch-url
-                    :user-agent "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:42.0) Gecko/20100101 Firefox/42.0"
-                    :method :post
-                    :content (format nil "~{~A~^&~}"
-                                     (mapcar #'(lambda (x)
-                                                 (format nil "~A=~A" (car x) (cdr x)))
-                                             `(("resume" . "341309a0ff02d634530039ed1f543763556562")
-                                               ("publish" . "next")
-                                               ("createVisibleResume" . "true&_xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb"))
-                                             ))
-                    :content-type "application/x-www-form-urlencoded; charset=UTF-8"
-                    :additional-headers
-                    `(("Accept" . "*/*")
-                      ("Accept-Language" . "en-US,en;q=0.5")
-                      ;; ("Accept-Encoding" . "gzip, deflate")
-                      ("X-Xsrftoken" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal)))
-                      ("X-Requested-With" . "XMLHttpRequest")
-                      ("Referer" . ,touch-url)
-                      ("Connection" . "keep-alive")
-                      ("Pragma" . "no-cache")
-                      ("Cache-Control" . "no-cache")
-                      )
-                    :cookie-jar cookie-jar
-                    :redirect 10
-                    :force-binary t)
-                 (return-from touch
-                   (values
-                    headers
-                    (flexi-streams:octets-to-string body-or-stream :external-format :utf-8))))))))))
-
-  ;; (print
-  ;;  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;    (touch cookie-jar)))
+  (defun set-resume-touch ()
+    (with-set-resume-section
+        ((format nil "https://spb.hh.ru/applicant/resumes/touch")
+         (append
+          `(("resume" . ,resume-id)
+            ("publish" . "next"))
+          `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+      (format t "~% touch ok")))
 #+END_SRC
 
 ** TODO Удаление резюме
@@ -2655,486 +2811,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
     (let ((main-url (format nil "http://spb.hh.ru/applicant/resumes/view?resume=~A" resume-id)))
       (hh-get-page main-url cookie-jar *hh-account* referer #'stderr next)))
 
-  (defparameter *personal*
-    '(:last-name "Глухов"
-      :first-name "Михаил"
-      :middle-name "Михайлович"
-      :birthday "1982-12-15"
-      :gender "male"
-      :area "2"
-      :metro ""
-      :relocation "relocation_possible"
-      :relocation-area "1"
-      :business-trip-readiness "ready"
-      :citizen-ship "113"
-      :work-ticket "113"
-      :travel-time "any"))
-
-  (defun resume-personal (plist)
-    (let ((url (format nil "http://spb.hh.ru/applicant/resumes/edit/personal?resume=~A" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar cookie-alist
-                `(("lastName.string" . ,(utf (getf plist :last-name)))
-                  ("firstName.string" . ,(utf (getf plist :first-name)))
-                  ("middleName.string" . ,(utf (getf plist :middle-name)))
-                  ("birthday.date" . ,(utf (getf plist :birthday)))
-                  ("gender.string" . ,(utf (getf plist :gender)))
-                  ("area.string" . ,(utf (getf plist :area)))
-                  ("metro.string" . ,(utf (getf plist :metro)))
-                  ("relocation.string" . ,(utf (getf plist :relocation)))
-                  ("relocationArea.string" . ,(utf (getf plist :relocation-area)))
-                  ("businessTripReadiness.string" . ,(utf (getf plist :business-trip-readiness)))
-                  ("citizenship" . ,(utf (getf plist :citizen-ship)))
-                  ("citizenship.string" . ,(utf (getf plist :citizen-ship)))
-                  ("workTicket" . ,(utf (getf plist :work-ticket)))
-                  ("workTicket.string" . ,(utf (getf plist :work-ticket)))
-                  ("travelTime.string" . ,(utf (getf plist :travel-time)))))
-             ;; Получаем идентификатор резюме
-             (setf resume-id (cadr (split-sequence:split-sequence #\= (puri:uri-query uri))))))
-         (print resume-id)))))
-
-  (defparameter *education*
-    '(:primary-educations
-      (:education-id "0"
-       :name "Санкт-Петербургский национальный исследовательский университет информационных технологий, механики и оптики, Санкт-Петербург"
-       :university-id "39872"
-       :faculty-id "0"
-       :organization "Прикладная математика и информатика"
-       :result "Математические модели и алгоритмы в разработке программного обеспечения"
-       :specialty-id "" :year "2020")
-      :additional-education-id ""
-      :additional-education-name ""
-      :additional-education-organization ""
-      :additional-education-result ""
-      :additional-education-year ""
-      :certificate-id ""
-      :certificate-type ""
-      :certificate-selected ""
-      :certificate-ownerName ""
-      :certificate-transcription-id ""
-      :certificate-password ""
-      :certificate-title ""
-      :certificate-achievementDate ""
-      :certificate-url ""
-      :attestation-education-id ""
-      :attestation-education-name ""
-      :attestation-education-organization ""
-      :attestation-education-result ""
-      :attestation-education-year ""))
-
-  (defun resume-education (plist)
-    (let ((url (format nil "http://spb.hh.ru/applicant/resumes/edit/education?resume=~A" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 `(("educationLevel.string" . ,(utf "higher")))
-                 (let ((edu (getf plist :primary-educations)))
-                   `(("primaryEducation.id"            . "")
-                     ("primaryEducation.name"          . ,(utf (getf edu :name)))
-                     ("primaryEducation.universityId"  . ,(utf (format nil "~A" 39864)))
-                     ("primaryEducation.facultyId"     . ,(if-zero-then-empty 0))
-                     ("primaryEducation.organization"  . ,(utf (getf edu :organization)))
-                     ("primaryEducation.result"        . ,(utf (getf edu :result)))
-                     ("primaryEducation.specialtyId"   . ,(utf (format nil "~A" (getf edu :specialty-id))))
-                     ("primaryEducation.year"          . ,(utf (format nil "~A" (getf edu :year))))))
-                 `(("additionalEducation.id" . ,(utf (getf plist :additional-education-id)))
-                   ("additionalEducation.name" . ,(utf (getf plist :additional-education-name)))
-                   ("additionalEducation.organization" . ,(utf (getf plist :additional-education-organization)))
-                   ("additionalEducation.result" . ,(utf (getf plist :additional-education-result)))
-                   ("additionalEducation.year" . ,(utf (getf plist :additional-education-year)))
-                   ("certificate.id" . ,(utf (getf plist :certificate-id)))
-                   ("certificate.type" . ,(utf (getf plist :certificate-type)))
-                   ("certificate.selected" . ,(utf (getf plist :certificate-selected)))
-                   ("certificate.ownerName" . ,(utf (getf plist :certificate-ownerName)))
-                   ("certificate.transcriptionId" . ,(utf (getf plist :certificate-transcription-id)))
-                   ("certificate.password" . ,(utf (getf plist :certificate-password)))
-                   ("certificate.title" . ,(utf (getf plist :certificate-title)))
-                   ("certificate.achievementDate" . ,(utf (getf plist :certificate-achievementDate)))
-                   ("certificate.url" . ,(utf (getf plist :certificate-url)))
-                   ("attestationEducation.id" . ,(utf (getf plist :attestation-education-id)))
-                   ("attestationEducation.name" . ,(utf (getf plist :attestation-education-name)))
-                   ("attestationEducation.organization" . ,(utf (getf plist :attestation-education-organization)))
-                   ("attestationEducation.result" . ,(utf (getf plist :attestation-education-result)))
-                   ("attestationEducation.year" . ,(utf (getf plist :attestation-education-year))))
-                 `(
-                   ("_xsrf"                          . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))
-                 ))))))))
-
-  (defun resume-position (title salary-amount specalizations)
-    (let ((url (format nil "http://spb.hh.ru/applicant/resumes/edit/position?resume=~A" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 `(("title.string" . ,(utf title))
-                   ("profArea"     . ,(utf "1")))
-                 (mapcar #'(lambda (x)
-                             `("specialization.string" . ,(utf x)))
-                         (split-sequence:split-sequence #\Space specalizations))
-                 `(("profarea" . "")
-                   ("profarea" . "1")
-                   ("profarea" . "2")
-                   ("profarea" . "3")
-                   ("profarea" . "4")
-                   ("profarea" . "5")
-                   ("profarea" . "6")
-                   ("profarea" . "7")
-                   ("profarea" . "8")
-                   ("profarea" . "9")
-                   ("profarea" . "10")
-                   ("profarea" . "11")
-                   ("profarea" . "12")
-                   ("profarea" . "13")
-                   ("profarea" . "14")
-                   ("profarea" . "16")
-                   ("profarea" . "17")
-                   ("profarea" . "18")
-                   ("profarea" . "19")
-                   ("profarea" . "20")
-                   ("profarea" . "21")
-                   ("profarea" . "22")
-                   ("profarea" . "23")
-                   ("profarea" . "24")
-                   ("profarea" . "25")
-                   ("profarea" . "26")
-                   ("profarea" . "15")
-                   ("profarea" . "27")
-                   ("profarea" . "29")
-                   ("salary.amount" . ,(utf salary-amount))
-                   ("salary.currency" . ,(utf "RUR"))
-                   ("employment.string" . ,(utf "full"))
-                   ("workSchedule.string" . ,(utf "full_day")))
-                 `(
-                   ("_xsrf"                          . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))))))))
-
-  (defparameter *expiriences*
-    (list
-     (job :name "ООО Автоматон"
-          :site ""
-          :position  "TeamLead, IT-Architect"
-          :start-date "2015-12-01"
-          :end-date  "" ;; "2016-07-01"
-          :description "Компания занимается разработкой и эксплуатацией автоматизированных парковок.
-
-  Я возглавил исследовательский проект по разработке новой парковочной системы: аппаратной и программной части.
-
-  Технологии:
-  - Проектирование печатных плат - Kikad, Altium Designer
-  - Программирование: С/С++, Assembler, Erlang (телефония), PHP/JS: Symfony+React (веб-интерфейс), EmacsLisp - кодогенерация для \"исполняемых спецификаций\" и утилиты для совместной удаленной работы в команде
-  - Архитектурный стек - Linux on ARM Cortex A8 и Symphony+React в интерфейсе управления.
-
-  Разработку проводил с нуля, по этапам:
-  - Найм сотрудников
-  - Выбор электронных компонентов,
-  - Создание печатных плат,
-  - Написание низкоуровневого кода, управляющего шлагбаумами и опрашивающего датчики
-  - Написание бизнес-логики и веб-интерфейсов, через которые можно управлять парковкой удаленно,
-  - Подключение интернет-телефонии, для общения с клиентом парковки
-
-  Первое внедрение состоялось через полгода от начала разработки, разработка полностью окупилась через год. Разработанное решение опережает конкурирующие.
-
-  Мои достижения:
-
-  - Спроектировал программно-аппаратную архитектуру системы автоматизации платных парковок.
-  - Спланировал и организовал работы по разработке ПО и аппаратной части, включая подбор электронных компонентов и схемотехническое проектирование.
-  - Самостоятельно реализовал бизнес-логику и уровень представления (Рабочее Место Оператора) на Symfony и React
-  - Руководил работами по реализации транспортного уровня и уровня абстракции оборудования, выполненными удаленными разработчиками (C/C++, модули ядра, драйверы устройств)
-  - Организовал паралельную разработку по модульному принципу (чтобы ускорить создание продукта) и методологии kanban
-  - Внедрил Continuous Integration и процесс управления жизненным циклом (релизы, исправление ошибок, добавление возможностей, технический контроль качества, автоматизированное тестирование)
-  - Реализовал безопасное (цифровая подпись) и отказоустойчивое (откат на предыдующую версию при провале тестов) обновление прошивок через интернет.
-  - Автоматизировал создание и хранение документации, с использованием версионирования на базе GIT и \"executable specifications\".")
-     (job :name "ООО БКН"
-          :site "http://bkn.ru"
-          :position  "ИТ-директор"
-          :start-date "2015-04-01"
-          :end-date  "2015-12-01"
-          :description "Компания - второй после \"Бюллетеня недвижимости\" информационный источник в области недвижимости по С-Пб и ЛО.
-
-  Руководил разработкой и продвижением информационных решений автоматизации бизнеса агентств недвижимости (b2b и b2c).
-
-  Стек технологий: C# и ASP.NET, ExtJs
-
-  Достижения:
-
-  - Используя данные \"межагентской БД bkn-profi\" в короткие сроки создал раздел о жилых комплексах и новостройках, который по обьему вскоре достиг 60% сайта, что позволило резко увеличить доходы от рекламы на сайте.
-  - Реализовал на сайте bkn.ru раздел поиска и подбора квартир, комнат и жилых домов первичного и вторичного рынка, интегрировал его с межагентской БД объектов недвижимости.")
-     (job :name "Тренд"
-          :site "http://trend-spb.ru"
-          :position  "Ведущий инженер-программист"
-          :start-date "2014-08-01"
-          :end-date  "2015-03-01"
-          :description "Компания - молодое быстрорастущее агенство недвижимости, специализирующееся на первичном рынке (новостройки)
-
-  Автоматизировал бизнес-процесс агенства по продажам недвижимости (новостройки).
-
-  Стек технологий: Php, Nginx, Mysql, PostgreSql
-
-  Достижения:
-
-  До моего найма агенты использовали skype и google docs для отслеживания задач. Я написал CRM, модули которой (выставление цен, интерактивный подбор объектов) автоматизировали рутинные задачи.")
-     (job :name "Частная компания (алготрейдинг)"
-          :site "http://aintsys.com"
-          :position  "Lisp/Erlang-разработчик"
-          :start-date "2012-04-01"
-          :end-date  "2014-08-01"
-          :description "Разрабатывал решения в сфере электронных валют на базе технологии BlockChain.
-
-  Стек технологий: Erlang, Common Lisp, C++
-
-  К сожалению, по условиям NDA я не имею права распространять в сети информацию о деятельности компании и моих разработках :(")
-     (job :name "ООО РАВТА"
-          :site "http://ravta.ru"
-          :position "Директор по IT"
-          :start-date "2012-01-01"
-          :end-date  "2012-04-01"
-          :description "Компания - интернет-магазин запчастей, комплектующих и расходных материалов для автомобилей.
-
-  Осуществлял руководство разработкой информационной системы предприятия, занимался постановкой задач и контролем выполнения работ. Организовывал договорную работу с подрядчиками.
-
-  Достижения:
-
-  Внедрил на фирме 1-С Предприятие и 1С-Склад и обеспечил ее интеграцию с системой TechDoc.
-  ")
-     (job :name "WizardSoft"
-          :site "http://wizardsoft.ru"
-          :position "Ведущий разработчик, архитектор"
-          :start-date "2011-05-01"
-          :end-date "2012-01-01"
-          :description "Компания занимается автоматизацией управления затратами в стоительстве.
-  Достижения:
-
-  Разработал высоконагрузочный портал для проведения строительных тендеров. Прототип реализовал на Common Lisp, Postmodern и PostgreSQL. После приемки прототип был существенно расширен и переписан на PHP")
-     (job :name "ЦиFры"
-          :site "http://www.320-8080.ru"
-          :position "Архитектор-проектировщик, веб-программист"
-          :start-date "2009-09-01"
-          :end-date "2011-04-01"
-          :description "Компания - интернет-магазин цифровой техники.
-
-  Стек технологий: PHP, MySql, Jquery, Common Lisp, Memcached
-
-  Достижения:
-
-  - На первом этапе в кратчайшие сроки подготовил legacy-код к новогодним нагрузкам путем внедрения кэширования.
-  - Затема полностью перепроектировал и реализовал на высоконагрузочный интернет-магазин.
-  ")
-     (job :name "ООО Вебдом"
-          :site  "http://webdom.net"
-          :position "Ведущий веб-разработчик"
-          :start-date "2007-01-01"
-          :end-date "2009-09-01"
-          :description "Веб-студия
-  Стек технологий: Php, Nginx, MySql
-
-  Достижения:
-
-  Cпроектировал и разработал масштабируемый фреймворк, на котором теперь работает компания. CMS на его основе поставляются клиентам.")
-     (job :name "Почин"
-          :site "http://pochin.ru"
-          :position "Программист"
-          :start-date "2005-09-01"
-          :end-date "2007-01-01"
-          :description "Компания - интернет-магазин авточехлов, автозапчастей и автоинструмента.
-
-  Стек технологий: LAMP
-
-  Первоначально начинал как фриланс-программист, но скоро сотрудничество стало постоянным.
-
-  Достижения:
-
-  - Спроектировал и разработал интернет-магазин (три версии за полтора года)")))
-
-  (defparameter *about* "Мне нравится решать сложные задачи. Более подробная информация, c проектами, которые сюда не поместились: https://rigidus.ru/about/index.html
-
-  Мой гитхаб: https://github.com/rigidus/
-
-  Ключевые компетенции:
-  - Linux, FreeBSD
-  - PHP, C/C++, Java, Common Lisp, Erlang, Forth, Assembler
-  - Nginx, Memcached, Redis, RabbitMQ
-  - MySQL, PostgreSQL
-  - Git
-  - JavaSсript, JQuery, React, Redux
-
-  Умею сниффать сниффером и профайлить профайлером.
-
-  Не боюсь регулярных выражений.
-
-  Знаю в чем разница между венгерской нотацией и обратной польской записью.
-
-  Умею управлять машиной Тьюринга и стрелять из конечного автомата.
-
-  Грамотно выражаю свои мысли на бумаге, устно, на пальцах; и с первого раза воспринимаю чужие с тех же носителей.")
-
-  (defun resume-expiriences (expiriences about)
-    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/edit/experience?resume=~A&field=experience" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 (loop :for exp :in expiriences :append
-                    (append
-                     `(("experience.companyName" . ,(url-enc (getf exp :name)))
-                       ("experience.companyId" . ,(url-enc (getf exp :company-id)))
-                       ("experience.companyAreaId" . ,(url-enc (getf exp :company-area-id)))
-                       ("experience.companyUrl" . ,(url-enc (getf exp :site)))
-                       ("experience.companyIndustryId" . ,(url-enc (getf exp :industry-id))))
-                     (loop :for indstr-id :in (getf exp :industries)
-                        :append
-                        `(("experience.companyIndustries" . ,(format nil "~A" indstr-id))))
-                     `(("experience.companyIndustries" . "")
-                       ("experience.id" . "")
-                       ("experience.position" . ,(url-enc (getf exp :position)))
-                       ("experience.startDate" . ,(url-enc (getf exp :start-date)))
-                       ("experience.endDate" . ,(url-enc (getf exp :end-date)))
-                       ("experience.description" . ,(url-enc (getf exp :description))))))
-                 `(("skills.string"  . ,(url-enc about)))
-                 `(("_xsrf"                          . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
-             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
-
-  (defparameter *languages*
-    `((:lang-id "34" :lang-degree "native")
-      (:lang-id "57" :lang-degree "can_read")
-      (:lang-id "58" :lang-degree "basic")
-      (:lang-id "59" :lang-degree "none")))
-
-  (defun resume-languages (languages)
-    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/edit/education?resume=~A&field=language" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 (loop :for lang :in languages :append
-                    `(("language.id"     . ,(utf (format nil "~A" (getf lang :lang-id))))
-                      ("language.degree" . ,(utf (format nil "~A" (getf lang :lang-degree))))))
-                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
-             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
-
-  (defparameter *contacts*
-    '(:cell-phone "+79112869290"
-      :cell-phone-comment ""
-      :home-phone ""
-      :home-phone-comment ""
-      :work-phone ""
-      :work-phone-comment ""
-      :email-string "avenger-f@yandex.ru"
-      :preferred-contact "email"
-      :icq ""
-      :skype ""
-      :freelance ""
-      :moi_krug ""
-      :linkedin ""
-      :facebook ""
-      :livejournal "" ;; "http://rigidus.livejournal.com"
-      :personal-site "http://rigidus.ru"))
-
-  (defun resume-contacts (contacts)
-    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/edit/contacts?resume=~A" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 (let ((contacts contacts))
-                   `(("phone.type" . "cell")
-                     ("phone.formatted" . ,(utf (getf contacts :cell-phone)))
-                     ("phone.comment" . ,(utf (getf contacts :cell-phone-comment)))
-                     ("phone.type" . "home")
-                     ("phone.formatted" . ,(utf (getf contacts :home-phone)))
-                     ("phone.comment" . ,(utf (getf contacts :home-phone-comment)))
-                     ("phone.type" . "work")
-                     ("phone.formatted" . ,(utf (getf contacts :work-phone)))
-                     ("phone.comment" . ,(utf (getf contacts :work-phone-comment)))
-                     ("email.string" . ,(utf (getf contacts :email-string)))
-                     ("preferredContact.string" . "email")
-                     ("personalSite.type" . "icq")
-                     ("personalSite.url" . ,(utf (getf contacts :icq)))
-                     ("personalSite.type" . "skype")
-                     ("personalSite.url" . ,(utf (getf contacts :skype)))
-                     ("personalSite.type" . "freelance")
-                     ("personalSite.url" . ,(utf (getf contacts :freelance)))
-                     ("personalSite.type" . "moi_krug")
-                     ("personalSite.url" . ,(utf (getf contacts :moi_krug)))
-                     ("personalSite.type" . "linkedin")
-                     ("personalSite.url" . ,(utf (getf contacts :linkedin)))
-                     ("personalSite.type" . "facebook")
-                     ("personalSite.url" . ,(utf (getf contacts :facebook)))
-                     ("personalSite.type" . "personal")
-                     ("personalSite.url" . ,(utf (getf contacts :personal)))
-                     ("personalSite.type" . "livejournal")
-                     ("personalSite.url" . ,(utf (getf contacts :livejournal)))))
-                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
-             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
-
-  (defun resume-visibility (val)
-    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/edit/visibility?resume=~A" resume-id)))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 `(("accessType.string" . ,val))
-                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
-             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
-
-  (defun resume-touch ()
-    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/touch")))
-      (hh-get-page
-       url cookie-jar *hh-account* referer #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (with-cookie-alist (cookie-jar)
-           (with-post-response
-               (url
-                cookie-jar
-                cookie-alist
-                (append
-                 `(("resume" . ,resume-id)
-                   ("publish" . "next"))
-                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
-             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
-
   (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
          (resume-id "")
          (referer "https://spb.hh.ru"))
@@ -3144,17 +2820,19 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
      ;; Теперь запросим страницу personal, получая resume-id
      (lambda (response new-cookie-jar url)
        (setf cookie-jar new-cookie-jar)
-       (resume-personal *personal*)
-       (resume-education *education*)
-       (resume-position (concatenate 'string "Senior Developer " (symbol-name (gensym))
-                                     )
-                        "400000"
-                        "3 221")
-       (resume-expiriences *expiriences* *about*)
-       (resume-languages *languages*)
-       (resume-contacts *contacts*)
-       (resume-visibility "no_one")
-       (resume-touch))))
+       (set-resume-personal *personal*)
+       (set-resume-education *education*)
+       (set-resume-position
+        (concatenate 'string "Senior Developer " (symbol-name (gensym))
+                     )
+        "400000"
+        "3 221")
+       (set-resume-expirience *expiriences* *about*)
+       (set-resume-contacts *contacts*)
+       (set-resume-languages *languages*)
+       (set-resume-visibility "no_one")
+       (set-resume-touch)
+       )))
 
   ;; КЛЮЧЕВЫЕ НАВЫКИ
 
@@ -3212,7 +2890,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   (print *w*)
 #+END_SRC
 
-** Цикл обработки вакансий
+** TODO Цикл обработки вакансий
 
 В цикле:
 - печатаем вакансию
