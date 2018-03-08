@@ -2977,6 +2977,41 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                  `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
              (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
 
+  (defun resume-visibility (val)
+    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/edit/visibility?resume=~A" resume-id)))
+      (hh-get-page
+       url cookie-jar *hh-account* referer #'stderr
+       (lambda (response new-cookie-jar url)
+         (setf cookie-jar new-cookie-jar)
+         (with-cookie-alist (cookie-jar)
+           (send-post-multiple-values
+               (url
+                cookie-jar
+                cookie-alist
+                (append
+                 `(("accessType.string" . ,val))
+                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
+
+  resume=a85af791ff05288f3d0039ed1f746d79723733&publish=next&_xsrf=eb4abdd88c162392b34ef4d256418dbe
+
+  (defun resume-touch ()
+    (let ((url (format nil "https://spb.hh.ru/applicant/resumes/touch")))
+      (hh-get-page
+       url cookie-jar *hh-account* referer #'stderr
+       (lambda (response new-cookie-jar url)
+         (setf cookie-jar new-cookie-jar)
+         (with-cookie-alist (cookie-jar)
+           (send-post-multiple-values
+               (url
+                cookie-jar
+                cookie-alist
+                (append
+                 `(("resume" . ,resume-id)
+                   ("publish" . "next"))
+                 `(("_xsrf" . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))))
+             (split-sequence:split-sequence #\= (puri:uri-query uri))))))))
+
   (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
          (resume-id "")
          (referer "https://spb.hh.ru"))
@@ -2988,18 +3023,15 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (setf cookie-jar new-cookie-jar)
        (resume-personal *personal*)
        (resume-education *education*)
-       (resume-position (concatenate 'string "Senior Developer" ;; (symbol-name (gensym))
+       (resume-position (concatenate 'string "Senior Developer " (symbol-name (gensym))
                                      )
-                        "300000"
+                        "400000"
                         "3 221")
        (resume-expiriences *expiriences* *about*)
        (resume-languages *languages*)
-       (resume-contacts *contacts*))))
-
-
-  ;; title.string=IT-%D0%B4%D0%B8%D1%80%D0%B5%D0%BA%D1%82%D0%BE%D1%80+%2F+%D0%A0%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D0%B8%D1%82%D0%B5%D0%BB%D1%8C+%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B8+%D0%9F%D0%9EG2450&
-  ;; profArea=1&specialization.string=221&specialization.string=3&salary.amount=160000&salary.currency=RUR&employment.string=full&workSchedule.string=full_day&_xsrf=5e9fb9ec46e64214f25085132e141e7e
-
+       (resume-contacts *contacts*)
+       (resume-visibility "no_one")
+       (resume-touch))))
 
   ;; КЛЮЧЕВЫЕ НАВЫКИ
 
@@ -3079,15 +3111,32 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
            (let ((input (read-line)))
              (cond ((equal input "0") (go fin))
                    ((equal input "1") (go next))
-                   ((equal input "2")
-                    (progn
+                   ((equal input "2") ;; CHANGE DOMAIN
+                    (let ((dms (let ((acc 0))
+                                 (mapcar (lambda (x)
+                                           (cons (incf acc) x))
+                                         '(:unsorted :uninterested :interested :responded
+                                           :beenviewed :invited  :interviewed  :offered)))))
+                      (format t "~%CHANGE DOMAIN:~{~%~{[~A] - ~A~}~}"
+                              (mapcar (lambda (x) (list (car x) (cdr x)))
+                                      dms))
                       (format t "~%Enter new domain (empty for return back without change): ")
-                      (let ((input (read-line)))
-                        (cond ((equal input "") (go show-vac))
-                              (t (progn
-                                   (setf (getf vac :domain) input)
-                                   (format t "~%Domain changed. Press ENTER.")
-                                   (read-line)))))))))
+                      (let* ((input (read-line))
+                             (num   (parse-integer input :junk-allowed t))
+                             (new   nil))
+                        (cond ((equal input "")
+                               (go show-vac))
+                              ((not (null num))
+                               (setf new (cdr (assoc num dms)))))
+                        (unless (keywordp new)
+                          (setf new (intern new :keyword)))
+                        (setf (getf vac :domain) new)
+                        (format t "~%Domain changed. Press ENTER.")
+                        (read-line))))
+                   ((equal input "3") ;; RESPOND
+                    (progn
+                      (format t "~%  wefwef")))
+                   ))
          next))
    fin
      (format t "loop breaked"))
