@@ -2225,41 +2225,47 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 *** При выборе уже загруженных фото
 
-photo.string=94187420
-type=RESUME_PHOTO
-file=
-title=&_xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
+#+BEGIN_EXAMPLE
+  photo.string=94187420
+  type=RESUME_PHOTO
+  file=
+  title=&_xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
+#+END_EXAMPLE
 
 *** При загрузке новой фотографии
 
 POST http://spb.hh.ru/applicant/resumes/artifacts/upload
 
-Content-Type: multipart/form-data;
-boundary=---------------------------41026768278304188928476747
-Content-Length: 1364120
+#+BEGIN_EXAMPLE
+  Content-Type: multipart/form-data;
+  boundary=---------------------------41026768278304188928476747
+  Content-Length: 1364120
 
------------------------------41026768278304188928476747
-Content-Disposition: form-data; name="_xsrf"
+  -----------------------------41026768278304188928476747
+  Content-Disposition: form-data; name="_xsrf"
 
-b2dccfd0ce2ff68b2c4f795ac6d549fb
------------------------------41026768278304188928476747
-Content-Disposition: form-data; name="user"
+  b2dccfd0ce2ff68b2c4f795ac6d549fb
+  -----------------------------41026768278304188928476747
+  Content-Disposition: form-data; name="user"
 
-3681852
------------------------------41026768278304188928476747
-Content-Disposition: form-data; name="type"
+  3681852
+  -----------------------------41026768278304188928476747
+  Content-Disposition: form-data; name="type"
 
-RESUME_PHOTO
------------------------------41026768278304188928476747
-Content-Disposition: form-data; name="file"; filename="20150726_212228.jpg"
-Content-Type: image/jpeg
+  RESUME_PHOTO
+  -----------------------------41026768278304188928476747
+  Content-Disposition: form-data; name="file"; filename="20150726_212228.jpg"
+  Content-Type: image/jpeg
+#+END_EXAMPLE
 
 *** Удаление фото
 
 POST http://spb.hh.ru/applicant/resumes/artifacts/remove
 
-id=98616186
-user=3681852
+#+BEGIN_EXAMPLE
+  id=98616186
+  user=3681852
+#+END_EXAMPLE
 
 ** Персональная информация
 
@@ -2789,8 +2795,10 @@ POST-запросе передаются какие-то мусорные profar
 
 http://spb.hh.ru/applicant/deleteresume/
 
-resumeId=47592531
-_xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
+#+BEGIN_EXAMPLE
+  resumeId=47592531
+  _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
+#+END_EXAMPLE
 
 * Ручное создание резюме
 
@@ -2862,10 +2870,190 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 Таким образом, сценарий следующий:
 - Отсортировать вакансии
-- Двигаясь по порядку:
-  - Изменить её домен
-  - Опционально - сразу же отправить отклик на вакансию
+- Двигаясь по порядку сделать что-то из следующего:
+  - Изменить её домен (обычно на "неинтересные")
+  - Отправить отклик на вакансию (что приводит к изменению домена)
     - При необходимости сформировав под нее резюме
+
+** Интерфейсный граф
+
+Я попытаюсь сделать язык предметной области для описания такого
+сценария. Взаимодействие со сценарием можно разделить на состояния:
+- просмотр вакансий
+- анализ вакансии
+- изменение домена вакансии
+- отклик на вакансию
+
+Находясь в состоянии "просмотр вакансий" можно выполнить действие "выбрать вакансию",
+которое осуществит переход в "анализ вакансии". Из "анализа вакансии" можно перейти в
+"изменение вакансии" или "отклик на вакансию", а также вернуться обратно. Таким
+образом, получается древовидный сценарий, который мы можем задать таблично:
+
+#+NAME: iface_state
+| action  | from       | to         |
+|---------+------------+------------|
+| select  | viewing    | analysis   |
+| back    | analysis   | viewing    |
+| change  | analysis   | changing   |
+| back    | changing   | analysis   |
+| chdone  | changing   | viewing    |
+| respond | analysis   | responding |
+| back    | responding | analysis   |
+| rsdone  | responding | viewing    |
+
+Сформируем граф из этой таблицы
+
+#+NAME: iface_state_graph
+#+BEGIN_SRC emacs-lisp :var table=iface_state :results output
+  (mapcar #'(lambda (x)
+              (if (equal (first x) "back")
+                  (princ (format "%s -> %s [label =\"%s\", color=\"red\"];\n"
+                                 (second x) (third x) ""))
+                (princ (format "%s -> %s [label =\"%s\" ];\n"
+                               (second x) (third x) (first x)))))
+          table)
+#+END_SRC
+
+И отобразим его, пометив красными стрелками выход "на уровень вверх":
+
+#+BEGIN_SRC dot :file ../../img/iface-state.png :var input=iface_state_graph :exports results
+  digraph G { viewport = "865,150,0.7,617,70"; rankdir = LR; $input }
+#+END_SRC
+
+Превратим каждое из состояний в "экран", т.е. область взаимодействия, где пользователь
+может выполнять какие-то действия. У каждого экрана, в соответствии с графом есть входы
+и выходы. Для простоты будем пока реализовывать консольный интерфейс
+
+** Просмотр вакансий
+
+В экране "просмотр вакансий" мы должны показать несколько первых вакансий из
+сортированного списка и предложить пользователю список возможных действий:
+- Выход
+- Анализ какой-то из выбранных вакансий
+
+#+NAME: viewing
+#+BEGIN_SRC lisp
+  (defun show-ten-vacs (allvacs)
+    (loop
+       :for idx :from 1
+       :for vac :in (subseq allvacs 0 9)
+       :collect (progn
+                  (format t "~%[~A] - ~A - ~A"
+                          idx
+                          (getf (getf vac :vac) :salary-text)
+                          (getf (getf vac :vac) :name))
+                  (cons idx
+                        (getf (getf vac :vac) :src-id)))))
+
+  (defun viewing ()
+    (tagbody
+     renew
+       (format t "~%Viewing:")
+       (format t "~%[0] : Exit")
+       (let ((acts (show-ten-vacs *W*)))
+         (format t "~%Type your choise (0-9): ")
+         (tagbody
+          reinput
+            (let* ((input (read-line))
+                   (num   (parse-integer input :junk-allowed t)))
+              (unless (equal input (format nil "~A" num))
+                (format t "~%Wrong input, please try again: ")
+                (go reinput))
+              (cond ((equal 0 num)
+                     (progn
+                       (format t "~%Bye!")
+                       'Bye))
+                    ((< num  10)
+                     (progn
+                       ;; Здесь если происходит возврат из viewing
+                       ;; то только типа "back"
+                       (analysis (cdr (assoc num acts)))
+                       (go renew)))
+                    (t (err "viewing err"))))))))
+#+END_SRC
+
+** Анализ вакансии
+
+Когда анализируется вакансия ее нужно вывести, а потом предложить возможные действия:
+- Изменить домен вакансии
+- Откликнуться на вакансию
+
+#+NAME: analysis
+#+BEGIN_SRC lisp
+  (defun analysis (src-id)
+    (let ((vac (find-if (lambda (vac)
+                          (equal src-id
+                                 (getf (getf vac :vac) :src-id)))
+                        ,*w*)))
+      (format t "~%ANALYSIS for vac # ~A~%~A" src-id (bprint vac))
+      (format t "~%Actions:~%[0] - Back to viewing~%[1] - Change domain~%[2] - Respond")
+      (format t "~%Type your choise (0-2): ")
+      (tagbody
+       reinput
+         (let* ((input (read-line))
+                (num   (parse-integer input :junk-allowed t)))
+           (unless (equal input (format nil "~A" num))
+             (format t "~%Wrong input, please try again: ")
+             (go reinput))
+           (cond ((equal 0 num)  (progn
+                                   (format t "~%Return to viewing~%")
+                                   'back))
+                 ((equal 1 num)  (let ((retval (changing src-id)))
+                                   (cond ((equal retval 'back)  (go renew))
+                                         ((equal retval 'done)  (return-from analysis 'done))
+                                         (t (err (format nil "wrond retval ~A" retval))))))
+                 ((equal 2 num)  (let ((retval (responding src-id)))
+                                   (cond ((equal retval 'back)  (go renew))
+                                         ((equal retval 'done)  (return-from analysis 'done))
+                                         (t (err (format nil "wrond retval ~A" retval))))))
+                 (t (err "viewing select action err")))))))
+#+END_SRC
+
+** Изменение домена вакансии
+
+#+NAME: changing
+#+BEGIN_SRC lisp
+  (defun changing (src-id)
+    (let ((vac (find-if (lambda (vac)
+                          (equal src-id
+                                 (getf (getf vac :vac) :src-id)))
+                        ,*w*)))
+      (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
+      (let ((dms (let ((acc 0))
+                   (mapcar (lambda (x)
+                             (cons (incf acc) x))
+                           '(:unsorted :uninterested :interested :responded
+                             :beenviewed :invited  :interviewed  :offered)))))
+        (format t "~%CHANGE DOMAIN:~%[0] - Return to analysis~{~%~{[~A] - ~A~}~}"
+                (mapcar (lambda (x) (list (car x) (cdr x)))
+                        dms))
+        (format t "~%Enter your choise(0-~A): " (length dms))
+        (tagbody
+         reinput
+           (let* ((input (read-line))
+                  (num   (parse-integer input :junk-allowed t)))
+             (unless (equal input (format nil "~A" num))
+               (format t "~%Wrong input, please try again: ")
+               (go reinput))
+             (cond ((equal 0 num)
+                    (progn
+                      (format t "~%Return to analysis")
+                      'back))
+                   ((< num (length dms))
+                    (progn
+                      (setf (getf vac :domain)
+                            (cdr (assoc num dms)))
+                      (format t "~%Domain changed. Press ENTER for return to VIEWING")
+                      (read-line)
+                      (return-from changing 'done)))
+                   (t (err "changing select action err"))))))))
+
+  ;; (viewing)
+#+END_SRC
+
+** TODO Отклик на вакансию
+
+Тут будет процедура отклика
 
 ** Список отсортированых вакансий
 
@@ -2949,17 +3137,19 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
             w))
 #+END_SRC
 
-** Отклик на вакансию
+** TODO Отклик на вакансию
 
 Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
 запросу на сервер вида:
 
-https://spb.hh.ru/applicant/vacancy_response/popup?
-vacancyId=24700517 &
-autoOpen=no &
-isTest=no &
-withoutTest=no &
-selectedResume=
+#+BEGIN_EXAMPLE
+  https://spb.hh.ru/applicant/vacancy_response/popup?
+  vacancyId=24700517 &
+  autoOpen=no &
+  isTest=no &
+  withoutTest=no &
+  selectedResume=
+#+END_EXAMPLE
 
 Ответом на этот запрос приходит форма:
 
@@ -3118,11 +3308,18 @@ selectedResume=
 https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 и с содержимым:
 
-resume_hash=184691b4ff052841e70039ed1f4e4f4271714f&letter=&_xsrf=eb4abdd88c162392b34ef4d256418dbe&ignore_postponed=true
+#+BEGIN_EXAMPLE
+  resume_hash=184691b4ff052841e70039ed1f4e4f4271714f &
+  letter= &
+  _xsrf=eb4abdd88c162392b34ef4d256418dbe &
+  ignore_postponed=true
+#+END_EXAMPLE
 
 В ответ на который возвращается json вида:
 
-{"success": "true", "topic_id": "1100154346"}
+#+BEGIN_SRC js
+  {"success": "true", "topic_id": "1100154346"}
+#+END_SRC
 
 * TODO Парсинг резюме
 
