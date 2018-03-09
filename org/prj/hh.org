@@ -2875,10 +2875,32 @@ http://spb.hh.ru/applicant/deleteresume/
   - Отправить отклик на вакансию (что приводит к изменению домена)
     - При необходимости сформировав под нее резюме
 
+** Список отсортированых вакансий
+
+Берем все вакансии, кроме:
+- тех, что без указания зарплаты,
+- тех, у которых домен не :unsorted
+формируем их них список, который сортируем по зарплате от большей к меньшей
+
+#+BEGIN_SRC lisp
+  (defparameter *w*
+    (sort (loop
+             :for key :being :the :hash-keys :of *vacs*
+             :using (hash-value val)
+             :unless (null (getf (getf val :vac) :salary))
+             :when (equal (getf val :domain) :unsorted)
+             :collect val)
+          (lambda (a b)
+            (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
+
+  (length *w*)
+
+  (print *w*)
+#+END_SRC
+
 ** Интерфейсный граф
 
-Я попытаюсь сделать язык предметной области для описания такого
-сценария. Взаимодействие со сценарием можно разделить на состояния:
+Взаимодействие со сценарием можно разделить на состояния:
 - просмотр вакансий
 - анализ вакансии
 - изменение домена вакансии
@@ -3049,92 +3071,6 @@ http://spb.hh.ru/applicant/deleteresume/
                    (t (err "changing select action err"))))))))
 
   ;; (viewing)
-#+END_SRC
-
-** TODO Отклик на вакансию
-
-Тут будет процедура отклика
-
-** Список отсортированых вакансий
-
-Берем все вакансии, кроме:
-- тех, что без указания зарплаты,
-- тех, у которых домен не :unsorted
-формируем их них список, который сортируем по зарплате от большей к меньшей
-
-#+BEGIN_SRC lisp
-  (defparameter *w*
-    (sort (loop
-             :for key :being :the :hash-keys :of *vacs*
-             :using (hash-value val)
-             :unless (null (getf (getf val :vac) :salary))
-             :when (equal (getf val :domain) :unsorted)
-             :collect val)
-          (lambda (a b)
-            (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
-
-  (length *w*)
-
-  (print *w*)
-#+END_SRC
-
-** TODO Цикл обработки вакансий
-
-В цикле:
-- печатаем вакансию
-- запрашиваем, что с ней делать:
-  - считать неинтересной
-  - ничего не делать
-  - изменить ее домен
-  - отправить отклик (TODO)
-    - отправить отклик, создав резюме (TODO)
-
-#+BEGIN_SRC lisp
-  (tagbody
-     (loop :for vac :in *w* :do
-        (tagbody
-         show-vac
-           (format t "~%~A~%" (bprint vac))
-           (format t "~%[0] - Break~%[1] - No action~%[2] - Change domain~%[3] - Respond~%")
-         input-one-action
-           (let ((input (read-line)))
-             (cond ((equal input "0") (go fin))
-                   ((equal input "1") (go next))
-                   ((equal input "2") ;; CHANGE DOMAIN
-                    (let ((dms (let ((acc 0))
-                                 (mapcar (lambda (x)
-                                           (cons (incf acc) x))
-                                         '(:unsorted :uninterested :interested :responded
-                                           :beenviewed :invited  :interviewed  :offered)))))
-                      (format t "~%CHANGE DOMAIN:~{~%~{[~A] - ~A~}~}"
-                              (mapcar (lambda (x) (list (car x) (cdr x)))
-                                      dms))
-                      (format t "~%Enter new domain (empty for return back without change): ")
-                      (let* ((input (read-line))
-                             (num   (parse-integer input :junk-allowed t))
-                             (new   nil))
-                        (cond ((equal input "")
-                               (go show-vac))
-                              ((not (null num))
-                               (setf new (cdr (assoc num dms)))))
-                        (unless (keywordp new)
-                          (setf new (intern new :keyword)))
-                        (setf (getf vac :domain) new)
-                        (format t "~%Domain changed. Press ENTER.")
-                        (read-line))))
-                   ((equal input "3") ;; RESPOND
-                    (progn
-                      (format t "~%  wefwef")))
-                   ))
-         next))
-   fin
-     (format t "loop breaked"))
-
-  (defun to-vacs (w)
-    (mapcar (lambda (vac)
-              (let ((src-id (getf (getf vac :vac) :src-id)))
-                (setf (gethash src-id *vacs*) vac)))
-            w))
 #+END_SRC
 
 ** TODO Отклик на вакансию
@@ -3319,6 +3255,18 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
 #+BEGIN_SRC js
   {"success": "true", "topic_id": "1100154346"}
+#+END_SRC
+
+** Возврат изменений
+
+Перемещаем изменения из сортированного по зараплате списка в хэш-таблицу вакансий.
+
+#+BEGIN_SRC lisp
+  (defun to-vacs (w)
+    (mapcar (lambda (vac)
+              (let ((src-id (getf (getf vac :vac) :src-id)))
+                (setf (gethash src-id *vacs*) vac)))
+            w))
 #+END_SRC
 
 * TODO Парсинг резюме
