@@ -2970,6 +2970,7 @@ http://spb.hh.ru/applicant/deleteresume/
   (defun viewing ()
     (tagbody
      renew
+       (format t "________")
        (format t "~%Viewing:")
        (format t "~%[0] : Exit")
        (let ((acts (show-ten-vacs *W*)))
@@ -3007,6 +3008,7 @@ http://spb.hh.ru/applicant/deleteresume/
                           (equal src-id
                                  (getf (getf vac :vac) :src-id)))
                         ,*w*)))
+      (format t "__________________")
       (format t "~%ANALYSIS for vac # ~A~%~A" src-id (bprint vac))
       (format t "~%Actions:~%[0] - Back to viewing~%[1] - Change domain~%[2] - Respond")
       (format t "~%Type your choise (0-2): ")
@@ -3040,6 +3042,7 @@ http://spb.hh.ru/applicant/deleteresume/
                           (equal src-id
                                  (getf (getf vac :vac) :src-id)))
                         ,*w*)))
+      (format t "_________________________")
       (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
       (let ((dms (let ((acc 0))
                    (mapcar (lambda (x)
@@ -3069,8 +3072,6 @@ http://spb.hh.ru/applicant/deleteresume/
                       (read-line)
                       (return-from changing 'done)))
                    (t (err "changing select action err"))))))))
-
-  ;; (viewing)
 #+END_SRC
 
 ** TODO Отклик на вакансию
@@ -3087,6 +3088,22 @@ http://spb.hh.ru/applicant/deleteresume/
   selectedResume=
 #+END_EXAMPLE
 
+Мы можем сделать это следующим кодом:
+
+#+BEGIN_SRC lisp
+  (defun get-resp-popup (cookie-jar src-account src-id response-processor-fn)
+    (let ((referer    (format nil "https://spb.hh.ru/vacancy/~A" src-id))
+          (popup-url  "https://spb.hh.ru/applicant/vacancy_response/popup?")
+          (get-params "vacancyId=~A&autoOpen=no&isTest=no&withoutTest=no&selectedResume="))
+      (hh-get-page
+       referer cookie-jar src-account "https://spb.hh.ru" #'stderr
+       (lambda  (response new-cookie-jar url)
+         (setf cookie-jar new-cookie-jar)
+         (hh-get-page
+          (format nil (concatenate 'string popup-url get-params) src-id)
+          cookie-jar src-account referer #'stderr response-processor-fn)))))
+#+END_SRC
+
 Ответом на этот запрос приходит форма:
 
 #+BEGIN_SRC html
@@ -3094,7 +3111,7 @@ http://spb.hh.ru/applicant/deleteresume/
         class="vacancy-response-popup HH-VacancyResponsePopup-Form HH-SubmitDisabler-Form">
       <div class="bloko-modal-header bloko-modal-header_outlined">
           <h2 class="bloko-modal-title">Отклик на вакансию</h2>
-          <div>«Управляющий салона мебели»</div>
+          <div>«Название вакансии»</div>
       </div>
       <div class="vacancy-response-popup-body">
           <div class="bloko-form-row">
@@ -3231,14 +3248,85 @@ http://spb.hh.ru/applicant/deleteresume/
   </form>
 #+END_SRC
 
-Из этой формы мы можем извлечь много ценной информации:
-- получить все резюме, с их видимостью
-- выбрать одно из них для отклика
-- на накоторые резюме без теста не ответить
+Из этой формы мы можем узнать, что:
+- на накоторые резюме без прохождения теста не ответить
 - можно послать сопроводительное письмо не более чем на 10000 символов
 - откликнуться можно 200 раз за 24 часа (видимо были прецеденты)
 
-Когда я откликаюсь происходит следующее:
+И извлечь много ценной информации:
+- получить все резюме, с их видимостью
+- выбрать одно из них для отклика
+
+Итак, займемся разбором формы попапа:
+
+#+BEGIN_SRC lisp
+  (defun extract-popup-results (tree)
+    (block subtree-extract
+      (mtm (`("div"
+              (("class" "bloko-form-row"))
+              ,@rest)
+             (return-from subtree-extract rest))
+           tree)))
+
+  (make-transform (popup-value)
+    (`("value" ,value)
+      (let ((rv `(:value ,value)))
+        (push rv result)
+        rv)))
+
+  (make-transform (popup-disabled)
+    (`("data-response-disabled" ,disabled)
+      (let ((rv `(:disabled ,disabled)))
+        (push rv result)
+        rv)))
+
+  (make-transform (popup-title)
+    (`("resume-title" NIL ,title)
+      (let ((rv `(:title ,title)))
+        (push rv result)
+        rv)))
+
+  (make-transform (popup-visibility)
+    (`("a" (("href" ,_)) ,_)
+      "Настроить видимость"))
+
+  (make-transform (popup-hint)
+    (`("bloko-form-hint" NIL ,@hint)
+      (let ((rv `(:hint ,(format nil "~{~A~}" hint))))
+        (push rv result)
+        rv)))
+
+  (defun popup-processor (response new-cookie-jar url)
+    (setf cookie-jar new-cookie-jar)
+    (let ((resumes (->> (html-to-tree response)
+                        (extract-popup-results)
+                        (maptreefilter)
+                        (cdr)))
+          (cumulative))
+      (mapcar #'(lambda (resume)
+                  (let ((result))
+                    (declare (special result))
+                    (->> (identity resume)
+                         (transform-popup-title)
+                         (transform-popup-value)
+                         (transform-popup-disabled)
+                         (transform-popup-visibility)
+                         (transform-popup-hint)
+                         (funcall (lambda (x)
+                                    (push (apply #'append (reverse result)) cumulative)
+                                    x))
+                         ;; (print)
+                         )))
+              resumes)
+      cumulative))
+
+  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+    (print
+     (get-resp-popup cookie-jar *hh-account* 24700517  #'popup-processor)))
+#+END_SRC
+
+Когда пользователь выбирает в попапе одно из резюме и нажимает кнопку "Откликнуться"
+происходит следующее:
 
 Отправляется POST-запрос на адрес:
 https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
@@ -3251,11 +3339,12 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   ignore_postponed=true
 #+END_EXAMPLE
 
-В ответ на который возвращается json вида:
+В ответ на который в случае успеха возвращается json вида:
 
 #+BEGIN_SRC js
   {"success": "true", "topic_id": "1100154346"}
 #+END_SRC
+
 
 ** Возврат изменений
 
