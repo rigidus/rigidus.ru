@@ -2918,21 +2918,25 @@ http://spb.hh.ru/applicant/deleteresume/
 | back    | analysis   | viewing    |
 | change  | analysis   | changing   |
 | back    | changing   | analysis   |
-| chdone  | changing   | viewing    |
 | respond | analysis   | responding |
 | back    | responding | analysis   |
-| rsdone  | responding | viewing    |
+| done    | responding | viewing    |
+| done    | changing   | viewing    |
 
 Сформируем граф из этой таблицы
 
 #+NAME: iface_state_graph
 #+BEGIN_SRC emacs-lisp :var table=iface_state :results output
   (mapcar #'(lambda (x)
-              (if (equal (first x) "back")
-                  (princ (format "%s -> %s [label =\"%s\", color=\"red\"];\n"
-                                 (second x) (third x) ""))
-                (princ (format "%s -> %s [label =\"%s\" ];\n"
-                               (second x) (third x) (first x)))))
+              (cond ((equal (first x) "back")
+                     (princ (format "%s -> %s [label =\"%s\", color=\"red\"];\n"
+                                    (second x) (third x) "")))
+                    ((equal (first x) "done")
+                     (princ (format "%s -> %s [label =\"%s\", color=\"blue\"];\n"
+                                    (second x) (third x) "")))
+                    (t
+                     (princ (format "%s -> %s [label =\"%s\" ];\n"
+                                    (second x) (third x) (first x))))))
           table)
 #+END_SRC
 
@@ -3088,20 +3092,32 @@ http://spb.hh.ru/applicant/deleteresume/
   selectedResume=
 #+END_EXAMPLE
 
-Мы можем сделать это следующим кодом:
+Мы можем сделать это следующим функцией, которой нужно
+- видеть динамическую переменную cookie-jar для обработки cookies
+- передать функцию-продолжение для обработки ответа
 
 #+BEGIN_SRC lisp
-  (defun get-resp-popup (cookie-jar src-account src-id response-processor-fn)
+  (defun get-resp-popup (src-account src-id response-processor-fn)
     (let ((referer    (format nil "https://spb.hh.ru/vacancy/~A" src-id))
           (popup-url  "https://spb.hh.ru/applicant/vacancy_response/popup?")
           (get-params "vacancyId=~A&autoOpen=no&isTest=no&withoutTest=no&selectedResume="))
       (hh-get-page
        referer cookie-jar src-account "https://spb.hh.ru" #'stderr
-       (lambda  (response new-cookie-jar url)
+       (lambda (response new-cookie-jar url)
          (setf cookie-jar new-cookie-jar)
          (hh-get-page
           (format nil (concatenate 'string popup-url get-params) src-id)
           cookie-jar src-account referer #'stderr response-processor-fn)))))
+
+  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
+  ;;       (src-id     24700517))
+  ;;   (declare (special cookie-jar))
+  ;;   (print
+  ;;    (get-resp-popup
+  ;;     *hh-account* src-id
+  ;;     (lambda (response new-cookie-jar url)
+  ;;       (setf cookie-jar new-cookie-jar)
+  ;;       (print response)))))
 #+END_SRC
 
 Ответом на этот запрос приходит форма:
@@ -3250,7 +3266,7 @@ http://spb.hh.ru/applicant/deleteresume/
 
 Из этой формы мы можем узнать, что:
 - на накоторые резюме без прохождения теста не ответить
-- можно послать сопроводительное письмо не более чем на 10000 символов
+- можно послать сопроводительное письмо не более чем в 10000 символов
 - откликнуться можно 200 раз за 24 часа (видимо были прецеденты)
 
 И извлечь много ценной информации:
@@ -3259,6 +3275,43 @@ http://spb.hh.ru/applicant/deleteresume/
 
 Итак, займемся разбором формы попапа:
 
+#+BEGIN_SRC lisp
+  <<popup_service>>
+
+  (defun popup-processor (response new-cookie-jar url)
+    (setf cookie-jar new-cookie-jar)
+    (let ((resumes (->> (html-to-tree response)
+                        (extract-popup-results)
+                        (maptreefilter)
+                        (cdr)))
+          (cumulative))
+      (mapcar #'(lambda (resume)
+                  (let ((result))
+                    (declare (special result))
+                    (->> (identity resume)
+                         (transform-popup-title)
+                         (transform-popup-value)
+                         (transform-popup-disabled)
+                         (transform-popup-visibility)
+                         (transform-popup-hint)
+                         (funcall (lambda (x)
+                                    (push (apply #'append (reverse result)) cumulative)
+                                    x))
+                         ;; (print)
+                         )))
+              resumes)
+      (reverse cumulative)))
+
+  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
+  ;;       (src-id     24700517))
+  ;;   (declare (special cookie-jar))
+  ;;   (print
+  ;;    (get-resp-popup *hh-account* src-id #'popup-processor)))
+#+END_SRC
+
+Для разбора формы нам потребуются вспомогательные экстракторы и трансформеры:
+
+#+NAME: popup_service
 #+BEGIN_SRC lisp
   (defun extract-popup-results (tree)
     (block subtree-extract
@@ -3295,34 +3348,6 @@ http://spb.hh.ru/applicant/deleteresume/
       (let ((rv `(:hint ,(format nil "~{~A~}" hint))))
         (push rv result)
         rv)))
-
-  (defun popup-processor (response new-cookie-jar url)
-    (setf cookie-jar new-cookie-jar)
-    (let ((resumes (->> (html-to-tree response)
-                        (extract-popup-results)
-                        (maptreefilter)
-                        (cdr)))
-          (cumulative))
-      (mapcar #'(lambda (resume)
-                  (let ((result))
-                    (declare (special result))
-                    (->> (identity resume)
-                         (transform-popup-title)
-                         (transform-popup-value)
-                         (transform-popup-disabled)
-                         (transform-popup-visibility)
-                         (transform-popup-hint)
-                         (funcall (lambda (x)
-                                    (push (apply #'append (reverse result)) cumulative)
-                                    x))
-                         ;; (print)
-                         )))
-              resumes)
-      cumulative))
-
-  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-    (print
-     (get-resp-popup cookie-jar *hh-account* 24700517  #'popup-processor)))
 #+END_SRC
 
 Когда пользователь выбирает в попапе одно из резюме и нажимает кнопку "Откликнуться"
@@ -3339,12 +3364,43 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   ignore_postponed=true
 #+END_EXAMPLE
 
-В ответ на который в случае успеха возвращается json вида:
+В ответ на такой POST-запрос в случае успеха возвращается json вида:
 
 #+BEGIN_SRC js
   {"success": "true", "topic_id": "1100154346"}
 #+END_SRC
 
+Научимся отправлять такой запрос:
+
+#+BEGIN_SRC lisp
+  (let ((cookie-jar (make-instance 'drakma:cookie-jar))
+        (src-id     23447245))
+    (declare (special cookie-jar))
+    (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
+      ;; (show-resume-list)
+      ;; (select-resume)
+      (let ((referer     (format nil "https://spb.hh.ru/vacancy/~A" src-id))
+            (resume-hash "23614635ff05277e2a0039ed1f61305a413033"))
+        (with-cookie-alist (cookie-jar)
+          (with-post-response
+              ((format nil "https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=~A" src-id)
+               cookie-jar cookie-alist
+               (append
+                `(("resume_hash"      . ,resume-hash)
+                  ("letter"           . ""))
+                `(("_xsrf"            . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))
+                `(("ignore_postponed" . "true"))))
+            (let ((response (json:decode-json-from-string
+                             (car
+                              (html-to-tree
+                               (flexi-streams:octets-to-string body-or-stream
+                                                               :external-format :utf-8))))))
+              (cond ((equal "true" (cdr (assoc :success response)))
+                     (cdr (assoc :topic--id response)))
+                    ((equal "unknown" (cdr (assoc :error response)))
+                     (err "response error (double respond)"))
+                    (t (err "response error (wtf)")))))))))
+#+END_SRC
 
 ** Возврат изменений
 

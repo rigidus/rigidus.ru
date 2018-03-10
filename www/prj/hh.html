@@ -4332,12 +4332,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </tr>
 
 <tr>
-<td class="left">chdone</td>
-<td class="left">changing</td>
-<td class="left">viewing</td>
-</tr>
-
-<tr>
 <td class="left">respond</td>
 <td class="left">analysis</td>
 <td class="left">responding</td>
@@ -4350,8 +4344,14 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </tr>
 
 <tr>
-<td class="left">rsdone</td>
+<td class="left">done</td>
 <td class="left">responding</td>
+<td class="left">viewing</td>
+</tr>
+
+<tr>
+<td class="left">done</td>
+<td class="left">changing</td>
 <td class="left">viewing</td>
 </tr>
 </tbody>
@@ -4364,11 +4364,15 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 <div class="org-src-container">
 
 <pre class="src src-emacs-lisp" id="iface_state_graph">(mapcar #'(lambda (x)
-            (<span style="color: #af00ff;">if</span> (equal (first x) <span style="color: #87005f;">"back"</span>)
-                (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\", color=\"red\"];\n"</span>
-                               (second x) (third x) <span style="color: #87005f;">""</span>))
-              (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\" ];\n"</span>
-                             (second x) (third x) (first x)))))
+            (<span style="color: #af00ff;">cond</span> ((equal (first x) <span style="color: #87005f;">"back"</span>)
+                   (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\", color=\"red\"];\n"</span>
+                                  (second x) (third x) <span style="color: #87005f;">""</span>)))
+                  ((equal (first x) <span style="color: #87005f;">"done"</span>)
+                   (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\", color=\"blue\"];\n"</span>
+                                  (second x) (third x) <span style="color: #87005f;">""</span>)))
+                  (t
+                   (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\" ];\n"</span>
+                                  (second x) (third x) (first x))))))
         table)
 </pre>
 </div>
@@ -4422,6 +4426,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">viewing</span> ()
   (<span style="color: #af00ff;">tagbody</span>
    renew
+     (format t <span style="color: #87005f;">"________"</span>)
      (format t <span style="color: #87005f;">"~%Viewing:"</span>)
      (format t <span style="color: #87005f;">"~%[0] : Exit"</span>)
      (<span style="color: #af00ff;">let</span> ((acts (show-ten-vacs *W*)))
@@ -4469,6 +4474,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                         (equal src-id
                                (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
                       *w*)))
+    (format t <span style="color: #87005f;">"__________________"</span>)
     (format t <span style="color: #87005f;">"~%ANALYSIS for vac # ~A~%~A"</span> src-id (bprint vac))
     (format t <span style="color: #87005f;">"~%Actions:~%[0] - Back to viewing~%[1] - Change domain~%[2] - Respond"</span>)
     (format t <span style="color: #87005f;">"~%Type your choise (0-2): "</span>)
@@ -4506,6 +4512,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                         (equal src-id
                                (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
                       *w*)))
+    (format t <span style="color: #87005f;">"_________________________"</span>)
     (format t <span style="color: #87005f;">"~%CHANGING DOMAIN for vac # ~A~%~A"</span> src-id (bprint vac))
     (<span style="color: #af00ff;">let</span> ((dms (<span style="color: #af00ff;">let</span> ((acc 0))
                  (mapcar (<span style="color: #af00ff;">lambda</span> (x)
@@ -4535,8 +4542,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                     (read-line)
                     (<span style="color: #af00ff;">return-from</span> changing 'done)))
                  (t (err <span style="color: #87005f;">"changing select action err"</span>))))))))
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing)</span>
 </pre>
 </div>
 </div>
@@ -4560,6 +4565,42 @@ selectedResume=
 </pre>
 
 <p>
+Мы можем сделать это следующим функцией, которой нужно
+</p>
+<ul class="org-ul">
+<li>видеть динамическую переменную cookie-jar для обработки cookies
+</li>
+<li>передать функцию-продолжение для обработки ответа
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-resp-popup</span> (src-account src-id response-processor-fn)
+  (<span style="color: #af00ff;">let</span> ((referer    (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id))
+        (popup-url  <span style="color: #87005f;">"https://spb.hh.ru/applicant/vacancy_response/popup?"</span>)
+        (get-params <span style="color: #87005f;">"vacancyId=~A&amp;autoOpen=no&amp;isTest=no&amp;withoutTest=no&amp;selectedResume="</span>))
+    (hh-get-page
+     referer cookie-jar src-account <span style="color: #87005f;">"https://spb.hh.ru"</span> #'stderr
+     (<span style="color: #af00ff;">lambda</span> (response new-cookie-jar url)
+       (setf cookie-jar new-cookie-jar)
+       (hh-get-page
+        (format nil (concatenate 'string popup-url get-params) src-id)
+        cookie-jar src-account referer #'stderr response-processor-fn)))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(let ((cookie-jar (make-instance 'drakma:cookie-jar))</span>
+<span style="color: #af0000;">;;       </span><span style="color: #af0000;">(src-id     24700517))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(declare (special cookie-jar))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(print</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">(get-resp-popup</span>
+<span style="color: #af0000;">;;     </span><span style="color: #af0000;">*hh-account* src-id</span>
+<span style="color: #af0000;">;;     </span><span style="color: #af0000;">(lambda (response new-cookie-jar url)</span>
+<span style="color: #af0000;">;;       </span><span style="color: #af0000;">(setf cookie-jar new-cookie-jar)</span>
+<span style="color: #af0000;">;;       </span><span style="color: #af0000;">(print response)))))</span>
+</pre>
+</div>
+
+<p>
 Ответом на этот запрос приходит форма:
 </p>
 
@@ -4569,7 +4610,7 @@ selectedResume=
       <span style="color: #af5f00;">class</span>=<span style="color: #87005f;">"vacancy-response-popup HH-VacancyResponsePopup-Form HH-SubmitDisabler-Form"</span>&gt;
     &lt;<span style="color: #0000ff;">div</span> <span style="color: #af5f00;">class</span>=<span style="color: #87005f;">"bloko-modal-header bloko-modal-header_outlined"</span>&gt;
         &lt;<span style="color: #0000ff;">h2</span> <span style="color: #af5f00;">class</span>=<span style="color: #87005f;">"bloko-modal-title"</span>&gt;<span style="font-weight: bold; font-style: italic; text-decoration: underline;">&#1054;&#1090;&#1082;&#1083;&#1080;&#1082; &#1085;&#1072; &#1074;&#1072;&#1082;&#1072;&#1085;&#1089;&#1080;&#1102;</span>&lt;/<span style="color: #0000ff;">h2</span>&gt;
-        &lt;<span style="color: #0000ff;">div</span>&gt;&#171;&#1059;&#1087;&#1088;&#1072;&#1074;&#1083;&#1103;&#1102;&#1097;&#1080;&#1081; &#1089;&#1072;&#1083;&#1086;&#1085;&#1072; &#1084;&#1077;&#1073;&#1077;&#1083;&#1080;&#187;&lt;/<span style="color: #0000ff;">div</span>&gt;
+        &lt;<span style="color: #0000ff;">div</span>&gt;&#171;&#1053;&#1072;&#1079;&#1074;&#1072;&#1085;&#1080;&#1077; &#1074;&#1072;&#1082;&#1072;&#1085;&#1089;&#1080;&#1080;&#187;&lt;/<span style="color: #0000ff;">div</span>&gt;
     &lt;/<span style="color: #0000ff;">div</span>&gt;
     &lt;<span style="color: #0000ff;">div</span> <span style="color: #af5f00;">class</span>=<span style="color: #87005f;">"vacancy-response-popup-body"</span>&gt;
         &lt;<span style="color: #0000ff;">div</span> <span style="color: #af5f00;">class</span>=<span style="color: #87005f;">"bloko-form-row"</span>&gt;
@@ -4708,23 +4749,114 @@ selectedResume=
 </div>
 
 <p>
-Из этой формы мы можем извлечь много ценной информации:
+Из этой формы мы можем узнать, что:
 </p>
 <ul class="org-ul">
-<li>получить все резюме, с их видимостью
+<li>на накоторые резюме без прохождения теста не ответить
 </li>
-<li>выбрать одно из них для отклика
-</li>
-<li>на накоторые резюме без теста не ответить
-</li>
-<li>можно послать сопроводительное письмо не более чем на 10000 символов
+<li>можно послать сопроводительное письмо не более чем в 10000 символов
 </li>
 <li>откликнуться можно 200 раз за 24 часа (видимо были прецеденты)
 </li>
 </ul>
 
 <p>
-Когда я откликаюсь происходит следующее:
+И извлечь много ценной информации:
+</p>
+<ul class="org-ul">
+<li>получить все резюме, с их видимостью
+</li>
+<li>выбрать одно из них для отклика
+</li>
+</ul>
+
+<p>
+Итак, займемся разбором формы попапа:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">&lt;&lt;popup_service&gt;&gt;
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">popup-processor</span> (response new-cookie-jar url)
+  (setf cookie-jar new-cookie-jar)
+  (<span style="color: #af00ff;">let</span> ((resumes (-&gt;&gt; (html-to-tree response)
+                      (extract-popup-results)
+                      (maptreefilter)
+                      (cdr)))
+        (cumulative))
+    (mapcar #'(<span style="color: #af00ff;">lambda</span> (resume)
+                (<span style="color: #af00ff;">let</span> ((result))
+                  (<span style="color: #af00ff;">declare</span> (special result))
+                  (-&gt;&gt; (identity resume)
+                       (transform-popup-title)
+                       (transform-popup-value)
+                       (transform-popup-disabled)
+                       (transform-popup-visibility)
+                       (transform-popup-hint)
+                       (funcall (<span style="color: #af00ff;">lambda</span> (x)
+                                  (push (apply #'append (reverse result)) cumulative)
+                                  x))
+                       <span style="color: #af0000;">;; </span><span style="color: #af0000;">(print)</span>
+                       )))
+            resumes)
+    (reverse cumulative)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(let ((cookie-jar (make-instance 'drakma:cookie-jar))</span>
+<span style="color: #af0000;">;;       </span><span style="color: #af0000;">(src-id     24700517))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(declare (special cookie-jar))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(print</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">(get-resp-popup *hh-account* src-id #'popup-processor)))</span>
+</pre>
+</div>
+
+<p>
+Для разбора формы нам потребуются вспомогательные экстракторы и трансформеры:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="popup_service">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">extract-popup-results</span> (tree)
+  (<span style="color: #af00ff;">block</span> subtree-extract
+    (mtm (`(<span style="color: #87005f;">"div"</span>
+            ((<span style="color: #87005f;">"class"</span> <span style="color: #87005f;">"bloko-form-row"</span>))
+            ,@rest)
+           (<span style="color: #af00ff;">return-from</span> subtree-extract rest))
+         tree)))
+
+(make-transform (popup-value)
+  (`(<span style="color: #87005f;">"value"</span> ,value)
+    (<span style="color: #af00ff;">let</span> ((rv `(<span style="color: #5f5f87;">:value</span> ,value)))
+      (push rv result)
+      rv)))
+
+(make-transform (popup-disabled)
+  (`(<span style="color: #87005f;">"data-response-disabled"</span> ,disabled)
+    (<span style="color: #af00ff;">let</span> ((rv `(<span style="color: #5f5f87;">:disabled</span> ,disabled)))
+      (push rv result)
+      rv)))
+
+(make-transform (popup-title)
+  (`(<span style="color: #87005f;">"resume-title"</span> NIL ,title)
+    (<span style="color: #af00ff;">let</span> ((rv `(<span style="color: #5f5f87;">:title</span> ,title)))
+      (push rv result)
+      rv)))
+
+(make-transform (popup-visibility)
+  (`(<span style="color: #87005f;">"a"</span> ((<span style="color: #87005f;">"href"</span> ,_)) ,_)
+    <span style="color: #87005f;">"&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1080;&#1090;&#1100; &#1074;&#1080;&#1076;&#1080;&#1084;&#1086;&#1089;&#1090;&#1100;"</span>))
+
+(make-transform (popup-hint)
+  (`(<span style="color: #87005f;">"bloko-form-hint"</span> NIL ,@hint)
+    (<span style="color: #af00ff;">let</span> ((rv `(<span style="color: #5f5f87;">:hint</span> ,(format nil <span style="color: #87005f;">"~{~A~}"</span> hint))))
+      (push rv result)
+      rv)))
+</pre>
+</div>
+
+<p>
+Когда пользователь выбирает в попапе одно из резюме и нажимает кнопку "Откликнуться"
+происходит следующее:
 </p>
 
 <p>
@@ -4741,12 +4873,48 @@ ignore_postponed=true
 </pre>
 
 <p>
-В ответ на который возвращается json вида:
+В ответ на такой POST-запрос в случае успеха возвращается json вида:
 </p>
 
 <div class="org-src-container">
 
 <pre class="src src-js">{<span style="color: #87005f;">"success"</span>: <span style="color: #87005f;">"true"</span>, <span style="color: #87005f;">"topic_id"</span>: <span style="color: #87005f;">"1100154346"</span>}
+</pre>
+</div>
+
+<p>
+Научимся отправлять такой запрос:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">let</span> ((cookie-jar (make-instance 'drakma:cookie-jar))
+      (src-id     23447245))
+  (<span style="color: #af00ff;">declare</span> (special cookie-jar))
+  (<span style="color: #af00ff;">let</span> ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">(show-resume-list)</span>
+    <span style="color: #af0000;">;; </span><span style="color: #af0000;">(select-resume)</span>
+    (<span style="color: #af00ff;">let</span> ((referer     (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id))
+          (resume-hash <span style="color: #87005f;">"23614635ff05277e2a0039ed1f61305a413033"</span>))
+      (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
+        (<span style="color: #af00ff;">with-post-response</span>
+            ((format nil <span style="color: #87005f;">"https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=~A"</span> src-id)
+             cookie-jar cookie-alist
+             (append
+              `((<span style="color: #87005f;">"resume_hash"</span>      . ,resume-hash)
+                (<span style="color: #87005f;">"letter"</span>           . <span style="color: #87005f;">""</span>))
+              `((<span style="color: #87005f;">"_xsrf"</span>            . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))
+              `((<span style="color: #87005f;">"ignore_postponed"</span> . <span style="color: #87005f;">"true"</span>))))
+          (<span style="color: #af00ff;">let</span> ((response (json:decode-json-from-string
+                           (car
+                            (html-to-tree
+                             (flexi-streams:octets-to-string body-or-stream
+                                                             <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))))
+            (<span style="color: #af00ff;">cond</span> ((equal <span style="color: #87005f;">"true"</span> (cdr (assoc <span style="color: #5f5f87;">:success</span> response)))
+                   (cdr (assoc <span style="color: #5f5f87;">:topic--id</span> response)))
+                  ((equal <span style="color: #87005f;">"unknown"</span> (cdr (assoc <span style="color: #5f5f87;">:error</span> response)))
+                   (err <span style="color: #87005f;">"response error (double respond)"</span>))
+                  (t (err <span style="color: #87005f;">"response error (wtf)"</span>)))))))))
 </pre>
 </div>
 </div>
