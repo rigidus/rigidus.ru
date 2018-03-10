@@ -4413,9 +4413,12 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 <pre class="src src-lisp" id="viewing">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">show-ten-vacs</span> (allvacs)
   (<span style="color: #af00ff;">loop</span>
-     <span style="color: #5f5f87;">:for</span> idx <span style="color: #5f5f87;">:from</span> 1
-     <span style="color: #5f5f87;">:for</span> vac <span style="color: #5f5f87;">:in</span> (subseq allvacs 0 9)
+     <span style="color: #5f5f87;">:for</span> vac <span style="color: #5f5f87;">:in</span> allvacs
+     <span style="color: #5f5f87;">:with</span> idx <span style="color: #af00ff;">=</span> 0
+     <span style="color: #5f5f87;">:while</span> (&lt; idx 9)
+     <span style="color: #5f5f87;">:when</span> (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))
      <span style="color: #5f5f87;">:collect</span> (<span style="color: #af00ff;">progn</span>
+                (incf idx)
                 (format t <span style="color: #87005f;">"~%[~A] - ~A - ~A"</span>
                         idx
                         (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary-text</span>)
@@ -4534,7 +4537,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                   (<span style="color: #af00ff;">progn</span>
                     (format t <span style="color: #87005f;">"~%Return to analysis"</span>)
                     'back))
-                 ((&lt; num (length dms))
+                 ((&lt;<span style="color: #af00ff;">=</span> num (length dms))
                   (<span style="color: #af00ff;">progn</span>
                     (setf (getf vac <span style="color: #5f5f87;">:domain</span>)
                           (cdr (assoc num dms)))
@@ -4565,7 +4568,7 @@ selectedResume=
 </pre>
 
 <p>
-Мы можем сделать это следующим функцией, которой нужно
+Мы можем сделать это следующей функцией, которой нужно:
 </p>
 <ul class="org-ul">
 <li>видеть динамическую переменную cookie-jar для обработки cookies
@@ -4883,38 +4886,112 @@ ignore_postponed=true
 </div>
 
 <p>
+а в случае ошибки (например, если уже есть такой отклик):
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">{<span style="color: #87005f;">"error"</span>: <span style="color: #87005f;">"unknown"</span>}
+</pre>
+</div>
+
+<p>
 Научимся отправлять такой запрос:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">let</span> ((cookie-jar (make-instance 'drakma:cookie-jar))
-      (src-id     23447245))
-  (<span style="color: #af00ff;">declare</span> (special cookie-jar))
-  (<span style="color: #af00ff;">let</span> ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">(show-resume-list)</span>
-    <span style="color: #af0000;">;; </span><span style="color: #af0000;">(select-resume)</span>
-    (<span style="color: #af00ff;">let</span> ((referer     (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id))
-          (resume-hash <span style="color: #87005f;">"23614635ff05277e2a0039ed1f61305a413033"</span>))
-      (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
-        (<span style="color: #af00ff;">with-post-response</span>
-            ((format nil <span style="color: #87005f;">"https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=~A"</span> src-id)
-             cookie-jar cookie-alist
-             (append
-              `((<span style="color: #87005f;">"resume_hash"</span>      . ,resume-hash)
-                (<span style="color: #87005f;">"letter"</span>           . <span style="color: #87005f;">""</span>))
-              `((<span style="color: #87005f;">"_xsrf"</span>            . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))
-              `((<span style="color: #87005f;">"ignore_postponed"</span> . <span style="color: #87005f;">"true"</span>))))
-          (<span style="color: #af00ff;">let</span> ((response (json:decode-json-from-string
-                           (car
-                            (html-to-tree
-                             (flexi-streams:octets-to-string body-or-stream
-                                                             <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))))
-            (<span style="color: #af00ff;">cond</span> ((equal <span style="color: #87005f;">"true"</span> (cdr (assoc <span style="color: #5f5f87;">:success</span> response)))
-                   (cdr (assoc <span style="color: #5f5f87;">:topic--id</span> response)))
-                  ((equal <span style="color: #87005f;">"unknown"</span> (cdr (assoc <span style="color: #5f5f87;">:error</span> response)))
-                   (err <span style="color: #87005f;">"response error (double respond)"</span>))
-                  (t (err <span style="color: #87005f;">"response error (wtf)"</span>)))))))))
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">send-respond</span> (src-id resume-hash)
+  (<span style="color: #af00ff;">let</span> ((referer     (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id)))
+    (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
+      (<span style="color: #af00ff;">with-post-response</span>
+          ((format nil <span style="color: #87005f;">"https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=~A"</span> src-id)
+           cookie-jar cookie-alist
+           (append
+            `((<span style="color: #87005f;">"resume_hash"</span>      . ,resume-hash)
+              (<span style="color: #87005f;">"letter"</span>           . <span style="color: #87005f;">""</span>))
+            `((<span style="color: #87005f;">"_xsrf"</span>            . ,(cdr (assoc <span style="color: #87005f;">"_xsrf"</span> cookie-alist <span style="color: #5f5f87;">:test</span> #'equal))))
+            `((<span style="color: #87005f;">"ignore_postponed"</span> . <span style="color: #87005f;">"true"</span>))))
+        (<span style="color: #af00ff;">let</span> ((response (json:decode-json-from-string
+                         (car
+                          (html-to-tree
+                           (flexi-streams:octets-to-string body-or-stream
+                                                           <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))))
+          (print response)
+          (<span style="color: #af00ff;">cond</span> ((equal <span style="color: #87005f;">"true"</span> (cdr (assoc <span style="color: #5f5f87;">:success</span> response)))
+                 (cdr (assoc <span style="color: #5f5f87;">:topic--id</span> response)))
+                ((equal <span style="color: #87005f;">"unknown"</span> (cdr (assoc <span style="color: #5f5f87;">:error</span> response)))
+                 (<span style="color: #af00ff;">progn</span>
+                   (format t <span style="color: #87005f;">"~%ERROR: response error (double respond?)"</span>)
+                   'err-unk))
+                (t (err <span style="color: #87005f;">"response error (wtf?)"</span>))))))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(let ((cookie-jar (make-instance 'drakma:cookie-jar))</span>
+<span style="color: #af0000;">;;       </span><span style="color: #af0000;">(src-id     24633072))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(declare (special cookie-jar))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))</span>
+<span style="color: #af0000;">;;     </span><span style="color: #af0000;">;; &lt;-- &#1084;&#1077;&#1089;&#1090;&#1086; &#1076;&#1083;&#1103; &#1074;&#1099;&#1073;&#1086;&#1088;&#1072; &#1086;&#1076;&#1085;&#1086;&#1075;&#1086; &#1080;&#1079; &#1088;&#1077;&#1079;&#1102;&#1084;&#1077; --&gt;</span>
+<span style="color: #af0000;">;;     </span><span style="color: #af0000;">(send-respond src-id "23614635ff05277e2a0039ed1f61305a413033")))</span>
+</pre>
+</div>
+
+<p>
+Теперь у нас есть все необходимое, чтобы реализовать отклик одним из существующих
+резюме. Напишем <code>экран</code> responding:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="responding">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">responding</span> (src-id)
+  (<span style="color: #af00ff;">let</span> ((vac (find-if (<span style="color: #af00ff;">lambda</span> (vac)
+                        (equal src-id
+                               (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
+                      *w*)))
+    (format t <span style="color: #87005f;">"_________________________"</span>)
+    (format t <span style="color: #87005f;">"~%RESPONDING for vac # ~A~%~A"</span> src-id (bprint vac))
+    (format t <span style="color: #87005f;">"~%[0] - Return to analysis"</span>)
+    (<span style="color: #af00ff;">let*</span> ((resumes (get-resp-popup *hh-account* src-id #'popup-processor))
+           (acts (<span style="color: #af00ff;">loop</span>
+                    <span style="color: #5f5f87;">:for</span> idx <span style="color: #5f5f87;">:from</span> 1
+                    <span style="color: #5f5f87;">:for</span> resume <span style="color: #5f5f87;">:in</span> resumes
+                    <span style="color: #5f5f87;">:when</span> (equal <span style="color: #87005f;">"false"</span> (getf resume <span style="color: #5f5f87;">:disabled</span>))
+                    <span style="color: #5f5f87;">:collect</span> (<span style="color: #af00ff;">progn</span>
+                               (format t <span style="color: #87005f;">"~%[~A] - ~A"</span> idx (getf resume <span style="color: #5f5f87;">:title</span>))
+                               (cons idx (list <span style="color: #5f5f87;">:title</span> (getf resume <span style="color: #5f5f87;">:title</span>)
+                                               <span style="color: #5f5f87;">:value</span> (getf resume <span style="color: #5f5f87;">:value</span>)))))))
+      (format t <span style="color: #87005f;">"~%Enter your choise(0-~A): "</span> (length acts))
+      (<span style="color: #af00ff;">tagbody</span>
+       reinput
+         (<span style="color: #af00ff;">let*</span> ((input (read-line))
+                (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t)))
+           (<span style="color: #af00ff;">unless</span> (equal input (format nil <span style="color: #87005f;">"~A"</span> num))
+             (format t <span style="color: #87005f;">"~%Wrong input, please try again: "</span>)
+             (<span style="color: #af00ff;">go</span> reinput))
+           (<span style="color: #af00ff;">cond</span> ((equal 0 num)
+                  (<span style="color: #af00ff;">progn</span>
+                    (format t <span style="color: #87005f;">"~%Return to analysis"</span>)
+                    'back))
+                 ((&lt;<span style="color: #af00ff;">=</span> num (length acts))
+                  (<span style="color: #af00ff;">let</span> ((selected-resume (cdr (assoc num acts))))
+                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1042;&#1099;&#1085;&#1077;&#1089;&#1090;&#1080; cookie-jar (TODO)</span>
+                    (<span style="color: #af00ff;">let</span> ((cookie-jar (make-instance 'drakma:cookie-jar))
+                          (src-id     24480687)) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1086;&#1090;&#1082;&#1083;&#1102;&#1095;&#1080;&#1090;&#1100; &#1074; &#1073;&#1086;&#1077;&#1074;&#1086;&#1084;</span>
+                      (<span style="color: #af00ff;">declare</span> (special cookie-jar))
+                      (<span style="color: #af00ff;">let</span> ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
+                        (send-respond src-id (getf selected-resume <span style="color: #5f5f87;">:value</span>))))
+                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1089;&#1086;&#1086;&#1073;&#1097;&#1077;&#1085;&#1080;&#1077;</span>
+                    (format t <span style="color: #87005f;">"~%RESPONDED: ~A~%         : ~A"</span>
+                            (getf selected-resume <span style="color: #5f5f87;">:value</span>)
+                            (getf selected-resume <span style="color: #5f5f87;">:title</span>))
+                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1080;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1089;&#1090;&#1072;&#1090;&#1091;&#1089;&#1072;</span>
+                    (setf (getf vac <span style="color: #5f5f87;">:domain</span>) <span style="color: #5f5f87;">:responded</span>)
+                    <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1074;&#1099;&#1093;&#1086;&#1076;</span>
+                    (format t <span style="color: #87005f;">"~%Press ENTER for return to VIEWING"</span>)
+                    (read-line)
+                    (<span style="color: #af00ff;">return-from</span> responding 'done)))
+                 (t (err <span style="color: #87005f;">"responding select action err"</span>))))))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing)</span>
 </pre>
 </div>
 </div>
