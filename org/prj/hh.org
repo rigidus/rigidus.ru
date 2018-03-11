@@ -2950,6 +2950,24 @@ http://spb.hh.ru/applicant/deleteresume/
 может выполнять какие-то действия. У каждого экрана, в соответствии с графом есть входы
 и выходы. Для простоты будем пока реализовывать консольный интерфейс
 
+** Вспомогательные функции интерфеса
+
+#+NAME: choice
+#+BEGIN_SRC lisp
+  (defun choise (acts)
+    (format t "~%Type your choise (0-~A): " (length acts))
+    (tagbody
+     reinput
+       (let* ((input (read-line))
+              (num   (parse-integer input :junk-allowed t)))
+         (unless (equal input (format nil "~A" num))
+           (format t "~%Wrong input, please try again: ")
+           (go reinput))
+         (cond ((<= num (length acts))
+                (funcall (cdr (assoc num acts))))
+               (t (err (format nil "choise err: ~A" num)))))))
+#+END_SRC
+
 ** Просмотр вакансий
 
 В экране "просмотр вакансий" мы должны показать несколько первых вакансий из
@@ -2972,7 +2990,9 @@ http://spb.hh.ru/applicant/deleteresume/
                           (getf (getf vac :vac) :salary-text)
                           (getf (getf vac :vac) :name))
                   (cons idx
-                        (getf (getf vac :vac) :src-id)))))
+                        (lambda ()
+                          (analysis
+                           (getf (getf vac :vac) :src-id)))))))
 
   (defun viewing ()
     (tagbody
@@ -2980,26 +3000,12 @@ http://spb.hh.ru/applicant/deleteresume/
        (format t "________")
        (format t "~%Viewing:")
        (format t "~%[0] : Exit")
-       (let ((acts (show-ten-vacs *W*)))
-         (format t "~%Type your choise (0-9): ")
-         (tagbody
-          reinput
-            (let* ((input (read-line))
-                   (num   (parse-integer input :junk-allowed t)))
-              (unless (equal input (format nil "~A" num))
-                (format t "~%Wrong input, please try again: ")
-                (go reinput))
-              (cond ((equal 0 num)
-                     (progn
-                       (format t "~%Bye!")
-                       'Bye))
-                    ((< num  10)
-                     (progn
-                       ;; Здесь если происходит возврат из viewing
-                       ;; то только типа "back"
-                       (analysis (cdr (assoc num acts)))
-                       (go renew)))
-                    (t (err "viewing err"))))))))
+       (let ((acts (acons 0 (lambda () (return-from viewing2 'bye)) (show-ten-vacs *W*))))
+         (print acts)
+         (choise acts)
+         (go renew))))
+
+  ;; (viewing)
 #+END_SRC
 
 ** Анализ вакансии
@@ -3081,7 +3087,7 @@ http://spb.hh.ru/applicant/deleteresume/
                    (t (err "changing select action err"))))))))
 #+END_SRC
 
-** TODO Отклик на вакансию
+** Отклик существующим резюме
 
 Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
 запросу на сервер вида:
@@ -3471,6 +3477,10 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
   ;; (viewing)
 #+END_SRC
+
+** Отклик с созданием резюме
+
+TODO
 
 ** Возврат изменений
 
