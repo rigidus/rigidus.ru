@@ -3312,7 +3312,7 @@ http://spb.hh.ru/applicant/deleteresume/
       (reverse cumulative)))
 
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
-  ;;       (src-id     24700517))
+  ;;       (src-id     24588609))
   ;;   (declare (special cookie-jar))
   ;;   (print
   ;;    (get-resp-popup *hh-account* src-id #'popup-processor)))
@@ -3399,22 +3399,21 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                 ("letter"           . ""))
               `(("_xsrf"            . ,(cdr (assoc "_xsrf" cookie-alist :test #'equal))))
               `(("ignore_postponed" . "true"))))
-          (let ((response (json:decode-json-from-string
-                           (car
-                            (html-to-tree
-                             (flexi-streams:octets-to-string body-or-stream
-                                                             :external-format :utf-8))))))
-            (print response)
-            (cond ((equal "true" (cdr (assoc :success response)))
-                   (cdr (assoc :topic--id response)))
-                  ((equal "unknown" (cdr (assoc :error response)))
-                   (progn
-                     (format t "~%ERROR: response error (double respond?)")
-                     'err-unk))
-                  (t (err "response error (wtf?)"))))))))
+          (let ((response (flexi-streams:octets-to-string body-or-stream :external-format :utf-8)))
+            (format t "~%Response: ~A" response)
+            (let ((json-response (json:decode-json-from-string (car (html-to-tree response)))))
+              (cond ((equal "true" (cdr (assoc :success json-response)))
+                     (cdr (assoc :topic--id json-response)))
+                    ((equal "unknown" (cdr (assoc :error json-response)))
+                     (progn
+                       (format t "~%ERROR: response error (double respond?)")
+                       'err-unk))
+                    (t (err "response error (wtf?)")))))))))
+
+  ;; (SEND-RESPOND 24680635 "23614635ff05277e2a0039ed1f61305a413033")
 
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
-  ;;       (src-id     24633072))
+  ;;       (src-id     24680635))
   ;;   (declare (special cookie-jar))
   ;;   (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
   ;;     ;; <-- место для выбора одного из резюме -->
@@ -3426,6 +3425,14 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
 #+NAME: responding
 #+BEGIN_SRC lisp
+  (defparameter *cvs* (make-hash-table :test #'equal))
+
+  (setf (gethash "b905a47fff052842930039ed1f326337493675" *cvs*) (list :salary 250000))
+  (setf (gethash "184691b4ff052841e70039ed1f4e4f4271714f" *cvs*) (list :salary 300000))
+  (setf (gethash "0c6d665cff052841530039ed1f51425834794b" *cvs*) (list :salary 300000))
+  (setf (gethash "3bef95f7ff05283f2c0039ed1f5232654b5168" *cvs*) (list :salary 300000))
+  (setf (gethash "23614635ff05277e2a0039ed1f61305a413033" *cvs*) (list :salary 400000))
+
   (defun responding (src-id)
     (let ((vac (find-if (lambda (vac)
                           (equal src-id
@@ -3433,52 +3440,42 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                         ,*w*)))
       (format t "_________________________")
       (format t "~%RESPONDING for vac # ~A~%~A" src-id (bprint vac))
-      (format t "~%[0] - Return to analysis")
-      (let* ((resumes (get-resp-popup *hh-account* src-id #'popup-processor))
-             (acts (loop
+      (let ((cookie-jar cookie-jar))
+        (declare (special cookie-jar))
+        (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
+          (choise (append
+                   `((0 . ,(progn
+                             (format t "~%[0] - Return to analysis")
+                             (lambda () (return-from responding 'back)))))
+                   (loop
                       :for idx :from 1
                       :for resume :in resumes
                       :when (equal "false" (getf resume :disabled))
                       :collect (progn
-                                 (format t "~%[~A] - ~A" idx (getf resume :title))
-                                 (cons idx (list :title (getf resume :title)
-                                                 :value (getf resume :value)))))))
-        (format t "~%Enter your choise(0-~A): " (length acts))
-        (tagbody
-         reinput
-           (let* ((input (read-line))
-                  (num   (parse-integer input :junk-allowed t)))
-             (unless (equal input (format nil "~A" num))
-               (format t "~%Wrong input, please try again: ")
-               (go reinput))
-             (cond ((equal 0 num)
-                    (progn
-                      (format t "~%Return to analysis")
-                      'back))
-                   ((<= num (length acts))
-                    (let ((selected-resume (cdr (assoc num acts))))
-                      ;; Вынести cookie-jar (TODO)
-                      (let ((cookie-jar (make-instance 'drakma:cookie-jar))
-                            (src-id     24480687)) ;; отключить в боевом
-                        (declare (special cookie-jar))
-                        (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
-                          (send-respond src-id (getf selected-resume :value))))
-                      ;; сообщение
-                      (format t "~%RESPONDED: ~A~%         : ~A"
-                              (getf selected-resume :value)
-                              (getf selected-resume :title))
-                      ;; изменение статуса
-                      (setf (getf vac :domain) :responded)
-                      ;; выход
-                      (format t "~%Press ENTER for return to VIEWING")
-                      (read-line)
-                      (return-from responding 'done)))
-                   (t (err "responding select action err"))))))))
+                                 (format t "~%[~A] <~A> ~A"
+                                         idx
+                                         (getf (gethash (getf resume :value) *cvs*) :salary)
+                                         (getf resume :title))
+                                 (cons idx
+                                       (let ((selected-resume-value (getf resume :value))
+                                             (selected-resume-title (getf resume :title)))
+                                         (lambda ()
+                                           (send-respond src-id selected-resume-value)
+                                           ;; сообщение
+                                           (format t "~%RESPONDED: ~A~%         : ~A"
+                                                   selected-resume-value
+                                                   selected-resume-title)
+                                           ;; изменение статуса
+                                           ;; (setf (getf vac :domain) :responded)
+                                           ;; выход
+                                           (format t "~%Press ENTER for return to VIEWING")
+                                           (read-line)
+                                           (return-from responding 'done))))))))))))
 
-  ;; (viewing)
+  ;; (responding 24324803)
 #+END_SRC
 
-** Отклик с созданием резюме
+** TODO Отклик с созданием резюме
 
 TODO
 
