@@ -2952,20 +2952,26 @@ http://spb.hh.ru/applicant/deleteresume/
 
 ** Вспомогательные функции интерфеса
 
+Поскольку у нас консольный интерфейс, можно обобщить выбор варианта пользователя в
+процедуру, которой передается список пар, где ключом является номер варианта, а
+значением - лямбда, которая должна быть вызвана.
+
 #+NAME: choice
 #+BEGIN_SRC lisp
   (defun choise (acts)
     (format t "~%Type your choise (0-~A): " (- (length acts) 1))
-    (tagbody
-     reinput
-       (let* ((input (read-line))
-              (num   (parse-integer input :junk-allowed t)))
-         (unless (equal input (format nil "~A" num))
-           (format t "~%Wrong input, please try again: ")
-           (go reinput))
-         (cond ((<= num (length acts))
-                (funcall (cdr (assoc num acts))))
-               (t (err (format nil "choise err: ~A" num)))))))
+    (block retval
+      (tagbody
+       reinput
+         (let* ((input (read-line))
+                (num   (parse-integer input :junk-allowed t)))
+           (unless (equal input (format nil "~A" num))
+             (format t "~%Wrong input, please try again: ")
+             (go reinput))
+           (cond ((<= num (length acts))
+                  (return-from retval
+                    (funcall (cdr (assoc num acts)))))
+                 (t (err (format nil "choise err: ~A" num))))))))
 #+END_SRC
 
 ** Просмотр вакансий
@@ -2977,32 +2983,35 @@ http://spb.hh.ru/applicant/deleteresume/
 
 #+NAME: viewing
 #+BEGIN_SRC lisp
-  (defun show-ten-vacs (allvacs)
-    (loop
-       :for vac :in allvacs
-       :with idx = 0
-       :while (< idx 9)
-       :when (equal :unsorted (getf vac :domain))
-       :collect (progn
-                  (incf idx)
-                  (format t "~%[~A] - ~A - ~A"
-                          idx
-                          (getf (getf vac :vac) :salary-text)
-                          (getf (getf vac :vac) :name))
-                  (cons idx
-                        (lambda ()
-                          (analysis
-                           (getf (getf vac :vac) :src-id)))))))
-
-  (defun viewing ()
+  (defun viewing (allvacs domain-p)
     (tagbody
      renew
        (format t "________")
        (format t "~%Viewing:")
-       (format t "~%[0] : Exit")
-       (let ((acts (acons 0 (lambda () (return-from viewing 'bye)) (show-ten-vacs *W*))))
-         (choise acts)
-         (go renew))))
+       (format t "~%[0] - Exit")
+       (choise
+        (acons 0
+               (lambda ()
+                 (return-from viewing (print 'bye)))
+               (loop
+                  :for vac :in allvacs
+                  :with idx = 0
+                  :while (< idx 9)
+                  :when (funcall domain-p vac)
+                  :collect (progn
+                             (incf idx)
+                             (format t "~%[~A] - ~A - ~A"
+                                     idx
+                                     (getf (getf vac :vac) :salary-text)
+                                     (getf (getf vac :vac) :name))
+                             (cons idx
+                                   (let ((src-id (getf (getf vac :vac) :src-id))) ;; closure value (!)
+                                     (lambda ()
+                                       (analysis src-id))))))))
+       (go renew)))
+
+  ;; (viewing *W* (lambda (vac)
+  ;;                (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Анализ вакансии
@@ -3018,19 +3027,32 @@ http://spb.hh.ru/applicant/deleteresume/
                           (equal src-id
                                  (getf (getf vac :vac) :src-id)))
                         ,*w*)))
-      (format t "__________________")
-      (format t "~%ANALYSIS for vac # ~A~%~A" src-id (bprint vac))
-      (format t "~%Actions:~%[0] - Back to viewing~%[1] - Change domain~%[2] - Respond")
-      (let ((acts `((0 . ,(lambda () (return-from analysis 'back)))
-                    (1 . ,(lambda () (let ((retval (changing src-id)))
-                                       (cond ((equal retval 'back)  (go renew))
-                                             ((equal retval 'done)  (return-from analysis 'done))
-                                             (t (err (format nil "wrond retval ~A" retval)))))))
-                    (2 . ,(lambda () (let ((retval (responding src-id)))
-                                       (cond ((equal retval 'back)  (go renew))
-                                             ((equal retval 'done)  (return-from analysis 'done))
-                                             (t (err (format nil "wrond retval ~A" retval))))))))))
-        (choise acts))))
+      (tagbody
+       renew
+         (format t "__________________")
+         (format t "~%ANALYSIS for vac # ~A~%~A" src-id (bprint vac))
+         (let ((crv (choise `((0 . ,(progn
+                                      (format t "~%[0] - Back to viewing")
+                                      (lambda ()
+                                        (format t "~%Return to VIEWING~%")
+                                        (return-from analysis 'back))))
+                              (1 . ,(progn
+                                      (format t "~%[1] - Change domain")
+                                      (lambda ()
+                                        (changing src-id))))
+                              (2 . ,(progn
+                                      (format t "~%[2] - Respond")
+                                      (lambda ()
+                                        (responding src-id))))))))
+           (cond ((equal crv 'done)
+                  (return-from analysis 'done))
+                 ((equal choise-retval 'back)
+                  (go renew))
+                 (t
+                  (err (format nil "wrond retval in analysys ~A" retval))))))))
+
+  ;; (viewing *W* (lambda (vac)
+  ;;                (equal :responded (getf vac :domain))))
 #+END_SRC
 
 ** Изменение домена вакансии
@@ -3044,22 +3066,25 @@ http://spb.hh.ru/applicant/deleteresume/
                         ,*w*)))
       (format t "_________________________")
       (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
-      (format t "~%CHANGE DOMAIN:~%[0] - Return to analysis")
       (let* ((variants '(:unsorted :uninterested :interested :responded
-                         :beenviewed :invited  :interviewed  :offered))
-             (acts (append
-                    `((0 . ,(lambda () (return-from changing 'back))))
-                    (let ((acc 0))
-                      (mapcar (lambda (x)
-                                (let ((cnt (incf acc)))
-                                  (format t "~%[~A] - ~A" cnt x)
-                                  (cons cnt
-                                        (lambda ()
-                                          (format t "~%::: ~A " x)
-                                          (setf (getf vac :domain) x)))))
-                              variants)))))
-        (choise acts)
+                         :beenviewed :invited  :interviewed  :offered)))
+        (choise (append
+                 `((0 . ,(progn
+                           (format t "~%[0] - Return to analysis")
+                           (lambda () (return-from changing 'back)))))
+                 (let ((acc 0))
+                   (mapcar (lambda (x)
+                             (let ((cnt (incf acc)))
+                               (format t "~%[~A] - ~A" cnt x)
+                               (cons cnt
+                                     (lambda ()
+                                       (format t "~%lmbd:change:domain to ~A " x)
+                                       (setf (getf vac :domain) x)))))
+                           variants))))
         'done)))
+
+  ;; (viewing *W* (lambda (vac)
+  ;;                (equal :responded (getf vac :domain))))
 #+END_SRC
 
 ** TODO Отклик существующим резюме

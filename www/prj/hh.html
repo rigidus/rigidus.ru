@@ -115,20 +115,22 @@
 <ul>
 <li><a href="#unnumbered-65">Список отсортированых вакансий</a></li>
 <li><a href="#unnumbered-66">Интерфейсный граф</a></li>
-<li><a href="#unnumbered-67">Просмотр вакансий</a></li>
-<li><a href="#unnumbered-68">Анализ вакансии</a></li>
-<li><a href="#unnumbered-69">Изменение домена вакансии</a></li>
-<li><a href="#unnumbered-70"><span class="todo nilTODO">TODO</span> Отклик на вакансию</a></li>
-<li><a href="#unnumbered-71">Возврат изменений</a></li>
+<li><a href="#unnumbered-67">Вспомогательные функции интерфеса</a></li>
+<li><a href="#unnumbered-68">Просмотр вакансий</a></li>
+<li><a href="#unnumbered-69">Анализ вакансии</a></li>
+<li><a href="#unnumbered-70">Изменение домена вакансии</a></li>
+<li><a href="#unnumbered-71"><span class="todo nilTODO">TODO</span> Отклик существующим резюме</a></li>
+<li><a href="#unnumbered-72">Отклик с созданием резюме</a></li>
+<li><a href="#unnumbered-73">Возврат изменений</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-72"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
-<li><a href="#unnumbered-73"><span class="todo nilTODO">TODO</span> Сценарий обработки отзывов</a></li>
-<li><a href="#unnumbered-74">Сборка</a>
+<li><a href="#unnumbered-74"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
+<li><a href="#unnumbered-75"><span class="todo nilTODO">TODO</span> Сценарий обработки отзывов</a></li>
+<li><a href="#unnumbered-76">Сборка</a>
 <ul>
-<li><a href="#unnumbered-75">Макросы для корректного вывода ошибок</a></li>
-<li><a href="#unnumbered-76">Отладочный вывод</a></li>
-<li><a href="#unnumbered-77">Макросы для преобразования порядка аргументов</a></li>
+<li><a href="#unnumbered-77">Макросы для корректного вывода ошибок</a></li>
+<li><a href="#unnumbered-78">Отладочный вывод</a></li>
+<li><a href="#unnumbered-79">Макросы для преобразования порядка аргументов</a></li>
 </ul>
 </li>
 </ul>
@@ -4396,8 +4398,38 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </div>
 
 <div id="outline-container-unnumbered-67" class="outline-3">
-<h3 id="unnumbered-67">Просмотр вакансий</h3>
+<h3 id="unnumbered-67">Вспомогательные функции интерфеса</h3>
 <div class="outline-text-3" id="text-unnumbered-67">
+<p>
+Поскольку у нас консольный интерфейс, можно обобщить выбор варианта пользователя в
+процедуру, которой передается список пар, где ключом является номер варианта, а
+значением - лямбда, которая должна быть вызвана.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="choice">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">choise</span> (acts)
+  (format t <span style="color: #87005f;">"~%Type your choise (0-~A): "</span> (- (length acts) 1))
+  (<span style="color: #af00ff;">block</span> retval
+    (<span style="color: #af00ff;">tagbody</span>
+     reinput
+       (<span style="color: #af00ff;">let*</span> ((input (read-line))
+              (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t)))
+         (<span style="color: #af00ff;">unless</span> (equal input (format nil <span style="color: #87005f;">"~A"</span> num))
+           (format t <span style="color: #87005f;">"~%Wrong input, please try again: "</span>)
+           (<span style="color: #af00ff;">go</span> reinput))
+         (<span style="color: #af00ff;">cond</span> ((&lt;<span style="color: #af00ff;">=</span> num (length acts))
+                (<span style="color: #af00ff;">return-from</span> retval
+                  (funcall (cdr (assoc num acts)))))
+               (t (err (format nil <span style="color: #87005f;">"choise err: ~A"</span> num))))))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-68" class="outline-3">
+<h3 id="unnumbered-68">Просмотр вакансий</h3>
+<div class="outline-text-3" id="text-unnumbered-68">
 <p>
 В экране "просмотр вакансий" мы должны показать несколько первых вакансий из
 сортированного списка и предложить пользователю список возможных действий:
@@ -4411,55 +4443,43 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="viewing">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">show-ten-vacs</span> (allvacs)
-  (<span style="color: #af00ff;">loop</span>
-     <span style="color: #5f5f87;">:for</span> vac <span style="color: #5f5f87;">:in</span> allvacs
-     <span style="color: #5f5f87;">:with</span> idx <span style="color: #af00ff;">=</span> 0
-     <span style="color: #5f5f87;">:while</span> (&lt; idx 9)
-     <span style="color: #5f5f87;">:when</span> (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))
-     <span style="color: #5f5f87;">:collect</span> (<span style="color: #af00ff;">progn</span>
-                (incf idx)
-                (format t <span style="color: #87005f;">"~%[~A] - ~A - ~A"</span>
-                        idx
-                        (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary-text</span>)
-                        (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:name</span>))
-                (cons idx
-                      (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))))
-
-(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">viewing</span> ()
+<pre class="src src-lisp" id="viewing">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">viewing</span> (allvacs domain-p)
   (<span style="color: #af00ff;">tagbody</span>
    renew
      (format t <span style="color: #87005f;">"________"</span>)
      (format t <span style="color: #87005f;">"~%Viewing:"</span>)
-     (format t <span style="color: #87005f;">"~%[0] : Exit"</span>)
-     (<span style="color: #af00ff;">let</span> ((acts (show-ten-vacs *W*)))
-       (format t <span style="color: #87005f;">"~%Type your choise (0-9): "</span>)
-       (<span style="color: #af00ff;">tagbody</span>
-        reinput
-          (<span style="color: #af00ff;">let*</span> ((input (read-line))
-                 (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t)))
-            (<span style="color: #af00ff;">unless</span> (equal input (format nil <span style="color: #87005f;">"~A"</span> num))
-              (format t <span style="color: #87005f;">"~%Wrong input, please try again: "</span>)
-              (<span style="color: #af00ff;">go</span> reinput))
-            (<span style="color: #af00ff;">cond</span> ((equal 0 num)
-                   (<span style="color: #af00ff;">progn</span>
-                     (format t <span style="color: #87005f;">"~%Bye!"</span>)
-                     'Bye))
-                  ((&lt; num  10)
-                   (<span style="color: #af00ff;">progn</span>
-                     <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1047;&#1076;&#1077;&#1089;&#1100; &#1077;&#1089;&#1083;&#1080; &#1087;&#1088;&#1086;&#1080;&#1089;&#1093;&#1086;&#1076;&#1080;&#1090; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; viewing</span>
-                     <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1090;&#1086; &#1090;&#1086;&#1083;&#1100;&#1082;&#1086; &#1090;&#1080;&#1087;&#1072; "back"</span>
-                     (analysis (cdr (assoc num acts)))
-                     (<span style="color: #af00ff;">go</span> renew)))
-                  (t (err <span style="color: #87005f;">"viewing err"</span>))))))))
+     (format t <span style="color: #87005f;">"~%[0] - Exit"</span>)
+     (choise
+      (acons 0
+             (<span style="color: #af00ff;">lambda</span> ()
+               (<span style="color: #af00ff;">return-from</span> viewing (print 'bye)))
+             (<span style="color: #af00ff;">loop</span>
+                <span style="color: #5f5f87;">:for</span> vac <span style="color: #5f5f87;">:in</span> allvacs
+                <span style="color: #5f5f87;">:with</span> idx <span style="color: #af00ff;">=</span> 0
+                <span style="color: #5f5f87;">:while</span> (&lt; idx 9)
+                <span style="color: #5f5f87;">:when</span> (funcall domain-p vac)
+                <span style="color: #5f5f87;">:collect</span> (<span style="color: #af00ff;">progn</span>
+                           (incf idx)
+                           (format t <span style="color: #87005f;">"~%[~A] - ~A - ~A"</span>
+                                   idx
+                                   (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:salary-text</span>)
+                                   (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:name</span>))
+                           (cons idx
+                                 (<span style="color: #af00ff;">let</span> ((src-id (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>))) <span style="color: #af0000;">;; </span><span style="color: #af0000;">closure value (!)</span>
+                                   (<span style="color: #af00ff;">lambda</span> ()
+                                     (analysis src-id))))))))
+     (<span style="color: #af00ff;">go</span> renew)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *W* (lambda (vac)</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-68" class="outline-3">
-<h3 id="unnumbered-68">Анализ вакансии</h3>
-<div class="outline-text-3" id="text-unnumbered-68">
+<div id="outline-container-unnumbered-69" class="outline-3">
+<h3 id="unnumbered-69">Анализ вакансии</h3>
+<div class="outline-text-3" id="text-unnumbered-69">
 <p>
 Когда анализируется вакансия ее нужно вывести, а потом предложить возможные действия:
 </p>
@@ -4477,37 +4497,40 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                         (equal src-id
                                (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
                       *w*)))
-    (format t <span style="color: #87005f;">"__________________"</span>)
-    (format t <span style="color: #87005f;">"~%ANALYSIS for vac # ~A~%~A"</span> src-id (bprint vac))
-    (format t <span style="color: #87005f;">"~%Actions:~%[0] - Back to viewing~%[1] - Change domain~%[2] - Respond"</span>)
-    (format t <span style="color: #87005f;">"~%Type your choise (0-2): "</span>)
     (<span style="color: #af00ff;">tagbody</span>
-     reinput
-       (<span style="color: #af00ff;">let*</span> ((input (read-line))
-              (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t)))
-         (<span style="color: #af00ff;">unless</span> (equal input (format nil <span style="color: #87005f;">"~A"</span> num))
-           (format t <span style="color: #87005f;">"~%Wrong input, please try again: "</span>)
-           (<span style="color: #af00ff;">go</span> reinput))
-         (<span style="color: #af00ff;">cond</span> ((equal 0 num)  (<span style="color: #af00ff;">progn</span>
-                                 (format t <span style="color: #87005f;">"~%Return to viewing~%"</span>)
-                                 'back))
-               ((equal 1 num)  (<span style="color: #af00ff;">let</span> ((retval (changing src-id)))
-                                 (<span style="color: #af00ff;">cond</span> ((equal retval 'back)  (<span style="color: #af00ff;">go</span> renew))
-                                       ((equal retval 'done)  (<span style="color: #af00ff;">return-from</span> analysis 'done))
-                                       (t (err (format nil <span style="color: #87005f;">"wrond retval ~A"</span> retval))))))
-               ((equal 2 num)  (<span style="color: #af00ff;">let</span> ((retval (responding src-id)))
-                                 (<span style="color: #af00ff;">cond</span> ((equal retval 'back)  (<span style="color: #af00ff;">go</span> renew))
-                                       ((equal retval 'done)  (<span style="color: #af00ff;">return-from</span> analysis 'done))
-                                       (t (err (format nil <span style="color: #87005f;">"wrond retval ~A"</span> retval))))))
-               (t (err <span style="color: #87005f;">"viewing select action err"</span>)))))))
+     renew
+       (format t <span style="color: #87005f;">"__________________"</span>)
+       (format t <span style="color: #87005f;">"~%ANALYSIS for vac # ~A~%~A"</span> src-id (bprint vac))
+       (<span style="color: #af00ff;">let</span> ((crv (choise `((0 . ,(<span style="color: #af00ff;">progn</span>
+                                    (format t <span style="color: #87005f;">"~%[0] - Back to viewing"</span>)
+                                    (<span style="color: #af00ff;">lambda</span> ()
+                                      (format t <span style="color: #87005f;">"~%Return to VIEWING~%"</span>)
+                                      (<span style="color: #af00ff;">return-from</span> analysis 'back))))
+                            (1 . ,(<span style="color: #af00ff;">progn</span>
+                                    (format t <span style="color: #87005f;">"~%[1] - Change domain"</span>)
+                                    (<span style="color: #af00ff;">lambda</span> ()
+                                      (changing src-id))))
+                            (2 . ,(<span style="color: #af00ff;">progn</span>
+                                    (format t <span style="color: #87005f;">"~%[2] - Respond"</span>)
+                                    (<span style="color: #af00ff;">lambda</span> ()
+                                      (responding src-id))))))))
+         (<span style="color: #af00ff;">cond</span> ((equal crv 'done)
+                (<span style="color: #af00ff;">return-from</span> analysis 'done))
+               ((equal choise-retval 'back)
+                (<span style="color: #af00ff;">go</span> renew))
+               (t
+                (err (format nil <span style="color: #87005f;">"wrond retval in analysys ~A"</span> retval))))))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *W* (lambda (vac)</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(equal :responded (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-69" class="outline-3">
-<h3 id="unnumbered-69">Изменение домена вакансии</h3>
-<div class="outline-text-3" id="text-unnumbered-69">
+<div id="outline-container-unnumbered-70" class="outline-3">
+<h3 id="unnumbered-70">Изменение домена вакансии</h3>
+<div class="outline-text-3" id="text-unnumbered-70">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="changing">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">changing</span> (src-id)
@@ -4517,42 +4540,33 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                       *w*)))
     (format t <span style="color: #87005f;">"_________________________"</span>)
     (format t <span style="color: #87005f;">"~%CHANGING DOMAIN for vac # ~A~%~A"</span> src-id (bprint vac))
-    (<span style="color: #af00ff;">let</span> ((dms (<span style="color: #af00ff;">let</span> ((acc 0))
+    (<span style="color: #af00ff;">let*</span> ((variants '(<span style="color: #5f5f87;">:unsorted</span> <span style="color: #5f5f87;">:uninterested</span> <span style="color: #5f5f87;">:interested</span> <span style="color: #5f5f87;">:responded</span>
+                       <span style="color: #5f5f87;">:beenviewed</span> <span style="color: #5f5f87;">:invited</span>  <span style="color: #5f5f87;">:interviewed</span>  <span style="color: #5f5f87;">:offered</span>)))
+      (choise (append
+               `((0 . ,(<span style="color: #af00ff;">progn</span>
+                         (format t <span style="color: #87005f;">"~%[0] - Return to analysis"</span>)
+                         (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> changing 'back)))))
+               (<span style="color: #af00ff;">let</span> ((acc 0))
                  (mapcar (<span style="color: #af00ff;">lambda</span> (x)
-                           (cons (incf acc) x))
-                         '(<span style="color: #5f5f87;">:unsorted</span> <span style="color: #5f5f87;">:uninterested</span> <span style="color: #5f5f87;">:interested</span> <span style="color: #5f5f87;">:responded</span>
-                           <span style="color: #5f5f87;">:beenviewed</span> <span style="color: #5f5f87;">:invited</span>  <span style="color: #5f5f87;">:interviewed</span>  <span style="color: #5f5f87;">:offered</span>)))))
-      (format t <span style="color: #87005f;">"~%CHANGE DOMAIN:~%[0] - Return to analysis~{~%~{[~A] - ~A~}~}"</span>
-              (mapcar (<span style="color: #af00ff;">lambda</span> (x) (list (car x) (cdr x)))
-                      dms))
-      (format t <span style="color: #87005f;">"~%Enter your choise(0-~A): "</span> (length dms))
-      (<span style="color: #af00ff;">tagbody</span>
-       reinput
-         (<span style="color: #af00ff;">let*</span> ((input (read-line))
-                (num   (parse-integer input <span style="color: #5f5f87;">:junk-allowed</span> t)))
-           (<span style="color: #af00ff;">unless</span> (equal input (format nil <span style="color: #87005f;">"~A"</span> num))
-             (format t <span style="color: #87005f;">"~%Wrong input, please try again: "</span>)
-             (<span style="color: #af00ff;">go</span> reinput))
-           (<span style="color: #af00ff;">cond</span> ((equal 0 num)
-                  (<span style="color: #af00ff;">progn</span>
-                    (format t <span style="color: #87005f;">"~%Return to analysis"</span>)
-                    'back))
-                 ((&lt;<span style="color: #af00ff;">=</span> num (length dms))
-                  (<span style="color: #af00ff;">progn</span>
-                    (setf (getf vac <span style="color: #5f5f87;">:domain</span>)
-                          (cdr (assoc num dms)))
-                    (format t <span style="color: #87005f;">"~%Domain changed. Press ENTER for return to VIEWING"</span>)
-                    (read-line)
-                    (<span style="color: #af00ff;">return-from</span> changing 'done)))
-                 (t (err <span style="color: #87005f;">"changing select action err"</span>))))))))
+                           (<span style="color: #af00ff;">let</span> ((cnt (incf acc)))
+                             (format t <span style="color: #87005f;">"~%[~A] - ~A"</span> cnt x)
+                             (cons cnt
+                                   (<span style="color: #af00ff;">lambda</span> ()
+                                     (format t <span style="color: #87005f;">"~%lmbd:change:domain to ~A "</span> x)
+                                     (setf (getf vac <span style="color: #5f5f87;">:domain</span>) x)))))
+                         variants))))
+      'done)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *W* (lambda (vac)</span>
+<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(equal :responded (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-70" class="outline-3">
-<h3 id="unnumbered-70"><span class="todo TODO">TODO</span> Отклик на вакансию</h3>
-<div class="outline-text-3" id="text-unnumbered-70">
+<div id="outline-container-unnumbered-71" class="outline-3">
+<h3 id="unnumbered-71"><span class="todo TODO">TODO</span> Отклик существующим резюме</h3>
+<div class="outline-text-3" id="text-unnumbered-71">
 <p>
 Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
 запросу на сервер вида:
@@ -4997,9 +5011,18 @@ ignore_postponed=true
 </div>
 </div>
 
-<div id="outline-container-unnumbered-71" class="outline-3">
-<h3 id="unnumbered-71">Возврат изменений</h3>
-<div class="outline-text-3" id="text-unnumbered-71">
+<div id="outline-container-unnumbered-72" class="outline-3">
+<h3 id="unnumbered-72">Отклик с созданием резюме</h3>
+<div class="outline-text-3" id="text-unnumbered-72">
+<p>
+TODO
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-73" class="outline-3">
+<h3 id="unnumbered-73">Возврат изменений</h3>
+<div class="outline-text-3" id="text-unnumbered-73">
 <p>
 Перемещаем изменения из сортированного по зараплате списка в хэш-таблицу вакансий.
 </p>
@@ -5017,9 +5040,9 @@ ignore_postponed=true
 </div>
 </div>
 
-<div id="outline-container-unnumbered-72" class="outline-2">
-<h2 id="unnumbered-72"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
-<div class="outline-text-2" id="text-unnumbered-72">
+<div id="outline-container-unnumbered-74" class="outline-2">
+<h2 id="unnumbered-74"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
+<div class="outline-text-2" id="text-unnumbered-74">
 <p>
 Возможно будет полезным извлекать данные из уже опубликованных своих резюме для
 интероперабельности.
@@ -5027,18 +5050,18 @@ ignore_postponed=true
 </div>
 </div>
 
-<div id="outline-container-unnumbered-73" class="outline-2">
-<h2 id="unnumbered-73"><span class="todo TODO">TODO</span> Сценарий обработки отзывов</h2>
-<div class="outline-text-2" id="text-unnumbered-73">
+<div id="outline-container-unnumbered-75" class="outline-2">
+<h2 id="unnumbered-75"><span class="todo TODO">TODO</span> Сценарий обработки отзывов</h2>
+<div class="outline-text-2" id="text-unnumbered-75">
 <p>
 Необходимо синхронизировать состояние всех отзывов на источние вакансий и в системе.
 </p>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-74" class="outline-2">
-<h2 id="unnumbered-74">Сборка</h2>
-<div class="outline-text-2" id="text-unnumbered-74">
+<div id="outline-container-unnumbered-76" class="outline-2">
+<h2 id="unnumbered-76">Сборка</h2>
+<div class="outline-text-2" id="text-unnumbered-76">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="vacancy">(ql:quickload <span style="color: #87005f;">"anaphora"</span>)
@@ -5089,9 +5112,9 @@ ignore_postponed=true
 </div>
 </div>
 
-<div id="outline-container-unnumbered-75" class="outline-3">
-<h3 id="unnumbered-75">Макросы для корректного вывода ошибок</h3>
-<div class="outline-text-3" id="text-unnumbered-75">
+<div id="outline-container-unnumbered-77" class="outline-3">
+<h3 id="unnumbered-77">Макросы для корректного вывода ошибок</h3>
+<div class="outline-text-3" id="text-unnumbered-77">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_bprint">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">bprint</span> (var)
@@ -5108,9 +5131,9 @@ ignore_postponed=true
 </div>
 </div>
 
-<div id="outline-container-unnumbered-76" class="outline-3">
-<h3 id="unnumbered-76">Отладочный вывод</h3>
-<div class="outline-text-3" id="text-unnumbered-76">
+<div id="outline-container-unnumbered-78" class="outline-3">
+<h3 id="unnumbered-78">Отладочный вывод</h3>
+<div class="outline-text-3" id="text-unnumbered-78">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="dbgout">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*dbg-enable*</span> t)
@@ -5126,9 +5149,9 @@ ignore_postponed=true
 </div>
 </div>
 </div>
-<div id="outline-container-unnumbered-77" class="outline-3">
-<h3 id="unnumbered-77">Макросы для преобразования порядка аргументов</h3>
-<div class="outline-text-3" id="text-unnumbered-77">
+<div id="outline-container-unnumbered-79" class="outline-3">
+<h3 id="unnumbered-79">Макросы для преобразования порядка аргументов</h3>
+<div class="outline-text-3" id="text-unnumbered-79">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_clj">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">-&gt;</span> (x <span style="color: #008700;">&amp;optional</span> form <span style="color: #008700;">&amp;rest</span> more)
