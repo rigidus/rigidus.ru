@@ -1716,8 +1716,7 @@ plist-деревом.
            `((,(lambda (vac) (null (getf vac :src-id)))
                . ,(lambda (vac) (dbg "no src-id")))
              (,(lambda (vac) (null (getf vac :salary)))
-               . ,(lambda (vac) (dbg "no salary"))))
-            )
+               . ,(lambda (vac) (dbg "no salary")))))
           (rules-for-vacs nil))
       (declare (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
       (loop :for i :from 1 :to 1000 :do
@@ -1733,7 +1732,10 @@ plist-деревом.
              (setf (gethash key *vacs*)
                    (if (not present)
                        `(:vac ,vac :domain :unsorted)
-                       (err "vac-exists"))))))))
+                       (progn
+                         (format t  "vac-exists")
+                         `(:vac ,vac :domain :unsorted)))))))))
+
 #+END_SRC
 
 Но сначала я начну с определения возможных ~доменов~:
@@ -2704,7 +2706,7 @@ POST-запросе передаются какие-то мусорные profar
 
       Ключевые компетенции:
       - Linux, FreeBSD
-      - PHP, C/C++, Java, Common Lisp, Erlang, Forth, Assembler
+      - Tcl/Tk, PHP, C/C++, Java, Common Lisp, Erlang, Forth, Assembler
       - Nginx, Memcached, Redis, RabbitMQ
       - MySQL, PostgreSQL
       - Git
@@ -2883,19 +2885,15 @@ http://spb.hh.ru/applicant/deleteresume/
 формируем их них список, который сортируем по зарплате от большей к меньшей
 
 #+BEGIN_SRC lisp
-  (defparameter *w*
+  (defun get-sorted-vacs (vacs domain-p)
     (sort (loop
-             :for key :being :the :hash-keys :of *vacs*
+             :for key :being :the :hash-keys :of vacs
              :using (hash-value val)
              :unless (null (getf (getf val :vac) :salary))
-             :when (equal (getf val :domain) :unsorted)
+             :when (funcall domain-p val)
              :collect val)
           (lambda (a b)
             (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
-
-  (length *w*)
-
-  (print *w*)
 #+END_SRC
 
 ** Интерфейсный граф
@@ -2907,9 +2905,12 @@ http://spb.hh.ru/applicant/deleteresume/
 - отклик на вакансию
 
 Находясь в состоянии "просмотр вакансий" можно выполнить действие "выбрать вакансию",
-которое осуществит переход в "анализ вакансии". Из "анализа вакансии" можно перейти в
-"изменение вакансии" или "отклик на вакансию", а также вернуться обратно. Таким
-образом, получается древовидный сценарий, который мы можем задать таблично:
+которое осуществит переход в "анализ вакансии". Из "анализа вакансии" можно перейти в:
+- "изменение вакансии"
+- "отклик на вакансию"
+- "удаление вакансии"
+, а также вернуться обратно. Таким образом, получается древовидный сценарий, который мы
+можем задать таблично:
 
 #+NAME: iface_state
 | action  | from       | to         |
@@ -2920,6 +2921,8 @@ http://spb.hh.ru/applicant/deleteresume/
 | back    | changing   | analysis   |
 | respond | analysis   | responding |
 | back    | responding | analysis   |
+| delete  | analysis   | deleting   |
+| back    | deleting   | analysis   |
 | done    | responding | viewing    |
 | done    | changing   | viewing    |
 
@@ -2983,35 +2986,42 @@ http://spb.hh.ru/applicant/deleteresume/
 
 #+NAME: viewing
 #+BEGIN_SRC lisp
-  (defun viewing (allvacs domain-p)
+  (defun viewing (vacs domain-p)
     (tagbody
      renew
-       (format t "________")
-       (format t "~%Viewing:")
-       (format t "~%[0] - Exit")
-       (choise
-        (acons 0
-               (lambda ()
-                 (return-from viewing (print 'bye)))
-               (loop
-                  :for vac :in allvacs
-                  :with idx = 0
-                  :while (< idx 9)
-                  :when (funcall domain-p vac)
-                  :collect (progn
-                             (incf idx)
-                             (format t "~%[~A] - ~A - ~A"
-                                     idx
-                                     (getf (getf vac :vac) :salary-text)
-                                     (getf (getf vac :vac) :name))
-                             (cons idx
-                                   (let ((src-id (getf (getf vac :vac) :src-id))) ;; closure value (!)
-                                     (lambda ()
-                                       (analysis src-id))))))))
-       (go renew)))
+       (let ((allvacs (get-sorted-vacs vacs domain-p)))
+         (format t "________")
+         (format t "~%Viewing (~A):" (length allvacs))
+         (format t "~%[0] - Exit")
+         (choise
+          (acons 0
+                 (lambda ()
+                   (return-from viewing (print 'bye)))
+                 (loop
+                    :for vac :in allvacs
+                    :with idx = 0
+                    :while (< idx 500)
+                    :when (funcall domain-p vac)
+                    :collect (progn
+                               (incf idx)
+                               (format t "~%[~A] - ~A - ~A || ~A"
+                                       idx
+                                       (getf (getf vac :vac) :salary-text)
+                                       (getf (getf vac :vac) :name)
+                                       (getf (getf vac :vac) :emp-name)
+                                       )
+                               (cons idx
+                                     ;; closure value (!)
+                                     (let ((src-id (getf (getf vac :vac) :src-id)))
+                                       (lambda ()
+                                         (analysis src-id)))))))))
+         (go renew)))
 
-  ;; (viewing *W* (lambda (vac)
-  ;;                (equal :unsorted (getf vac :domain))))
+  (viewing *vacs* (lambda (vac)
+                    (equal :unsorted (getf vac :domain))))
+
+  ;; (viewing *vacs* (lambda (vac)
+  ;;                   (not (equal :unsorted (getf vac :domain)))))
 #+END_SRC
 
 ** Анализ вакансии
@@ -3023,10 +3033,8 @@ http://spb.hh.ru/applicant/deleteresume/
 #+NAME: analysis
 #+BEGIN_SRC lisp
   (defun analysis (src-id)
-    (let ((vac (find-if (lambda (vac)
-                          (equal src-id
-                                 (getf (getf vac :vac) :src-id)))
-                        ,*w*)))
+    (print src-id)
+    (let ((vac (gethash src-id *vacs*)))
       (tagbody
        renew
          (format t "__________________")
@@ -3043,16 +3051,20 @@ http://spb.hh.ru/applicant/deleteresume/
                               (2 . ,(progn
                                       (format t "~%[2] - Respond")
                                       (lambda ()
-                                        (responding src-id))))))))
+                                        (responding src-id))))
+                              (3 . ,(progn
+                                      (format t "~%[3] - Delete")
+                                      (lambda ()
+                                        (deleting src-id))))))))
            (cond ((equal crv 'done)
                   (return-from analysis 'done))
-                 ((equal choise-retval 'back)
+                 ((equal crv 'back)
                   (go renew))
                  (t
-                  (err (format nil "wrond retval in analysys ~A" retval))))))))
+                  (err (format nil "wrond retval in analysys ~A" crv))))))))
 
-  ;; (viewing *W* (lambda (vac)
-  ;;                (equal :responded (getf vac :domain))))
+  (viewing *vacs* (lambda (vac)
+                    (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Изменение домена вакансии
@@ -3060,10 +3072,7 @@ http://spb.hh.ru/applicant/deleteresume/
 #+NAME: changing
 #+BEGIN_SRC lisp
   (defun changing (src-id)
-    (let ((vac (find-if (lambda (vac)
-                          (equal src-id
-                                 (getf (getf vac :vac) :src-id)))
-                        ,*w*)))
+    (let ((vac (gethash src-id *vacs*)))
       (format t "_________________________")
       (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
       (let* ((variants '(:unsorted :uninterested :interested :responded
@@ -3078,16 +3087,40 @@ http://spb.hh.ru/applicant/deleteresume/
                                (format t "~%[~A] - ~A" cnt x)
                                (cons cnt
                                      (lambda ()
-                                       (format t "~%lmbd:change:domain to ~A " x)
+                                       (format t "~%lmbd:change:domain to ~A~%" x)
                                        (setf (getf vac :domain) x)))))
                            variants))))
         'done)))
 
-  ;; (viewing *W* (lambda (vac)
+  (viewing *vacs* (lambda (vac)
+                    (equal :unsorted (getf vac :domain))))
+#+END_SRC
+
+** Удаление вакансии
+
+#+NAME: deleting
+#+BEGIN_SRC lisp
+  (defun deleting (src-id)
+    (let ((vac (gethash src-id *vacs*)))
+      (format t "_________________________")
+      (format t "~%DELETING vac # ~A~%~A" src-id (bprint vac))
+      (choise `((0 . ,(progn
+                        (format t "~%[0] - Return to analysis")
+                        (lambda () (return-from deleting 'back))))
+                (1 . ,(progn
+                        (format t "~%[1] - Сonfirm deleting [~A]"
+                                (getf (getf vac :vac) :name))
+                        (let ((src-id src-id))
+                          (lambda ()
+                            (remhash (getf (getf vac :vac) :src-id) *vacs*)
+                            (return-from deleting 'done))))))))
+    'done)
+
+  ;; (viewing *vacs* (lambda (vac)
   ;;                (equal :responded (getf vac :domain))))
 #+END_SRC
 
-** TODO Отклик существующим резюме
+** Отклик существующим резюме
 
 Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
 запросу на сервер вида:
@@ -3385,6 +3418,13 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   {"error": "unknown"}
 #+END_SRC
 
+Иногда, некоторые вакансии требуют сопроводительного письма, возвращая вот такую
+ошибку, если его нет:
+
+#+BEGIN_SRC js
+  {"error": "letter-required"}
+#+END_SRC
+
 Научимся отправлять такой запрос:
 
 #+BEGIN_SRC lisp
@@ -3434,10 +3474,7 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   (setf (gethash "23614635ff05277e2a0039ed1f61305a413033" *cvs*) (list :salary 400000))
 
   (defun responding (src-id)
-    (let ((vac (find-if (lambda (vac)
-                          (equal src-id
-                                 (getf (getf vac :vac) :src-id)))
-                        ,*w*)))
+    (let ((vac (gethash src-id *vacs*)))
       (format t "_________________________")
       (format t "~%RESPONDING for vac # ~A~%~A" src-id (bprint vac))
       (let ((cookie-jar cookie-jar))
@@ -3466,13 +3503,16 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                                                    selected-resume-value
                                                    selected-resume-title)
                                            ;; изменение статуса
-                                           ;; (setf (getf vac :domain) :responded)
+                                           (setf (getf vac :domain) :responded)
                                            ;; выход
                                            (format t "~%Press ENTER for return to VIEWING")
                                            (read-line)
                                            (return-from responding 'done))))))))))))
 
   ;; (responding 24324803)
+
+  (viewing *vacs* (lambda (vac)
+                    (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** TODO Отклик с созданием резюме
