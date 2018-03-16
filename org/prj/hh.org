@@ -1708,40 +1708,40 @@ plist-деревом.
 
   (defparameter *vacs* (make-hash-table))
 
-  (let ((gen (factory 'hh
-                      :teaser-url         *hh-teaser-url*
-                      :idx                0
-                      :ref                "https://spb.hh.ru"
-                      :cookie-jar         (make-instance 'drakma:cookie-jar)
-                      :src-account        *hh-account*
-                      :get-page-fn        #'hh-get-page
-                      :split-teasers-fn   #'hh-split-teasers
-                      :parse-teaser-fn    #'hh-parse-teaser)))
-    (let ((parse-vacancy-fn #'hh-parse-vacancy)
-          (rules-for-teasers
-           `((,(lambda (vac) (null (getf vac :src-id)))
-               . ,(lambda (vac) (dbg "no src-id")))
-             (,(lambda (vac) (null (getf vac :salary)))
-               . ,(lambda (vac) (dbg "no salary")))))
-          (rules-for-vacs nil))
-      (declare (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
-      (loop :for i :from 1 :to 1000 :do
-         (let* ((vac (funcall gen
-                              (lambda (tag msg data) ;; failure
-                                (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
-                                (error tag))
-                              #'hh-process))
-                (key (getf vac :src-id)))
-           (dbg "~A" (bprint vac))
-           (multiple-value-bind (old-val present)
-               (gethash key *vacs*)
-             (setf (gethash key *vacs*)
-                   (if (not present)
-                       `(:vac ,vac :domain :unsorted)
-                       (progn
-                         (format t  "vac-exists")
-                         `(:vac ,vac :domain :unsorted)))))))))
-
+  (defun run ()
+    (let ((gen (factory 'hh
+                        :teaser-url         *hh-teaser-url*
+                        :idx                0
+                        :ref                "https://spb.hh.ru"
+                        :cookie-jar         (make-instance 'drakma:cookie-jar)
+                        :src-account        *hh-account*
+                        :get-page-fn        #'hh-get-page
+                        :split-teasers-fn   #'hh-split-teasers
+                        :parse-teaser-fn    #'hh-parse-teaser)))
+      (let ((parse-vacancy-fn #'hh-parse-vacancy)
+            (rules-for-teasers
+             `((,(lambda (vac) (null (getf vac :src-id)))
+                 . ,(lambda (vac) (dbg "no src-id")))
+               (,(lambda (vac) (null (getf vac :salary)))
+                 . ,(lambda (vac) (dbg "no salary")))))
+            (rules-for-vacs nil))
+        (declare (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
+        (loop :for i :from 1 :to 1000 :do
+           (let* ((vac (funcall gen
+                                (lambda (tag msg data) ;; failure
+                                  (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                                  (error tag))
+                                #'hh-process))
+                  (key (getf vac :src-id)))
+             (dbg "~A" (bprint vac))
+             (multiple-value-bind (old-val present)
+                 (gethash key *vacs*)
+               (setf (gethash key *vacs*)
+                     (if (not present)
+                         `(:vac ,vac :domain :unsorted)
+                         (progn
+                           (format t  "vac-exists")
+                           `(:vac ,vac :domain :unsorted))))))))))
 #+END_SRC
 
 Но сначала я начну с определения возможных ~доменов~:
@@ -2883,6 +2883,29 @@ http://spb.hh.ru/applicant/deleteresume/
   - Отправить отклик на вакансию (что приводит к изменению домена)
     - При необходимости сформировав под нее резюме
 
+#+NAME: cli
+#+BEGIN_SRC lisp
+  <<get_sorted_vacs>>
+
+  <<choice>>
+
+  <<viewing>>
+
+  <<analysis>>
+
+  <<changing>>
+
+  <<deleting>>
+
+  <<get_resp_popup>>
+
+  <<popup_processor>>
+
+  <<send_respond>>
+
+  <<responding>>
+#+END_SRC
+
 ** Список отсортированых вакансий
 
 Берем все вакансии, кроме:
@@ -2890,6 +2913,7 @@ http://spb.hh.ru/applicant/deleteresume/
 - тех, у которых домен не :unsorted
 формируем их них список, который сортируем по зарплате от большей к меньшей
 
+#+NAME: get_sorted_vacs
 #+BEGIN_SRC lisp
   (defun get-sorted-vacs (vacs domain-p)
     (sort (loop
@@ -2967,8 +2991,8 @@ http://spb.hh.ru/applicant/deleteresume/
 
 #+NAME: choice
 #+BEGIN_SRC lisp
-  (defun choise (acts)
-    (format t "~%Type your choise (0-~A): " (- (length acts) 1))
+  (defun choice (acts)
+    (format t "~%Type your choice (0-~A): " (- (length acts) 1))
     (block retval
       (tagbody
        reinput
@@ -2980,7 +3004,7 @@ http://spb.hh.ru/applicant/deleteresume/
            (cond ((<= num (length acts))
                   (return-from retval
                     (funcall (cdr (assoc num acts)))))
-                 (t (err (format nil "choise err: ~A" num))))))))
+                 (t (err (format nil "choice err: ~A" num))))))))
 #+END_SRC
 
 ** Просмотр вакансий
@@ -2999,7 +3023,7 @@ http://spb.hh.ru/applicant/deleteresume/
          (format t "________")
          (format t "~%Viewing (~A):" (length allvacs))
          (format t "~%[0] - Exit")
-         (choise
+         (choice
           (acons 0
                  (lambda ()
                    (return-from viewing (print 'bye)))
@@ -3023,11 +3047,8 @@ http://spb.hh.ru/applicant/deleteresume/
                                          (analysis src-id)))))))))
          (go renew)))
 
-  (viewing *vacs* (lambda (vac)
-                    (equal :unsorted (getf vac :domain))))
-
   ;; (viewing *vacs* (lambda (vac)
-  ;;                   (not (equal :unsorted (getf vac :domain)))))
+  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Анализ вакансии
@@ -3045,7 +3066,7 @@ http://spb.hh.ru/applicant/deleteresume/
        renew
          (format t "__________________")
          (format t "~%ANALYSIS for vac # ~A~%~A" src-id (bprint vac))
-         (let ((crv (choise `((0 . ,(progn
+         (let ((crv (choice `((0 . ,(progn
                                       (format t "~%[0] - Back to viewing")
                                       (lambda ()
                                         (format t "~%Return to VIEWING~%")
@@ -3069,8 +3090,8 @@ http://spb.hh.ru/applicant/deleteresume/
                  (t
                   (err (format nil "wrond retval in analysys ~A" crv))))))))
 
-  (viewing *vacs* (lambda (vac)
-                    (equal :unsorted (getf vac :domain))))
+  ;; (viewing *vacs* (lambda (vac)
+  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Изменение домена вакансии
@@ -3083,7 +3104,7 @@ http://spb.hh.ru/applicant/deleteresume/
       (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
       (let* ((variants '(:unsorted :uninterested :interested :responded
                          :beenviewed :invited  :interviewed  :offered)))
-        (choise (append
+        (choice (append
                  `((0 . ,(progn
                            (format t "~%[0] - Return to analysis")
                            (lambda () (return-from changing 'back)))))
@@ -3098,8 +3119,8 @@ http://spb.hh.ru/applicant/deleteresume/
                            variants))))
         'done)))
 
-  (viewing *vacs* (lambda (vac)
-                    (equal :unsorted (getf vac :domain))))
+  ;; (viewing *vacs* (lambda (vac)
+  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Удаление вакансии
@@ -3110,7 +3131,7 @@ http://spb.hh.ru/applicant/deleteresume/
     (let ((vac (gethash src-id *vacs*)))
       (format t "_________________________")
       (format t "~%DELETING vac # ~A~%~A" src-id (bprint vac))
-      (choise `((0 . ,(progn
+      (choice `((0 . ,(progn
                         (format t "~%[0] - Return to analysis")
                         (lambda () (return-from deleting 'back))))
                 (1 . ,(progn
@@ -3127,9 +3148,10 @@ http://spb.hh.ru/applicant/deleteresume/
 #+END_SRC
 
 ** Отклик существующим резюме
+*** Отклик со страницы вакансии
 
-Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
-запросу на сервер вида:
+Когда пользователь хочет откликнуться на вакансию, он нажимает кнопку "откликнуться" на
+странице вакансии. В ответ на это его броузер отправляет на сервер запрос вида:
 
 #+BEGIN_EXAMPLE
   https://spb.hh.ru/applicant/vacancy_response/popup?
@@ -3144,6 +3166,7 @@ http://spb.hh.ru/applicant/deleteresume/
 - видеть динамическую переменную cookie-jar для обработки cookies
 - передать функцию-продолжение для обработки ответа
 
+#+NAME: get_resp_popup
 #+BEGIN_SRC lisp
   (defun get-resp-popup (src-account src-id response-processor-fn)
     (let ((referer    (format nil "https://spb.hh.ru/vacancy/~A" src-id))
@@ -3168,7 +3191,7 @@ http://spb.hh.ru/applicant/deleteresume/
   ;;       (print response)))))
 #+END_SRC
 
-Ответом на этот запрос приходит форма:
+Ответом на этот запрос приходит форма, которую клиент отображает во всплывающем окне:
 
 #+BEGIN_SRC html
   <form method="post" action="/applicant/vacancy_response/popup?vacancy_id=24700517"
@@ -3321,8 +3344,11 @@ http://spb.hh.ru/applicant/deleteresume/
 - получить все резюме, с их видимостью
 - выбрать одно из них для отклика
 
+*** Разбор формы попапа
+
 Итак, займемся разбором формы попапа:
 
+#+NAME: popup_processor
 #+BEGIN_SRC lisp
   <<popup_service>>
 
@@ -3398,6 +3424,8 @@ http://spb.hh.ru/applicant/deleteresume/
         rv)))
 #+END_SRC
 
+*** Отклик из попапа
+
 Когда пользователь выбирает в попапе одно из резюме и нажимает кнопку "Откликнуться"
 происходит следующее:
 
@@ -3431,8 +3459,12 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   {"error": "letter-required"}
 #+END_SRC
 
-Научимся отправлять такой запрос:
+*** Посылка отклика
 
+Нам нужна функция, которая отправит хэш выбранного резюме, т.е. сделает то же самое,
+что делает броузер, когда пользователь нажимает на кнопку "откликнуться" в попапе.
+
+#+NAME: send_respond
 #+BEGIN_SRC lisp
   (defun send-respond (src-id resume-hash)
     (let ((referer     (format nil "https://spb.hh.ru/vacancy/~A" src-id)))
@@ -3469,6 +3501,8 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 Теперь у нас есть все необходимое, чтобы реализовать отклик одним из существующих
 резюме. Напишем ~экран~ responding:
 
+*** Экран "респондинг"
+
 #+NAME: responding
 #+BEGIN_SRC lisp
   (defparameter *cvs* (make-hash-table :test #'equal))
@@ -3486,7 +3520,7 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
       (let ((cookie-jar cookie-jar))
         (declare (special cookie-jar))
         (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
-          (choise (append
+          (choice (append
                    `((0 . ,(progn
                              (format t "~%[0] - Return to analysis")
                              (lambda () (return-from responding 'back)))))
@@ -3517,34 +3551,22 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
   ;; (responding 24324803)
 
-  (viewing *vacs* (lambda (vac)
-                    (equal :unsorted (getf vac :domain))))
+  ;; (viewing *vacs* (lambda (vac)
+  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** TODO Отклик с созданием резюме
 
 TODO
 
-** Возврат изменений
+* TODO Сценарий обработки отзывов
 
-Перемещаем изменения из сортированного по зараплате списка в хэш-таблицу вакансий.
-
-#+BEGIN_SRC lisp
-  (defun to-vacs (w)
-    (mapcar (lambda (vac)
-              (let ((src-id (getf (getf vac :vac) :src-id)))
-                (setf (gethash src-id *vacs*) vac)))
-            w))
-#+END_SRC
+Необходимо синхронизировать состояние всех отзывов на источние вакансий и в системе.
 
 * TODO Парсинг резюме
 
 Возможно будет полезным извлекать данные из уже опубликованных своих резюме для
 интероперабельности.
-
-* TODO Сценарий обработки отзывов
-
-Необходимо синхронизировать состояние всех отзывов на источние вакансий и в системе.
 
 * Сборка
 
@@ -3554,6 +3576,7 @@ TODO
   (use-package :anaphora)
   (ql:quickload "drakma")
   (ql:quickload "cl-html5-parser")
+  (ql:quickload "cl-json")
   (ql:quickload "optima")
   (use-package :optima)
   (ql:quickload "fare-quasiquote-extras")
@@ -3594,6 +3617,8 @@ TODO
   <<hh_parse_teaser>>
 
   <<run>>
+
+  <<cli>>
 #+END_SRC
 
 ** Макросы для корректного вывода ошибок

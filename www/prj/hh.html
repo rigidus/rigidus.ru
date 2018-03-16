@@ -120,18 +120,25 @@
 <li><a href="#unnumbered-69">Анализ вакансии</a></li>
 <li><a href="#unnumbered-70">Изменение домена вакансии</a></li>
 <li><a href="#unnumbered-71">Удаление вакансии</a></li>
-<li><a href="#unnumbered-72">Отклик существующим резюме</a></li>
-<li><a href="#unnumbered-73"><span class="todo nilTODO">TODO</span> Отклик с созданием резюме</a></li>
-<li><a href="#unnumbered-74">Возврат изменений</a></li>
+<li><a href="#unnumbered-72">Отклик существующим резюме</a>
+<ul>
+<li><a href="#unnumbered-73">Отклик со страницы вакансии</a></li>
+<li><a href="#unnumbered-74">Разбор формы попапа</a></li>
+<li><a href="#unnumbered-75">Отклик из попапа</a></li>
+<li><a href="#unnumbered-76">Посылка отклика</a></li>
+<li><a href="#unnumbered-77">Экран "респондинг"</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-75"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
-<li><a href="#unnumbered-76"><span class="todo nilTODO">TODO</span> Сценарий обработки отзывов</a></li>
-<li><a href="#unnumbered-77">Сборка</a>
+<li><a href="#unnumbered-78"><span class="todo nilTODO">TODO</span> Отклик с созданием резюме</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-79"><span class="todo nilTODO">TODO</span> Сценарий обработки отзывов</a></li>
+<li><a href="#unnumbered-80"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
+<li><a href="#unnumbered-81">Сборка</a>
 <ul>
-<li><a href="#unnumbered-78">Макросы для корректного вывода ошибок</a></li>
-<li><a href="#unnumbered-79">Отладочный вывод</a></li>
-<li><a href="#unnumbered-80">Макросы для преобразования порядка аргументов</a></li>
+<li><a href="#unnumbered-82">Макросы для корректного вывода ошибок</a></li>
+<li><a href="#unnumbered-83">Отладочный вывод</a></li>
+<li><a href="#unnumbered-84">Макросы для преобразования порядка аргументов</a></li>
 </ul>
 </li>
 </ul>
@@ -2232,39 +2239,40 @@ plist-деревом.
 
 (<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vacs*</span> (make-hash-table))
 
-(<span style="color: #af00ff;">let</span> ((gen (factory 'hh
-                    <span style="color: #5f5f87;">:teaser-url</span>         *hh-teaser-url*
-                    <span style="color: #5f5f87;">:idx</span>                0
-                    <span style="color: #5f5f87;">:ref</span>                <span style="color: #87005f;">"https://spb.hh.ru"</span>
-                    <span style="color: #5f5f87;">:cookie-jar</span>         (make-instance 'drakma:cookie-jar)
-                    <span style="color: #5f5f87;">:src-account</span>        *hh-account*
-                    <span style="color: #5f5f87;">:get-page-fn</span>        #'hh-get-page
-                    <span style="color: #5f5f87;">:split-teasers-fn</span>   #'hh-split-teasers
-                    <span style="color: #5f5f87;">:parse-teaser-fn</span>    #'hh-parse-teaser)))
-  (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy)
-        (rules-for-teasers
-         `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
-             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
-           (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
-             . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>)))))
-        (rules-for-vacs nil))
-    (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
-    (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 1000 <span style="color: #5f5f87;">:do</span>
-       (<span style="color: #af00ff;">let*</span> ((vac (funcall gen
-                            (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
-                              (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
-                              (<span style="color: #ff0000; font-weight: bold;">error</span> tag))
-                            #'hh-process))
-              (key (getf vac <span style="color: #5f5f87;">:src-id</span>)))
-         (dbg <span style="color: #87005f;">"~A"</span> (bprint vac))
-         (<span style="color: #af00ff;">multiple-value-bind</span> (old-val present)
-             (gethash key *vacs*)
-           (setf (gethash key *vacs*)
-                 (<span style="color: #af00ff;">if</span> (not present)
-                     `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsorted</span>)
-                     (<span style="color: #af00ff;">progn</span>
-                       (format t  <span style="color: #87005f;">"vac-exists"</span>)
-                       `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsorted</span>)))))))))
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">run</span> ()
+  (<span style="color: #af00ff;">let</span> ((gen (factory 'hh
+                      <span style="color: #5f5f87;">:teaser-url</span>         *hh-teaser-url*
+                      <span style="color: #5f5f87;">:idx</span>                0
+                      <span style="color: #5f5f87;">:ref</span>                <span style="color: #87005f;">"https://spb.hh.ru"</span>
+                      <span style="color: #5f5f87;">:cookie-jar</span>         (make-instance 'drakma:cookie-jar)
+                      <span style="color: #5f5f87;">:src-account</span>        *hh-account*
+                      <span style="color: #5f5f87;">:get-page-fn</span>        #'hh-get-page
+                      <span style="color: #5f5f87;">:split-teasers-fn</span>   #'hh-split-teasers
+                      <span style="color: #5f5f87;">:parse-teaser-fn</span>    #'hh-parse-teaser)))
+    (<span style="color: #af00ff;">let</span> ((parse-vacancy-fn #'hh-parse-vacancy)
+          (rules-for-teasers
+           `((,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+               . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no src-id"</span>)))
+             (,(<span style="color: #af00ff;">lambda</span> (vac) (null (getf vac <span style="color: #5f5f87;">:salary</span>)))
+               . ,(<span style="color: #af00ff;">lambda</span> (vac) (dbg <span style="color: #87005f;">"no salary"</span>)))))
+          (rules-for-vacs nil))
+      (<span style="color: #af00ff;">declare</span> (special parse-vacancy-fn rules-for-teasers rules-for-vacs))
+      (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> i <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> 1000 <span style="color: #5f5f87;">:do</span>
+         (<span style="color: #af00ff;">let*</span> ((vac (funcall gen
+                              (<span style="color: #af00ff;">lambda</span> (tag msg data) <span style="color: #af0000;">;; </span><span style="color: #af0000;">failure</span>
+                                (dbg <span style="color: #87005f;">"ERROR: ~A - ~A~%~A"</span> tag msg (length data))
+                                (<span style="color: #ff0000; font-weight: bold;">error</span> tag))
+                              #'hh-process))
+                (key (getf vac <span style="color: #5f5f87;">:src-id</span>)))
+           (dbg <span style="color: #87005f;">"~A"</span> (bprint vac))
+           (<span style="color: #af00ff;">multiple-value-bind</span> (old-val present)
+               (gethash key *vacs*)
+             (setf (gethash key *vacs*)
+                   (<span style="color: #af00ff;">if</span> (not present)
+                       `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsorted</span>)
+                       (<span style="color: #af00ff;">progn</span>
+                         (format t  <span style="color: #87005f;">"vac-exists"</span>)
+                         `(<span style="color: #5f5f87;">:vac</span> ,vac <span style="color: #5f5f87;">:domain</span> <span style="color: #5f5f87;">:unsorted</span>))))))))))
 </pre>
 </div>
 
@@ -4237,6 +4245,30 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 </ul>
 </li>
 </ul>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="cli">&lt;&lt;get_sorted_vacs&gt;&gt;
+
+&lt;&lt;choice&gt;&gt;
+
+&lt;&lt;viewing&gt;&gt;
+
+&lt;&lt;analysis&gt;&gt;
+
+&lt;&lt;changing&gt;&gt;
+
+&lt;&lt;deleting&gt;&gt;
+
+&lt;&lt;get_resp_popup&gt;&gt;
+
+&lt;&lt;popup_processor&gt;&gt;
+
+&lt;&lt;send_respond&gt;&gt;
+
+&lt;&lt;responding&gt;&gt;
+</pre>
+</div>
 </div>
 
 <div id="outline-container-unnumbered-65" class="outline-3">
@@ -4257,7 +4289,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-sorted-vacs</span> (vacs domain-p)
+<pre class="src src-lisp" id="get_sorted_vacs">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-sorted-vacs</span> (vacs domain-p)
   (sort (<span style="color: #af00ff;">loop</span>
            <span style="color: #5f5f87;">:for</span> key <span style="color: #5f5f87;">:being</span> <span style="color: #5f5f87;">:the</span> <span style="color: #5f5f87;">:hash-keys</span> <span style="color: #5f5f87;">:of</span> vacs
            <span style="color: #5f5f87;">:using</span> (hash-value val)
@@ -4434,8 +4466,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 
 <div class="org-src-container">
 
-<pre class="src src-lisp" id="choice">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">choise</span> (acts)
-  (format t <span style="color: #87005f;">"~%Type your choise (0-~A): "</span> (- (length acts) 1))
+<pre class="src src-lisp" id="choice">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">choice</span> (acts)
+  (format t <span style="color: #87005f;">"~%Type your choice (0-~A): "</span> (- (length acts) 1))
   (<span style="color: #af00ff;">block</span> retval
     (<span style="color: #af00ff;">tagbody</span>
      reinput
@@ -4447,7 +4479,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
          (<span style="color: #af00ff;">cond</span> ((&lt;<span style="color: #af00ff;">=</span> num (length acts))
                 (<span style="color: #af00ff;">return-from</span> retval
                   (funcall (cdr (assoc num acts)))))
-               (t (err (format nil <span style="color: #87005f;">"choise err: ~A"</span> num))))))))
+               (t (err (format nil <span style="color: #87005f;">"choice err: ~A"</span> num))))))))
 </pre>
 </div>
 </div>
@@ -4476,7 +4508,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
        (format t <span style="color: #87005f;">"________"</span>)
        (format t <span style="color: #87005f;">"~%Viewing (~A):"</span> (length allvacs))
        (format t <span style="color: #87005f;">"~%[0] - Exit"</span>)
-       (choise
+       (choice
         (acons 0
                (<span style="color: #af00ff;">lambda</span> ()
                  (<span style="color: #af00ff;">return-from</span> viewing (print 'bye)))
@@ -4500,11 +4532,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                                        (analysis src-id)))))))))
        (<span style="color: #af00ff;">go</span> renew)))
 
-(viewing *vacs* (<span style="color: #af00ff;">lambda</span> (vac)
-                  (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))))
-
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
-<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(not (equal :unsorted (getf vac :domain)))))</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
@@ -4532,7 +4561,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
      renew
        (format t <span style="color: #87005f;">"__________________"</span>)
        (format t <span style="color: #87005f;">"~%ANALYSIS for vac # ~A~%~A"</span> src-id (bprint vac))
-       (<span style="color: #af00ff;">let</span> ((crv (choise `((0 . ,(<span style="color: #af00ff;">progn</span>
+       (<span style="color: #af00ff;">let</span> ((crv (choice `((0 . ,(<span style="color: #af00ff;">progn</span>
                                     (format t <span style="color: #87005f;">"~%[0] - Back to viewing"</span>)
                                     (<span style="color: #af00ff;">lambda</span> ()
                                       (format t <span style="color: #87005f;">"~%Return to VIEWING~%"</span>)
@@ -4556,8 +4585,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                (t
                 (err (format nil <span style="color: #87005f;">"wrond retval in analysys ~A"</span> crv))))))))
 
-(viewing *vacs* (<span style="color: #af00ff;">lambda</span> (vac)
-                  (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
@@ -4574,7 +4603,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
     (format t <span style="color: #87005f;">"~%CHANGING DOMAIN for vac # ~A~%~A"</span> src-id (bprint vac))
     (<span style="color: #af00ff;">let*</span> ((variants '(<span style="color: #5f5f87;">:unsorted</span> <span style="color: #5f5f87;">:uninterested</span> <span style="color: #5f5f87;">:interested</span> <span style="color: #5f5f87;">:responded</span>
                        <span style="color: #5f5f87;">:beenviewed</span> <span style="color: #5f5f87;">:invited</span>  <span style="color: #5f5f87;">:interviewed</span>  <span style="color: #5f5f87;">:offered</span>)))
-      (choise (append
+      (choice (append
                `((0 . ,(<span style="color: #af00ff;">progn</span>
                          (format t <span style="color: #87005f;">"~%[0] - Return to analysis"</span>)
                          (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> changing 'back)))))
@@ -4589,8 +4618,8 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                          variants))))
       'done)))
 
-(viewing *vacs* (<span style="color: #af00ff;">lambda</span> (vac)
-                  (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
@@ -4605,7 +4634,7 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
   (<span style="color: #af00ff;">let</span> ((vac (gethash src-id *vacs*)))
     (format t <span style="color: #87005f;">"_________________________"</span>)
     (format t <span style="color: #87005f;">"~%DELETING vac # ~A~%~A"</span> src-id (bprint vac))
-    (choise `((0 . ,(<span style="color: #af00ff;">progn</span>
+    (choice `((0 . ,(<span style="color: #af00ff;">progn</span>
                       (format t <span style="color: #87005f;">"~%[0] - Return to analysis"</span>)
                       (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> deleting 'back))))
               (1 . ,(<span style="color: #af00ff;">progn</span>
@@ -4627,9 +4656,12 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
 <div id="outline-container-unnumbered-72" class="outline-3">
 <h3 id="unnumbered-72">Отклик существующим резюме</h3>
 <div class="outline-text-3" id="text-unnumbered-72">
+</div><div id="outline-container-unnumbered-73" class="outline-4">
+<h4 id="unnumbered-73">Отклик со страницы вакансии</h4>
+<div class="outline-text-4" id="text-unnumbered-73">
 <p>
-Когда происходит отклик на ваканисию, нажатие на кнопку "откликнуться" приводит к
-запросу на сервер вида:
+Когда пользователь хочет откликнуться на вакансию, он нажимает кнопку "откликнуться" на
+странице вакансии. В ответ на это его броузер отправляет на сервер запрос вида:
 </p>
 
 <pre class="example">
@@ -4653,7 +4685,7 @@ selectedResume=
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-resp-popup</span> (src-account src-id response-processor-fn)
+<pre class="src src-lisp" id="get_resp_popup">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-resp-popup</span> (src-account src-id response-processor-fn)
   (<span style="color: #af00ff;">let</span> ((referer    (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id))
         (popup-url  <span style="color: #87005f;">"https://spb.hh.ru/applicant/vacancy_response/popup?"</span>)
         (get-params <span style="color: #87005f;">"vacancyId=~A&amp;autoOpen=no&amp;isTest=no&amp;withoutTest=no&amp;selectedResume="</span>))
@@ -4678,7 +4710,7 @@ selectedResume=
 </div>
 
 <p>
-Ответом на этот запрос приходит форма:
+Ответом на этот запрос приходит форма, которую клиент отображает во всплывающем окне:
 </p>
 
 <div class="org-src-container">
@@ -4846,14 +4878,19 @@ selectedResume=
 <li>выбрать одно из них для отклика
 </li>
 </ul>
+</div>
+</div>
 
+<div id="outline-container-unnumbered-74" class="outline-4">
+<h4 id="unnumbered-74">Разбор формы попапа</h4>
+<div class="outline-text-4" id="text-unnumbered-74">
 <p>
 Итак, займемся разбором формы попапа:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">&lt;&lt;popup_service&gt;&gt;
+<pre class="src src-lisp" id="popup_processor">&lt;&lt;popup_service&gt;&gt;
 
 (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">popup-processor</span> (response new-cookie-jar url)
   (setf cookie-jar new-cookie-jar)
@@ -4930,7 +4967,12 @@ selectedResume=
       rv)))
 </pre>
 </div>
+</div>
+</div>
 
+<div id="outline-container-unnumbered-75" class="outline-4">
+<h4 id="unnumbered-75">Отклик из попапа</h4>
+<div class="outline-text-4" id="text-unnumbered-75">
 <p>
 Когда пользователь выбирает в попапе одно из резюме и нажимает кнопку "Откликнуться"
 происходит следующее:
@@ -4979,14 +5021,20 @@ ignore_postponed=true
 <pre class="src src-js">{<span style="color: #87005f;">"error"</span>: <span style="color: #87005f;">"letter-required"</span>}
 </pre>
 </div>
+</div>
+</div>
 
+<div id="outline-container-unnumbered-76" class="outline-4">
+<h4 id="unnumbered-76">Посылка отклика</h4>
+<div class="outline-text-4" id="text-unnumbered-76">
 <p>
-Научимся отправлять такой запрос:
+Нам нужна функция, которая отправит хэш выбранного резюме, т.е. сделает то же самое,
+что делает броузер, когда пользователь нажимает на кнопку "откликнуться" в попапе.
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">send-respond</span> (src-id resume-hash)
+<pre class="src src-lisp" id="send_respond">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">send-respond</span> (src-id resume-hash)
   (<span style="color: #af00ff;">let</span> ((referer     (format nil <span style="color: #87005f;">"https://spb.hh.ru/vacancy/~A"</span> src-id)))
     (<span style="color: #af00ff;">with-cookie-alist</span> (cookie-jar)
       (<span style="color: #af00ff;">with-post-response</span>
@@ -5023,7 +5071,12 @@ ignore_postponed=true
 Теперь у нас есть все необходимое, чтобы реализовать отклик одним из существующих
 резюме. Напишем <code>экран</code> responding:
 </p>
+</div>
+</div>
 
+<div id="outline-container-unnumbered-77" class="outline-4">
+<h4 id="unnumbered-77">Экран "респондинг"</h4>
+<div class="outline-text-4" id="text-unnumbered-77">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="responding">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*cvs*</span> (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
@@ -5041,7 +5094,7 @@ ignore_postponed=true
     (<span style="color: #af00ff;">let</span> ((cookie-jar cookie-jar))
       (<span style="color: #af00ff;">declare</span> (special cookie-jar))
       (<span style="color: #af00ff;">let</span> ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
-        (choise (append
+        (choice (append
                  `((0 . ,(<span style="color: #af00ff;">progn</span>
                            (format t <span style="color: #87005f;">"~%[0] - Return to analysis"</span>)
                            (<span style="color: #af00ff;">lambda</span> () (<span style="color: #af00ff;">return-from</span> responding 'back)))))
@@ -5072,45 +5125,36 @@ ignore_postponed=true
 
 <span style="color: #af0000;">;; </span><span style="color: #af0000;">(responding 24324803)</span>
 
-(viewing *vacs* (<span style="color: #af00ff;">lambda</span> (vac)
-                  (equal <span style="color: #5f5f87;">:unsorted</span> (getf vac <span style="color: #5f5f87;">:domain</span>))))
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
+<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
 </div>
+</div>
 
-<div id="outline-container-unnumbered-73" class="outline-3">
-<h3 id="unnumbered-73"><span class="todo TODO">TODO</span> Отклик с созданием резюме</h3>
-<div class="outline-text-3" id="text-unnumbered-73">
+<div id="outline-container-unnumbered-78" class="outline-3">
+<h3 id="unnumbered-78"><span class="todo TODO">TODO</span> Отклик с созданием резюме</h3>
+<div class="outline-text-3" id="text-unnumbered-78">
 <p>
 TODO
 </p>
 </div>
 </div>
+</div>
 
-<div id="outline-container-unnumbered-74" class="outline-3">
-<h3 id="unnumbered-74">Возврат изменений</h3>
-<div class="outline-text-3" id="text-unnumbered-74">
+<div id="outline-container-unnumbered-79" class="outline-2">
+<h2 id="unnumbered-79"><span class="todo TODO">TODO</span> Сценарий обработки отзывов</h2>
+<div class="outline-text-2" id="text-unnumbered-79">
 <p>
-Перемещаем изменения из сортированного по зараплате списка в хэш-таблицу вакансий.
+Необходимо синхронизировать состояние всех отзывов на источние вакансий и в системе.
 </p>
-
-<div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">to-vacs</span> (w)
-  (mapcar (<span style="color: #af00ff;">lambda</span> (vac)
-            (<span style="color: #af00ff;">let</span> ((src-id (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>)))
-              (setf (gethash src-id *vacs*) vac)))
-          w))
-</pre>
-</div>
-</div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-75" class="outline-2">
-<h2 id="unnumbered-75"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
-<div class="outline-text-2" id="text-unnumbered-75">
+<div id="outline-container-unnumbered-80" class="outline-2">
+<h2 id="unnumbered-80"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
+<div class="outline-text-2" id="text-unnumbered-80">
 <p>
 Возможно будет полезным извлекать данные из уже опубликованных своих резюме для
 интероперабельности.
@@ -5118,24 +5162,16 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-76" class="outline-2">
-<h2 id="unnumbered-76"><span class="todo TODO">TODO</span> Сценарий обработки отзывов</h2>
-<div class="outline-text-2" id="text-unnumbered-76">
-<p>
-Необходимо синхронизировать состояние всех отзывов на источние вакансий и в системе.
-</p>
-</div>
-</div>
-
-<div id="outline-container-unnumbered-77" class="outline-2">
-<h2 id="unnumbered-77">Сборка</h2>
-<div class="outline-text-2" id="text-unnumbered-77">
+<div id="outline-container-unnumbered-81" class="outline-2">
+<h2 id="unnumbered-81">Сборка</h2>
+<div class="outline-text-2" id="text-unnumbered-81">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="vacancy">(ql:quickload <span style="color: #87005f;">"anaphora"</span>)
 (use-package <span style="color: #5f5f87;">:anaphora</span>)
 (ql:quickload <span style="color: #87005f;">"drakma"</span>)
 (ql:quickload <span style="color: #87005f;">"cl-html5-parser"</span>)
+(ql:quickload <span style="color: #87005f;">"cl-json"</span>)
 (ql:quickload <span style="color: #87005f;">"optima"</span>)
 (use-package <span style="color: #5f5f87;">:optima</span>)
 (ql:quickload <span style="color: #87005f;">"fare-quasiquote-extras"</span>)
@@ -5176,13 +5212,15 @@ TODO
 &lt;&lt;hh_parse_teaser&gt;&gt;
 
 &lt;&lt;run&gt;&gt;
+
+&lt;&lt;cli&gt;&gt;
 </pre>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-78" class="outline-3">
-<h3 id="unnumbered-78">Макросы для корректного вывода ошибок</h3>
-<div class="outline-text-3" id="text-unnumbered-78">
+<div id="outline-container-unnumbered-82" class="outline-3">
+<h3 id="unnumbered-82">Макросы для корректного вывода ошибок</h3>
+<div class="outline-text-3" id="text-unnumbered-82">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_bprint">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">bprint</span> (var)
@@ -5199,9 +5237,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-79" class="outline-3">
-<h3 id="unnumbered-79">Отладочный вывод</h3>
-<div class="outline-text-3" id="text-unnumbered-79">
+<div id="outline-container-unnumbered-83" class="outline-3">
+<h3 id="unnumbered-83">Отладочный вывод</h3>
+<div class="outline-text-3" id="text-unnumbered-83">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="dbgout">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*dbg-enable*</span> t)
@@ -5217,9 +5255,9 @@ TODO
 </div>
 </div>
 </div>
-<div id="outline-container-unnumbered-80" class="outline-3">
-<h3 id="unnumbered-80">Макросы для преобразования порядка аргументов</h3>
-<div class="outline-text-3" id="text-unnumbered-80">
+<div id="outline-container-unnumbered-84" class="outline-3">
+<h3 id="unnumbered-84">Макросы для преобразования порядка аргументов</h3>
+<div class="outline-text-3" id="text-unnumbered-84">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_clj">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">-&gt;</span> (x <span style="color: #008700;">&amp;optional</span> form <span style="color: #008700;">&amp;rest</span> more)
