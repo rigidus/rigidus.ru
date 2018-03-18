@@ -3575,6 +3575,8 @@ TODO
 страницы". Номера страниц начинаются с нуля.
 
 #+BEGIN_SRC lisp
+  (defparameter *last-response-data* nil)
+
   (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
          (referer "https://spb.hh.ru")
          (src-account *hh-account*))
@@ -3584,32 +3586,90 @@ TODO
         (hh-get-page url cookie-jar src-account referer #'failure
                      (lambda (response new-cookie-jar url)
                        (setf cookie-jar new-cookie-jar)
-                       (let ((html (html-to-tree response)))
-                         (->> (extract-responds-results html)
-                              (maptreefilter)
-                              (transform-resp-date)
-                              (transform-resp-control)
-                              (transform-resp-invite)
-                              (transform-resp-discard)
-                              (transform-resp-not-viewed)
-                              (transform-resp-vac)
-                              (transform-resp-form)
-                              (transform-resp-topic)
-                              (transform-resp-item-date)
-                              (transform-resp-icon)
-                              (transform-resp-wtf)
-                              (transform-resp-details)
-                              (transform-resp-vac)
-                              (mapcar #'cdr)
-                              ;; todo linearize
-                              (print)
-                              )))))))
+                       (setf *last-response-data* response)
+                       )))))
+
+  (let ((html (html-to-tree *last-response-data*)))
+    (->> (extract-responds-results html)
+         (maptreefilter)
+         (transform-resp-topic)
+         (transform-resp-date)
+         (transform-resp-control)
+         (transform-resp-invite)
+         (transform-resp-discard)
+         (transform-resp-not-viewed)
+         (transform-resp-viewed)
+         (transform-resp-form)
+         (transform-resp-details)
+         (transform-resp-company)
+         (transform-resp-vac)
+         (transform-resp-cell-vac)
+         (transform-resp-icon)
+         (transform-resp-wtf)
+         (transform-resp-item-date)
+         (transform-resp-banner)
+         (remove-if #'(lambda (x)
+                        (equal x '(:BANNER NIL))))
+         (mapcar #'cdr)
+         ;; (mapcar #'linearize-response)
+         ;; (remove-if #'(lambda (x)
+         ;;                (or (equal (car x) :icon)
+         ;;                    (equal (car x) :wtf)
+         ;;                    (equal (car x) :item-date))))
+         (print)
+         ))
+
+  (defun linearize-response (resp)
+    (let ((resp (remove-if (lambda (x)
+                             (or (equal (car x) :icon)
+                                 (equal (car x) :wtf)
+                                 (equal (car x) :item-date)))
+                           resp)))
+      (cond ((not (listp resp))
+             (err (format nil "Wrong resp: ~A" resp)))
+            ((not (keywordp (car resp)))
+             (mapcar #'linearize-response resp))
+            ;; ((member (car resp)
+            ;;          '(:topic :status :href :name :company :form :topic-id :substate
+            ;;            :query :submit :xsrf :date))
+            ;;  resp)
+      ;;       ((member (car resp)
+      ;;                '(:vac :details))
+      ;;        (mapcan #'linearize-response (cadr resp)))
+            (t (err (format nil "Unknown resp key: ~A" (car resp)))))
+      ;; resp
+      ))
+
+  (linearize-response
+   '((:TOPIC "1098884399") (:STATUS :NOT-VIEWED) (:ICON NIL)
+     (:VAC
+      ((:HREF "https://spb.hh.ru/vacancy/24687705" :NAME "С++ программист")
+       (:COMPANY "в the_covert")
+       (:DETAILS
+        ((:FORM "Удалить" :TOPIC-ID "1098884399" :SUBSTATE "HIDE" :QUERY "?"
+                :SUBMIT "negotiations-delete" :XSRF "d88295a81213ddb80587f0e838c7bb4c")
+         (:DATE "6 марта 2018")))))
+     (:WTF NIL) (:ITEM-DATE "6 марта 2018")))
+
+  (untrace linearize-response)
+
+
 
   (defun extract-responds-results (tree)
     (block subtree-extract
       (mtm (`("tbody" (("class" "responses-table-tbody")) ,@rest)
              (return-from subtree-extract rest))
            tree)))
+
+  (make-transform (resp-banner)
+    (`("tr" (("class" "responses-table-row responses-table-row_banner"))
+            ("responses-table-row__cell"
+             (("colspan" "6"))
+             ("banner-substrate"
+              NIL
+              ("banner-place-wrapper banner-place-wrapper_hide-on-s" NIL)
+              ("banner-place-wrapper banner-place-wrapper_show-on-s" NIL))))
+      `(:banner nil)))
 
   (make-transform (resp-date)
     (`("responses-table-date responses-table-date_show-on-xs" NIL ,date)
@@ -3641,15 +3701,15 @@ TODO
     (`("negotiations-item-not-viewed" NIL "Не просмотрен")
       `(:status :not-viewed)))
 
-  (make-transform (resp-vac)
-    (`("negotiations-item-vacancy" (("href" ,href)) ,name)
-      `(:href ,href :name ,name)))
+  (make-transform (resp-viewed)
+    (`("negotiations-item-viewed" NIL "Просмотрен")
+      `(:status :viewed)))
 
   (make-transform (resp-form)
     (`("form"
        (("action" ,action) ("method" "POST")
         ("class" "responses-table-form"))
-       ("input" (("type" "hidden") ("name" "topic") ("value" ,topic)))
+       ("input" (("type" "hidden") ("name" "topic") ("value" ,topic-id)))
        ("input" (("type" "hidden") ("name" "substate") ("value" ,substate)))
        ("input" (("type" "hidden") ("name" "query") ("value" ,query)))
        ("input"
@@ -3659,7 +3719,8 @@ TODO
        ("input"
         (("type" "hidden") ("name" "_xsrf")
          ("value" ,xsrf))))
-      `(:form ,value :topic ,topic :substate ,substate :query ,query :submit ,submit :xsrf ,xsrf)))
+      `(:form ,value :topic-id ,topic-id :substate ,substate
+              :query ,query :submit ,submit :xsrf ,xsrf)))
 
   (make-transform (resp-topic)
     (`(("data-topic-id" ,topic) ("data-qa" "negotiations-item")
@@ -3687,7 +3748,15 @@ TODO
        ,@rest)
       `(:details ,rest)))
 
+  (make-transform (resp-company)
+    (`("negotiations-item-company" NIL ,company)
+      `(:company ,company)))
+
   (make-transform (resp-vac)
+    (`("negotiations-item-vacancy" (("href" ,href)) ,name)
+      `(:href ,href :name ,name)))
+
+  (make-transform (resp-cell-vac)
     (`("responses-table-row__cell responses-table-row__cell_vacancy" NIL ,@rest)
       `(:vac ,rest)))
 #+END_SRC
