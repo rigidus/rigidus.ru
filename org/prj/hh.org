@@ -3584,9 +3584,112 @@ TODO
         (hh-get-page url cookie-jar src-account referer #'failure
                      (lambda (response new-cookie-jar url)
                        (setf cookie-jar new-cookie-jar)
-                       (print response))))))
+                       (let ((html (html-to-tree response)))
+                         (->> (extract-responds-results html)
+                              (maptreefilter)
+                              (transform-resp-date)
+                              (transform-resp-control)
+                              (transform-resp-invite)
+                              (transform-resp-discard)
+                              (transform-resp-not-viewed)
+                              (transform-resp-vac)
+                              (transform-resp-form)
+                              (transform-resp-topic)
+                              (transform-resp-item-date)
+                              (transform-resp-icon)
+                              (transform-resp-wtf)
+                              (transform-resp-details)
+                              (transform-resp-vac)
+                              (mapcar #'cdr)
+                              ;; todo linearize
+                              (print)
+                              )))))))
 
-  (print "aaa")
+  (defun extract-responds-results (tree)
+    (block subtree-extract
+      (mtm (`("tbody" (("class" "responses-table-tbody")) ,@rest)
+             (return-from subtree-extract rest))
+           tree)))
+
+  (make-transform (resp-date)
+    (`("responses-table-date responses-table-date_show-on-xs" NIL ,date)
+      `(:date ,date)))
+
+  (make-transform (resp-control)
+    (`("responses-table-row__cell"
+       NIL
+       ("label" (("class" "bloko-checkbox HH-Negotiations-Responses-Control"))
+                ("input"
+                 (("type" "checkbox")
+                  ("class" "bloko-checkbox__input HH-Negotiations-Responses-Checkbox")))
+                ("bloko-checkbox__text"
+                 NIL
+                 ,negotiations))
+       ("responses-table-vacancy-status responses-table-vacancy-status_show-on-xs"
+        NIL))
+      negotiations))
+
+  (make-transform (resp-invite)
+    (`("negotiations-item-invite" NIL "Приглашение")
+      `(:status :invite)))
+
+  (make-transform (resp-discard)
+    (`("negotiations-item-discard" NIL "Отказ")
+      `(:status :discard)))
+
+  (make-transform (resp-not-viewed)
+    (`("negotiations-item-not-viewed" NIL "Не просмотрен")
+      `(:status :not-viewed)))
+
+  (make-transform (resp-vac)
+    (`("negotiations-item-vacancy" (("href" ,href)) ,name)
+      `(:href ,href :name ,name)))
+
+  (make-transform (resp-form)
+    (`("form"
+       (("action" ,action) ("method" "POST")
+        ("class" "responses-table-form"))
+       ("input" (("type" "hidden") ("name" "topic") ("value" ,topic)))
+       ("input" (("type" "hidden") ("name" "substate") ("value" ,substate)))
+       ("input" (("type" "hidden") ("name" "query") ("value" ,query)))
+       ("input"
+        (("type" "submit") ("data-qa" ,submit)
+         ("class" "responses-table-action HH-Negotiations-Responses-Control")
+         ("value" ,value)))
+       ("input"
+        (("type" "hidden") ("name" "_xsrf")
+         ("value" ,xsrf))))
+      `(:form ,value :topic ,topic :substate ,substate :query ,query :submit ,submit :xsrf ,xsrf)))
+
+  (make-transform (resp-topic)
+    (`(("data-topic-id" ,topic) ("data-qa" "negotiations-item")
+       ("class"
+        "responses-table-row HH-Negotiations-Responses-Response responses-table-row_with-checkbox"))
+      `(:topic ,topic)))
+
+  (make-transform (resp-item-date)
+    (`("responses-table-row__cell responses-table-row__cell_date responses-table-row__cell_nowrap"
+       NIL ("negotiations-item-date" NIL ,date))
+      `(:item-date ,date)))
+
+  (make-transform (resp-icon)
+    (`("responses-table-row__cell responses-table-row__cell_icon" NIL)
+      `(:icon nil)))
+
+  (make-transform (resp-wtf)
+    (`("responses-table-row__cell                        responses-table-row__cell_vacancy-status                        responses-table-row__cell_nowrap"
+       NIL ("responses-table-vacancy-status" NIL))
+      `(:wtf nil)))
+
+  (make-transform (resp-details)
+    (`("responses-table-row__vacancy-details"
+       NIL
+       ,@rest)
+      `(:details ,rest)))
+
+  (make-transform (resp-vac)
+    (`("responses-table-row__cell responses-table-row__cell_vacancy" NIL ,@rest)
+      `(:vac ,rest)))
 #+END_SRC
 
 * TODO Парсинг резюме
