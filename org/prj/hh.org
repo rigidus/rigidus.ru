@@ -3593,7 +3593,7 @@ TODO
     (->> (extract-responds-results html)
          (maptreefilter)
          (transform-resp-topic)
-         (transform-resp-date)
+         (transform-resp-tbl-date)
          (transform-resp-control)
          (transform-resp-invite)
          (transform-resp-discard)
@@ -3606,54 +3606,38 @@ TODO
          (transform-resp-cell-vac)
          (transform-resp-icon)
          (transform-resp-wtf)
-         (transform-resp-item-date)
+         (transform-resp-date)
          (transform-resp-banner)
-         (remove-if #'(lambda (x)
-                        (equal x '(:BANNER NIL))))
+         (remove-if (lambda (x)
+                      (equal x '(:BANNER NIL))))
          (mapcar #'cdr)
-         ;; (mapcar #'linearize-response)
-         ;; (remove-if #'(lambda (x)
-         ;;                (or (equal (car x) :icon)
-         ;;                    (equal (car x) :wtf)
-         ;;                    (equal (car x) :item-date))))
+         (mapcar (lambda (x)
+                   (remove-if #'(lambda (x)
+                                  (or (equal (car x) :icon)
+                                      (equal (car x) :wtf)))
+                              x)))
+         (mapcar #'linearize-response)
+         (mapcar (lambda (x)
+                   (let ((rs (nth 2 x)))
+                     (push (cadr x) rs)
+                     (push (car x) rs)
+                     rs)))
          (print)
          ))
 
   (defun linearize-response (resp)
-    (let ((resp (remove-if (lambda (x)
-                             (or (equal (car x) :icon)
-                                 (equal (car x) :wtf)
-                                 (equal (car x) :item-date)))
-                           resp)))
-      (cond ((not (listp resp))
-             (err (format nil "Wrong resp: ~A" resp)))
-            ((not (keywordp (car resp)))
-             (mapcar #'linearize-response resp))
-            ;; ((member (car resp)
-            ;;          '(:topic :status :href :name :company :form :topic-id :substate
-            ;;            :query :submit :xsrf :date))
-            ;;  resp)
-      ;;       ((member (car resp)
-      ;;                '(:vac :details))
-      ;;        (mapcan #'linearize-response (cadr resp)))
-            (t (err (format nil "Unknown resp key: ~A" (car resp)))))
-      ;; resp
-      ))
-
-  (linearize-response
-   '((:TOPIC "1098884399") (:STATUS :NOT-VIEWED) (:ICON NIL)
-     (:VAC
-      ((:HREF "https://spb.hh.ru/vacancy/24687705" :NAME "С++ программист")
-       (:COMPANY "в the_covert")
-       (:DETAILS
-        ((:FORM "Удалить" :TOPIC-ID "1098884399" :SUBSTATE "HIDE" :QUERY "?"
-                :SUBMIT "negotiations-delete" :XSRF "d88295a81213ddb80587f0e838c7bb4c")
-         (:DATE "6 марта 2018")))))
-     (:WTF NIL) (:ITEM-DATE "6 марта 2018")))
-
-  (untrace linearize-response)
-
-
+    (cond ((not (listp resp))
+           (err (format t "Wrong resp: ~A" resp)))
+          ((not (keywordp (car resp)))
+           (mapcar #'linearize-response resp))
+          ((equal (car resp) :vac)
+           (let* ((lin (linearize-response (cadr resp))))
+             (append (car lin) (cdr lin))))
+          ((equal (car resp) :details)
+           (list :details (remove-if (lambda (x)
+                                       (equal (car x) :tbl-date))
+                                     (cadr resp))))
+          (t resp)))
 
   (defun extract-responds-results (tree)
     (block subtree-extract
@@ -3671,9 +3655,9 @@ TODO
               ("banner-place-wrapper banner-place-wrapper_show-on-s" NIL))))
       `(:banner nil)))
 
-  (make-transform (resp-date)
+  (make-transform (resp-tbl-date)
     (`("responses-table-date responses-table-date_show-on-xs" NIL ,date)
-      `(:date ,date)))
+      `(:tbl-date ,date)))
 
   (make-transform (resp-control)
     (`("responses-table-row__cell"
@@ -3728,10 +3712,10 @@ TODO
         "responses-table-row HH-Negotiations-Responses-Response responses-table-row_with-checkbox"))
       `(:topic ,topic)))
 
-  (make-transform (resp-item-date)
+  (make-transform (resp-date)
     (`("responses-table-row__cell responses-table-row__cell_date responses-table-row__cell_nowrap"
        NIL ("negotiations-item-date" NIL ,date))
-      `(:item-date ,date)))
+      `(:date ,date)))
 
   (make-transform (resp-icon)
     (`("responses-table-row__cell responses-table-row__cell_icon" NIL)
@@ -3754,7 +3738,7 @@ TODO
 
   (make-transform (resp-vac)
     (`("negotiations-item-vacancy" (("href" ,href)) ,name)
-      `(:href ,href :name ,name)))
+      `((:href ,href) (:name ,name))))
 
   (make-transform (resp-cell-vac)
     (`("responses-table-row__cell responses-table-row__cell_vacancy" NIL ,@rest)
