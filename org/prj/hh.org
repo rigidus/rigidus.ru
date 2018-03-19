@@ -784,7 +784,7 @@ html-кода, относящегося к разметке. Из-за этог�
          (linearize-teaser)
          ))
 
-  (print (hh-parse-teaser *last-parse-teaser*))
+  ;; (print (hh-parse-teaser *last-parse-teaser*))
 
   ;; (print *last-parse-teaser*)
 #+END_SRC
@@ -1116,7 +1116,7 @@ plist-деревом.
            (mapcar #'linearize-teaser (cdr vacancy)))
           ((member (car vacancy)
                    '(:status :date :garbage :src-id :href :emp-name :address :metro :currency
-                     :responsibility :requirement :logo :schedule :insider))
+                     :responsibility :requirement :logo :schedule :insider :archived))
            vacancy)
           ((member (car vacancy)
                    '(:premium :vacancy :row-controls :row :item-info :item-title :meta-info
@@ -3572,59 +3572,81 @@ TODO
 переходить на эту страницу нет, достаточно собирать только тизеры откликов.
 
 Мы можем загружать страницы тизеров откликов, пока источник не сообщит "Неверный номер
-страницы". Номера страниц начинаются с нуля.
+страницы". Номера страниц начинаются с нуля. Вот так мы можем загрузить первую странцу
+отзывов:
 
 #+BEGIN_SRC lisp
-  (defparameter *last-response-data* nil)
-
   (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
          (referer "https://spb.hh.ru")
          (src-account *hh-account*))
     (declare (special cookie-jar resume-id referer))
     (labels ((failure () (err "negotiations failure")))
-      (let ((url "https://spb.hh.ru/applicant/negotiations?page=~0"))
-        (hh-get-page url cookie-jar src-account referer #'failure
-                     (lambda (response new-cookie-jar url)
-                       (setf cookie-jar new-cookie-jar)
-                       (setf *last-response-data* response)
-                       )))))
+      (print
+       (get-responses
+        ;; *last-response-data*
+        (get-response-page 0 referer src-account #'failure)))))
+#+END_SRC
 
-  (let ((html (html-to-tree *last-response-data*)))
-    (->> (extract-responds-results html)
-         (maptreefilter)
-         (transform-resp-topic)
-         (transform-resp-tbl-date)
-         (transform-resp-control)
-         (transform-resp-invite)
-         (transform-resp-discard)
-         (transform-resp-not-viewed)
-         (transform-resp-viewed)
-         (transform-resp-form)
-         (transform-resp-details)
-         (transform-resp-company)
-         (transform-resp-vac)
-         (transform-resp-cell-vac)
-         (transform-resp-icon)
-         (transform-resp-wtf)
-         (transform-resp-date)
-         (transform-resp-banner)
-         (remove-if (lambda (x)
-                      (equal x '(:BANNER NIL))))
-         (mapcar #'cdr)
-         (mapcar (lambda (x)
-                   (remove-if #'(lambda (x)
-                                  (or (equal (car x) :icon)
-                                      (equal (car x) :wtf)))
-                              x)))
-         (mapcar #'linearize-response)
-         (mapcar (lambda (x)
-                   (let ((rs (nth 2 x)))
-                     (push (cadr x) rs)
-                     (push (car x) rs)
-                     rs)))
-         (print)
-         ))
+Чтобы это сработало нам необходимы функции, которые загружают странцицы отзывов и
+преобразовывают html в отзывы:
 
+#+NAME: response_getter
+#+BEGIN_SRC lisp
+  <<response_service>>
+
+  (defparameter *last-response-data* nil)
+
+  (defun get-response-page (pagenum referer src-account failure)
+    (let ((url "https://spb.hh.ru/applicant/negotiations?page=~0"))
+      (hh-get-page url cookie-jar src-account referer failure
+                   (lambda (response new-cookie-jar url)
+                     (setf cookie-jar new-cookie-jar)
+                     (setf *last-response-data* response)
+                     response))))
+
+  (defun get-responses (html)
+    (let ((tree (html-to-tree html)))
+      (->> (extract-responds-results tree)
+           (maptreefilter)
+           (transform-resp-topic)
+           (transform-resp-tbl-date)
+           (transform-resp-control)
+           (transform-resp-invite)
+           (transform-resp-discard)
+           (transform-resp-not-viewed)
+           (transform-resp-viewed)
+           (transform-resp-form)
+           (transform-resp-details)
+           (transform-resp-company)
+           (transform-resp-vac)
+           (transform-resp-cell-vac)
+           (transform-resp-icon)
+           (transform-resp-wtf)
+           (transform-resp-date)
+           (transform-resp-banner)
+           (remove-if (lambda (x)
+                        (equal x '(:BANNER NIL))))
+           (mapcar #'cdr)
+           (mapcar (lambda (x)
+                     (remove-if #'(lambda (x)
+                                    (or (equal (car x) :icon)
+                                        (equal (car x) :wtf)))
+                                x)))
+           (mapcar #'linearize-response)
+           (mapcar (lambda (x)
+                     (let ((rs (nth 2 x)))
+                       (push (cadr x) rs)
+                       (push (car x) rs)
+                       rs))))))
+#+END_SRC
+
+А им в свою очередь необходимы:
+- линеаризатор
+- экстрактор
+- набор трансформеров
+
+#+NAME: response_service
+#+BEGIN_SRC lisp
   (defun linearize-response (resp)
     (cond ((not (listp resp))
            (err (format t "Wrong resp: ~A" resp)))
@@ -3797,6 +3819,8 @@ TODO
   <<hh_split_teasers>>
 
   <<hh_parse_teaser>>
+
+  <<response_getter>>
 
   <<run>>
 
