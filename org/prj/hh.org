@@ -1840,8 +1840,8 @@ plist-деревом.
 Чтобы опубликовать резюме на источнике, следует придерживаться правил источника по
 публикации, поэтому нам понадобится некоторая инфраструктура.
 
-#+NAME: resume
-#+BEGIN_SRC lisp :tangle resume.lisp :noweb tangle :padline no
+#+NAME: resume_assembly
+#+BEGIN_SRC lisp
  <<assembly_post>>
 
  <<send_post>>
@@ -2819,6 +2819,7 @@ http://spb.hh.ru/applicant/deleteresume/
 /edit/personal. Думаю можно было бы отправить все данные одним пакетом, но пока мы
 стараемся быть похожими на обычный клиентский броузер.
 
+#+NAME: create_resume
 #+BEGIN_SRC lisp
   (defun job (&key name (company-id "") (company-area-id "2") site (industry-id "") (industries nil) (id "") position start-date end-date description)
     (list :name name :company-id company-id :company-area-id company-area-id :site site :industry-id industry-id :industries industries :id id :position position :start-date start-date :end-date end-date :description description))
@@ -2831,29 +2832,29 @@ http://spb.hh.ru/applicant/deleteresume/
     (let ((main-url (format nil "http://spb.hh.ru/applicant/resumes/view?resume=~A" resume-id)))
       (hh-get-page main-url cookie-jar *hh-account* referer #'stderr next)))
 
-  (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
-         (resume-id "")
-         (referer "https://spb.hh.ru"))
-    (declare (special cookie-jar resume-id referer))
-    ;; Сначала запросим основную страницу всех резюме
-    (resume-base
-     ;; Теперь запросим страницу personal, получая resume-id
-     (lambda (response new-cookie-jar url)
-       (setf cookie-jar new-cookie-jar)
-       (set-resume-personal *personal*)
-       (set-resume-education *education*)
-       (set-resume-position
-        (concatenate 'string "Senior Developer " (symbol-name (gensym))
-                     )
-        "400000"
-        "3 221")
-       (set-resume-expirience *expiriences* *about*)
-       (set-resume-contacts *contacts*)
-       (set-resume-languages *languages*)
-       (set-resume-visibility "no_one")
-       (set-resume-touch)
-       )))
-
+  (defun create-resume ()
+    (let* ((cookie-jar (make-instance 'drakma:cookie-jar))
+           (resume-id "")
+           (referer "https://spb.hh.ru"))
+      (declare (special cookie-jar resume-id referer))
+      ;; Сначала запросим основную страницу всех резюме
+      (resume-base
+       ;; Теперь запросим страницу personal, получая resume-id
+       (lambda (response new-cookie-jar url)
+         (setf cookie-jar new-cookie-jar)
+         (set-resume-personal *personal*)
+         (set-resume-education *education*)
+         (set-resume-position
+          (concatenate 'string "Senior Developer " (symbol-name (gensym))
+                       )
+          "400000"
+          "3 221")
+         (set-resume-expirience *expiriences* *about*)
+         (set-resume-contacts *contacts*)
+         (set-resume-languages *languages*)
+         (set-resume-visibility "no_one")
+         (set-resume-touch)
+         ))))
   ;; КЛЮЧЕВЫЕ НАВЫКИ
 
   ;; Java JavaScript jQuery Lisp PHP5 PostgreSQL RabbitMQ Symphony2 Yii Zend Framework
@@ -2889,6 +2890,8 @@ http://spb.hh.ru/applicant/deleteresume/
 
 #+NAME: cli
 #+BEGIN_SRC lisp
+  <<resume_assembly>>
+
   <<get_sorted_vacs>>
 
   <<choice>>
@@ -3051,8 +3054,10 @@ http://spb.hh.ru/applicant/deleteresume/
                                          (analysis src-id)))))))))
          (go renew)))
 
-  ;; (viewing *vacs* (lambda (vac)
-  ;;                   (equal :unsorted (getf vac :domain))))
+  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+  ;;   (declare (special cookie-jar))
+  ;;   (viewing *vacs* (lambda (vac)
+  ;;                     (equal :unsorted (getf vac :domain)))))
 #+END_SRC
 
 ** Анализ вакансии
@@ -3176,13 +3181,17 @@ http://spb.hh.ru/applicant/deleteresume/
     (let ((referer    (format nil "https://spb.hh.ru/vacancy/~A" src-id))
           (popup-url  "https://spb.hh.ru/applicant/vacancy_response/popup?")
           (get-params "vacancyId=~A&autoOpen=no&isTest=no&withoutTest=no&selectedResume="))
-      (hh-get-page
-       referer cookie-jar src-account "https://spb.hh.ru" #'stderr
-       (lambda (response new-cookie-jar url)
-         (setf cookie-jar new-cookie-jar)
-         (hh-get-page
-          (format nil (concatenate 'string popup-url get-params) src-id)
-          cookie-jar src-account referer #'stderr response-processor-fn)))))
+      (labels ((stderr (tag msg data) ;; failure
+                 (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                 (error tag)))
+        (hh-get-page
+         referer cookie-jar src-account "https://spb.hh.ru"
+         #'stderr ;; failure
+         (lambda (response new-cookie-jar url) ;; success
+           (setf cookie-jar new-cookie-jar)
+           (hh-get-page
+            (format nil (concatenate 'string popup-url get-params) src-id)
+            cookie-jar src-account referer #'stderr response-processor-fn))))))
 
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
   ;;       (src-id     24700517))
@@ -3470,8 +3479,8 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
 #+NAME: send_respond
 #+BEGIN_SRC lisp
-  (defun send-respond (src-id resume-hash)
-    (let ((referer     (format nil "https://spb.hh.ru/vacancy/~A" src-id)))
+  (defun send-respond (src-id resume-hash cookie-jar)
+    (let ((referer (format nil "https://spb.hh.ru/vacancy/~A" src-id)))
       (with-cookie-alist (cookie-jar)
         (with-post-response
             ((format nil "https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=~A" src-id)
@@ -3492,14 +3501,12 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                        'err-unk))
                     (t (err "response error (wtf?)")))))))))
 
-  ;; (SEND-RESPOND 24680635 "23614635ff05277e2a0039ed1f61305a413033")
-
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
   ;;       (src-id     24680635))
   ;;   (declare (special cookie-jar))
   ;;   (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
   ;;     ;; <-- место для выбора одного из резюме -->
-  ;;     (send-respond src-id "23614635ff05277e2a0039ed1f61305a413033")))
+  ;;     (send-respond src-id "23614635ff05277e2a0039ed1f61305a413033" cookie-jar)))
 #+END_SRC
 
 Теперь у нас есть все необходимое, чтобы реализовать отклик одним из существующих
@@ -3541,7 +3548,8 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                                        (let ((selected-resume-value (getf resume :value))
                                              (selected-resume-title (getf resume :title)))
                                          (lambda ()
-                                           (send-respond src-id selected-resume-value)
+                                           (declare (special cookie-jar))
+                                           (send-respond src-id selected-resume-value cookie-jar)
                                            ;; сообщение
                                            (format t "~%RESPONDED: ~A~%         : ~A"
                                                    selected-resume-value
@@ -3552,11 +3560,6 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                                            (format t "~%Press ENTER for return to VIEWING")
                                            (read-line)
                                            (return-from responding 'done))))))))))))
-
-  ;; (responding 24324803)
-
-  ;; (viewing *vacs* (lambda (vac)
-  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** TODO Отклик с созданием резюме
@@ -3836,6 +3839,8 @@ TODO
   <<response_getter>>
 
   <<run>>
+
+  <<create_resume>>
 
   <<cli>>
 #+END_SRC
