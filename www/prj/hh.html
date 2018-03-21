@@ -132,15 +132,19 @@
 <li><a href="#unnumbered-78"><span class="todo nilTODO">TODO</span> Отклик с созданием резюме</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-79">Сценарий обработки отзывов</a></li>
-<li><a href="#unnumbered-80"><span class="todo nilTODO">TODO</span> События</a></li>
-<li><a href="#unnumbered-81"><span class="todo nilTODO">TODO</span> Переписка с работодателем</a></li>
-<li><a href="#unnumbered-82"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
-<li><a href="#unnumbered-83">Сборка</a>
+<li><a href="#unnumbered-79">Сценарий обработки отзывов</a>
 <ul>
-<li><a href="#unnumbered-84">Макросы для корректного вывода ошибок</a></li>
-<li><a href="#unnumbered-85">Отладочный вывод</a></li>
-<li><a href="#unnumbered-86">Макросы для преобразования порядка аргументов</a></li>
+<li><a href="#unnumbered-80">Функции для разбора отзывов</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-81"><span class="todo nilTODO">TODO</span> События</a></li>
+<li><a href="#unnumbered-82"><span class="todo nilTODO">TODO</span> Переписка с работодателем</a></li>
+<li><a href="#unnumbered-83"><span class="todo nilTODO">TODO</span> Парсинг резюме</a></li>
+<li><a href="#unnumbered-84">Сборка</a>
+<ul>
+<li><a href="#unnumbered-85">Макросы для корректного вывода ошибок</a></li>
+<li><a href="#unnumbered-86">Отладочный вывод</a></li>
+<li><a href="#unnumbered-87">Макросы для преобразования порядка аргументов</a></li>
 </ul>
 </li>
 </ul>
@@ -4654,9 +4658,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                                      (setf (getf vac <span style="color: #5f5f87;">:domain</span>) x)))))
                          variants))))
       'done)))
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
-<span style="color: #af0000;">;;                   </span><span style="color: #af0000;">(equal :unsorted (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
@@ -4682,9 +4683,6 @@ _xsrf=b2dccfd0ce2ff68b2c4f795ac6d549fb
                           (remhash (getf (getf vac <span style="color: #5f5f87;">:vac</span>) <span style="color: #5f5f87;">:src-id</span>) *vacs*)
                           (<span style="color: #af00ff;">return-from</span> deleting 'done))))))))
   'done)
-
-<span style="color: #af0000;">;; </span><span style="color: #af0000;">(viewing *vacs* (lambda (vac)</span>
-<span style="color: #af0000;">;;                </span><span style="color: #af0000;">(equal :responded (getf vac :domain))))</span>
 </pre>
 </div>
 </div>
@@ -5210,10 +5208,19 @@ TODO
 </div>
 
 <p>
+[TODO:gmm] Дальнейшие улучшения потребуются тогда, когда отзывы будут не помещаться на
+одной странице.
+</p>
+
+<p>
 Чтобы это сработало нам необходимы функции, которые загружают странцицы отзывов и
 преобразовывают html в отзывы:
 </p>
+</div>
 
+<div id="outline-container-unnumbered-80" class="outline-3">
+<h3 id="unnumbered-80">Функции для разбора отзывов</h3>
+<div class="outline-text-3" id="text-unnumbered-80">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="response_getter">&lt;&lt;response_service&gt;&gt;
@@ -5256,12 +5263,16 @@ TODO
                                   (or (equal (car x) <span style="color: #5f5f87;">:icon</span>)
                                       (equal (car x) <span style="color: #5f5f87;">:wtf</span>)))
                               x)))
-         (mapcar #'linearize-response)
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">(mapcar #'linearize-response)</span>
          (mapcar (<span style="color: #af00ff;">lambda</span> (x)
                    (<span style="color: #af00ff;">let</span> ((rs (nth 2 x)))
                      (push (cadr x) rs)
                      (push (car x) rs)
-                     rs))))))
+                     rs)))
+         )))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(print</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">(get-responses *last-response-data*))</span>
 </pre>
 </div>
 
@@ -5281,7 +5292,7 @@ TODO
 
 <pre class="src src-lisp" id="response_service">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">linearize-response</span> (resp)
   (<span style="color: #af00ff;">cond</span> ((not (listp resp))
-         (err (format t <span style="color: #87005f;">"Wrong resp: ~A"</span> resp)))
+         (err (format nil <span style="color: #87005f;">"Wrong resp: ~A"</span> resp)))
         ((not (keywordp (car resp)))
          (mapcar #'linearize-response resp))
         ((equal (car resp) <span style="color: #5f5f87;">:vac</span>)
@@ -5362,8 +5373,7 @@ TODO
 
 (make-transform (resp-topic)
   (`((<span style="color: #87005f;">"data-topic-id"</span> ,topic) (<span style="color: #87005f;">"data-qa"</span> <span style="color: #87005f;">"negotiations-item"</span>)
-     (<span style="color: #87005f;">"class"</span>
-      <span style="color: #87005f;">"responses-table-row HH-Negotiations-Responses-Response responses-table-row_with-checkbox"</span>))
+     (<span style="color: #87005f;">"class"</span> ,_))
     `(<span style="color: #5f5f87;">:topic</span> ,topic)))
 
 (make-transform (resp-date)
@@ -5372,7 +5382,7 @@ TODO
     `(<span style="color: #5f5f87;">:date</span> ,date)))
 
 (make-transform (resp-icon)
-  (`(<span style="color: #87005f;">"responses-table-row__cell responses-table-row__cell_icon"</span> NIL)
+  (`(<span style="color: #87005f;">"responses-table-row__cell responses-table-row__cell_icon"</span> ,@rest)
     `(<span style="color: #5f5f87;">:icon</span> nil)))
 
 (make-transform (resp-wtf)
@@ -5401,10 +5411,11 @@ TODO
 </div>
 </div>
 </div>
+</div>
 
-<div id="outline-container-unnumbered-80" class="outline-2">
-<h2 id="unnumbered-80"><span class="todo TODO">TODO</span> События</h2>
-<div class="outline-text-2" id="text-unnumbered-80">
+<div id="outline-container-unnumbered-81" class="outline-2">
+<h2 id="unnumbered-81"><span class="todo TODO">TODO</span> События</h2>
+<div class="outline-text-2" id="text-unnumbered-81">
 <p>
 Когда в результате работы сценария обработки отзывов система узнала о том, что
 изменился статус какой-то вакансии, на которую я откликался - происходит "событие". Это
@@ -5414,9 +5425,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-81" class="outline-2">
-<h2 id="unnumbered-81"><span class="todo TODO">TODO</span> Переписка с работодателем</h2>
-<div class="outline-text-2" id="text-unnumbered-81">
+<div id="outline-container-unnumbered-82" class="outline-2">
+<h2 id="unnumbered-82"><span class="todo TODO">TODO</span> Переписка с работодателем</h2>
+<div class="outline-text-2" id="text-unnumbered-82">
 <p>
 Иногда работодатель хочет задать уточняющие вопросы соискателю, который
 откликнулся. Источник вакансий может поддерживать возможность переписки между
@@ -5425,9 +5436,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-82" class="outline-2">
-<h2 id="unnumbered-82"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
-<div class="outline-text-2" id="text-unnumbered-82">
+<div id="outline-container-unnumbered-83" class="outline-2">
+<h2 id="unnumbered-83"><span class="todo TODO">TODO</span> Парсинг резюме</h2>
+<div class="outline-text-2" id="text-unnumbered-83">
 <p>
 Возможно будет полезным извлекать данные из уже опубликованных своих резюме для
 интероперабельности.
@@ -5435,9 +5446,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-83" class="outline-2">
-<h2 id="unnumbered-83">Сборка</h2>
-<div class="outline-text-2" id="text-unnumbered-83">
+<div id="outline-container-unnumbered-84" class="outline-2">
+<h2 id="unnumbered-84">Сборка</h2>
+<div class="outline-text-2" id="text-unnumbered-84">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="vacancy">(ql:quickload <span style="color: #87005f;">"anaphora"</span>)
@@ -5495,9 +5506,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-84" class="outline-3">
-<h3 id="unnumbered-84">Макросы для корректного вывода ошибок</h3>
-<div class="outline-text-3" id="text-unnumbered-84">
+<div id="outline-container-unnumbered-85" class="outline-3">
+<h3 id="unnumbered-85">Макросы для корректного вывода ошибок</h3>
+<div class="outline-text-3" id="text-unnumbered-85">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_bprint">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">bprint</span> (var)
@@ -5514,9 +5525,9 @@ TODO
 </div>
 </div>
 
-<div id="outline-container-unnumbered-85" class="outline-3">
-<h3 id="unnumbered-85">Отладочный вывод</h3>
-<div class="outline-text-3" id="text-unnumbered-85">
+<div id="outline-container-unnumbered-86" class="outline-3">
+<h3 id="unnumbered-86">Отладочный вывод</h3>
+<div class="outline-text-3" id="text-unnumbered-86">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="dbgout">(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*dbg-enable*</span> t)
@@ -5532,9 +5543,9 @@ TODO
 </div>
 </div>
 </div>
-<div id="outline-container-unnumbered-86" class="outline-3">
-<h3 id="unnumbered-86">Макросы для преобразования порядка аргументов</h3>
-<div class="outline-text-3" id="text-unnumbered-86">
+<div id="outline-container-unnumbered-87" class="outline-3">
+<h3 id="unnumbered-87">Макросы для преобразования порядка аргументов</h3>
+<div class="outline-text-3" id="text-unnumbered-87">
 <div class="org-src-container">
 
 <pre class="src src-lisp" id="macro_clj">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">-&gt;</span> (x <span style="color: #008700;">&amp;optional</span> form <span style="color: #008700;">&amp;rest</span> more)

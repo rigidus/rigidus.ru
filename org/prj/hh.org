@@ -3143,9 +3143,6 @@ http://spb.hh.ru/applicant/deleteresume/
                                        (setf (getf vac :domain) x)))))
                            variants))))
         'done)))
-
-  ;; (viewing *vacs* (lambda (vac)
-  ;;                   (equal :unsorted (getf vac :domain))))
 #+END_SRC
 
 ** Удаление вакансии
@@ -3167,9 +3164,6 @@ http://spb.hh.ru/applicant/deleteresume/
                             (remhash (getf (getf vac :vac) :src-id) *vacs*)
                             (return-from deleting 'done))))))))
     'done)
-
-  ;; (viewing *vacs* (lambda (vac)
-  ;;                (equal :responded (getf vac :domain))))
 #+END_SRC
 
 ** Отклик существующим резюме
@@ -3606,8 +3600,13 @@ TODO
         (get-response-page 0 referer src-account #'failure)))))
 #+END_SRC
 
+[TODO:gmm] Дальнейшие улучшения потребуются тогда, когда отзывы будут не помещаться на
+одной странице.
+
 Чтобы это сработало нам необходимы функции, которые загружают странцицы отзывов и
 преобразовывают html в отзывы:
+
+** Функции для разбора отзывов
 
 #+NAME: response_getter
 #+BEGIN_SRC lisp
@@ -3651,12 +3650,16 @@ TODO
                                     (or (equal (car x) :icon)
                                         (equal (car x) :wtf)))
                                 x)))
-           (mapcar #'linearize-response)
+           ;; (mapcar #'linearize-response)
            (mapcar (lambda (x)
                      (let ((rs (nth 2 x)))
                        (push (cadr x) rs)
                        (push (car x) rs)
-                       rs))))))
+                       rs)))
+           )))
+
+  ;; (print
+  ;;  (get-responses *last-response-data*))
 #+END_SRC
 
 А им в свою очередь необходимы:
@@ -3668,7 +3671,7 @@ TODO
 #+BEGIN_SRC lisp
   (defun linearize-response (resp)
     (cond ((not (listp resp))
-           (err (format t "Wrong resp: ~A" resp)))
+           (err (format nil "Wrong resp: ~A" resp)))
           ((not (keywordp (car resp)))
            (mapcar #'linearize-response resp))
           ((equal (car resp) :vac)
@@ -3749,8 +3752,7 @@ TODO
 
   (make-transform (resp-topic)
     (`(("data-topic-id" ,topic) ("data-qa" "negotiations-item")
-       ("class"
-        "responses-table-row HH-Negotiations-Responses-Response responses-table-row_with-checkbox"))
+       ("class" ,_))
       `(:topic ,topic)))
 
   (make-transform (resp-date)
@@ -3759,7 +3761,7 @@ TODO
       `(:date ,date)))
 
   (make-transform (resp-icon)
-    (`("responses-table-row__cell responses-table-row__cell_icon" NIL)
+    (`("responses-table-row__cell responses-table-row__cell_icon" ,@rest)
       `(:icon nil)))
 
   (make-transform (resp-wtf)
