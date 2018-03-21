@@ -2720,6 +2720,7 @@ POST-запросе передаются какие-то мусорные profar
       - Nginx, Memcached, Redis, RabbitMQ
       - MySQL, PostgreSQL
       - Git
+      - Docker
       - JavaSсript, JQuery, React, Redux
 
       Умею сниффать сниффером и профайлить профайлером.
@@ -2882,11 +2883,26 @@ http://spb.hh.ru/applicant/deleteresume/
 вне зависимости от зарплаты.
 
 Таким образом, сценарий следующий:
-- Отсортировать вакансии
+- ~viewing~ Отсортировать вакансии и показать их в правильном порядке
 - Двигаясь по порядку сделать что-то из следующего:
-  - Изменить её домен (обычно на "неинтересные")
-  - Отправить отклик на вакансию (что приводит к изменению домена)
+  - ~changing~ Изменить её домен (обычно на "неинтересные")
+  - ~responding~ Отправить отклик на вакансию (что приводит к изменению домена)
     - При необходимости сформировав под нее резюме
+  - ~deleting~ Удалить (для устаревших, архивных вакансий)
+
+Когда мы делаем консольный интерфейс мы хотим, чтобы функции сценария правильным
+образом вызывали друг друга. Таким образом, мы могли бы начать с ~viewing~, который
+вызовет все необходимое в зависимости от того, в каком направлении пойдет выполнение
+сценария.
+
+Чтобы избежать постоянного перелогинивания мы можем обернуть код сценария специальной
+переменной ~cookie-jar~, которая будет хранить текущие cookies так, чтобы:
+- избежать протаскивания этого параметра через все шаги сценария
+- эти cookies были доступны только внутри сценария, изолировано.
+
+В перспективе, это дает нам возможность парсить вакансии одним аккаунтом, а
+откликаться - другим, да и архитектурно более правильно. См. далее в "Интерфейсный
+граф".
 
 #+NAME: cli
 #+BEGIN_SRC lisp
@@ -2911,26 +2927,11 @@ http://spb.hh.ru/applicant/deleteresume/
   <<send_respond>>
 
   <<responding>>
-#+END_SRC
 
-** Список отсортированых вакансий
-
-Берем все вакансии, кроме:
-- тех, что без указания зарплаты,
-- тех, у которых домен не :unsorted
-формируем их них список, который сортируем по зарплате от большей к меньшей
-
-#+NAME: get_sorted_vacs
-#+BEGIN_SRC lisp
-  (defun get-sorted-vacs (vacs domain-p)
-    (sort (loop
-             :for key :being :the :hash-keys :of vacs
-             :using (hash-value val)
-             :unless (null (getf (getf val :vac) :salary))
-             :when (funcall domain-p val)
-             :collect val)
-          (lambda (a b)
-            (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
+  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+    (declare (special cookie-jar))
+    (viewing *vacs* (lambda (vac)
+                      (equal :unsorted (getf vac :domain)))))
 #+END_SRC
 
 ** Интерфейсный граф
@@ -2989,6 +2990,26 @@ http://spb.hh.ru/applicant/deleteresume/
 Превратим каждое из состояний в "экран", т.е. область взаимодействия, где пользователь
 может выполнять какие-то действия. У каждого экрана, в соответствии с графом есть входы
 и выходы. Для простоты будем пока реализовывать консольный интерфейс
+
+** Список отсортированых вакансий
+
+Берем все вакансии, кроме:
+- тех, что без указания зарплаты,
+- тех, у которых домен не :unsorted
+формируем их них список, который сортируем по зарплате от большей к меньшей
+
+#+NAME: get_sorted_vacs
+#+BEGIN_SRC lisp
+  (defun get-sorted-vacs (vacs domain-p)
+    (sort (loop
+             :for key :being :the :hash-keys :of vacs
+             :using (hash-value val)
+             :unless (null (getf (getf val :vac) :salary))
+             :when (funcall domain-p val)
+             :collect val)
+          (lambda (a b)
+            (> (getf (getf a :vac) :salary) (getf (getf b :vac) :salary)))))
+#+END_SRC
 
 ** Вспомогательные функции интерфеса
 
@@ -3053,11 +3074,6 @@ http://spb.hh.ru/applicant/deleteresume/
                                        (lambda ()
                                          (analysis src-id)))))))))
          (go renew)))
-
-  ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-  ;;   (declare (special cookie-jar))
-  ;;   (viewing *vacs* (lambda (vac)
-  ;;                     (equal :unsorted (getf vac :domain)))))
 #+END_SRC
 
 ** Анализ вакансии
@@ -3479,7 +3495,7 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
 
 #+NAME: send_respond
 #+BEGIN_SRC lisp
-  (defun send-respond (src-id resume-hash cookie-jar)
+  (defun send-respond (src-id resume-hash)
     (let ((referer (format nil "https://spb.hh.ru/vacancy/~A" src-id)))
       (with-cookie-alist (cookie-jar)
         (with-post-response
@@ -3506,7 +3522,7 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
   ;;   (declare (special cookie-jar))
   ;;   (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
   ;;     ;; <-- место для выбора одного из резюме -->
-  ;;     (send-respond src-id "23614635ff05277e2a0039ed1f61305a413033" cookie-jar)))
+  ;;     (send-respond src-id "23614635ff05277e2a0039ed1f61305a413033")))
 #+END_SRC
 
 Теперь у нас есть все необходимое, чтобы реализовать отклик одним из существующих
@@ -3549,7 +3565,7 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
                                              (selected-resume-title (getf resume :title)))
                                          (lambda ()
                                            (declare (special cookie-jar))
-                                           (send-respond src-id selected-resume-value cookie-jar)
+                                           (send-respond src-id selected-resume-value)
                                            ;; сообщение
                                            (format t "~%RESPONDED: ~A~%         : ~A"
                                                    selected-resume-value
