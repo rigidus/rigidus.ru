@@ -1784,6 +1784,7 @@ plist-деревом.
 - interested
 - responded
 - beenviewed
+- rejected
 - invited
 - interviewed
 - offered
@@ -2930,6 +2931,9 @@ http://spb.hh.ru/applicant/deleteresume/
 
   (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
     (declare (special cookie-jar))
+    (hh-get-page "https://spb.hh.ru/" cookie-jar *hh-account* "https://spb.hh.ru/" #'stderr
+                 (lambda (response new-cookie-jar url) ;; success
+                   (setf cookie-jar new-cookie-jar)))
     (viewing *vacs* (lambda (vac)
                       (equal :unsorted (getf vac :domain)))))
 #+END_SRC
@@ -3058,7 +3062,7 @@ http://spb.hh.ru/applicant/deleteresume/
                  (loop
                     :for vac :in allvacs
                     :with idx = 0
-                    :while (< idx 500)
+                    :while (< idx 50)
                     :when (funcall domain-p vac)
                     :collect (progn
                                (incf idx)
@@ -3127,7 +3131,7 @@ http://spb.hh.ru/applicant/deleteresume/
     (let ((vac (gethash src-id *vacs*)))
       (format t "_________________________")
       (format t "~%CHANGING DOMAIN for vac # ~A~%~A" src-id (bprint vac))
-      (let* ((variants '(:unsorted :uninterested :interested :responded
+      (let* ((variants '(:unsorted :uninterested :interested :responded :rejected
                          :beenviewed :invited  :interviewed  :offered)))
         (choice (append
                  `((0 . ,(progn
@@ -3204,14 +3208,14 @@ http://spb.hh.ru/applicant/deleteresume/
             cookie-jar src-account referer #'stderr response-processor-fn))))))
 
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
-  ;;       (src-id     24700517))
+  ;;       (src-id     24792343))
   ;;   (declare (special cookie-jar))
   ;;   (print
   ;;    (get-resp-popup
   ;;     *hh-account* src-id
   ;;     (lambda (response new-cookie-jar url)
   ;;       (setf cookie-jar new-cookie-jar)
-  ;;       (print response)))))
+  ;;       (html-to-tree response)))))
 #+END_SRC
 
 Ответом на этот запрос приходит форма, которую клиент отображает во всплывающем окне:
@@ -3381,7 +3385,7 @@ http://spb.hh.ru/applicant/deleteresume/
                         (extract-popup-results)
                         (maptreefilter)
                         (cdr)))
-          (cumulative))
+          (cumulative)) ;; accumulation variable
       (mapcar #'(lambda (resume)
                   (let ((result))
                     (declare (special result))
@@ -3400,7 +3404,7 @@ http://spb.hh.ru/applicant/deleteresume/
       (reverse cumulative)))
 
   ;; (let ((cookie-jar (make-instance 'drakma:cookie-jar))
-  ;;       (src-id     24588609))
+  ;;       (src-id     24792343))
   ;;   (declare (special cookie-jar))
   ;;   (print
   ;;    (get-resp-popup *hh-account* src-id #'popup-processor)))
@@ -3538,38 +3542,36 @@ https://spb.hh.ru/applicant/vacancy_response/popup?vacancy_id=24700517
     (let ((vac (gethash src-id *vacs*)))
       (format t "_________________________")
       (format t "~%RESPONDING for vac # ~A~%~A" src-id (bprint vac))
-      (let ((cookie-jar cookie-jar))
-        (declare (special cookie-jar))
-        (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
-          (choice (append
-                   `((0 . ,(progn
-                             (format t "~%[0] - Return to analysis")
-                             (lambda () (return-from responding 'back)))))
-                   (loop
-                      :for idx :from 1
-                      :for resume :in resumes
-                      :when (equal "false" (getf resume :disabled))
-                      :collect (progn
-                                 (format t "~%[~A] <~A> ~A"
-                                         idx
-                                         (getf (gethash (getf resume :value) *cvs*) :salary)
-                                         (getf resume :title))
-                                 (cons idx
-                                       (let ((selected-resume-value (getf resume :value))
-                                             (selected-resume-title (getf resume :title)))
-                                         (lambda ()
-                                           (declare (special cookie-jar))
-                                           (send-respond src-id selected-resume-value)
-                                           ;; сообщение
-                                           (format t "~%RESPONDED: ~A~%         : ~A"
-                                                   selected-resume-value
-                                                   selected-resume-title)
-                                           ;; изменение статуса
-                                           (setf (getf vac :domain) :responded)
-                                           ;; выход
-                                           (format t "~%Press ENTER for return to VIEWING")
-                                           (read-line)
-                                           (return-from responding 'done))))))))))))
+      (let ((resumes (get-resp-popup *hh-account* src-id #'popup-processor)))
+        (choice (append
+                 `((0 . ,(progn
+                           (format t "~%[0] - Return to analysis")
+                           (lambda () (return-from responding 'back)))))
+                 (loop
+                    :for idx :from 1
+                    :for resume :in resumes
+                    :when (equal "false" (getf resume :disabled))
+                    :collect (progn
+                               (format t "~%[~A] <~A> ~A"
+                                       idx
+                                       (getf (gethash (getf resume :value) *cvs*) :salary)
+                                       (getf resume :title))
+                               (cons idx
+                                     (let ((selected-resume-value (getf resume :value))
+                                           (selected-resume-title (getf resume :title)))
+                                       (lambda ()
+                                         (declare (special cookie-jar))
+                                         (send-respond src-id selected-resume-value)
+                                         ;; сообщение
+                                         (format t "~%RESPONDED: ~A~%         : ~A"
+                                                 selected-resume-value
+                                                 selected-resume-title)
+                                         ;; изменение статуса
+                                         (setf (getf vac :domain) :responded)
+                                         ;; выход
+                                         (format t "~%Press ENTER for return to VIEWING")
+                                         (read-line)
+                                         (return-from responding 'done)))))))))))
 #+END_SRC
 
 ** TODO Отклик с созданием резюме
