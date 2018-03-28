@@ -39,3 +39,128 @@
 Сами сценарии не имеют ограничений на выполняемые действия - они могут делать снимки
 экрана, распознавать на них объекты, перемещать курсор мыши и кликать на объектах,
 выполнять перетаскивания и эмулировать нажатия кнопок на клавиатуре.
+
+* Вывод на экран
+
+Иногда нам полезно что-то напрямую вывести на экран
+
+Для того чтобы вывести что-то на экран средствами ~xlib~ необходимо выполнить действия
+в следующем порядке:
+- открыть display (если еще не)
+- получить из него screen
+- получить корневое окно (root) из screen
+- создать окно (window) на базе корневого окна
+- запампить созданное окно
+- переместить окно поверх всех остальных функией xlib:window-priority
+- отобразить окно на дисплей функцией display-finish-output
+- вывести в окно то что мы хотим
+- отмапить окно
+- отобразить изменения на дисплей функцией display-finish-output
+- закрыть все что было открыто (предположительно. Но при выходе оно закроется само, так
+  что наверно можно обойтись без этого)
+
+Все эти вещи можно сделать в оборачивающем макросе, который создаcт функцию, где есть
+все оборачивающие действия:
+
+#+NAME: defdemo
+#+BEGIN_SRC lisp
+  (defmacro defdemo (fun-name demo-name args x y width height doc &rest forms)
+    `(progn
+       (defun ,fun-name ,args
+         ,doc
+         (unless *display*
+           ,#+:cmu
+           (multiple-value-setq (*display* *screen*) (ext:open-clx-display))
+           ,#+(or sbcl allegro clisp lispworks)
+           (progn
+             (setf *display* (xlib::open-default-display))
+             (setf *screen* (xlib:display-default-screen *display*)))
+           #-(or cmu sbcl allegro clisp lispworks)
+           (progn
+             ;; Portable method
+             (setf *display* (xlib:open-display (machine-instance)))
+             (setf *screen* (xlib:display-default-screen *display*)))
+           (setf *root* (xlib:screen-root *screen*))
+           (setf *black-pixel* (xlib:screen-black-pixel *screen*))
+           (setf *white-pixel* (xlib:screen-white-pixel *screen*)))
+         (let ((*window* (xlib:create-window :parent *root*
+                                             :x ,x :y ,y
+                                             :event-mask nil
+                                             :width ,width :height ,height
+                                             :background *white-pixel*
+                                             :border *black-pixel*
+                                             :border-width 2
+                                             :override-redirect :on)))
+           (xlib:map-window *window*)
+           ;;
+           ;; I hate to do this since this is not something any normal
+           ;; program should do ...
+           (setf (xlib:window-priority *window*) :above)
+           (xlib:display-finish-output *display*)
+           (unwind-protect
+                (progn ,@forms)
+             (xlib:unmap-window *window*)
+             (xlib:display-finish-output *display*))))
+       (setf (get ',fun-name 'demo-name) ',demo-name)
+       (setf (get ',fun-name 'demo-doc) ',doc)
+       (export ',fun-name)
+       (pushnew ',fun-name *demos*)
+       ',fun-name))
+#+END_SRC
+
+После чего мы можем вывести что-то интересное например так:
+
+#+BEGIN_SRC lisp
+  (ql:quickload 'clx)
+
+  (defparameter *demos* nil)
+
+  (defvar *display* nil)
+  (defvar *screen* nil)
+  (defvar *root* nil)
+  (defvar *black-pixel* nil)
+  (defvar *white-pixel* nil)
+  (defvar *window* nil)
+
+  <<defdemo>>
+
+  (defun full-window-state (w)
+    (xlib:with-state (w)
+      (values (xlib:drawable-width w) (xlib:drawable-height w)
+              (xlib:drawable-x w) (xlib:drawable-y w)
+              (xlib:window-map-state w))))
+
+  (defun recurrence (display window &optional (point-count 10000))
+    (let ((gc (xlib:create-gcontext :drawable window
+                                    :background *white-pixel*
+                                    :foreground *black-pixel*)))
+      (multiple-value-bind (width height) (full-window-state window)
+        (xlib:clear-area window)
+        (draw-ppict window gc point-count 0.0 0.0 (* width 0.5) (* height 0.5))
+        (xlib:display-force-output display)
+        (sleep 4))
+      (xlib:free-gcontext gc)))
+
+  ;;; Draw points.  X assumes points are in the range of width x height,
+  ;;; with 0,0 being upper left and 0,H being lower left.
+  ;;; hw and hh are half-width and half-height of screen
+
+  (defun draw-ppict (win gc count x y hw hh)
+    "Recursively draw pretty picture"
+    (unless (zerop count)
+      (let ((xf (floor (* (+ 1.0 x) hw ))) ;These lines center the picture
+            (yf (floor (* (+ 0.7 y) hh ))))
+        (xlib:draw-point win gc xf yf)
+        (draw-ppict win gc (1- count)
+                    (- (* y (1+ (sin (* 0.7 x)))) (* 1.2 (sqrt (abs x))))
+                    (- 0.21 x)
+                    hw
+                    hh))))
+
+  (defdemo recurrence-demo "Recurrence" ()
+           10 10 700 700
+           "Plots a cool recurrence relation."
+           (recurrence *display* *window*))
+
+  (recurrence-demo)
+#+END_SRC
