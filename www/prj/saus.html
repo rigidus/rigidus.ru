@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Система автоматизации пользовательских сценариев</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">Система автоматизации пользовательских сценариев</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Вывод на экран</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Интро</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Первоначально идея этого проекта родилась из разговора о том, что программист всегда
+сможет обойти ограничения, такие как "система учета рабочего времени", иначе это
+неквалифицированный программист и он должен быть уволен за профнепригодность. Этот
+аргумент был приведен в поддержку тезиса о том, что подходы "принуждения к работе" не
+работают в творческих задачах.
+</p>
+
+<p>
+Системы учета рабочего времени представляют собой шпионское ПО, которое некоторые
+компании устанавливают на компьютеры работников, чтобы контролировать их
+работу. Поводом к дискуссии стало сообщение о предприимчивом работнике, который,
+устроившись программистом, отправлял назначенные ему задания аутсорсерам в Индию, и
+довольно долго работал программистом, почти ничего не зная о программировании.
+</p>
+
+<p>
+В порядке мыслительного эксперимента я предложил концепт программы, которая, будучи
+запущена на компьютере разработчика, выполняет все действия, которые обычно выполняет
+программист: пишет и рефакторит код, запускает тесты, настраивает конфиги, использует
+командную строку, отвечает в рабочих чатах, ставит задачи в таск-трекере, поднимает
+упавшие сервера, в то время как программист вообще не присутствует за компьютером, а
+потягивает коктейль на пляже. Все для того, чтобы шпионское ПО было в счастливом
+неведении.
+</p>
+
+<p>
+Обсудив, что программист, способный написать такую систему, никогда не устроится в
+бодишоп со шпионской малварью, мы пришли к мысли о том, что такая система была бы
+полезна не только любителям позагорать в рабочее время, но и ответственным работникам,
+освобождая их от рутины и выполняя работы в дневное время, когда наиболее
+квалифицированные программисты, как известно, спят. Кроме того, ее можно было бы
+творчески использовать для автоматизации поиска уязвимостей, сбора данных с веб-сайтов,
+прокачки персонажей в онлайн-играх, да и вообще любых ручных операций. Такая ценная
+идея должна быть реализована!
+</p>
+
+<p>
+Для управления "от имени пользователя" используется X Window System, что дает нам
+сетевую прозрачность и возможность запускать выполнение сценариев на удаленных машинах.
+</p>
+
+<p>
+Сами сценарии не имеют ограничений на выполняемые действия - они могут делать снимки
+экрана, распознавать на них объекты, перемещать курсор мыши и кликать на объектах,
+выполнять перетаскивания и эмулировать нажатия кнопок на клавиатуре.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Вывод на экран</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Иногда нам полезно что-то напрямую вывести на экран
+</p>
+
+<p>
+Для того чтобы вывести что-то на экран средствами <code>xlib</code> необходимо выполнить действия
+в следующем порядке:
+</p>
+<ul class="org-ul">
+<li>открыть display (если еще не)
+</li>
+<li>получить из него screen
+</li>
+<li>получить корневое окно (root) из screen
+</li>
+<li>создать окно (window) на базе корневого окна
+</li>
+<li>запампить созданное окно
+</li>
+<li>переместить окно поверх всех остальных функией xlib:window-priority
+</li>
+<li>отобразить окно на дисплей функцией display-finish-output
+</li>
+<li>вывести в окно то что мы хотим
+</li>
+<li>отмапить окно
+</li>
+<li>отобразить изменения на дисплей функцией display-finish-output
+</li>
+<li>закрыть все что было открыто (предположительно. Но при выходе оно закроется само, так
+что наверно можно обойтись без этого)
+</li>
+</ul>
+
+<p>
+Все эти вещи можно сделать в оборачивающем макросе, который создаcт функцию, где есть
+все оборачивающие действия:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="defdemo">(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">defdemo</span> (fun-name demo-name args x y width height doc <span style="color: #008700;">&amp;rest</span> forms)
+  `(<span style="color: #af00ff;">progn</span>
+     (<span style="color: #af00ff;">defun</span> ,fun-name ,args
+       ,doc
+       (<span style="color: #af00ff;">unless</span> *display*
+         <span style="color: #af0000;">#+:cmu</span>
+<span style="color: #af0000;">         (multiple-value-setq (*display* *screen*) (ext:open-clx-display))</span>
+         #+(or sbcl allegro clisp lispworks)
+         (<span style="color: #af00ff;">progn</span>
+           (setf *display* (xlib::open-default-display))
+           (setf *screen* (xlib:display-default-screen *display*)))
+         <span style="color: #af0000;">#-(or cmu sbcl allegro clisp lispworks)</span>
+<span style="color: #af0000;">         (progn</span>
+<span style="color: #af0000;">           ;; Portable method</span>
+<span style="color: #af0000;">           (setf *display* (xlib:open-display (machine-instance)))</span>
+<span style="color: #af0000;">           (setf *screen* (xlib:display-default-screen *display*)))</span>
+         (setf *root* (xlib:screen-root *screen*))
+         (setf *black-pixel* (xlib:screen-black-pixel *screen*))
+         (setf *white-pixel* (xlib:screen-white-pixel *screen*)))
+       (<span style="color: #af00ff;">let</span> ((*window* (xlib:create-window <span style="color: #5f5f87;">:parent</span> *root*
+                                           <span style="color: #5f5f87;">:x</span> ,x <span style="color: #5f5f87;">:y</span> ,y
+                                           <span style="color: #5f5f87;">:event-mask</span> nil
+                                           <span style="color: #5f5f87;">:width</span> ,width <span style="color: #5f5f87;">:height</span> ,height
+                                           <span style="color: #5f5f87;">:background</span> *white-pixel*
+                                           <span style="color: #5f5f87;">:border</span> *black-pixel*
+                                           <span style="color: #5f5f87;">:border-width</span> 2
+                                           <span style="color: #5f5f87;">:override-redirect</span> <span style="color: #5f5f87;">:on</span>)))
+         (xlib:map-window *window*)
+         <span style="color: #af0000;">;;</span>
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">I hate to do this since this is not something any normal</span>
+         <span style="color: #af0000;">;; </span><span style="color: #af0000;">program should do ...</span>
+         (setf (xlib:window-priority *window*) <span style="color: #5f5f87;">:above</span>)
+         (xlib:display-finish-output *display*)
+         (<span style="color: #af00ff;">unwind-protect</span>
+              (<span style="color: #af00ff;">progn</span> ,@forms)
+           (xlib:unmap-window *window*)
+           (xlib:display-finish-output *display*))))
+     (setf (get ',fun-name 'demo-name) ',demo-name)
+     (setf (get ',fun-name 'demo-doc) ',doc)
+     (export ',fun-name)
+     (pushnew ',fun-name *demos*)
+     ',fun-name))
+</pre>
+</div>
+
+<p>
+После чего мы можем вывести что-то интересное например так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(ql:quickload 'clx)
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*demos*</span> nil)
+
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*display*</span> nil)
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*screen*</span> nil)
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*root*</span> nil)
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*black-pixel*</span> nil)
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*white-pixel*</span> nil)
+(<span style="color: #af00ff;">defvar</span> <span style="color: #af5f00;">*window*</span> nil)
+
+&lt;&lt;defdemo&gt;&gt;
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">full-window-state</span> (w)
+  (<span style="color: #af00ff;">xlib:with-state</span> (w)
+    (values (xlib:drawable-width w) (xlib:drawable-height w)
+            (xlib:drawable-x w) (xlib:drawable-y w)
+            (xlib:window-map-state w))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">recurrence</span> (display window <span style="color: #008700;">&amp;optional</span> (point-count 10000))
+  (<span style="color: #af00ff;">let</span> ((gc (xlib:create-gcontext <span style="color: #5f5f87;">:drawable</span> window
+                                  <span style="color: #5f5f87;">:background</span> *white-pixel*
+                                  <span style="color: #5f5f87;">:foreground</span> *black-pixel*)))
+    (<span style="color: #af00ff;">multiple-value-bind</span> (width height) (full-window-state window)
+      (xlib:clear-area window)
+      (draw-ppict window gc point-count 0.0 0.0 (* width 0.5) (* height 0.5))
+      (xlib:display-force-output display)
+      (sleep 4))
+    (xlib:free-gcontext gc)))
+
+<span style="color: #af0000;">;;; </span><span style="color: #af0000;">Draw points.  X assumes points are in the range of width x height,</span>
+<span style="color: #af0000;">;;; </span><span style="color: #af0000;">with 0,0 being upper left and 0,H being lower left.</span>
+<span style="color: #af0000;">;;; </span><span style="color: #af0000;">hw and hh are half-width and half-height of screen</span>
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">draw-ppict</span> (win gc count x y hw hh)
+  <span style="color: #87005f;">"Recursively draw pretty picture"</span>
+  (<span style="color: #af00ff;">unless</span> (zerop count)
+    (<span style="color: #af00ff;">let</span> ((xf (floor (* (+ 1.0 x) hw ))) <span style="color: #af0000;">;These lines center the picture</span>
+          (yf (floor (* (+ 0.7 y) hh ))))
+      (xlib:draw-point win gc xf yf)
+      (draw-ppict win gc (1- count)
+                  (- (* y (1+ (sin (* 0.7 x)))) (* 1.2 (sqrt (abs x))))
+                  (- 0.21 x)
+                  hw
+                  hh))))
+
+(defdemo recurrence-demo <span style="color: #87005f;">"Recurrence"</span> ()
+         10 10 700 700
+         <span style="color: #87005f;">"Plots a cool recurrence relation."</span>
+         (recurrence *display* *window*))
+
+(recurrence-demo)
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

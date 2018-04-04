@@ -109,6 +109,13 @@
   (restas.directory-publisher:*directory*
    (merge-pathnames (make-pathname :directory '(:relative "www/lrn/java"))
                     *base-dir*)))
+
+(restas:mount-module -lrn/crypto- (#:restas.directory-publisher)
+  (:url "/lrn/crypto")
+  (:render-method (make-instance 'orgmode-handler))
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname :directory '(:relative "www/lrn/crypto"))
+                    *base-dir*)))
 (in-package :rigidus)
 
 (restas:define-route index ("/")

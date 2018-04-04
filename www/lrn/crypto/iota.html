@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>IOTA - криптовалюта для интернета вещей.</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">IOTA - криптовалюта для интернета вещей.</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Как работает IOTA</a>
+<ul>
+<li><a href="#unnumbered-2">Граф транзакций</a></li>
+<li><a href="#unnumbered-3">Эмиссия</a></li>
+<li><a href="#unnumbered-4">Протокол подтверждения</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-5">Сценарии атаки</a>
+<ul>
+<li><a href="#unnumbered-6">Broken tangle</a></li>
+<li><a href="#unnumbered-7">Double spending</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-8">Необъяснимое</a>
+<ul>
+<li><a href="#unnumbered-9">Координатор</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-10">Ссылки</a></li>
+<li><a href="#unnumbered-11">Критика</a></li>
+<li><a href="#unnumbered-12">Вопросы</a></li>
+<li><a href="#unnumbered-13">Транзакция</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Как работает IOTA</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+IOTA - криптовалюта для интернета вещей. Базовой структурой является, так называемый
+<code>tangle</code> - вариант направленного ациклического графа (DAG). Несмотря на то, что "tangle"
+означает "клубок", структурно это скорее похоже на связаный шарф.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-3">
+<h3 id="unnumbered-2">Граф транзакций</h3>
+<div class="outline-text-3" id="text-unnumbered-2">
+<p>
+Каждый узел (vertex) представляет собой транзакцию, каждое ребро является направленным,
+и представляет собой ссылку на хэш ранее созданной транзакции.
+</p>
+
+<p>
+Из одного вертекса может быть не более двух ссылок на предыдущие транзакции. Очевидно,
+первый вертекс не может иметь предшественников, а второй имеет только одного.
+Предполагаю, что для таких genesis-вертексов в соответствующих полях размещены нули.
+</p>
+
+<p>
+Узлы, на которые нет ссылок, называются оконечными (<code>tips</code>). Из множества известных
+узлов выбираются те, хэш которых будет помещен в ссылочное поле новой создаваемой
+транзакции.
+</p>
+
+<p>
+В каждый момент времени по крайней мере один <code>tip</code> будет существовать, поэтому если
+новые транзакции приходят редко, то <code>tangle</code> вырождается в <code>chain</code>, т.е. каждая
+следующая транзакция подтверждает только одну предыдущую.
+</p>
+
+<p>
+<div class="figure"><img src="/img/iota-chain.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Напротив, если множество транзакций приходят одномоментно, то все они будут ссылаться
+на один доступный <code>tip</code>, что выглядит как "одуванчик", где этот <code>tip</code> в центре.
+</p>
+
+<p>
+<div class="figure"><img src="/img/iota-star.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Так как каждый узел при создании захватывает два оконечных узла (если может),
+предполагается тенденция уменьшения кол-ва свободных оконечных узлов - в пределе до
+одного.
+</p>
+
+<p>
+Если в момент создания транзакции доступны более чем два <code>tip</code>-а, то необходимо выбрать
+среди них те, которые будут подтверждаться. Можно было бы выбирать случайно, но есть
+более интересный алгоритм, который называется <code>unweighted random walk</code>
+</p>
+
+<p>
+Его суть в следующем: мы помещаем <code>walker</code>-a в genesis-транзакцию и на каждом шаге он
+переходит на одну из транзакций, которая апрувит ту, где он сейчас находится. Если
+таких транзакций несколько, то выбор одной из них происходит случайным образом.
+</p>
+
+<p>
+<div class="figure"><img src="/img/unweighted-random-walk.gif" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Таким образом, благодаря этому механизму, последние транзакции связываются с
+предпоследними и получается именно "вязаный шарф".
+</p>
+
+<p>
+Однако, при использовании этого алгоритма сеть не может противодействовать появлению
+"ленивых оконечных узлов", <code>lazy tips</code>, которые вместо исполнения алгоритма <code>unweighted
+random walk</code> просто подтверждают старые, уже много раз подтвержденные транзакции -
+такой подход вычислительно дешевле но не помогает сети, т.к. новые тразакции не
+подтверждаются.
+</p>
+
+<p>
+<div class="figure"><img src="/img/bad-unweighted-random-walk.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Решение состоит в том, чтобы встроить в систему стимулы против подобного поведения,
+так, чтобы <code>lazy tips</code> были бы подтверждены сетью с меньшей вероятностью. Введем термин
+"совокупный вес", <code>cumulative weight</code>, чтобы отразить важность транзакции. <code>Cumulative
+weight</code> рассчитываестя как количество подтверждений плюс один. В приведенном примере
+транзакция номер 3 имеет совокупный вес равный 5, потому что ее подтверждают четыре
+синие транзакции.
+</p>
+
+<p>
+<div class="figure"><img src="/img/cumulative-weight.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+В примере ниже транзакция 16 является <code>lazy tip</code>. Чтобы подтвердить её, <code>unweighted
+random walk</code> должен достичь транзакции 7, а затем выбрать транзакцию 16 за
+транзакцией 9. Но в модели предпочтения транзакций с большим <code>cumulative weight</code> это
+врядли произойдет, потому что транзакция 16 имеет кумулятивный вес равный единице, а
+транзакция 9 - кумулятивный вес равный семи. Этот механизм эффективно предотвращает
+"ленивое" поведение.
+</p>
+
+<p>
+<div class="figure"><img src="/img/iota-lazy-prevention.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Нужна ли нам вообще случайность? Мы можем всегда выбирать самую тяжелую транзакцию, без
+каких-либо вероятностей. Но тогда мы получим множество побочных транзакций, которые
+никогда не будут одобрены:
+</p>
+
+<p>
+<div class="figure"><img src="/img/super-weighed-walk.png" alt="nil"/><p></p></div>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">Эмиссия</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+Отсутствует, все монеты были созданы в первой транзакции. По сценарию в первых
+транзакциях они распределяются среди инвесторов.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Протокол подтверждения</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Каждый узел, создающий новую транзакцию должен подтвердить (approve) две другие
+транзакции, если их подтверждение не приводит к возникновению отрицательного баланса.
+</p>
+
+<p>
+Например возможна ситуация (double spending), когда <code>А</code> имеет на балансе 5 монет и
+создает две транзакции, в первой из которых пересылает их <code>B</code>, а во второй - <code>C</code>. В
+таком случае узел, подтверждающий обе транзакции, должен отвергнуть одну из этих
+транзакций, т.к. в результате <code>A</code> будет иметь отрицительный баланс.
+</p>
+
+<p>
+Это приведет к формированию двух ветвей, из которых должна быть отброшена одна. По
+протоколу, будет отброшена более "легкая" ветвь, т.е. та, которая содержит в себе
+меньше узлов.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Сценарии атаки</h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+</div><div id="outline-container-unnumbered-6" class="outline-3">
+<h3 id="unnumbered-6">Broken tangle</h3>
+<div class="outline-text-3" id="text-unnumbered-6">
+<p>
+Идея состоит в том, чтобы выпустить N конфликтующих транзакций, две из которых не могут
+подтвердить другие узлы в сети, эффективно разбивая tangle на N подпунктов. В конце
+концов один выигрывает, но все, кто отправил транзакции на отвергнутый сегмент, должны
+будут повторно отправить их, и к тому времени злоумышленник мог выпустить еще один
+набор конфликтных транзакций.
+</p>
+
+<p>
+Цель состоит в том, чтобы предотвратить подтверждение большинства транзакций (отказ в
+обслуживании)
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-3">
+<h3 id="unnumbered-7">Double spending</h3>
+<div class="outline-text-3" id="text-unnumbered-7">
+<p>
+Большую часть времени узел получает и обменивает транзакции с соседями. Он заботится о
+топологии графа только тогда, когда пришло время произвести транзакцию или принять
+платеж.
+</p>
+
+<p>
+<div class="figure"><img src="/img/iota-double-spending.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+Сейчас 16:04, и Боб решает отправить сообщение
+Он создает транзакцию, которая ссылается на 2 транзакции:
+</p>
+<ul class="org-ul">
+<li>один депозит 1 йота на адрес Алисы
+</li>
+<li>другой тратит 1 йоту от адреса Алисы
+</li>
+</ul>
+
+<p>
+Это не приводит к double spending, поэтому в 16:07 он прекращает создание транзакции,
+содержащей его сообщение
+</p>
+
+<p>
+Через 90 минут плохой парень Чарли решает сослаться на сделку Боба и другую сделку,
+которая тратит 1 йоту с адреса Алисы
+</p>
+
+<p>
+В 17:44 он завершает создание транзакции, которая ссылается на subtangle с искаженным
+состоянием.
+</p>
+
+<p>
+Никто из нас не заботится об этом, мы не знаем о дурном парне Чарли, потому что наши
+узлы продолжают получать все транзакции и делиться ими.
+</p>
+
+<p>
+В 19:15 хорошая девочка Диана решает отправить сообщение своей матери, она анализирует
+Tangle и видит, что она не должна ссылаться на транзакцию Чарли, поэтому вместо этого
+ссылается на транзакцию Боба.
+</p>
+
+<p>
+Ее транзакция не является особенной, поэтому она не показана на картинке
+</p>
+
+<p>
+Спустя несколько минут умная девушка Ева решает отправить сообщение своему парню. Она
+хороша, но она тоже умна и решает потролить плохого парня Чарли
+</p>
+
+<p>
+Она находит транзакцию, которая откладывает 1 йоту на адрес Алисы. Она ссылается на эту
+сделку, а также на сделку Чарли. Мы видим сделку Евы в 19:21
+</p>
+
+<p>
+Позже кто-то другой, производящий транзакцию, будет ссылаться на транзакцию Eva без
+каких-либо проблем, потому что она «исправила» проблему, созданную Чарли.
+</p>
+
+<p>
+Как мы можем видеть в этом сценарии в течение короткого периода времени, реестр может
+быть непоследовательным
+</p>
+
+<p>
+Все будет хорошо, если 67% + мощности хеширования контролируются доброжелательными
+пользователями.
+</p>
+
+<p>
+PS: Стоит подчеркнуть, что в IOTA нас не волнует порядок транзакций. Для проверки
+бухгалтерии мы можем совершать транзакции в любом порядке. Это повышает
+производительность и помогает масштабироваться до гораздо более высокой TPS, чем
+позволяет ledger с упорядочением.
+</p>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-unnumbered-8" class="outline-2">
+<h2 id="unnumbered-8">Необъяснимое</h2>
+<div class="outline-text-2" id="text-unnumbered-8">
+</div><div id="outline-container-unnumbered-9" class="outline-3">
+<h3 id="unnumbered-9">Координатор</h3>
+<div class="outline-text-3" id="text-unnumbered-9">
+<p>
+Централизованный (!) сервер "для обеспечения безопасности".
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-2">
+<h2 id="unnumbered-10">Ссылки</h2>
+<div class="outline-text-2" id="text-unnumbered-10">
+<ul class="org-ul">
+<li>whitepaper <a href="https://iota.org/IOTA_Whitepaper.pdf">https://iota.org/IOTA_Whitepaper.pdf</a>
+</li>
+<li>референсная реализация: <a href="https://github.com/iotaledger/iri">https://github.com/iotaledger/iri</a>
+</li>
+<li>демонстрашка на js: <a href="https://public-rdsdavdrpd.now.sh/">https://public-rdsdavdrpd.now.sh/</a>
+</li>
+<li>демонстрашка unweighted random walk: <a href="https://public-xnmzdqumwy.now.sh/">https://public-xnmzdqumwy.now.sh/</a>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-2">
+<h2 id="unnumbered-11">Критика</h2>
+<div class="outline-text-2" id="text-unnumbered-11">
+<ul class="org-ul">
+<li><a href="https://casey.github.io/iota/">https://casey.github.io/iota/</a>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-2">
+<h2 id="unnumbered-12">Вопросы</h2>
+<div class="outline-text-2" id="text-unnumbered-12">
+<ul class="org-ul">
+<li>Топология сети?
+</li>
+<li>Протокольный уровень правило взаимодействия узлов?
+</li>
+<li>Как работают консенсус и валидация блоков? Кто проверяет?
+</li>
+<li>Механизмы хранения данных как устроены хранилища?
+</li>
+<li>Смарт-контракты: да, нет, другие подходы
+</li>
+<li>Что такое коссвенное подтверждение?
+</li>
+<li>Что такое скрытые оконечники
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-2">
+<h2 id="unnumbered-13">Транзакция</h2>
+<div class="outline-text-2" id="text-unnumbered-13">
+<p>
+Я взял кусок класса транзакции из сорцов:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #af00ff;">public</span> <span style="color: #af00ff;">class</span> <span style="color: #008700;">Transaction</span> <span style="color: #af00ff;">implements</span> <span style="color: #008700;">Persistable</span> {
+    <span style="color: #af00ff;">public</span> <span style="color: #af00ff;">static</span> <span style="color: #af00ff;">final</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">SIZE</span> = 1604;
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">byte</span>[] <span style="color: #af5f00;">bytes</span>;
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">address</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">bundle</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">trunk</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">branch</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">obsoleteTag</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">value</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">currentIndex</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">lastIndex</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">timestamp</span>;
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">Hash</span> <span style="color: #af5f00;">tag</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">attachmentTimestamp</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">attachmentTimestampLowerBound</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">attachmentTimestampUpperBound</span>;
+
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">validity</span> = 0;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">type</span> = <span style="color: #008787;">TransactionViewModel</span>.PREFILLED_SLOT;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">arrivalTime</span> = 0;
+
+    <span style="color: #af0000;">//</span><span style="color: #af0000;">public boolean confirmed = false;</span>
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">parsed</span> = <span style="color: #008787;">false</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">boolean</span> <span style="color: #af5f00;">solid</span> = <span style="color: #008787;">false</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">long</span> <span style="color: #af5f00;">height</span> = 0;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">String</span> <span style="color: #af5f00;">sender</span> = <span style="color: #87005f;">""</span>;
+    <span style="color: #af00ff;">public</span> <span style="color: #008700;">int</span> <span style="color: #af5f00;">snapshot</span>;
+
+    ...
+}
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>
