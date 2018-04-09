@@ -51,7 +51,8 @@ name_\label :
     .text
     //.align 4
     .globl  code_\label
-code_\label :              # далее следует ассемблерный код
+code_\label :
+    # далее следует ассемблерный код
 .endm
 
 .macro defvar name, namelen, flags=0, label, initial=0
@@ -559,33 +560,32 @@ word_buffer:
     .space 32
 
     defcode "FIND",4,,FIND
-    pop     %ecx            # %ecx = length
-    pop     %edi            # %edi = address
+    pop     %ecx            # %ecx = длина строки
+    pop     %edi            # %edi = адрес строки
     call    _FIND
-    push    %eax            # %eax = address of dictionary entry (or NULL)
+    push    %eax            # %eax = адрес слова (или ноль)
     NEXT
 _FIND:
-    push    %esi            # Сохраним %esi - так мы сможем его использовать
-                            # для сравнения строк командой cmpsb
+    push    %esi            # Сохраним %esi - так мы сможем использовать этот
+                            # регистр для сравнения строк командой CMPSB
     # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
-    mov     (var_LATEST), %edx # %edx = LATEST указыввет на name header
-                             # последнего слова в словаре
+    mov     (var_LATEST), %edx          # %edx теперь указывает на последнее слово в словаре
 1:  #                   <------------+
-    test    %edx, %edx      # (NULL указатель, т.е. словарь кончился)?
-    je  4f                  #----+   |  # ?-Да, переходим вперед к (4)
+    test    %edx, %edx      # (в %edx находится NULL-указатель, т.е. словарь кончился)?
+    je  4f                  #-----+  |  # ?-Да, переходим вперед к (4)
     #                             |  |
     # Сравним ожидаемую длину и длину слова
-    # Внимание, если F_HIDDEN установлен для этого слова, то она не совпадет.
-    xor     %eax, %eax      #     |  |  #
+    # Внимание, если F_HIDDEN установлен для этого слова, то совпадения не будет.
+    xor     %eax, %eax      #     |  |  # Очищаем %eax
     movb    4(%edx), %al    #     |  |  # %al = flags+length
-    andb    $(F_HIDDEN|F_LENMASK), %al  # %al = длина имени
+    andb    $(F_HIDDEN|F_LENMASK), %al  # %al = теперь длина имени (маскируем флаги)
     cmpb    %cl, %al        #     |  |  # (Длины одинаковые?)
     jne 2f                  #--+  |  |  # ?-Нет, переходим вперед к (2)
     #                          |  |  |
     # Переходим к детальному сравнению
-    push    %ecx            #  |  |  |  # Сохраним длину
+    push    %ecx            #  |  |  |  # Сохраним длину, потому что repe cmpsb уменьшает %ecx
     push    %edi            #  |  |  |  # Сохраним адрес, потому что repe cmpsb двигает %edi
-    lea     5(%edx), %esi   #  |  |  |  # Загружаем в %esi адрес начала слова
+    lea     5(%edx), %esi   #  |  |  |  # Загружаем в %esi адрес начала имени слова
     repe    cmpsb           #  |  |  |  # Сравниваем
     pop     %edi            #  |  |  |  # Восстанавливаем адрес
     pop     %ecx            #  |  |  |  # Восстановим длину
@@ -593,7 +593,7 @@ _FIND:
     #                          |  |  |
     # Строки равны - возвратим указатель на заголовок в %eax
     pop     %esi            #  |  |  |  # Восстановим %esi
-    mov     %edx, %eax      #  |  |  |  # %edx все еще содержит возвращаемый указатель
+    mov     %edx, %eax      #  |  |  |  # %edx все еще содержит указатель, который возвращаем
     ret                     #  |  |  |  # Возврат
     # ----------------- RET    |  |  |
 2:  #                     <----+  |  |
@@ -602,8 +602,8 @@ _FIND:
     # ----------------------------|--+
 4:  #                     <-------+
     # Слово не найдено
-    pop     %esi
-    xor     %eax, %eax      # Возвратим ноль в #eax
+    pop     %esi            # Восстановим сохраненный %esi
+    xor     %eax, %eax      # Возвратим ноль в %eax
     ret                     # Возврат
 
     defcode ">CFA",4,,TCFA
@@ -642,7 +642,7 @@ _NUMBER:
     test    %ecx, %ecx
     jz  5f                  #-> RET #
     # Строка не пуста, будем разбирать
-    movl    var_BASE, %edx  #       # Получаем BASE в %dl
+    movl    (var_BASE), %edx#       # Получаем BASE в %dl
     # Проверим, может быть первый символ '-'?
     movb    (%edi), %bl     #       # %bl = первый символ строки
     inc     %edi            #       #
@@ -715,48 +715,49 @@ defcode "TELL",4,,TELL
 
 defcode "CREATE",6,,CREATE
 
-    # Получаем length и address имени
+    # Получаем length и address имени из стека данных
     pop     %ecx            # %ecx = length
     pop     %ebx            # %ebx = address
 
     # Формируем указатель LINK
-    movl    var_HERE, %edi  # %edi теперь адрес заголовка
-    movl    var_LATEST, %eax    # Получаем значение указателя LINK
-    stosl                   # и сохраняем его в заголовок
+    movl    (var_HERE), %edi# %edi теперь указывает на заголовок
+    movl    (var_LATEST), %eax # Получаем указатель на последнее слово -
+                            # - это LINK создаваемого слова
+    stosl                   # и сохраняем его в формируемое слово
 
-    # Байт длины и с само слово
+    # Формируем Байт длины и имя слова
     mov     %cl,%al         # Получаем длину
     stosb                   # Сохраняем length/flags байт.
     push    %esi            # Ненадолго сохраним %esi
-    mov     %ebx, %esi      # %esi теперь указывает на имя слова
+    mov     %ebx, %esi      # в %esi теперь адрес начала имени
     rep     movsb           # Копируем имя слова
     pop     %esi            # Восстановим %esi
     addl    $3, %edi        # Вычислим выравнивание
     andl    $~3, %edi
 
     # Обновим LATEST и HERE.
-    movl    var_HERE, %eax
-    movl    %eax, var_LATEST
-    movl    %edi, var_HERE
+    movl    (var_HERE), %eax
+    movl    %eax, (var_LATEST)
+    movl    %edi, (var_HERE)
     NEXT
 
 defcode ",",1,,COMMA
-    pop     %eax        # Code pointer to store.
+    pop     %eax      # Взять со стека данных в %eax то значение, которое будем вкомпиливать
     call    _COMMA
     NEXT
 _COMMA:
-    movl    var_HERE, %edi  # HERE
-    stosl                   # Store it.
-    movl    %edi, var_HERE  # Update HERE (incremented)
+    movl    (var_HERE), %edi  # получить указатель HERE в %edi
+    stosl                     # Сохраниь по нему значение из %eax
+    movl    %edi, (var_HERE)  # Обновить HERE (используя инкремент, сделанный STOSL)
     ret
 
 defcode "[",1,F_IMMED,LBRAC
     xor     %eax, %eax
-    movl    %eax, var_STATE     # Установить STATE в 0
+    movl    %eax, (var_STATE)   # Установить STATE в 0
     NEXT
 
 defcode "]",1,,RBRAC
-    movl    $1, var_STATE       # Установить STATE в 1
+    movl    $1, (var_STATE)     # Установить STATE в 1
     NEXT
 
 defword ":",1,,COLON
@@ -774,7 +775,7 @@ defword ";",1,F_IMMED,SEMICOLON
     .int EXIT               # Возврат из функции
 
 defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
-    movl    var_LATEST, %edi    # LATEST слово в %edi.
+    movl    (var_LATEST), %edi  # LATEST слово в %edi.
     addl    $4, %edi            # Теперь %edi указывает на байт name/flags
     xorb    $F_IMMED, (%edi)    # Переключить the F_IMMED бит.
     NEXT
@@ -826,7 +827,7 @@ defcode "INTERPRET",9,,INTERPRET
     mov     $LIT, %eax      #  |     | |#     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
 2:  #                   <------+     | |#
     # Проверим в каком мы режиме     | |#
-    movl    var_STATE, %edx #        | |#
+    movl    (var_STATE), %edx#       | |#
     test    %edx, %edx      #        | |#     (Мы компилируемся или выполняемся)?
     jz  4f                  #-----+  | |#     ?-Выполняемся. Переходим к (4)
     call    _COMMA          #     |  | |#     ?-Компилируемся. Добавляем словарное определение
@@ -973,12 +974,12 @@ forth_asm_start:
     # Сбрасываем флаг направления
     cld
     # Записываем вершину стека параметров %esp в переменную S0
-    mov     %esp, var_S0
+    mov     %esp, (var_S0)
     # Устанавливаем стек возвратов %ebp
     mov     $return_stack_top, %ebp
     # Устанавливаем указатель HERE на начало области данных.
     mov     $data_buffer, %eax
-    mov     %eax, var_HERE
+    mov     %eax, (var_HERE)
     # Инициализируем IP
     mov     $cold_start, %esi
     # Запускаем интерпретатор
