@@ -136,10 +136,774 @@
       (xlib:map-window my-window)
       (setf (xlib:window-priority my-window) :above)
       (xlib:event-case (display :force-output-p t :discard-p t)
-        (:exposure     () (recurrence display my-window screen white black))
+        (:exposure     () (progn
+                            (recurrence display my-window screen white black)
+                            nil))
         (:enter-notify () t))
       (xlib:destroy-window my-window)
       (xlib:close-display display)))
 
   ;; (recurrence-demo 10 10 700 700)
 #+END_SRC
+* События
+
+Цикл обработки событий - это ядро программы. Мы установили ключевое слово:
+~force-output-p~ который указывает очищать выходной буфер перед проверкой
+событий. Поэтому теперь нет необходимости писать везде ~xlib:display-force-output~.
+
+Макрос ~xlib:event-case~ анализирует возвращаемое значение каждого кейса и если оно
+истинно, то удаляет событие из очереди. Однако мы указываем всегда удалять событие
+после обработки установивив ~:discard-p~ в ~t~.
+
+Тем не менее, когда обработчик события (в нашем случае - ~:enter-notify~) возвращает
+~t~ - мы выходим из цикла обработки событий и продолжаем дальше: уничтожаем окно и
+закрываем дисплей.
+
+** Exposure
+
+Событие ~:exposure~ имеет важное значение. Сервер X не делает заметки о том, что было
+нарисовано окне. Если окно перекрывается другим, содержимое теряется. Когда перекрытие
+исчезает, X-сервер отправляет событие ~:exposure~. X-сервер говорит этим: «Я потерял
+содержимое, напомни мне, что должно было быть в окне.
+
+#+BEGIN_SRC lisp
+  :event-mask (xlib:make-event-mask :exposure :enter-window)
+#+END_SRC
+
+Это код при внутри ~xlib:create-window~ устанавливает окно для получения событий
+~:exposure~. Он также устанавливает окно для получения событий ~enter-notify~ о
+событии.
+
+* Графический контекст
+
+X11 протокол предназначен для управления окнами по сети и спроектирован чтобы
+минимизировать трафик. Он предполагает, что когда я хочу рисовать линии, я могу
+рисовать разными цветами линии разной толщины и все эти параметры можно назвать
+"графическим контекстом". Поэтому такие контексты хранятся на сервере и используются
+клиентом для рисования - это минимизирует количество посылаемых команд.
+
+В следующем примере мы создаем графический контекст для рисования двух прямых линий из
+противостоящих углов окна и выводим в консоль текстовую репрезентацию графического
+контекста:
+
+#+BEGIN_SRC lisp
+  (defun graphic-x (width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width width
+                       :height height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press))))
+      (describe grackon)
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t :discard-p t)
+        (:exposure ()
+                   (xlib:draw-line my-window grackon 0 height width 0)
+                   (xlib:draw-line my-window grackon 0 0 width height)
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (graphic-x 700 700)
+#+END_SRC
+
+Вот как выглядит эта репрезентация:
+
+#+BEGIN_EXAMPLE
+  #<XLIB:GCONTEXT :0 60817409>
+    [structure-object]
+
+  Slots with :INSTANCE allocation:
+    ID            = 60817409
+    DISPLAY       = #<XLIB:DISPLAY :0 (The X.Org Foundation R11905000)>
+    DRAWABLE      = #<XLIB:WINDOW :0 148>
+    CACHE-P       = T
+    SERVER-STATE  = #(3 4294967295 16777215 0 0 0 1 0 0 0 NIL NIL 0 0 NIL 0 1 0 0 0 0 4 1..
+    LOCAL-STATE   = #(3 4294967295 16777215 0 0 0 1 0 0 0 NIL NIL 0 0 NIL 0 1 0 0 0 0 4 1..
+    PLIST         = NIL
+    NEXT          = NIL
+#+END_EXAMPLE
+
+Стоит обратить внимание, на то как изменился цикл обработки событий. Теперь заверешение
+происходит когда в окне произойдет клик мышкой, поэтому удобно видеть, как окно
+перерисовывается при изменении размера
+
+* График функции
+
+#+BEGIN_SRC lisp
+  (defun |x,f(x)| (points x-min x-max f)
+    "Call f repeatly to build an array tabulating f from
+     x-min to x-max inclusive. Uses CLX representation so
+     array is twice as long as the number of points evaluated"
+    (let ((a (make-array (* 2 points))))
+      (dotimes (index points)
+        (let ((x (+ x-min
+                    (/ (* (- x-max x-min) index)
+                       (- points 1)))))
+          (setf (aref a (* 2 index))
+                x
+                (aref a (+ (* 2 index ) 1))
+                (funcall f x))))
+      a))
+
+  (defun |x(t),y(t)| (points t-min t-max x y)
+    (let ((a (make-array (* 2 points))))
+      (dotimes (index points)
+        (let ((tau (+ t-min
+                      (/ (* (- t-max t-min) index)
+                         (- points 1)))))
+          (setf (aref a (* 2 index))
+                (funcall x tau)
+                (aref a (+ (* 2 index ) 1))
+                (funcall y tau))))
+      a))
+
+  (defun |z(t)| (points t-min t-max z)
+    (let ((a (make-array (* 2 points))))
+      (dotimes (index points)
+        (let ((z (funcall z
+                          (+ t-min
+                             (/ (* (- t-max t-min) index)
+                                (- points 1))))))
+          (setf (aref a (* 2 index))
+                (realpart z)
+                (aref a (+ (* 2 index) 1))
+                (imagpart z))))
+      a))
+
+  (defun cycloid(loop1 size1 loop2 size2)
+    #'(lambda(x)(+ (* size1 (exp (* (complex 0f0 loop1) x)))
+                   (* size2 (exp (* (complex 0f0 loop2) x))))))
+
+
+
+  (defun bound-xy-vec(xys)
+    (do ((index 0 (+ index 2))
+         (x-min (aref xys 0)
+                (min x-min (aref xys index)))
+         (x-max (aref xys 0)
+                (max x-max (aref xys index)))
+         (y-min (aref xys 1)
+                (min y-min (aref xys (+ index 1))))
+         (y-max (aref xys 1)
+                (max y-max (aref xys (+ index 1)))))
+        ((>= index (length xys))
+         (values x-min x-max y-min y-max))))
+
+  (defun fit-xy-to-window (xy-vec width height)
+    (let ((a (make-array (length xy-vec))))
+      (multiple-value-bind (x-min x-max y-min y-max)
+          (bound-xy-vec xy-vec)
+        (loop for i from 0 below (length xy-vec) do
+             (setf (aref a i)
+                   (if (evenp i)
+                       (round  (* width (- (aref xy-vec i) x-min))
+                               (- x-max x-min))
+                       (round (* height (- y-max (aref xy-vec i)))
+                              (- y-max y-min)))))
+        a)))
+
+  (defun normalised-graph(points width height)
+    (single-graph (fit-xy-to-window points width height)
+                  width
+                  height))
+
+
+  (defun single-graph (points width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width width
+                       :height height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press))))
+      (describe grackon)
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:exposure ()
+                   (xlib:draw-lines my-window
+                                    grackon
+                                    points)
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (normalised-graph (|x,f(x)| 100 (- pi) (* 3 pi) #'sin)
+  ;;                   400 200)
+
+  ;; (single-graph #(0 0 100 100 200 300 300 0) 400 400)
+
+  ;; (normalised-graph (|x,f(x)| 100 -3 3
+  ;;                             #'(lambda(x)(* x x)))
+  ;;                   400 400)
+
+  ;; (normalised-graph (|x(t),y(t)| 100 0 (* 2 pi) #'cos #'sin)
+  ;;                   400 400)
+
+  ;; (normalised-graph (|x(t),y(t)| 100 0 (* 2 pi)
+  ;;                                #'(lambda(x)(sin (* 2 x))) #'sin)
+  ;;                   400 400)
+
+  ;; (normalised-graph (|z(t)| 100 0 (* 2 pi)
+  ;;                           #'(lambda(theta)(exp (* #c(0 1) theta))))
+  ;;                   400 400)
+
+  ;; (normalised-graph (|z(t)| 100 0 (* 3 pi)
+  ;;                           #'(lambda(theta)
+  ;;                               (+ theta
+  ;;                                  (exp (* #c(0 1)
+  ;;                                          (- (* 3/2 pi)
+  ;;                                             theta))))))
+  ;;                   800 200)
+
+  ;; (normalised-graph (|z(t)| 1000 0 (* 2 pi)
+  ;;                           (cycloid 3 10 13 5))
+  ;;                   400 400)
+#+END_SRC
+
+* Understanding exposure
+
+Масштабирование окна и перерисовка
+
+#+BEGIN_SRC lisp
+  (defun show-exposure-events (width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width width
+                       :height height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press))))
+      (describe grackon)
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:exposure (count x y width height)
+                   (format t "~A [~A,~A] [~A,~A]~%" count x y width height)
+                   (xlib:draw-line my-window
+                                   grackon
+                                   x y
+                                   width height
+                                   t)
+                   (xlib:draw-line my-window
+                                   grackon
+                                   x (+ y height)
+                                   (+ x width) y))
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (show-exposure-events 800 800)
+#+END_SRC
+
+* Вывод текста
+
+#+BEGIN_SRC lisp
+  (defun hello-world (width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width width
+                       :height height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press))))
+      (describe (xlib:gcontext-font grackon))
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:exposure (count)
+                   (when (zerop count)
+                     (xlib:draw-glyphs
+                      my-window
+                      grackon
+                      20 50
+                      "Hello World!"))
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (hello-world 700 700)
+#+END_SRC
+
+* Шрифты
+
+#+BEGIN_SRC lisp
+  (defun constituent(c)
+    (and (graphic-char-p c)
+         (not (char= c #\space))))
+
+  (defun white-space-split (string)
+    (when (plusp (length string))
+      (let ((cut-point (position-if
+                        (complement #'constituent)
+                        string)))
+        (if cut-point
+            (cons (subseq string 0 cut-point)
+                  (white-space-split
+                   (subseq string (1+ cut-point))))
+            (list string)))))
+
+  (defun ragged-right (words &optional (requested-width 400)
+                               (requested-height 300)(host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :font ;; "-schumacher-*-*-*-*-*-*-*-*-*-*-*"
+                     "-bitstream-bitstream charter-bold-i-normal--0-0-0-0-p-0-adobe-standard"
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width requested-width
+                       :height requested-height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press
+                                                         :structure-notify)))
+           (actual-height nil)
+           (actual-width nil))
+      (describe (xlib:gcontext-font grackon))
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:configure-notify (width height)
+                           (setf actual-width width actual-height height)
+                           nil)
+        (:exposure (count)
+                   (when (zerop count)
+                     (let* ((right-margin 5)
+                            (left-margin 10)
+                            (line-spacing (+ 3 (xlib:font-ascent (xlib:gcontext-font grackon))))
+                            (inter-word-space (xlib:text-width grackon " "))
+                            (line 1); work down the page in lines of text
+                            (x left-margin));work from left to right in pixels
+                       (dolist (word words)
+                         (let ((width (xlib:text-width grackon word)))
+                           (when (> (+ x width right-margin) actual-width)
+                                          ; where we've got to, plus the word we are thinking about
+                                          ; plus the margin, will not fit in the window
+                                          ; so start a new line
+                             (incf line) ; line-feed
+                             (setf x left-margin)) ; carriage return
+                           (xlib:draw-glyphs
+                            my-window
+                            grackon
+                            x
+                            (* line line-spacing)
+                            word)
+                           (incf x (+ width inter-word-space))))))
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (ragged-right (white-space-split "Ragged right setting is easier than
+  ;; justified setting.  This is both a strength and a weakness.  Although
+  ;; the regular word spacing of ragged right setting is easier on the
+  ;; reader's eye, in craft work there is honour and glory in doing things
+  ;; the hard way. The reader of justified text knows of the labour and
+  ;; expense, and is flattered to get something for nothing, even if it is
+  ;; worth what he paid."))
+#+END_SRC
+
+* Цветовые прямоугольники
+
+#+BEGIN_SRC lisp
+  (defstruct rect x y w h c)
+
+  (defun random-choice (item-list)
+    (let ((options (length item-list)))
+      (elt item-list (random options))))
+
+  (defun cons-up-rect-list (n)
+    (cons-up n #'(lambda()
+                   (make-rect :x (random 300)
+                              :y (random 300)
+                              :w (+ 20 (random 30))
+                              :h (+ 20 (random 30))
+                              :c (random-choice *colour-list*)))))
+
+  (defun cons-up (count constructor)
+    (let (accumulator)
+      (dotimes (index count accumulator)
+        (push (funcall constructor) accumulator))))
+
+  (defvar *colour-list* '(red green blue yellow cyan magenta))
+
+  (defparameter *default-rect-list*
+    (cons-up-rect-list 20))
+
+  (defvar *rect-list* *default-rect-list*)
+                                          ; The program can be loaded and run, and will display
+                                          ; some rectangles. If you have already created some
+                                          ; rectangles, it will not clobber them.
+                                          ; In particular you can edit the source, reload the
+                                          ; the file, and you still have your own rectangle list.
+                                          ; At any time, you can get back to the default with
+                                          ; (setf *rect-list* *default-rect-list*)
+
+
+  (defun show-rectangles (width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width width
+                       :height height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press))))
+      (dolist (colour-symbol *colour-list*)
+        (setf (get colour-symbol 'grackon)
+              (xlib:create-gcontext
+               :drawable root-window
+               :foreground (xlib:alloc-color
+                            (xlib:window-colormap root-window)
+                            (symbol-name colour-symbol))
+               :background black)))
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:exposure (count)
+                   (when (zerop count)
+                     (dolist (rect *rect-list*)
+                       (xlib:draw-rectangle
+                        my-window
+                        (get (rect-c rect) 'grackon)
+                        (rect-x rect)
+                        (rect-y rect)
+                        (rect-w rect)
+                        (rect-h rect)
+                        'fill)))
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (show-rectangles 700 700)
+#+END_SRC
+
+* Дочерние окна и обработка нажатий клавиш
+
+#+BEGIN_SRC lisp
+  (defun graphic-x (width height across down &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (green (xlib:alloc-color
+                   (xlib:window-colormap root-window)
+                   'green))
+           (blue (xlib:alloc-color
+                  (xlib:window-colormap root-window)
+                  'blue))
+           (red (xlib:alloc-color
+                 (xlib:window-colormap root-window)
+                 'red))
+           (top-window (xlib:create-window
+                        :parent root-window
+                        :x 0
+                        :y 0
+                        :width width
+                        :height height
+                        :background black
+                        :event-mask (xlib:make-event-mask :key-press
+                                                          :button-press)))
+           (red-window (xlib:create-window
+                        :parent top-window
+                        :x across
+                        :y 0
+                        :width (truncate width 4)
+                        :height (truncate height 4)
+                        :background red
+                        :event-mask (xlib:make-event-mask :button-press)))
+           (green-window (xlib:create-window
+                          :parent top-window
+                          :x 0
+                          :y down
+                          :width (truncate width 4)
+                          :height (truncate height 4)
+                          :background green
+                          :event-mask (xlib:make-event-mask :button-press)))
+           (blue-window (xlib:create-window
+                         :parent top-window
+                         :x across
+                         :y down
+                         :width (truncate width 4)
+                         :height (truncate height 4)
+                         :background blue
+                         :border-width 5
+                         :border white
+                         :event-mask (xlib:make-event-mask :button-press))))
+      (xlib:map-window top-window)
+      (xlib:map-window red-window)
+      (xlib:map-window green-window)
+      (xlib:map-window blue-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:button-press (window)
+                       (cond ((eq window red-window)
+                              (xlib:destroy-window red-window)
+                              nil)
+                             ((eq window green-window)
+                              (xlib:destroy-window blue-window)
+                              nil)
+                             ((eq window blue-window)
+                              (xlib:destroy-window green-window)
+                              nil)
+                             (t t)))
+        (:key-press ()
+                    (xlib:circulate-window-down top-window)
+                    nil))
+      (xlib:destroy-window top-window)
+      (xlib:close-display display)))
+
+  ;; (graphic-x 300 300 50 50)
+#+END_SRC
+
+* Параграфы
+
+#+BEGIN_SRC lisp
+  (defun constituent(c)
+    (and (graphic-char-p c)
+         (not (char= c #\space))))
+
+  (defun get-list-of-paragraphs(filename)
+    (with-open-file
+        (stream filename
+                :direction :input
+                :if-does-not-exist nil)
+      (if stream (read stream)
+          (list (concatenate 'string "Unable to open " filename)))))
+
+  (defun white-space-split (string)
+    (when (plusp (length string))
+      (let ((cut-point (position-if
+                        (complement #'constituent)
+                        string)))
+        (if cut-point
+            (if (zerop cut-point)
+                (white-space-split
+                 (subseq string 1))
+                (cons (subseq string 0 cut-point)
+                      (white-space-split
+                       (subseq string (1+ cut-point)))))
+            (list string)))))
+
+  (defun render (list-of-paragraphs
+                 window
+                 window-width
+                 window-height
+                 font
+                 grackon)
+    (let ((right-margin 5)
+          (left-margin 10)
+          (line-spacing (+ 3 (xlib:font-ascent font)))
+          (inter-word-space (xlib:text-width font " ")))
+      (let ((line 1)
+            (x left-margin))
+        (dolist (paragraph list-of-paragraphs)
+          (dolist (word (white-space-split paragraph))
+            (let ((width (xlib:text-width font word)))
+              (when (> (+ x width right-margin) window-width)
+                (incf line)
+                (setf x left-margin))
+              (xlib:draw-glyphs
+               window
+               grackon
+               x
+               (* line line-spacing)
+               word)
+              (incf x (+ width inter-word-space))))
+          (incf line (if (= x left-margin) 1 2))
+          (setf x left-margin)))))
+
+  (defun paragraphs (filename &optional (requested-width 400)
+                                (requested-height 300)(host ""))
+    (let* ((display (xlib:open-display host))
+           (font (xlib:open-font
+                  display
+                  "-bitstream-bitstream charter-bold-i-normal--0-0-0-0-p-0-adobe-standard"
+                  ;; "-*-lucida-medium-r-*-*-12-*-*-*-*-*-*"
+                  ))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (white (xlib:screen-white-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (grackon (xlib:create-gcontext
+                     :drawable root-window
+                     :font font
+                     :foreground white
+                     :background black))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x 0
+                       :y 0
+                       :width requested-width
+                       :height requested-height
+                       :background black
+                       :event-mask (xlib:make-event-mask :exposure
+                                                         :button-press
+                                                         :structure-notify)))
+           (actual-height nil)
+           (actual-width nil)
+           (list-of-paragraphs (get-list-of-paragraphs filename)))
+      (describe (xlib:gcontext-font grackon))
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t
+                                :discard-p t)
+        (:configure-notify (width height)
+                           (setf actual-width width actual-height height)
+                           nil)
+        (:exposure (count)
+                   (when (zerop count)
+                     (render list-of-paragraphs
+                             my-window
+                             actual-width
+                             actual-height
+                             font
+                             grackon))
+                   nil)
+        (:button-press () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (paragraphs "~/tmp/escape.txt")
+#+END_SRC
+
+~/tmp/escape.txt
+
+#+BEGIN_EXAMPLE
+  ("One of the attractions of CL is that the strings
+  include newline characters, so one can just type in
+  unparsed character data into large strings that run
+  on for lots of lines of lots of characters"
+
+  "TeX is the king of typesetting input languages. If one has
+  a lot of plain text to type set, one just types it in."
+
+  "Unfortunately that is not the whole story. Various characters are used
+  to mark up the input. $ & % # _ { and } are easily produced, with
+  \\$ \\& \\% \\# \\_ \\{ \\}"
+
+  "However, the first edition of the LaTeX manual explains that
+  ~ ^ and \\ usually appear only in simulated keyboard input.
+  Simulated keyboard input is entered using the \"verbatim\"
+  environment, so ~ ^ and \\ are escaped as:"
+
+  "\\begin{verbatim}
+  ~ ^ \\
+  \\end{verbatim}"
+
+  "At that time, even avante garde thinkers, such as Knuth,
+  had no cause to trouble themselves over the law of migration to
+  middle-ware. The problem is that eventually TeX input files would
+  be written by computers as much as they would be typed in.
+  Except that the quoting rules are vexatious. To use TeX as
+  middleware one needs to be able write code that quotes strings,
+  reliably and automatically." )
+#+END_EXAMPLE
+
+* Обработка позиции щелчка мыши
+
+Обратите внимание на изменение заголовка окна с использование ~xlib:change-property~
+
+#+BEGIN_SRC lisp
+  (defun pick2numbers (x-range y-range)
+    (let* ((display (xlib:open-display ""))
+           (screen (first (xlib:display-roots display)))
+           (black (xlib:screen-black-pixel screen))
+           (window
+            (xlib:create-window
+             :parent (xlib:screen-root screen)
+             :class :input-output
+             :x 0
+             :y 0
+             :width x-range
+             :height y-range
+             :background black
+             :event-mask (xlib:make-event-mask
+                          :button-press))))
+      (xlib:change-property window
+                            :wm_name "Pick two numbers"
+                            :string 8
+                            :transform #'char-code)
+      (xlib:map-window window)
+      (xlib:event-case
+          (display :force-output-p t
+                   :discard-p t)
+        (:button-press
+         (x y)
+         (xlib:unmap-window window)
+         (xlib:destroy-window window)
+         (xlib:close-display display)
+         (cons x (- y-range (+ y 1)))))))
+
+  ;; (pick2numbers 200 400)
+#+END_SRC
+
+* TODO Скриншоты
+* Ссылки
+
+- http://www.cawtech.demon.co.uk/clx/simple/examples.html
