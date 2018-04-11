@@ -42,87 +42,124 @@
 
 * Вывод на экран
 
-Иногда нам полезно что-то напрямую вывести на экран
+Иногда нам полезно что-то напрямую вывести на экран. Есть базовые концепции, которые
+необходимо знать для этого:
+- Клавиатура, мышь и монитор находятся на машине, которую мы назовем ~server~
+- Программа запущена на (вполне вероятно другой) машине, называемой ~client~
+- Сервер - многопользовательская машина, каждый клиент которой сидит перед некоторой
+  воображаемой штукой, называемой ~display~. Каждый дисплей может иметь несколько (но
+  минимум один) мониторов. Нам обычно нужен тот, что по умолчанию (первый)
+- Внутри дисплея организовано дерево из ~window~. У каждого из них, кроме корневого,
+  есть родительское окно. Мы должны взять корневое окно (~root-window~) и создать свое
+  окно, указав, что родительским для него будет ~root-window~. Создавая окно мы можему
+  указать ему координаты, также есть параметр ~override-redirect~, который можно
+  установить в ~on~ и тогда диспетчер окон не будет вмешиваться в эти координаты и даже
+  не будет рисовать рамку и заголовок окна.
+- После создания окна мы можем извлечь его идентификатор с помощью ~xlib:drawable-id~ и
+  отправить его по электронной почте в другую страну, и машина на той стороне сможет
+  подключиться к X-серверу и управлять им.
+- Чтобы отобразить окно, мы должны поставить запрос на это в очередь клиента.
+  (~xlib:map-window~). X11 всегда выполняет буферизацию и кеширование.
+- Потом мы можем что-нибудь нарисовать в окне, и...
+- Мы должны сделать ~xlib:display-finish-output~ чтобы явным образом отправить все
+  запросы из очереди и очистить ее.
+- Повторяя последние два шага, каждый раз когда нам нужно вывести что-то еще.
+- Завершая работу мы должны отмапить окно используя ~xlib:unmap-window~
+- Отправить все что есть в очереди ~xlib:display-finish-output~
+- Удалить окно ~xlib:destroy-window~
+- Закрыть дисплей ~xlib:close-display~
 
-Для того чтобы вывести что-то на экран средствами ~xlib~ необходимо выполнить действия
-в следующем порядке:
-- открыть display (если еще не)
-- получить из него screen
-- получить корневое окно (root) из screen
-- создать окно (window) на базе корневого окна
+На клиент не возлагается обязанность очищать что-то - сервер должен сам заметить когда
+соединение закрывается клиентом и очистить все необходимое самостоятельно. Поэтому
+удаление окна и закрытие дисплея можно опустить.
+
+Если программа передала свое окно другой программе, она должна сообщить X-серверу до
+того, как она будет убита, установив ~close-down-mode~. Существует команда
+~kill-temporary-clients~, которую стоит вызвать, когда вы полностью закончите работу с
+окном.
+
+Мы можем сделать макрос, который создаcт функцию, где есть описанные выше действия (и
+немного сверх этого):
+- открыть ~display~
+- получить из него screen по умолчанию
+- получить корневое окно (~root~) из screen
+- создать окно (~window~) на базе корневого окна
 - запампить созданное окно
-- переместить окно поверх всех остальных функией xlib:window-priority
-- отобразить окно на дисплей функцией display-finish-output
+- переместить окно поверх всех остальных функией ~xlib:window-priority~
+- отобразить окно на дисплей функцией ~display-finish-output~
 - вывести в окно то что мы хотим
 - отмапить окно
 - отобразить изменения на дисплей функцией display-finish-output
-- закрыть все что было открыто (предположительно. Но при выходе оно закроется само, так
-  что наверно можно обойтись без этого)
-
-Все эти вещи можно сделать в оборачивающем макросе, который создаcт функцию, где есть
-все оборачивающие действия:
 
 #+NAME: defdemo
 #+BEGIN_SRC lisp
-  (defmacro defdemo (fun-name demo-name args x y width height doc &rest forms)
-    `(progn
-       (defun ,fun-name ,args
-         ,doc
-         (unless *display*
-           ,#+:cmu
-           (multiple-value-setq (*display* *screen*) (ext:open-clx-display))
-           ,#+(or sbcl allegro clisp lispworks)
-           (progn
-             (setf *display* (xlib::open-default-display))
-             (setf *screen* (xlib:display-default-screen *display*)))
-           #-(or cmu sbcl allegro clisp lispworks)
-           (progn
-             ;; Portable method
-             (setf *display* (xlib:open-display (machine-instance)))
-             (setf *screen* (xlib:display-default-screen *display*)))
-           (setf *root* (xlib:screen-root *screen*))
-           (setf *black-pixel* (xlib:screen-black-pixel *screen*))
-           (setf *white-pixel* (xlib:screen-white-pixel *screen*)))
-         (let ((*window* (xlib:create-window :parent *root*
-                                             :x ,x :y ,y
-                                             :event-mask nil
-                                             :width ,width :height ,height
-                                             :background *white-pixel*
-                                             :border *black-pixel*
-                                             :border-width 2
-                                             :override-redirect :on)))
-           (xlib:map-window *window*)
-           ;;
-           ;; I hate to do this since this is not something any normal
-           ;; program should do ...
-           (setf (xlib:window-priority *window*) :above)
-           (xlib:display-finish-output *display*)
-           (unwind-protect
-                (progn ,@forms)
-             (xlib:unmap-window *window*)
-             (xlib:display-finish-output *display*))))
-       (setf (get ',fun-name 'demo-name) ',demo-name)
-       (setf (get ',fun-name 'demo-doc) ',doc)
-       (export ',fun-name)
-       (pushnew ',fun-name *demos*)
-       ',fun-name))
+  (ql:quickload 'clx)
+
+  (defmacro defdemo ((x y width height) &body body)
+    `(let (display screen root black white window)
+       ,#+:cmu
+       (multiple-value-setq (display screen) (ext:open-clx-display))
+       ,#+(or sbcl allegro clisp lispworks)
+       (progn
+         (setf display (xlib::open-default-display))
+         (setf screen  (xlib:display-default-screen display)))
+       #-(or cmu sbcl allegro clisp lispworks)
+       (progn
+         ;; Portable method
+         (setf display (xlib:open-display (machine-instance)))
+         (setf screen (xlib:display-default-screen *display*)))
+       (setf root  (xlib:screen-root screen))
+       (setf black (xlib:screen-black-pixel screen))
+       (setf white (xlib:screen-white-pixel screen))
+       (let ((window (xlib:create-window :parent root
+                                         :x ,x :y ,y
+                                         :event-mask nil
+                                         :width ,width :height ,height
+                                         :background white
+                                         :border black
+                                         :border-width 2
+                                         ;; :override-redirect :on
+                                         )))
+         (xlib:map-window window)
+         ;;
+         ;; I hate to do this since this is not something any normal
+         ;; program should do ...
+         (setf (xlib:window-priority window) :above)
+         (xlib:display-finish-output display)
+         (unwind-protect
+              (progn ,@body)
+           (xlib:unmap-window window)
+           (xlib:display-finish-output display)))))
 #+END_SRC
 
 После чего мы можем вывести что-то интересное например так:
 
 #+BEGIN_SRC lisp
-  (ql:quickload 'clx)
-
-  (defparameter *demos* nil)
-
-  (defvar *display* nil)
-  (defvar *screen* nil)
-  (defvar *root* nil)
-  (defvar *black-pixel* nil)
-  (defvar *white-pixel* nil)
-  (defvar *window* nil)
-
   <<defdemo>>
+
+  (defun blow-bubble (x y width height &optional (host ""))
+    (let* ((display (xlib:open-display host))
+           (screen (first (xlib:display-roots display)))
+           (white (xlib:screen-white-pixel screen))
+           (black (xlib:screen-black-pixel screen))
+           (root-window (xlib:screen-root screen))
+           (my-window (xlib:create-window
+                       :parent root-window
+                       :x x
+                       :y y
+                       :width width
+                       :height height
+                       :background white
+                       :override-redirect :on
+                       :event-mask (xlib:make-event-mask :exposure :enter-window))))
+      (xlib:map-window my-window)
+      (xlib:event-case (display :force-output-p t :discard-p t)
+        (:exposure     () (recurrence display my-window screen white black))
+        (:enter-notify () t))
+      (xlib:destroy-window my-window)
+      (xlib:close-display display)))
+
+  ;; (blow-bubble 10 10 700 700)
 
   (defun full-window-state (w)
     (xlib:with-state (w)
@@ -130,15 +167,12 @@
               (xlib:drawable-x w) (xlib:drawable-y w)
               (xlib:window-map-state w))))
 
-  (defun recurrence (display window &optional (point-count 10000))
-    (let ((gc (xlib:create-gcontext :drawable window
-                                    :background *white-pixel*
-                                    :foreground *black-pixel*)))
+  (defun recurrence (display window screen white black &optional (point-count 10000))
+    (let ((gc (xlib:create-gcontext :drawable window :background white :foreground black)))
       (multiple-value-bind (width height) (full-window-state window)
         (xlib:clear-area window)
         (draw-ppict window gc point-count 0.0 0.0 (* width 0.5) (* height 0.5))
-        (xlib:display-force-output display)
-        (sleep 4))
+        (xlib:display-force-output display))
       (xlib:free-gcontext gc)))
 
   ;;; Draw points.  X assumes points are in the range of width x height,
@@ -157,10 +191,16 @@
                     hw
                     hh))))
 
-  (defdemo recurrence-demo "Recurrence" ()
-           10 10 700 700
-           "Plots a cool recurrence relation."
-           (recurrence *display* *window*))
-
-  (recurrence-demo)
+  ;; (defdemo (10 10 700 700)
+  ;;   (xlib:event-case (display :force-output-p t :discard-p t)
+  ;;     (:exposure () (progn
+  ;;                     (format t "Exposed~%")
+  ;;                     (recurrence display window screen white black)
+  ;;                     ))
+  ;;     (:enter-notify () t))
+  ;;   ;; (recurrence display window screen white black)
+  ;;   ;; (sleep 5)
+  ;;   (xlib:destroy-window window)
+  ;;   (xlib:close-display display)
+  ;;   )
 #+END_SRC
