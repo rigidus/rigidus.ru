@@ -6,6 +6,8 @@ RUN apt-get update \
 && apt-get install -y g++
 COPY SDL2 SDL2
 COPY forth forth
+COPY forth forth2
+COPY fctf fctf
 
 # build:  docker build -t rigidus/i686 .
 # on host:   xhost +local:docker
