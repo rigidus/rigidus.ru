@@ -1,0 +1,27 @@
+;; Генератор для POST-запросов
+(defun gen-post (rows var)
+  (flet ((rval (val var)
+               (let ((match-result (string-match ":" val)))
+                 (if (and (not (null match-result))
+                          (= 0 (string-match ":" val)))
+                     (concat "\"" (substring val 1) "\"")
+                   (format ",(utf (getf %s :%s))" var val)))))
+    (let ((result))
+      (push (format "`((\"%s\" . %s)"
+                    (caar rows)
+                    (rval (cadar rows) var)
+                    var)
+            result)
+      (mapcar #'(lambda (x)
+                  (push (format "\n  (\"%s\" . %s)"
+                                (car x)
+                                (rval (cadr x) var)
+                                var)
+                        result))
+              (butlast (cdr rows)))
+      (push (format "\n  (\"%s\" . %s))"
+                    (caar (last rows))
+                    (rval (cadar (last rows)) var)
+                    var)
+            result)
+      (mapconcat 'identity (reverse result) ""))))
