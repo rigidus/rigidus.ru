@@ -1,0 +1,1523 @@
+#+STARTUP: showall indent hidestars
+
+* Внутреннее устройство Forth-машины
+
+Теперь, обладая работающей 32-разрядной версией мы можем портировать ее на 64 разряда.
+
+** NEXT
+
+Теперь наш макрос ~NEXT~ будет делать то же самое, что и раньше но с увеличенным вдвое
+размером адреса:
+
+#+NAME: macro_next
+#+BEGIN_SRC asm
+  .macro NEXT
+      lodsq
+      jmp *(%rax)
+  .endm
+#+END_SRC
+
+** Макросы для стека возвратов
+
+Теперь используют 64-разрядные значения:
+
+#+NAME: macro_pushrsp
+#+BEGIN_SRC asm
+  .macro PUSHRSP reg
+      lea     -8(%rbp),%rbp   # декремент %rbp на 8
+      mov     \reg,(%rbp)     # push reg в стек возвратов
+  .endm
+#+END_SRC
+
+#+NAME: macro_poprsp
+#+BEGIN_SRC asm
+  .macro POPRSP reg
+      mov (%rbp),\reg         # pop вершину стека возвратов в reg
+      lea 8(%rbp),%rbp        # инкремент %rbp на 8
+  .endm
+#+END_SRC
+
+** DOCOL - интерпретатор
+
+Почти не изменился:
+
+#+NAME: asm_docol
+#+BEGIN_SRC asm
+      .text
+      .align 4
+  DOCOL:
+      PUSHRSP %rsi            # Сохранить %rsi в стеке возвратов
+      leal    8(%rax), %rsi   # %rsi теперь указывает на param-field
+      NEXT                    # Делаем NEXT
+
+      .text
+      .align 8
+  DOCOL:
+      PUSHRSP %rsi            # Сохранить %rsi в стеке возвратов
+      leaq    8(%rax), %rsi   # %rsi теперь указывает на param-field
+      /*
+      # Или другими словами:
+      # add   $8, %rax
+      # mov   %rax, %rsi
+      ,*/
+      NEXT                    # Делаем NEXT
+#+END_SRC
+
+** Ассемблерная точка входа
+
+
+#+NAME: asm_entry
+#+BEGIN_SRC asm
+      /* Assembler entry point. */
+
+      .text
+      .globl  forth_asm_start
+      .type   forth_asm_start, @function
+  forth_asm_start:
+      # Сбрасываем флаг направления
+      cld
+      # Записываем вершину стека параметров %rsp в переменную S0
+      mov     %rsp, (var_S0)
+      # Устанавливаем стек возвратов %rbp
+      mov     $return_stack_top, %rbp
+      # Устанавливаем указатель HERE на начало области данных.
+      mov     $data_buffer, %rax
+      mov     %rax, (var_HERE)
+      # Инициализируем IP
+      mov     $cold_start, %rsi
+      # Запускаем интерпретатор
+      NEXT
+
+      .section .rodata
+  cold_start:                             # High-level code without a codeword.
+      .quad QUIT
+#+END_SRC
+
+** Маски для FLAGS/LENGHT
+
+Остаются без изменений
+
+#+NAME: flags
+#+BEGIN_SRC asm
+      .set F_IMMED,0x80
+      .set F_HIDDEN,0x20
+      .set F_LENMASK,0x1f  # length mask
+#+END_SRC
+
+** Макросы DEFWORD и DEFCODE
+
+~defword~ изменился только в отношении выравнивания и типов (.int -> .quad)
+
+#+NAME: macro_defword
+#+BEGIN_SRC asm
+      .set link,0             # Инициализировать начальное значение
+                              # переменной времени компиляции link
+  .macro defword name, namelen, flags=0, label
+      .section .rodata
+      .align 8
+      .globl name_\label
+  name_\label :
+      .quad link              # link
+      .set link,name_\label
+      .byte \flags+\namelen   # flags + байт длины
+      .ascii "\name"          # имя
+      .align 8                # выравнивание на 8-байтовую границу
+      .globl \label
+  \label :
+      .quad DOCOL             # codeword - указатель на функцию-интепретатор
+      # дальше будут идти указатели на слова
+  .endm
+#+END_SRC
+
+То же с ~defcode~.
+
+#+NAME: macro_defcode
+#+BEGIN_SRC asm
+  .macro defcode name, namelen, flags=0, label
+      .section .rodata
+      .align 8
+      .globl name_\label
+  name_\label :
+      .quad   link               # link
+      .set    link,name_\label
+      .byte   \flags+\namelen    # flags + байт длины
+      .ascii  "\name"            # имя
+      .align  8                  # выравнивание на 4-х байтовую границу
+      .globl  \label
+  \label :
+      .quad   code_\label        # codeword
+      .text
+      //.align 8
+      .globl  code_\label
+  code_\label :
+      # далее следует ассемблерный код
+  .endm
+#+END_SRC
+
+** Базовые примитивы
+
+Теперь несколько простых примитивов Forth. Они написаны на ассемблере для скорости.
+
+#+NAME: simple_primitives
+#+BEGIN_SRC asm
+  defcode "DROP",4,,DROP
+      popl    %rax            # сбросить верхний элемент стека
+      NEXT
+
+  defcode "SWAP",4,,SWAP
+      popl    %rax            # поменять местами два верхних элемента на стеке
+      popl    %rbx
+      pushl   %rax
+      pushl   %rbx
+      NEXT
+
+  defcode "DUP",3,,DUP
+      mov     (%rsp), %rax    # дублировать верхний элемент стека
+      pushl   %rax
+      NEXT
+
+  defcode "OVER",4,,OVER
+      mov     8(%rsp), %rax   # взять второй от верха элемент стека
+      pushl   %rax            # и положить его копию сверху
+      NEXT
+
+  defcode "ROT",3,,ROT
+      popl    %rax
+      popl    %rbx
+      popl    %rcx
+      pushl   %rbx
+      pushl   %rax
+      pushl   %rcx
+      NEXT
+
+  defcode "-ROT",4,,NROT
+      popl    %rax
+      popl    %rbx
+      popl    %rcx
+      pushl   %rax
+      pushl   %rcx
+      pushl   %rbx
+      NEXT
+
+  defcode "2DROP",5,,TWODROP
+      popl    %rax            # сбросить два верхних элемента со стека
+      popl    %rax
+      NEXT
+
+  defcode "2DUP",4,,TWODUP
+      movl    (%rsp), %rax    # дублировать два верхних элемента на стеке
+      movl    8(%rsp), %rbx
+      pushl   %rbx
+      pushl   %rax
+      NEXT
+
+  defcode "2SWAP",5,,TWOSWAP
+      popl    %rax            # поменять местами две пары элементов на стеке
+      popl    %rbx
+      popl    %rcx
+      popl    %rdx
+      pushl   %rbx
+      pushl   %rax
+      pushl   %rdx
+      pushl   %rcx
+      NEXT
+
+  defcode "?DUP",4,,QDUP
+      movl    (%rsp), %rax    # дублировать верхний элемент стека если он не нулевой
+      test    %rax, %rax
+      jz      1f
+      pushl   %rax
+  1:
+      NEXT
+
+  defcode "1+",2,,INCR
+      incl    (%rsp)          # увеличить верхний элемент стека на единицу
+      NEXT
+
+  defcode "1-",2,,DECR
+      decl    (%rsp)          # уменьшить верхний элемент стека на единицу
+      NEXT
+
+  defcode "4+",2,,INCR4
+      addl    $4, (%rsp)      # увеличить верхний элемент стека на 4
+      NEXT
+
+  defcode "4-",2,,DECR4
+      subl    $4, (%rsp)      # уменьшить верхний элемент стека на 4
+      NEXT
+
+  defcode "8+",2,,INCR8
+      addl    $8, (%rsp)      # увеличить верхний элемент стека на 8
+      NEXT
+
+  defcode "8-",2,,DECR8
+      subl    $8, (%rsp)      # уменьшить верхний элемент стека на 8
+      NEXT
+
+  defcode "+",1,,ADD
+      popl    %rax            # взять верхний элемент со стека
+      addl    %rax, (%rsp)    # прибавиь его значение к элементу, который стал верхним
+      NEXT
+
+  defcode "-",1,,SUB
+      popl    %rax            # взять верхний элемент со стека
+      subl    %rax, (%rsp)    # вычесть его значение из элемента, который стал верхним верхним
+      NEXT
+
+  defcode "*",1,,MUL
+      popl    %rax            # взять со стека верхний элемент
+      popl    %rbx            # взять со стека следующий верхний элемент
+      imull   %rbx, %rax      # умножить их друг на друга
+      pushl   %rax            # игнорируем переполнение
+      NEXT
+#+END_SRC
+
+Насколько мне известно, в 64-разрядном режиме нет аналога ~CDQ~ поэтому в ~/MOD~ регистр
+~%rdx~ очищается вручную. Тогда он полностью становится эквивалентом ~U/MOD~. Тут нужно
+было бы анализировать старший знаковый байт и эмулировать ~CDQ~ но пока для простоты и
+скорости сделано так как сделано.
+
+#+NAME: mod
+#+BEGIN_SRC asm
+  defcode "/MOD",4,,DIVMOD
+      xor %rdx, %rdx
+      pop     %rbx
+      pop     %rax
+      idiv    %rbx
+      push    %rdx            # push остаток
+      push    %rax            # push частное
+      NEXT
+
+  defcode "U/MOD",5,,UDIVMOD
+      xor %rdx, %rdx
+      pop %rbx
+      pop %rax
+      div  %rbx
+      push %rdx               # push остаток
+      push %rax               # push частное
+      NEXT
+#+END_SRC
+
+Множество сравнительных операций, таких как ~=~, ~<~, ~>~, и.т.д
+
+Стандарт ANSI Forth говорит, что слова сравнения должны возвращать все двоичные разряды
+равные единице для TRUE, и все двоичные разряды равные нулю для FALSE. Для
+программистов на языке Си это немного странное соглашение, поэтому этот Forth не
+следует ему и возвращает более нормальное (для программистов на Си) значение ~1~ для
+TRUE и ~0~ для FALSE.
+
+Причиной этого соглашения является то, что при его использовании слова AND, OR, XOR и
+INVERT могут функционировать одновременно как логические операторы, так и как побитовые
+операторы. Для сравнения, если использовать соглашение языка Си, что FALSE = 0 и TRUE =
+1, вам нужны два набора операторов: ~&&~ и ~&~, ~||~ и ~|~, и.т.д.
+
+В будущем я планирую приблизить этот Forth к стандарту ANSI и отказаться от
+использования boolean-соглашений языка Си везде, кроме вызова сишных API. Минусом
+такого подхода будет увеличение накладных расходов при вызове сишных API на конвертацию
+логических значений, и необходимость аккуратно отследить все места изменений.
+
+#+NAME: comparison
+#+BEGIN_SRC asm
+  defcode "=",1,,EQU
+      pop     %rax            # два верхних элемента стека равны?
+      pop     %rbx
+      cmp     %rbx, %rax
+      sete    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "<>",2,,NEQU
+      pop     %rax            # два верхних элемента стека не равны?
+      pop     %rbx
+      cmp     %rbx, %rax
+      setne   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "<",1,,LT
+      pop     %rax
+      pop     %rbx
+      cmp     %rax, %rbx
+      setl    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode ">",1,,GT
+      pop     %rax
+      pop     %rbx
+      cmp     %rax, %rbx
+      setg    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "<=",2,,LE
+      pop     %rax
+      pop     %rbx
+      cmp     %rax, %rbx
+      setle   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode ">=",2,,GE
+      pop     %rax
+      pop     %rbx
+      cmp     %rax, %rbx
+      setge   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0=",2,,ZEQU
+      pop     %rax            # верхний элемент стека равен нулю?
+      test    %rax, %rax
+      setz    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0<>",3,,ZNEQU
+      pop     %rax            # верхний элемент стека не равен нулю?
+      test    %rax, %rax
+      setnz   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0<",2,,ZLT
+      pop     %rax            # comparisons with 0
+      test    %rax, %rax
+      setl    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0>",2,,ZGT
+      pop     %rax
+      test    %rax, %rax
+      setg    %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0<=",3,,ZLE
+      pop     %rax
+      test    %rax, %rax
+      setle   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "0>=",3,,ZGE
+      pop     %rax
+      test    %rax, %rax
+      setge   %al
+      movzb   %al, %rax
+      push    %rax
+      NEXT
+
+  defcode "AND",3,,AND
+      pop     %rax            # битовый AND
+      and     %rax, (%rsp)
+      NEXT
+
+  defcode "OR",2,,OR
+      pop     %rax            # битовый OR
+      or      %rax, (%rsp)
+      NEXT
+
+  defcode "XOR",3,,XOR
+      pop     %rax            # битовый XOR
+      xor     %rax, (%rsp)
+      NEXT
+
+  defcode "INVERT",6,,INVERT
+      not     (%rsp)          # это битовая функция "NOT" (см. NEGATE and NOT)
+      NEXT
+#+END_SRC
+
+** EXIT - Возвращение из форт-слов
+
+Благодаря макросам тут нет никаких изменений, кроме размера регистра.
+
+#+NAME: exit
+#+BEGIN_SRC asm
+  defcode "EXIT",4,,EXIT
+      POPRSP  %rsi            # Восстановить указатель из стека возвратов в %rsi
+      NEXT                    # Сделать NEXT
+#+END_SRC
+
+** Литералы
+
+#+NAME: word_lit
+#+BEGIN_SRC asm
+  defcode "LIT",3,,LIT
+      # %rsi указывает на следующую команду, но в этом случае это указатель на следующий
+      # литерал, представляющий собой 8-байтовое значение. Получение этого литерала в %rax
+      # и инкремент %rsi на x86 -  это удобная однобайтовая инструкция! (см. NEXT macro)
+      lodsq
+      # push literal в стек
+      push %rax
+      NEXT
+#+END_SRC
+
+** Память
+
+#+NAME: store
+#+BEGIN_SRC asm
+  defcode "!",1,,STORE
+      popl    %rbx            # забираем со стека адрес, куда будем сохранять
+      popl    %rax            # забираем со стека данные, которые будем сохранять
+      movl    %rax, (%rbx)    # сохраняем данные по адресу
+      NEXT
+
+  defcode "@",1,,FETCH
+      popl    %rbx            # забираем со стека адрес переменной, значение которой надо вернуть
+      movl    (%rbx), %rax    # выясняем значение по этому адресу
+      pushl   %rax            # push-им значение в стек
+      NEXT
+
+  defcode "+!",2,,ADDSTORE
+      popl    %rbx            # забираем со стека адрес переменной, которую будем увеличивать
+      popl    %rax            # забираем значение на которое будем увеличивать
+      addl    %rax, (%rbx)    # добавляем значение к переменной по этому адресу
+      NEXT
+
+  defcode "-!",2,,SUBSTORE
+      popl    %rbx            # забираем со стека адрес переменной, которую будем уменьшать
+      popl    %rax            # забираем значение на которое будем уменьшать
+      subl    %rax, (%rbx)    # вычитаем значение из переменной по этому адресу
+      NEXT
+#+END_SRC
+
+#+NAME: char_store
+#+BEGIN_SRC asm
+  defcode "C!",2,,STOREBYTE
+      popl    %rbx            # забираем со стека адрес, куда будем сохранять
+      popl    %rax            # забираем со стека данные, которые будем сохранять
+      movb    %al, (%rbx)     # сохраняем данные по адресу
+      NEXT
+
+  defcode "C@",2,,FETCHBYTE
+      popl    %rbx            # забираем со стека адрес переменной, значение которой надо вернуть
+      xorl    %rax, %rax      # очищаем регистр %rax
+      movb    (%rbx), %al     # выясняем значение по этому адресу
+      push    %rax            # push-им значение в стек
+      NEXT
+
+  # C@C! - это полезный примитив для копирования байт
+  defcode "C@C!",4,,CCOPY
+      movl    8(%rsp), %rbx   # адрес источника
+      movb    (%rbx), %al     # получаем байт из источника
+      popl    %rdi            # адрес приемника
+      stosb                   # копируем байт в приемник
+      push    %rdi            # увеличиваем адрес приемника
+      incl    8(%rsp)         # увеличиваем адрес источника
+      NEXT
+
+  # CMOVE - операция копирования блока байтов
+  defcode "CMOVE",5,,CMOVE
+      movl    %rsi, %rdx      # сохраним %rsi
+      popl    %rcx            # length
+      popl    %rdi            # адрес приемника
+      popl    %rsi            # адрес источника
+      rep     movsb           # копируем источник в приемник length раз
+      movl    %rdx, %rsi      # восстанавливаем %rsi
+      NEXT
+#+END_SRC
+
+** Встроенные переменные
+
+#+NAME: macro_defvar
+#+BEGIN_SRC asm
+  .macro defvar name, namelen, flags=0, label, initial=0
+      defcode \name,\namelen,\flags,\label
+      push    $var_\name
+      NEXT
+      .data
+      .align 8
+      var_\name :
+      .quad \initial
+  .endm
+#+END_SRC
+
+Встроенные переменные:
+- STATE - состояние интерпретации (ноль) или компиляции слова (не ноль)
+- LATEST - указатель на последнее заданное слово в словаре.
+- HERE - указатель на следующий свободный байт памяти. При компиляции скомпилированные
+  слова помещаются по этому указателю, а потом он передвигается дальше.
+- S0 - хранит адрес вершины стека параметров.
+- BASE - текущая база (radix) для печати и чтения чисел.
+
+#+NAME: built_in_vars
+#+BEGIN_SRC asm
+  defvar "STATE",5,,STATE
+  defvar "HERE",4,,HERE
+  defvar "LATEST",6,,LATEST,name_SYSCALL0  # SYSCALL0 должен быть последним встроенным словом
+  defvar "S0",2,,SZ
+  defvar "BASE",4,,BASE,10
+#+END_SRC
+
+** Встроенные константы
+
+Встроенные константы:
+- VERSION    - это текущая версия этого Forth.
+- R0         - максимальный адрес (адрес дна) стека возвратов.
+- DOCOL      - Указатель на DOCOL.
+- F＿IMMED   - текущее значение флага IMMEDIATE.
+- F＿HIDDEN  - Текущее значение флага HIDDEN.
+- F＿LENMASK - Маска длины в  flags/len байте
+- SYS＿* и числовые коды различных системных вызовов Linux (из <asm/unistd.h>)
+
+#+NAME: macro_defconst
+#+BEGIN_SRC asm
+  .macro defconst name, namelen, flags=0, label, value
+      defcode \name,\namelen,\flags,\label
+      push $\value
+      NEXT
+  .endm
+#+END_SRC
+
+
+#+NAME: built_in_constants
+#+BEGIN_SRC asm
+  .set JONES_VERSION,47
+
+  defconst "VERSION",7,,VERSION,JONES_VERSION
+  defconst "R0",2,,RZ,return_stack_top
+  defconst "DOCOL",5,,__DOCOL,DOCOL
+  defconst "F_IMMED",7,,__F_IMMED,F_IMMED
+  defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
+  defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
+
+  .set sys_exit,1
+  .set sys_read,3
+  .set sys_write,4
+  .set sys_open,5
+  .set sys_close,6
+  .set sys_creat,8
+  .set sys_unlink,0xA
+  .set sys_lseek,0x13
+  .set sys_truncate,0x5C
+
+  .set stdin,0
+  .set stdout,1
+  .set stderr,2
+
+  defconst "SYS_EXIT",8,,SYS_EXIT,sys_exit
+  defconst "SYS_OPEN",8,,SYS_OPEN,sys_open
+  defconst "SYS_CLOSE",9,,SYS_CLOSE,sys_close
+  defconst "SYS_READ",8,,SYS_READ,sys_read
+  defconst "SYS_WRITE",9,,SYS_WRITE,sys_write
+  defconst "SYS_CREAT",9,,SYS_CREAT,sys_creat
+
+  defconst "O_RDONLY",8,,__O_RDONLY,0
+  defconst "O_WRONLY",8,,__O_WRONLY,1
+  defconst "O_RDWR",6,,__O_RDWR,2
+  defconst "O_CREAT",7,,__O_CREAT,0100
+  defconst "O_EXCL",6,,__O_EXCL,0200
+  defconst "O_TRUNC",7,,__O_TRUNC,01000
+  defconst "O_APPEND",8,,__O_APPEND,02000
+  defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
+#+END_SRC
+
+** Стек возвратов
+
+#+NAME: words_for_retstack
+#+BEGIN_SRC asm
+  defcode ">R",2,,TOR
+      pop     %rax            # pop со стека данных в %rax
+      PUSHRSP %rax            # push %rax на стек возвратов
+      NEXT
+
+  defcode "R>",2,,FROMR
+      POPRSP  %rax            # pop со стека возвратов в %rax
+      pushl   %rax            # push %rax на стек параметров
+      NEXT
+
+  defcode "RSP@",4,,RSPFETCH
+      pushl    %rbp
+      NEXT
+
+  defcode "RSP!",4,,RSPSTORE
+      popl    %rbp
+      NEXT
+
+  defcode "RDROP",5,,RDROP
+      addl    $8, %rbp
+      NEXT
+#+END_SRC
+
+** Стек данных
+
+#+NAME: data_stack_words
+#+BEGIN_SRC asm
+  defcode "DSP@",4,,DSPFETCH
+      mov     %rsp, %rax
+      push    %rax
+      NEXT
+
+  defcode "DSP!",4,,DSPSTORE
+      popl    %rsp
+      NEXT
+#+END_SRC
+
+** Ввод и вывод: KEY EMIT WORD NUMBER
+
+#+NAME: word_key
+#+BEGIN_SRC asm
+      defcode "KEY",3,,KEY
+      call _KEY
+      push    %rax            #       # push-им возвращенный символ на стек
+      NEXT                    #
+  _KEY:                       # <--+
+      mov     (currkey), %rbx #    |  # Берем указатель currkey в %rbx
+      cmp     (bufftop), %rbx #    |  # (bufftop >= currkey)? - в буфере есть символы?
+      jge     1f              #-+  |  # ?-Нет, переходим вперед
+      xor     %rax, %rax      # |  |  # ?-Да,  (1) переносим символ, на который
+      mov     (%rbx), %al     # |  |  #        указывает bufftop в %rax,
+      inc     %rbx            # |  |  #        (2) инкрементируем копию bufftop
+      mov     %rbx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
+      ret                     # |  |  #        и выходим (в %rax лежит символ)
+      # ---------------- RET    |  |
+  1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
+      push    %rsi            #    |  #
+      push    %rdi            #    |  #
+      mov     $sys_read, %rax #    |  #  param0: SYSCALL #3 (read) в %rax
+      mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
+      mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi ?
+      mov     %rsi, currkey   #    |  #  Сохраняем его (адрес буфера) ввода в currkey
+      mov     $INPUT_BUFFER_SIZE, %rdx # param3: Максимальная длина ввода в %rdx
+      syscall                 #    |  #  SYSCALL
+      pop     %rdi            #    |
+      pop     %rsi            #    |
+      # Проверяем возвращенное     |  # должно быть количество символов + '\n'
+      test    %rax, %rax      #    |  # (%rax <= 0)?
+      jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
+      addl    %rax, %rcx      # |  |  # ?-Нет, (1) добавляем в %rcx кол-во прочитанных байт
+      mov     %rcx, bufftop   # |  |  #        (2) записываем %rcx в bufftop
+      jmp     _KEY            # |  |
+      # ------------------------|--+
+  2:  #                     <---+     # Ошибка или конец потока ввода - выходим
+      mov     $sys_exit, %rax         # param1: SYSCALL #1 (exit)
+      xor     %rdi, %rdi              # param2: код возврата
+      syscall                         # SYSCALL
+      # --------------- EXIT
+      .data
+      .align 8
+  currkey:
+      # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
+      .quad input_buffer
+  bufftop:
+      # Хранит вершину буфера ввода (последние валидные данные + 1)
+      .quad input_buffer
+#+END_SRC
+
+
+#+NAME: word_emit
+#+BEGIN_SRC asm
+  defcode "EMIT",4,,EMIT
+      popl    %rax
+      call    _EMIT
+      NEXT
+  _EMIT:
+      push    %rsi            #    |  #
+      push    %rdi            #    |  #
+      mov     $sys_write, %rax        # SYSCALL #4 (write)
+      movl    $stdout, %rdi           # param1: stdout в $rdi
+      mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
+      mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
+      mov     $1, %rdx                # param3: длина
+      syscall
+      pop     %rdi            #    |
+      pop     %rsi            #    |
+      ret
+
+      .data           # NB: проще записать в .data section
+  emit_scratch:
+      .space 1        # Место для байта, который выводит EMIT
+#+END_SRC
+
+
+#+NAME: word_word
+#+BEGIN_SRC asm
+      defcode "WORD",4,,WORD
+      call    _WORD
+      push    %rdi            # push base address
+      push    %rcx            # push length
+      NEXT
+  _WORD:
+      # Ищем первый непробельный символ, пропуская комменты, начинающиеся с обратного слэша
+  1:                      # <---+
+      call    _KEY            # |     # Получаем следующую букву, возвращаемую в %rax
+      cmpb    $'\\', %al      # |     # (Это начало комментария)?
+      je      3f              #-|---+ # ?-Да, переходим вперед
+      cmpb    $' ', %al       # |   | # ?-Нет. (Это пробел, возрат каретки, перевод строки)?
+      jbe     1b              #-+   | # ?-Да, переходим назад
+      #                             |
+      # Ищем конец слова, сохраняя символы по мере продвижения
+      mov     $word_buffer, %rdi  # | # Указатель на возвращаемый буфер
+  2:                      # <---+   |
+      stosb                   # |   | # Добавляем символ в возвращаемый буфер
+      call    _KEY            # |   | # Вызываем KEY символ будет возвращен в %al
+      cmpb    $' ', %al       # |   | # (Это пробел, возрат каретки, перевод строки)?
+      ja      2b              #-+   | # Если нет, повторим
+      #                       #     |
+      # Вернем слово (указатель на статический буфер черех %rcx) и его длину (через %rdi)
+      sub     $word_buffer, %rdi  # |
+      mov     %rdi, %rcx      #     | # return: длина слова
+      mov     $word_buffer, %rdi  # | # return: адрес буфера
+      ret                     #     |
+      # ----------------- RET       |
+      #                             |
+      # Это комментарий, пропускаем | его до конца строки
+  3:                      # <---+ <-+
+      call    _KEY            # |
+      cmpb    $'\n', %al      # |     # KEY вернул конец строки?
+      jne     3b              #-+     # Нет, повторим
+      jmp     1b              #
+      # ---------------- to 1
+
+      .data
+      # Статический буфер, в котором возвращается WORD.
+      # Последующие вызовы перезаписывают этот буфер.
+      # Максимальная длина слова - 32 символа.
+  word_buffer:
+      .space 32
+#+END_SRC
+
+
+#+NAME: word_number
+#+BEGIN_SRC asm
+  defcode "NUMBER",6,,NUMBER
+      pop     %rcx            # length of string
+      pop     %rdi            # start address of string
+      call    _NUMBER
+      push    %rax            # parsed number
+      push    %rcx            # number of unparsed characters (0 = no error)
+      NEXT
+
+  _NUMBER:
+      xor     %rax, %rax
+      xor     %rbx, %rbx
+      # Попытка распарсить пустую строку это ошибка но мы возвращаем 0
+      test    %rcx, %rcx
+      jz  5f                  #-> RET #
+      # Строка не пуста, будем разбирать
+      movl    (var_BASE), %rdx#       # Получаем BASE в %dl
+      # Проверим, может быть первый символ '-'?
+      movb    (%rdi), %bl     #       # %bl = первый символ строки
+      inc     %rdi            #       #
+      push    %rax            #       # push 0 в стек
+      cmpb    $'-', %bl       #       # (Отрицательное число)?
+      jnz 2f                  #-+     # ?-Нет, переходим к конвертации (2)
+      pop     %rax            # |     # ?-Да, заберем обратно 0 из стека,
+      push    %rbx            # |     #       push не ноль в стек, как индикатор отрицательного
+      dec     %rcx            # |     #       уменьшим счетчик оставшихся символов
+      jnz 1f                  #-----+ #       (Строка закончилась)? ?-Нет: переход на (1)
+      pop     %rbx            # |   | #       ?-Да - это ошибка, строка "-". Забираем из стека
+      movl    $1, %rcx        # |   | #            помещаем в возвращаемую нераспарсенную длину
+      ret                     # |   | #            единицу и выходим.
+      # --------------------- # |   | # -------------------------------------------------------
+      # Цикл чтения чисел     # |   | #
+  1:  #                    <========+ #
+      imull   %rdx, %rax      # |   | # %rax *= BASE
+      movb    (%rdi), %bl     # |   | # %bl = следующий символ в строке
+      inc     %rdi            # |   | # Увеличиваем указатель
+  2:  #                    <----+   | #
+      # Преобразуем 0-9, A-Z в числа 0-35.
+      subb    $'0', %bl       #     | # (< '0')?
+      jb  4f                  #---+ | # ?-Да, херня какая-то, а не цифра, ошибка, идем на (4)
+      cmp     $10, %bl        #   | | # ?-Нет, (<= '9')?
+      jb  3f                  #-+ | | #        ?-Да, идем на (3), это число между 0 и 9
+      subb    $17, %bl        # | | | #        ?-Нет, (< 'A')? потому что (17 = 'A'-'0')
+      jb  4f                  #---+ | #               ?-Да, это ошибка, идем на (4)
+      addb    $10, %bl        # | | | #               ?-Нет, добавляем к значению 10
+  3:  #                     <---+ | | #
+      cmp     %dl, %bl        #   | | #                      (RESULT >= BASE)?
+      jge 4f                  #---+ | #                      ?-Да, перебор, идем на (4)
+      add     %rbx, %rax      #   | | #                      ?-Нет, все в порядке. Добавляем
+      dec     %rcx            #   | | #                        RESULT к %rax и LOOP-им дальше.
+      jnz 1b                  #---|-+ #
+  4:  #                     <-----+   #
+      # Тут мы оказываемся если цикл закончился - тогда у нас %rcx=0
+      # В ином случае %rcx содержит количество нераспарсенных символов
+      # Если у нас отрицательный результат, то первый символ '-' (сохранен в стеке)
+      pop     %rbx            #       #
+      test    %rbx, %rbx      #       # (Отрицательное число)?
+      jz  5f                  #-+     # ?-Нет, возвращаем как есть (5)
+      neg     %rax            # |     # ?-Да, инвертируем
+  5:  #                     <---+
+      ret
+#+END_SRC
+
+** FIND - просмотр словаря
+
+#+NAME: word_find
+#+BEGIN_SRC asm
+      defcode "FIND",4,,FIND
+      pop     %rcx            # %rcx = длина строки
+      pop     %rdi            # %rdi = адрес строки
+      call    _FIND
+      push    %rax            # %rax = адрес слова (или ноль)
+      NEXT
+  _FIND:
+      push    %rsi            # Сохраним %rsi - так мы сможем использовать этот
+                              # регистр для сравнения строк командой CMPSB
+      # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
+      mov     (var_LATEST), %rdx          # %rdx теперь указывает на последнее слово в словаре
+  1:  #                   <------------+
+      test    %rdx, %rdx      # (в %rdx находится NULL-указатель, т.е. словарь кончился)?
+      je  4f                  #-----+  |  # ?-Да, переходим вперед к (4)
+      #                             |  |
+      # Сравним ожидаемую длину и длину слова
+      # Внимание, если F_HIDDEN установлен для этого слова, то совпадения не будет.
+      xor     %rax, %rax      #     |  |  # Очищаем %rax
+      movb    8(%rdx), %al    #     |  |  # %al = flags+length
+      andb    $(F_HIDDEN|F_LENMASK), %al  # %al = теперь длина имени (маскируем флаги)
+      cmpb    %cl, %al        #     |  |  # (Длины одинаковые?)
+      jne 2f                  #--+  |  |  # ?-Нет, переходим вперед к (2)
+      #                          |  |  |
+      # Переходим к детальному сравнению
+      push    %rcx            #  |  |  |  # Сохраним длину, потому что repe cmpsb уменьшает %rcx
+      push    %rdi            #  |  |  |  # Сохраним адрес, потому что repe cmpsb двигает %rdi
+      lea     9(%rdx), %rsi   #  |  |  |  # Загружаем в %rsi адрес начала имени слова
+      repe    cmpsb           #  |  |  |  # Сравниваем
+      pop     %rdi            #  |  |  |  # Восстанавливаем адрес
+      pop     %rcx            #  |  |  |  # Восстановим длину
+      jne 2f                  #--+  |  |  # ?-Если не равны - переходим вперед к (2)
+      #                          |  |  |
+      # Строки равны - возвратим указатель на заголовок в %rax
+      pop     %rsi            #  |  |  |  # Восстановим %rsi
+      mov     %rdx, %rax      #  |  |  |  # %rdx все еще содержит указатель, который возвращаем
+      ret                     #  |  |  |  # Возврат
+      # ----------------- RET    |  |  |
+  2:  #                     <----+  |  |
+      mov     (%rdx), %rdx    #     |  |  # Переходим по указателю к следующему слову
+      jmp 1b                  #     |  |  # И зацикливаемся
+      # ----------------------------|--+
+  4:  #                     <-------+
+      # Слово не найдено
+      pop     %rsi            # Восстановим сохраненный %rsi
+      xor     %rax, %rax      # Возвратим ноль в %rax
+      ret                     # Возврат
+#+END_SRC
+
+
+#+NAME: word_tcfa
+#+BEGIN_SRC asm
+      defcode ">CFA",4,,TCFA
+      pop     %rdi
+      call    _TCFA
+      push    %rdi
+      NEXT
+  _TCFA:
+      xor     %rax, %rax
+      add     $8, %rdi        # Пропускаем LINK - указатель на предыдущее слово
+      movb    (%rdi), %al     # Загружаем flags+len в %al
+      inc     %rdi            # Пропускаем flags+len байт
+      andb    $F_LENMASK, %al # Маскируем, чтобы получить длину имени, без флагов
+      add     %rax, %rdi      # Пропускаем имя
+      addl    $7, %rdi        # Учитываем выравнивание
+      andl    $~7, %rdi
+      ret
+#+END_SRC
+
+
+#+NAME: word_tdfa
+#+BEGIN_SRC asm
+  defword ">DFA",4,,TDFA
+      .quad TCFA       # >CFA     (получаем code field address)
+      .quad INCR8      # 8+       (добавляем 8, чтобы получить адрес первого слова в опредении)
+      .quad EXIT       # EXIT     (возвращаемся)
+#+END_SRC
+
+** Компиляция
+
+#+NAME: word_create
+#+BEGIN_SRC asm
+  defcode "CREATE",6,,CREATE
+
+      # Получаем length и address имени из стека данных
+      pop     %rcx            # %rcx = length
+      pop     %rbx            # %rbx = address
+
+      # Формируем указатель LINK
+      movl    (var_HERE), %rdi# %rdi теперь указывает на заголовок
+      movl    (var_LATEST), %rax # Получаем указатель на последнее слово -
+                              # - это LINK создаваемого слова
+      stosl                   # и сохраняем его в формируемое слово
+
+      # Формируем Байт длины и имя слова
+      mov     %cl,%al         # Получаем длину
+      stosb                   # Сохраняем length/flags байт.
+      push    %rsi            # Ненадолго сохраним %rsi
+      mov     %rbx, %rsi      # в %rsi теперь адрес начала имени
+      rep     movsb           # Копируем имя слова
+      pop     %rsi            # Восстановим %rsi
+      addl    $7, %rdi        # Вычислим выравнивание
+      andl    $~7, %rdi
+
+      # Обновим LATEST и HERE.
+      movl    (var_HERE), %rax
+      movl    %rax, (var_LATEST)
+      movl    %rdi, (var_HERE)
+      NEXT
+#+END_SRC
+
+
+#+NAME: word_comma
+#+BEGIN_SRC asm
+  defcode ",",1,,COMMA
+      pop     %rax      # Взять со стека данных в %rax то значение, которое будем вкомпиливать
+      call    _COMMA
+      NEXT
+  _COMMA:
+      movl    (var_HERE), %rdi  # получить указатель HERE в %rdi
+      stosl                     # Сохраниь по нему значение из %rax
+      movl    %rdi, (var_HERE)  # Обновить HERE (используя инкремент, сделанный STOSL)
+      ret
+#+END_SRC
+
+
+#+NAME: word_rbrac
+#+BEGIN_SRC asm
+  defcode "[",1,F_IMMED,LBRAC
+      xor     %rax, %rax
+      movl    %rax, (var_STATE)   # Установить STATE в 0
+      NEXT
+
+  defcode "]",1,,RBRAC
+      movl    $1, (var_STATE)     # Установить STATE в 1
+      NEXT
+#+END_SRC
+
+
+#+NAME: word_colon
+#+BEGIN_SRC asm
+  defword ":",1,,COLON
+      .quad WORD               # Получаем имя нового слова
+      .quad CREATE             # CREATE заголовок записи словаря
+      .quad LIT, DOCOL, COMMA  # Добавляем DOCOL (как codeword).
+      .quad LATEST, FETCH, HIDDEN # Делаем слово скрытым (см. ниже определение HIDDEN).
+      .quad RBRAC              # Переходим в режим компиляции
+      .quad EXIT               # Возврат из функции
+#+END_SRC
+
+~;~ (SEMICOLON) также элегантно прост. Обратите внимание на флаг F＿IMMED.
+
+#+NAME: word_semicolon
+#+BEGIN_SRC asm
+  defword ";",1,F_IMMED,SEMICOLON
+      .quad LIT, EXIT, COMMA   # Добавляем EXIT (так слово делает RETURN).
+      .quad LATEST, FETCH, HIDDEN # Переключаем HIDDEN flag  (см. ниже для определения).
+      .quad LBRAC              # Возвращаемся в IMMEDIATE режим.
+      .quad EXIT               # Возврат из функции
+#+END_SRC
+
+** Расширение компилятора
+
+*** IMMEDIATE
+
+#+NAME: word_immediate
+#+BEGIN_SRC asm
+  defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
+      mov     (var_LATEST), %rdi  # LATEST слово в %rdi.
+      add     $8, %rdi            # Теперь %rdi указывает на байт name/flags
+      xor     $F_IMMED, (%rdi)    # Переключить the F_IMMED бит.
+      NEXT
+#+END_SRC
+
+*** HIDDEN
+
+#+NAME: word_hidden
+#+BEGIN_SRC asm
+  defcode "HIDDEN",6,,HIDDEN
+      pop     %rdi                # Указатель на слово в %rdi
+      add     $8, %rdi            # Теперь указывает на байт length/flags.
+      xor     $F_HIDDEN, (%rdi)   # Переключаем HIDDEN бит.
+      NEXT
+
+  defword "HIDE",4,,HIDE
+      .quad    WORD                # Получаем слово (ищущее за HIDE).
+      .quad    FIND                # Ищем его в словаре
+      .quad    HIDDEN              # Устанавливаем F_HIDDEN флаг.
+      .quad    EXIT                # Выходим
+#+END_SRC
+
+*** TICK
+
+#+NAME: word_tick
+#+BEGIN_SRC asm
+  defcode "'",1,,TICK
+      lodsq                   # Получить адрес следующего слова и пропустить его
+      push     %rax           # Push его в стек
+      NEXT
+#+END_SRC
+
+** Ветвление
+
+#+NAME: word_branch
+#+BEGIN_SRC asm
+  defcode "BRANCH",6,,BRANCH
+      add     (%rsi),%rsi     # добавить offset к instruction pointer
+      NEXT
+
+  defcode "0BRANCH",7,,ZBRANCH
+      pop     %rax
+      test    %rax, %rax      # Вершина стека равна нулю?
+      jz      code_BRANCH     # Если да, вернуться назад к функции BRANCH выше
+      lodsq                   # иначе пропустить смещение
+      NEXT
+#+END_SRC
+
+** Строковые литералы - LITSTRING
+
+LITSTRING - это примитив, используемый для реализации операторов ~ ." ~ И ~ S" ~ (которые
+написаны в формате Forth). См. ниже определение этих операторов.
+
+#+NAME: word_lit
+#+BEGIN_SRC asm
+  defcode "LITSTRING",9,,LITSTRING
+      lodsq                   # Получить длину строки
+      push    %rsi            # push адрес начала строки
+      push    %rax            # push длину
+      addl    %rax,%rsi       # пропустить строку
+      addl    $7,%esi         # но округлить до следующей 4 байтовой границы
+      andl    $~7,%esi
+      NEXT
+#+END_SRC
+
+** Печать строки - TELL
+
+TELL просто печатает строку. Это более эффективно определять в ассемблере, потому что
+мы можем сделать это одним из системных вызовов Linux.
+
+#+NAME: word_tell
+#+BEGIN_SRC asm
+  defcode "TELL",4,,TELL
+      pop     %rdx                # param3: длина строки
+      pop     %rcx                # param2: адрес строки временно помещаем в %rcx
+      push    %rsi                # save %rsi
+      push    %rdi                # save %rdi
+      mov     $stdout, %rdi       # param1: stdout
+      mov     %rcx, %rsi          # param2: адрес строки перемещаем в %rsi
+      mov     $sys_write, %rax    # SYSCALL #4 (write)
+      syscall
+      pop     %rdi                # restore %rdi
+      pop     %rsi                # restore %rsi
+      NEXT
+#+END_SRC
+
+** QUIT
+
+#+NAME: word_quit
+#+BEGIN_SRC asm
+  # QUIT не должна возвращаться (те есть вызывать EXIT).
+  defword "QUIT",4,,QUIT
+      # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
+      .quad RZ
+      # Установить значение, лежащее на стеке параметров, как новое значение вершины стека возвратов
+      .quad RSPSTORE       # Это очищает стек возвратов
+      # Запустить интерпретатор команд                  <-----+
+      .quad INTERPRET      # Интерпретировать следующее слово  |
+      # И навсегда зациклиться                                |
+      .quad BRANCH,-16     # -----------------------------------
+#+END_SRC
+
+** INTERPRET
+
+INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) внутри Forth.
+
+Этот интерпретатор довольно прост, но помните, что в Forth вы всегда можете
+переопределить его более мощным!
+
+#+NAME: word_interpret
+#+BEGIN_SRC asm
+  defcode "INTERPRET",9,,INTERPRET
+      call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
+      # Есть ли слово в словаре?
+      xor     %rax, %rax
+      mov     %rax, (interpret_is_lit)    # Это не литерал (или пока не литерал)
+      call    _FIND           #           # Возвращает в %eax указатель на заголовок или 0
+      test    %rax, %rax      #           # (Совпадение)?
+      jz  1f                  #--------+  # ?-Не думаю! Переход вперед к (1)
+      # Это словарное слово   #        |  # ?-Да. Найдено совпадающее слово. Продолжаем.
+      # Это IMMEDIATE-слово?  #        |  #
+      mov     %rax, %rdi      #        |  # %edi = указатель на слово
+      movb    8(%rdi), %al    #        |  # %al = flags+length.
+      push    %rax            #        |  # Сохраним его (flags+length) ненадолго
+      call    _TCFA           #        |  # Преобразуем entry (в %rdi) в указатель на codeword
+      pop     %rax            #        |  # Восстановим flags+length
+      andb    $F_IMMED, %al   #        |  # (Установлен флаг F_IMMED)?
+      mov     %rdi, %rax      #        |  # %rdi->%rax
+      jnz     4f              #--------|-+# ?-Да, переходим сразу к выполнению (4)
+      jmp 2f                  #--+     | |# ?-Нет, переходим к проверке режима работы (2)
+      # --------------------- #  |     | |# -------------------------------------------------
+  1:  #                   <------|-----+ |
+      # Нет в словаре, будем считать, что это литерал
+      incq    (interpret_is_lit)#|       |# Установим флаг
+      call    _NUMBER         #  |       |# Возвращает число в %rax, %rcx > 0 если ошибка
+      test    %rcx, %rcx      #  |       |# (Удалось распарсить число)?
+      jnz 6f                  #--|-----+ |# ?-Нет, переходим к (6)
+      mov     %rax, %rbx      #  |     | |# ?-Да, Перемещаем число в %ebx,
+      mov     $LIT, %rax      #  |     | |#     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
+  2:  #                   <------+     | |#
+      # Проверим в каком мы режиме     | |#
+      mov     (var_STATE), %rdx#       | |#
+      test    %rdx, %rdx      #        | |#     (Мы компилируемся или выполняемся)?
+      jz  4f                  #-----+  | |#     ?-Выполняемся. Переходим к (4)
+      call    _COMMA          #     |  | |#     ?-Компилируемся. Добавляем словарное определение
+      mov     (interpret_is_lit), %rcx#| |#
+      test    %rcx, %rcx      #     |  | |#       (Это был литерал)?
+      jz      3f              #--+  |  | |#       ?-Нет, переходим к NEXT
+      mov     %rbx, %rax      #  |  |  | |#       ?-Да, поэтому за LIT следует число,
+      call    _COMMA          #  |  |  | |#            вызываем _COMMA, чтобы скомпилить его
+  3:  #                   <------+  |  | |#
+      NEXT                    #     |  | |# NEXT
+      # ---------------------       |  | |# -------------------------------------------------
+  4:  #                   <---------+<-|-+
+      # Выполняемся                    |
+      mov     (interpret_is_lit), %rcx#|
+      test    %rcx, %rcx      #        |  # (Это литерал)?
+      jnz 5f                  #--+     |  # ?-Да, переходим к (5)
+      # Не литерал, выполним прямо сейчас. Мы не осуществляем возврата, но
+      # codeword в конечном итоге вызовет NEXT, который повторно вернет цикл в QUIT
+      jmp     *(%rax)         #  |     |
+      # --------------------- #  |     |  # -------------------------------------------------
+  5:  #                    <-----+     |
+      # Выполняем литерал, что означает, что мы push-им его в стек и делаем NEXT
+      push    %rbx            #        |
+      NEXT                    #        |
+  6:  #                    <-----------+
+      # Мы здесь, если не получилось распарсить число в текущей базе или этого
+      # слова нет в словаре. Печатаем сообщение об ошибке и 40 символов контекста.
+      push    %rsi
+      push    %rdi
+      push    %rdx
+      mov     $sys_write, %rax#           # SYSCALL #4 (write)
+      mov     $stderr, %rdi   #           # param1: stderr
+      mov     $errmsg, %rsi   #           # param2: Выводимая строка
+      mov     $errmsgend-errmsg, %rdx     # param3: Длина выводимой строки
+      syscall                 #           # SYSCALL
+      pop     %rdx
+      pop     %rdi
+      pop     %rsi
+      # Ошибка произошла перед currkey
+      mov     (currkey), %rcx #
+      mov     %rcx, %rdx      #
+      sub     $input_buffer, %rdx         # %rdx = (currkey - buffer) (длина буфера перед currkey)
+      cmp     $40, %rdx       #           # (if > 40)?
+      jle 7f                  #--+        # ?-Нет, печатаем все
+      mov     $40, %rdx       #  |        # ?-Да, печатать только 40 символов
+  7:  #                    <-----+
+      sub     %rdx, %rcx      #           # %ecx = start of area to print, %edx = length
+      push    %rsi
+      push    %rdi
+      push    %rdx
+      mov     $sys_write, %eax            # SYSCALL #4 (write)
+      mov     $stderr, %rdi               # param1: stderr
+      mov     %rcx, %rsi                  # param2: Выводимая строка
+      mov     %rdx, $rdx                  # param3: Длина
+      syscall                 #           # SYSCALL
+      pop     %rdx
+      pop     %rdi
+      pop     %rsi
+      # Выведем перевод строки
+      push    %rsi
+      push    %rdi
+      mov     $sys_write, %eax            # SYSCALL #4 (write)
+      mov     $stderr, $rdi               # param1: stderr
+      mov     $errmsgnl, %rsi #           # param2: newline
+      mov     $1, %edx        #           # param3: Длина
+      syscall                 #           # SYSCALL
+      pop     %rdi
+      pop     %rsi
+      NEXT                    #           # NEXT
+      # ---------------------
+      .section .rodata
+  errmsg:
+      .ascii "PARSE ERROR: "
+  errmsgend:
+  errmsgnl:
+      .ascii "\n"
+
+      .data                   # NB: проще записать в .data section
+      .align 8
+  interpret_is_lit:
+      .quad 0                  # Флаг литерала
+#+END_SRC
+
+** CHAR
+
+CHAR помещает код ASCII первого символа следующего слова в стек. Например, ~CHAR A~
+кладет 65 в стек.
+
+#+NAME: word_char
+#+BEGIN_SRC asm
+  defcode "CHAR",4,,CHAR
+      call    _WORD           # Возвращает %ecx = length, %edi = указатель на слово.
+      xor     %rax, %rax
+      movb    (%rdi), %al     # Получаем первый символ слова
+      push    %rax            # Кладем его в стек
+      NEXT
+#+END_SRC
+
+** EXECUTE
+
+EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
+в коде Forth для получения более подробной информации.
+
+С точки зрения реализации EXECUTE делает следующее:
+- берет указатель на ~codeword~ слова, которое нужно выполнить.
+- т.к. этот ~codeword~ сам является указателем на процедуру выполнения (такую, как
+  DOCON) - осуществляется переход по нему. Т.е. управление передается этой процедуре.
+
+После перехода на токен его NEXT выйдет из текущего слова.
+
+#+NAME: word_execute
+#+BEGIN_SRC asm
+  defcode "EXECUTE",7,,EXECUTE
+      pop     %rax            # Получить токен выполнения в %eax
+      jmp     *(%rax)         # и выполнить jump на него.
+#+END_SRC
+
+** DODOES
+
+Работа этого кода объясняется во второй части
+
+#+NAME: dodoes
+#+BEGIN_SRC asm
+  DODOES:
+      PUSHRSP %rsi            # (с) Сохраняем ESI на стеке возвратов
+
+      pop     %rsi            # (b,d) CALL-RETADDR -> ESI
+
+      lea     4(%rax), %rax   # (a) вычислить param-field DEUX
+      pushl   %rax            # (a) push его на стек данных
+
+      NEXT                    # (e) вызвать интерпретатор
+
+  defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
+#+END_SRC
+
+** Системные вызовы
+
+SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См.
+список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3
+параметров syscall, а также номер системного вызова.
+
+В этом Forth SYSCALL0 должен быть последним словом во встроенном (ассемблерном)
+словаре, потому что мы инициализируем переменную LATEST, чтобы указать на нее. Это
+означает, что если вы хотите расширить ассемблерную часть, вы должны поместить новые
+слова перед SYSCALL0 или изменить способ инициализации LATEST.
+
+#+NAME: word_syscalls
+#+BEGIN_SRC asm
+  ;; defcode "SYSCALL3",8,,SYSCALL3
+  ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+  ;;     pop     %ebx            # Первый параметр.
+  ;;     pop     %ecx            # Второй параметр
+  ;;     pop     %edx            # Третий параметр
+  ;;     int     $0x80
+  ;;     push    %eax            # Результат
+  ;;     NEXT
+
+    defcode "SYSCALL3",8,,SYSCALL3
+    mov %rsi,%r10 //save %rsi
+    mov %rdi,%r9 //save %rdi
+    pop %rax        // System call number (see <asm/unistd.h>)
+    pop %rdi        // First parameter.
+    pop %rsi        // Second parameter
+    pop %rdx        // Third parameter
+    syscall
+    push %rax       // Result (negative for -errno)
+    mov %r10,%rsi
+    mov %r9,%rdi
+    NEXT
+
+  ;; defcode "SYSCALL2",8,,SYSCALL2
+  ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+  ;;     pop     %ebx            # Первый параметр.
+  ;;     pop     %ecx            # Второй параметр
+  ;;     int     $0x80
+  ;;     push    %eax            # Результат
+  ;;     NEXT
+
+    defcode "SYSCALL2",8,,SYSCALL2
+    mov %rsi,%r10 //save %rsi
+    mov %rdi,%r9 //save %rdi
+    pop %rax        // System call number (see <asm/unistd.h>)
+    pop %rdi        // First parameter.
+    pop %rsi        // Second parameter
+    syscall
+    push %rax       // Result (negative for -errno)
+    mov %r10,%rsi
+    mov %r9,%rdi
+    NEXT
+
+  ;; defcode "SYSCALL1",8,,SYSCALL1
+  ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+  ;;     pop     %ebx            # Первый параметр.
+  ;;     int     $0x80
+  ;;     push    %eax            # Результат
+  ;;     NEXT
+
+    defcode "SYSCALL1",8,,SYSCALL1
+    mov %rsi,%r10 //save %rsi
+    mov %rdi,%r9 //save %rdi
+    pop %rax        // System call number (see <asm/unistd.h>)
+    pop %rdi        // First parameter.
+    syscall
+    push %rax       // Result (negative for -errno)
+    mov %r10,%rsi
+    mov %r9,%rdi
+    NEXT
+
+  ;; defcode "SYSCALL0",8,,SYSCALL0
+  ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+  ;;     int     $0x80
+  ;;     push    %eax            # Результат
+  ;;     NEXT
+
+    defcode "SYSCALL0",8,,SYSCALL0
+    pop %rax        // System call number (see <asm/unistd.h>)
+    syscall
+    push %rax       // Result (negative for -errno)
+    NEXT
+#+END_SRC
+
+** Сегмент стека и буффер ввода
+
+#+NAME: sys_ret_stack_and_input_buffer
+#+BEGIN_SRC asm
+      .bss
+
+      # Стек возвратов Forth
+      .set RETURN_STACK_SIZE,8192
+      .align 4096
+  return_stack:
+      .space RETURN_STACK_SIZE
+  return_stack_top:           # Initial top of return stack.
+
+      # Буфер ввода
+      .set INPUT_BUFFER_SIZE,4096
+      .align 4096
+  input_buffer:
+      .space INPUT_BUFFER_SIZE
+
+      # Буфер данных - cюда указывает HERE
+      .set INITIAL_DATA_SEGMENT_SIZE,65536
+      .align 4096
+  data_buffer:
+      .space INITIAL_DATA_SEGMENT_SIZE
+#+END_SRC
+
+* Tangling
+
+Теперь мы можем переходить к высокоуровневой части. Она лежит в разделе: [[file:jonesforth-2.org][Forth-часть]]
+
+А тут осталась только сборка всего кода в один ассемблерный файл:
+
+#+NAME: macros
+#+BEGIN_SRC asm
+  <<macro_next>>
+
+  <<macro_pushrsp>>
+
+  <<macro_poprsp>>
+
+  <<macro_defword>>
+
+  <<macro_defcode>>
+
+  <<macro_defvar>>
+
+  <<macro_defconst>>
+#+END_SRC
+
+#+NAME: assembly
+#+BEGIN_SRC asm :tangle src/src/jonesforth64.s :noweb tangle :exports code :padline no :comments none
+  <<flags>>
+
+  <<macros>>
+
+  <<built_in_vars>>
+
+  <<built_in_constants>>
+
+  <<asm_docol>>
+
+  <<words_for_retstack>>
+
+  <<simple_primitives>>
+
+  <<mod>>
+
+  <<comparison>>
+
+  <<exit>>
+
+  <<store>>
+
+  <<char_store>>
+
+  <<data_stack_words>>
+
+  <<word_key>>
+
+  <<word_emit>>
+
+  <<word_word>>
+
+  <<word_find>>
+
+  <<word_tcfa>>
+
+  <<word_tdfa>>
+
+  <<word_number>>
+
+  <<word_lit>>
+
+  <<word_tell>>
+
+  <<word_create>>
+
+  <<word_comma>>
+
+  <<word_rbrac>>
+
+  <<word_colon>>
+
+  <<word_semicolon>>
+
+  <<word_immediate>>
+
+  <<word_hidden>>
+
+  <<word_tick>>
+
+  <<word_interpret>>
+
+  <<word_branch>>
+
+  <<word_quit>>
+
+  <<word_char>>
+
+  <<word_execute>>
+
+  <<dodoes>>
+
+  <<word_syscalls>>
+
+  <<asm_entry>>
+
+  <<sys_ret_stack_and_input_buffer>>
+
+#+END_SRC
