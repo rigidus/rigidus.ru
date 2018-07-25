@@ -86,7 +86,7 @@ defconst "F_IMMED",7,,__F_IMMED,F_IMMED
 defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
 defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
 
-.set sys_exit,1
+.set sys_exit,60
 .set sys_read,0
 .set sys_write,1
 .set sys_open,5
@@ -115,6 +115,9 @@ defconst "O_EXCL",6,,__O_EXCL,0200
 defconst "O_TRUNC",7,,__O_TRUNC,01000
 defconst "O_APPEND",8,,__O_APPEND,02000
 defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
+
+.set wordsize,8
+defconst "WORDSIZE",8,,WORDSIZE,wordsize
 
     .text
     .align 8
@@ -479,27 +482,27 @@ _KEY:                       # <--+
     cmp     (bufftop), %rbx #    |  # (bufftop >= currkey)? - в буфере есть символы?
     jge     1f              #-+  |  # ?-Нет, переходим вперед
     xor     %rax, %rax      # |  |  # ?-Да,  (1) переносим символ, на который
-    mov     (%rbx), %al     # |  |  #        указывает bufftop в %rax,
-    inc     %rbx            # |  |  #        (2) инкрементируем копию bufftop
+    mov     (%rbx), %al     # |  |  #        указывает currkey в %rax,
+    inc     %rbx            # |  |  #        (2) инкрементируем копию currkey
     mov     %rbx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
     ret                     # |  |  #        и выходим (в %rax лежит символ)
     # ---------------- RET    |  |
 1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
-    push    %rsi            #    |  #
+    push    %rsi            #    |  # Сохраняем %rsi & %rdi
     push    %rdi            #    |  #
-    mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
-    mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi ?
+    mov     $stdin, %rdi    #    |  #  param1: Дескриптор stdin в %rdi
+    mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi
     mov     %rsi, currkey   #    |  #  Сохраняем его (адрес буфера) ввода в currkey
     mov     $INPUT_BUFFER_SIZE, %rdx # param3: Максимальная длина ввода в %rdx
     mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
     syscall                 #    |  #  SYSCALL
-    pop     %rdi            #    |
-    pop     %rsi            #    |
     # Проверяем возвращенное     |  # должно быть количество символов + '\n'
     test    %rax, %rax      #    |  # (%rax <= 0)?
     jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
-    add     %rax, %rcx      # |  |  # ?-Нет, (1) добавляем в %rcx кол-во прочитанных байт
-    mov     %rcx, bufftop   # |  |  #        (2) записываем %rcx в bufftop
+    add     %rax, %rsi      # |  |  # ?-Нет, (1) добавляем в %rsi кол-во прочитанных байт
+    mov     %rsi, (bufftop) # |  |  #        (2) записываем %rsi в bufftop
+    pop     %rdi            # |  |  # Теперь можно восстановить %rdi & %rsi
+    pop     %rsi            # |  |
     jmp     _KEY            # |  |
     # ------------------------|--+
 2:  #                     <---+     # Ошибка или конец потока ввода - выходим
@@ -825,36 +828,32 @@ defcode "'",1,,TICK
     NEXT
 
 defcode "INTERPRET",9,,INTERPRET
-
-
-
+    /* Тестовый ввод
     push    %rsi            #    |  #
     push    %rdi            #    |  #
-
     mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
     mov     $scratch, %rsi  #    |  #  param2: Кладем адрес буфера ввода в %rsi
     mov     $1, %rdx        #    |  #  param3: Максимальная длина ввода в %rdx
     mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
     syscall                 #    |  #  SYSCALL
-
-    pop     %rdi            #    |
-    pop     %rsi            #    |
-
-
-
+    pop     %rdi            #    |  #
+    pop     %rsi            #    |  #
+    */
+    /* Тестовый вывод
     mov     $stdout, %rdi           # param1: stdout в $rdi
     mov     $scratch, %rsi          # param2: адрес выводимого значения в %rsi
     mov     $1, %rdx                # param3: длина
     mov     $sys_write, %rax        # SYSCALL #4 (write)
     syscall
-
+    */
+    /* Тестовый выход
     ret
-
+    */
+    /* Тестовые данные
     .data           # NB: проще записать в .data section
 scratch:
     .space 1        # Место для байта, который выводит EMIT
-
-
+    */
 
     call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
     # Есть ли слово в словаре?
@@ -916,10 +915,10 @@ scratch:
     push    %rsi
     push    %rdi
     push    %rdx
-    mov     $sys_write, %rax#           # SYSCALL #4 (write)
     mov     $stderr, %rdi   #           # param1: stderr
     mov     $errmsg, %rsi   #           # param2: Выводимая строка
     mov     $errmsgend-errmsg, %rdx     # param3: Длина выводимой строки
+    mov     $sys_write, %rax#           # SYSCALL write
     syscall                 #           # SYSCALL
     pop     %rdx
     pop     %rdi
@@ -932,14 +931,14 @@ scratch:
     jle 7f                  #--+        # ?-Нет, печатаем все
     mov     $40, %rdx       #  |        # ?-Да, печатать только 40 символов
 7:  #                    <-----+
-    sub     %rdx, %rcx      #           # %ecx = start of area to print, %edx = length
+    sub     %rdx, %rcx      #           # %rcx = start of area to print, %edx = length
     push    %rsi
     push    %rdi
     push    %rdx
-    mov     $sys_write, %eax            # SYSCALL #4 (write)
     mov     $stderr, %rdi               # param1: stderr
     mov     %rcx, %rsi                  # param2: Выводимая строка
     mov     %rdx, %rdx                  # param3: Длина
+    mov     $sys_write, %eax            # SYSCALL write
     syscall                 #           # SYSCALL
     pop     %rdx
     pop     %rdi
@@ -947,10 +946,10 @@ scratch:
     # Выведем перевод строки
     push    %rsi
     push    %rdi
-    mov     $sys_write, %eax            # SYSCALL #4 (write)
     mov     $stderr, %rdi               # param1: stderr
     mov     $errmsgnl, %rsi #           # param2: newline
     mov     $1, %edx        #           # param3: Длина
+    mov     $sys_write, %eax            # SYSCALL write
     syscall                 #           # SYSCALL
     pop     %rdi
     pop     %rsi
