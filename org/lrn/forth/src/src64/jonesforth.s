@@ -87,8 +87,8 @@ defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
 defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
 
 .set sys_exit,1
-.set sys_read,3
-.set sys_write,4
+.set sys_read,0
+.set sys_write,1
 .set sys_open,5
 .set sys_close,6
 .set sys_creat,8
@@ -487,11 +487,11 @@ _KEY:                       # <--+
 1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
     push    %rsi            #    |  #
     push    %rdi            #    |  #
-    mov     $sys_read, %rax #    |  #  param0: SYSCALL #3 (read) в %rax
     mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
     mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi ?
     mov     %rsi, currkey   #    |  #  Сохраняем его (адрес буфера) ввода в currkey
     mov     $INPUT_BUFFER_SIZE, %rdx # param3: Максимальная длина ввода в %rdx
+    mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
     syscall                 #    |  #  SYSCALL
     pop     %rdi            #    |
     pop     %rsi            #    |
@@ -523,11 +523,11 @@ defcode "EMIT",4,,EMIT
 _EMIT:
     push    %rsi            #    |  #
     push    %rdi            #    |  #
-    mov     $sys_write, %rax        # SYSCALL #4 (write)
     mov     $stdout, %rdi           # param1: stdout в $rdi
     mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
     mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
     mov     $1, %rdx                # param3: длина
+    mov     $sys_write, %rax        # SYSCALL write
     syscall
     pop     %rdi            #    |
     pop     %rsi            #    |
@@ -734,7 +734,7 @@ defcode "TELL",4,,TELL
     push    %rdi                # save %rdi
     mov     $stdout, %rdi       # param1: stdout
     mov     %rcx, %rsi          # param2: адрес строки перемещаем в %rsi
-    mov     $sys_write, %rax    # SYSCALL #4 (write)
+    mov     $sys_write, %rax    # SYSCALL write
     syscall
     pop     %rdi                # restore %rdi
     pop     %rsi                # restore %rsi
@@ -825,7 +825,36 @@ defcode "'",1,,TICK
     NEXT
 
 defcode "INTERPRET",9,,INTERPRET
-  #  ret
+
+
+
+    push    %rsi            #    |  #
+    push    %rdi            #    |  #
+
+    mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
+    mov     $scratch, %rsi  #    |  #  param2: Кладем адрес буфера ввода в %rsi
+    mov     $1, %rdx        #    |  #  param3: Максимальная длина ввода в %rdx
+    mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
+    syscall                 #    |  #  SYSCALL
+
+    pop     %rdi            #    |
+    pop     %rsi            #    |
+
+
+
+    mov     $stdout, %rdi           # param1: stdout в $rdi
+    mov     $scratch, %rsi          # param2: адрес выводимого значения в %rsi
+    mov     $1, %rdx                # param3: длина
+    mov     $sys_write, %rax        # SYSCALL #4 (write)
+    syscall
+
+    ret
+
+    .data           # NB: проще записать в .data section
+scratch:
+    .space 1        # Место для байта, который выводит EMIT
+
+
 
     call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
     # Есть ли слово в словаре?
