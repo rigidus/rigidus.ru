@@ -506,6 +506,8 @@ _KEY:                       # <--+
     jmp     _KEY            # |  |
     # ------------------------|--+
 2:  #                     <---+     # Ошибка или конец потока ввода - выходим
+    pop     %rdi            #       # Сначала надо восстановить %rdi & %rsi
+    pop     %rsi            #
     mov     $sys_exit, %rax         # param1: SYSCALL #1 (exit)
     xor     %rdi, %rdi              # param2: код возврата
     syscall                         # SYSCALL
@@ -828,33 +830,6 @@ defcode "'",1,,TICK
     NEXT
 
 defcode "INTERPRET",9,,INTERPRET
-    /* Тестовый ввод
-    push    %rsi            #    |  #
-    push    %rdi            #    |  #
-    mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
-    mov     $scratch, %rsi  #    |  #  param2: Кладем адрес буфера ввода в %rsi
-    mov     $1, %rdx        #    |  #  param3: Максимальная длина ввода в %rdx
-    mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
-    syscall                 #    |  #  SYSCALL
-    pop     %rdi            #    |  #
-    pop     %rsi            #    |  #
-    */
-    /* Тестовый вывод
-    mov     $stdout, %rdi           # param1: stdout в $rdi
-    mov     $scratch, %rsi          # param2: адрес выводимого значения в %rsi
-    mov     $1, %rdx                # param3: длина
-    mov     $sys_write, %rax        # SYSCALL #4 (write)
-    syscall
-    */
-    /* Тестовый выход
-    ret
-    */
-    /* Тестовые данные
-    .data           # NB: проще записать в .data section
-scratch:
-    .space 1        # Место для байта, который выводит EMIT
-    */
-
     call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
     # Есть ли слово в словаре?
     xor     %rax, %rax
