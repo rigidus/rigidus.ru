@@ -782,11 +782,10 @@ html-кода, относящегося к разметке. Из-за этог�
          (transform-serp-vacancy)
          (transform-reform-meta-info)
          (transform-control-gt-xs)
-         ;; (linearize-teaser)
+         (linearize-teaser)
          ))
 
-  (print (hh-parse-teaser *last-parse-teaser*))
-
+  ;; (print (hh-parse-teaser *last-parse-teaser*))
   ;; (print *last-parse-teaser*)
 #+END_SRC
 
@@ -813,6 +812,12 @@ html-кода, относящегося к разметке. Из-за этог�
         (when match-p
           (setf salary-max  (parse-integer (aref result 1)))
           (setf salary-text (string-left-trim '(#\Space) (aref result 2)))))
+      (multiple-value-bind  (match-p result)
+          (ppcre:scan-to-strings "((\\d+)-(\\d+))(.*)" salary-text)
+        (when match-p
+          (setf salary-min  (parse-integer (aref result 1)))
+          (setf salary-max  (parse-integer (aref result 2)))
+          (setf salary-text (string-left-trim '(#\Space) (aref result 3)))))
       (setf comment salary-text)
       (values salary-min salary-max comment)))
 #+END_SRC
@@ -824,21 +829,22 @@ html-кода, относящегося к разметке. Из-за этог�
 
 #+NAME: parse_salary_currency
 #+BEGIN_SRC lisp
-  (defun parse-salary-currency (salary-text currency)
-    (cond ((equal currency "RUR")
-           (setf salary-text (ppcre:regex-replace-all " руб." salary-text "")))
-          ((equal currency "USD")
-           (setf salary-text (ppcre:regex-replace-all " USD" salary-text "")))
-          ((equal currency "EUR")
-           (setf salary-text (ppcre:regex-replace-all " EUR" salary-text "")))
-          ((equal currency "UAH")
-           (setf salary-text (ppcre:regex-replace-all " грн." salary-text "")))
-          ((equal currency nil)
-           'nil)
-          (t (progn
-               (print currency)
-               (err 'unk-currency))))
-    (values currency salary-text))
+  (defun parse-salary-currency (salary-text)
+    (let ((currency "RUR"))
+      (cond ((ppcre:all-matches-as-strings "руб." salary-text)
+             (progn
+               (setf salary-text (ppcre:regex-replace-all " руб." salary-text ""))
+               (setf currency "RUR")))
+            ((ppcre:all-matches-as-strings "USD" salary-text)
+             (progn
+              (setf salary-text (ppcre:regex-replace-all " USD" salary-text ""))
+              (setf currency "USD")))
+            ((ppcre:all-matches-as-strings "EUR" salary-text)
+             (progn
+               (setf salary-text (ppcre:regex-replace-all " EUR" salary-text ""))
+               (setf currency "USD")))
+            (t (setf currency "RUR")))
+      (values currency salary-text)))
 #+END_SRC
 
 ** Набор преобразователей для тизеров
@@ -958,31 +964,25 @@ html-кода, относящегося к разметке. Из-за этог�
       `(:meta-info ,@rest)))
 
   (make-transform (compensation)
-    (`("vacancy-serp__vacancy-compensation" NIL ,salary)
-      `(compensation ,salary)))
-
-    ;; (`("vacancy-serp__vacancy-compensation"
-    ;;    NIL
-    ;;    ("meta" (("itemprop" "salaryCurrency") ("content" ,currency)))
-    ;;    ("meta" (("itemprop" "baseSalary") ("content" ,salary)))
-    ;;    ,salary-text)
-    ;;   (let ((currency currency)
-    ;;         (salary-text (ppcre:regex-replace-all " " salary-text ""))
-    ;;         (salary-min nil)
-    ;;         (salary-max nil))
-    ;;     (multiple-value-bind (currency salary-text)
-    ;;         (parse-salary-currency salary-text currency)
-    ;;       (multiple-value-bind (salary-min salary-max comment)
-    ;;           (parse-salary-text salary-text)
-    ;;         (when (null salary-min)
-    ;;           (setf salary-min salary-max))
-    ;;         (when (null salary-max)
-    ;;           (setf salary-max salary-min))
-    ;;         `(:currency ,currency
-    ;;                     :salary ,(parse-integer salary)
-    ;;                     :salary-text ,salary-text
-    ;;                     :salary-min ,salary-min
-    ;;                     :salary-max ,salary-max))))))
+    (`("vacancy-serp__vacancy-compensation"
+       NIL
+       ,salary-text)
+      (let ((salary-text (ppcre:regex-replace-all " " salary-text ""))
+            (salary-min nil)
+            (salary-max nil))
+        (multiple-value-bind (currency salary-text)
+            (parse-salary-currency salary-text)
+          (multiple-value-bind (salary-min salary-max comment)
+              (parse-salary-text salary-text)
+            (when (null salary-min)
+              (setf salary-min salary-max))
+            (when (null salary-max)
+              (setf salary-max salary-min))
+            `(:currency ,currency
+                        :salary ,salary-max
+                        :salary-text ,salary-text
+                        :salary-min ,salary-min
+                        :salary-max ,salary-max))))))
 
   (make-transform (logo)
     (`("vacancy-serp__vacancy-employer-logo"
