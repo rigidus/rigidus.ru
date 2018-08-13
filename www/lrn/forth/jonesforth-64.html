@@ -1,0 +1,1806 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>jonesforth-64</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">jonesforth-64</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#sec-1">Внутреннее устройство Forth-машины</a>
+<ul>
+<li><a href="#sec-1-1">NEXT</a></li>
+<li><a href="#sec-1-2">Макросы для стека возвратов</a></li>
+<li><a href="#sec-1-3">DOCOL - интерпретатор</a></li>
+<li><a href="#sec-1-4">Ассемблерная точка входа</a></li>
+<li><a href="#sec-1-5">Маски для FLAGS/LENGHT</a></li>
+<li><a href="#sec-1-6">Макросы DEFWORD и DEFCODE</a></li>
+<li><a href="#sec-1-7">Базовые примитивы</a></li>
+<li><a href="#sec-1-8">EXIT - Возвращение из форт-слов</a></li>
+<li><a href="#sec-1-9">Литералы</a></li>
+<li><a href="#sec-1-10">Память</a></li>
+<li><a href="#sec-1-11">Встроенные переменные</a></li>
+<li><a href="#sec-1-12">Встроенные константы</a></li>
+<li><a href="#sec-1-13">Стек возвратов</a></li>
+<li><a href="#sec-1-14">Стек данных</a></li>
+<li><a href="#sec-1-15">Ввод и вывод: KEY EMIT WORD NUMBER</a></li>
+<li><a href="#sec-1-16">FIND - просмотр словаря</a></li>
+<li><a href="#sec-1-17">Компиляция</a></li>
+<li><a href="#sec-1-18">Расширение компилятора</a>
+<ul>
+<li><a href="#sec-1-18-1">IMMEDIATE</a></li>
+<li><a href="#sec-1-18-2">HIDDEN</a></li>
+<li><a href="#sec-1-18-3">TICK</a></li>
+</ul>
+</li>
+<li><a href="#sec-1-19">Ветвление</a></li>
+<li><a href="#sec-1-20">Строковые литералы - LITSTRING</a></li>
+<li><a href="#sec-1-21">Печать строки - TELL</a></li>
+<li><a href="#sec-1-22">QUIT</a></li>
+<li><a href="#sec-1-23">INTERPRET</a></li>
+<li><a href="#sec-1-24">CHAR</a></li>
+<li><a href="#sec-1-25">EXECUTE</a></li>
+<li><a href="#sec-1-26">DODOES</a></li>
+<li><a href="#sec-1-27">Системные вызовы</a></li>
+<li><a href="#sec-1-28">Сегмент стека и буффер ввода</a></li>
+</ul>
+</li>
+<li><a href="#sec-2">Tangling</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-sec-1" class="outline-2">
+<h2 id="sec-1">Внутреннее устройство Forth-машины</h2>
+<div class="outline-text-2" id="text-1">
+<p>
+Теперь, обладая работающей 32-разрядной версией мы можем портировать ее на 64 разряда.
+</p>
+</div>
+
+<div id="outline-container-sec-1-1" class="outline-3">
+<h3 id="sec-1-1">NEXT</h3>
+<div class="outline-text-3" id="text-1-1">
+<p>
+Теперь наш макрос <code>NEXT</code> будет делать то же самое, что и раньше но с увеличенным вдвое
+размером адреса:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_next"><span style="color: #af00ff;">.macro</span> NEXT
+    <span style="color: #af00ff;">lodsq</span>
+    <span style="color: #af00ff;">jmp</span> *(<span style="color: #af5f00;">%rax</span>)
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-2" class="outline-3">
+<h3 id="sec-1-2">Макросы для стека возвратов</h3>
+<div class="outline-text-3" id="text-1-2">
+<p>
+Теперь используют 64-разрядные значения:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_pushrsp"><span style="color: #af00ff;">.macro</span> PUSHRSP reg
+    <span style="color: #af00ff;">lea</span>     -8(<span style="color: #af5f00;">%rbp</span>),<span style="color: #af5f00;">%rbp</span>   # &#1076;&#1077;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090; <span style="color: #af5f00;">%rbp</span> &#1085;&#1072; 8
+    <span style="color: #af00ff;">mov</span>     \reg,(<span style="color: #af5f00;">%rbp</span>)     # push reg &#1074; &#1089;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_poprsp"><span style="color: #af00ff;">.macro</span> POPRSP reg
+    <span style="color: #af00ff;">mov</span> (<span style="color: #af5f00;">%rbp</span>),\reg         # pop &#1074;&#1077;&#1088;&#1096;&#1080;&#1085;&#1091; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; &#1074; reg
+    <span style="color: #af00ff;">lea</span> 8(<span style="color: #af5f00;">%rbp</span>),<span style="color: #af5f00;">%rbp</span>        # &#1080;&#1085;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090; <span style="color: #af5f00;">%rbp</span> &#1085;&#1072; 8
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-3" class="outline-3">
+<h3 id="sec-1-3">DOCOL - интерпретатор</h3>
+<div class="outline-text-3" id="text-1-3">
+<p>
+Почти не изменился:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="asm_docol">    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af00ff;">.align</span> 8
+<span style="color: #0000ff;">DOCOL</span>:
+    <span style="color: #af00ff;">PUSHRSP</span> <span style="color: #af5f00;">%rsi</span>            # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1090;&#1100; <span style="color: #af5f00;">%rsi</span> &#1074; &#1089;&#1090;&#1077;&#1082;&#1077; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+    <span style="color: #af00ff;">leaq</span>    8(<span style="color: #af5f00;">%rax</span>), <span style="color: #af5f00;">%rsi</span>   # <span style="color: #af5f00;">%rsi</span> &#1090;&#1077;&#1087;&#1077;&#1088;&#1100; &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; param-field
+    <span style="color: #af0000;">/*</span>
+<span style="color: #af0000;">    # &#1048;&#1083;&#1080; &#1076;&#1088;&#1091;&#1075;&#1080;&#1084;&#1080; &#1089;&#1083;&#1086;&#1074;&#1072;&#1084;&#1080;:</span>
+<span style="color: #af0000;">    # add   $8, %rax</span>
+<span style="color: #af0000;">    # mov   %rax, %rsi</span>
+<span style="color: #af0000;">    */</span>
+    <span style="color: #af00ff;">NEXT</span>                    # &#1044;&#1077;&#1083;&#1072;&#1077;&#1084; NEXT
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-4" class="outline-3">
+<h3 id="sec-1-4">Ассемблерная точка входа</h3>
+<div class="outline-text-3" id="text-1-4">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="asm_entry">    <span style="color: #af0000;">/* </span><span style="color: #af0000;">Assembler entry point. */</span>
+
+    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af00ff;">.globl</span>  forth_asm_start
+    <span style="color: #af00ff;">.type</span>   forth_asm_start, @function
+<span style="color: #0000ff;">forth_asm_start</span>:
+    # &#1057;&#1073;&#1088;&#1072;&#1089;&#1099;&#1074;&#1072;&#1077;&#1084; &#1092;&#1083;&#1072;&#1075; &#1085;&#1072;&#1087;&#1088;&#1072;&#1074;&#1083;&#1077;&#1085;&#1080;&#1103;
+    <span style="color: #af00ff;">cld</span>
+    # &#1047;&#1072;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1077;&#1084; &#1074;&#1077;&#1088;&#1096;&#1080;&#1085;&#1091; &#1089;&#1090;&#1077;&#1082;&#1072; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;&#1086;&#1074; <span style="color: #af5f00;">%rsp</span> &#1074; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1091;&#1102; S0
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsp</span>, (var_S0)
+    # &#1059;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; &#1089;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; <span style="color: #af5f00;">%rbp</span>
+    <span style="color: #af00ff;">mov</span>     $return_stack_top, <span style="color: #af5f00;">%rbp</span>
+    # &#1059;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; HERE &#1085;&#1072; &#1085;&#1072;&#1095;&#1072;&#1083;&#1086; &#1086;&#1073;&#1083;&#1072;&#1089;&#1090;&#1080; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;.
+    <span style="color: #af00ff;">mov</span>     $data_buffer, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, (var_HERE)
+    # &#1048;&#1085;&#1080;&#1094;&#1080;&#1072;&#1083;&#1080;&#1079;&#1080;&#1088;&#1091;&#1077;&#1084; IP
+    <span style="color: #af00ff;">mov</span>     $cold_start, <span style="color: #af5f00;">%rsi</span>
+    # &#1047;&#1072;&#1087;&#1091;&#1089;&#1082;&#1072;&#1077;&#1084; &#1080;&#1085;&#1090;&#1077;&#1088;&#1087;&#1088;&#1077;&#1090;&#1072;&#1090;&#1086;&#1088;
+    <span style="color: #af00ff;">NEXT</span>
+
+    <span style="color: #af00ff;">.section</span> .rodata
+<span style="color: #0000ff;">cold_start</span>:                             # High-level code without a codeword.
+    <span style="color: #af00ff;">.quad</span> QUIT
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-5" class="outline-3">
+<h3 id="sec-1-5">Маски для FLAGS/LENGHT</h3>
+<div class="outline-text-3" id="text-1-5">
+<p>
+Остаются без изменений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="flags"><span style="color: #af00ff;">.set</span> F_IMMED,0x80
+<span style="color: #af00ff;">.set</span> F_HIDDEN,0x20
+<span style="color: #af00ff;">.set</span> F_LENMASK,0x1f  # length mask
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-6" class="outline-3">
+<h3 id="sec-1-6">Макросы DEFWORD и DEFCODE</h3>
+<div class="outline-text-3" id="text-1-6">
+<p>
+<code>defword</code> изменился только в отношении выравнивания и типов (.int -&gt; .quad)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defword">    <span style="color: #af00ff;">.set</span> link,0             # &#1048;&#1085;&#1080;&#1094;&#1080;&#1072;&#1083;&#1080;&#1079;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1085;&#1072;&#1095;&#1072;&#1083;&#1100;&#1085;&#1086;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;
+                            # &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; &#1074;&#1088;&#1077;&#1084;&#1077;&#1085;&#1080; &#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1103;&#1094;&#1080;&#1080; link
+<span style="color: #af00ff;">.macro</span> defword name, namelen, flags=0, label
+    <span style="color: #af00ff;">.section</span> .rodata
+    <span style="color: #af00ff;">.align</span> 8
+    <span style="color: #af00ff;">.globl</span> name_\label
+<span style="color: #0000ff;">name</span>_\label :
+    <span style="color: #af00ff;">.quad</span> link              # link
+    <span style="color: #af00ff;">.set</span> link,name_\label
+    <span style="color: #af00ff;">.byte</span> \flags+\namelen   # flags + &#1073;&#1072;&#1081;&#1090; &#1076;&#1083;&#1080;&#1085;&#1099;
+    <span style="color: #af00ff;">.ascii</span> <span style="color: #87005f;">"\name"</span>          # &#1080;&#1084;&#1103;
+    <span style="color: #af00ff;">.align</span> 8                # &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077; &#1085;&#1072; 8-&#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1091;&#1102; &#1075;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">.globl</span> \label
+\label :
+    <span style="color: #af00ff;">.quad</span> DOCOL             # codeword - &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1102;-&#1080;&#1085;&#1090;&#1077;&#1087;&#1088;&#1077;&#1090;&#1072;&#1090;&#1086;&#1088;
+    # &#1076;&#1072;&#1083;&#1100;&#1096;&#1077; &#1073;&#1091;&#1076;&#1091;&#1090; &#1080;&#1076;&#1090;&#1080; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1080; &#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1072;
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+То же с <code>defcode</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defcode"><span style="color: #af00ff;">.macro</span> defcode name, namelen, flags=0, label
+    <span style="color: #af00ff;">.section</span> .rodata
+    <span style="color: #af00ff;">.align</span> 8
+    <span style="color: #af00ff;">.globl</span> name_\label
+<span style="color: #0000ff;">name</span>_\label :
+    <span style="color: #af00ff;">.quad</span>   link               # link
+    <span style="color: #af00ff;">.set</span>    link,name_\label
+    <span style="color: #af00ff;">.byte</span>   \flags+\namelen    # flags + &#1073;&#1072;&#1081;&#1090; &#1076;&#1083;&#1080;&#1085;&#1099;
+    <span style="color: #af00ff;">.ascii</span>  <span style="color: #87005f;">"\name"</span>            # &#1080;&#1084;&#1103;
+    <span style="color: #af00ff;">.align</span>  8                  # &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077; &#1085;&#1072; 4-&#1093; &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1091;&#1102; &#1075;&#1088;&#1072;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">.globl</span>  \label
+\label :
+    <span style="color: #af00ff;">.quad</span>   code_\label        # codeword
+    <span style="color: #af00ff;">.text</span>
+    <span style="color: #af0000;">//</span><span style="color: #af0000;">.align 8</span>
+    <span style="color: #af00ff;">.globl</span>  code_\label
+<span style="color: #0000ff;">code</span>_\label :
+    # &#1076;&#1072;&#1083;&#1077;&#1077; &#1089;&#1083;&#1077;&#1076;&#1091;&#1077;&#1090; &#1072;&#1089;&#1089;&#1077;&#1084;&#1073;&#1083;&#1077;&#1088;&#1085;&#1099;&#1081; &#1082;&#1086;&#1076;
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-7" class="outline-3">
+<h3 id="sec-1-7">Базовые примитивы</h3>
+<div class="outline-text-3" id="text-1-7">
+<p>
+Теперь несколько простых примитивов Forth. Они написаны на ассемблере для скорости.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="simple_primitives"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DROP"</span>,4,,DROP
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1089;&#1073;&#1088;&#1086;&#1089;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SWAP"</span>,4,,SWAP
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1087;&#1086;&#1084;&#1077;&#1085;&#1103;&#1090;&#1100; &#1084;&#1077;&#1089;&#1090;&#1072;&#1084;&#1080; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DUP"</span>,3,,DUP
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"OVER"</span>,4,,OVER
+    <span style="color: #af00ff;">mov</span>     8(<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rax</span>   # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1090;&#1086;&#1088;&#1086;&#1081; &#1086;&#1090; &#1074;&#1077;&#1088;&#1093;&#1072; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # &#1080; &#1087;&#1086;&#1083;&#1086;&#1078;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086; &#1082;&#1086;&#1087;&#1080;&#1102; &#1089;&#1074;&#1077;&#1088;&#1093;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"ROT"</span>,3,,ROT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-ROT"</span>,4,,NROT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2DROP"</span>,5,,TWODROP
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1089;&#1073;&#1088;&#1086;&#1089;&#1080;&#1090;&#1100; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2DUP"</span>,4,,TWODUP
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">mov</span>     8(<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"2SWAP"</span>,5,,TWOSWAP
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1087;&#1086;&#1084;&#1077;&#1085;&#1103;&#1090;&#1100; &#1084;&#1077;&#1089;&#1090;&#1072;&#1084;&#1080; &#1076;&#1074;&#1077; &#1087;&#1072;&#1088;&#1099; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1086;&#1074; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"?DUP"</span>,4,,QDUP
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rax</span>    # &#1076;&#1091;&#1073;&#1083;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1077;&#1089;&#1083;&#1080; &#1086;&#1085; &#1085;&#1077; &#1085;&#1091;&#1083;&#1077;&#1074;&#1086;&#1081;
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">jz</span>      1f
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+<span style="color: #0000ff;">1</span>:
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"1+"</span>,2,,INCR
+    <span style="color: #af00ff;">incq</span>    (<span style="color: #af5f00;">%rsp</span>)          # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; &#1077;&#1076;&#1080;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"1-"</span>,2,,DECR
+    <span style="color: #af00ff;">decq</span>    (<span style="color: #af5f00;">%rsp</span>)          # &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; &#1077;&#1076;&#1080;&#1085;&#1080;&#1094;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"4+"</span>,2,,INCR4
+    <span style="color: #af00ff;">addq</span>    $4, (<span style="color: #af5f00;">%rsp</span>)      # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 4
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"4-"</span>,2,,DECR4
+    <span style="color: #af00ff;">subq</span>    $4, (<span style="color: #af5f00;">%rsp</span>)      # &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 4
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"8+"</span>,2,,INCR8
+    <span style="color: #af00ff;">addq</span>    $8, (<span style="color: #af5f00;">%rsp</span>)      # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 8
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"8-"</span>,2,,DECR8
+    <span style="color: #af00ff;">subq</span>    $8, (<span style="color: #af5f00;">%rsp</span>)      # &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1072; 8
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"+"</span>,1,,ADD
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rsp</span>)    # &#1087;&#1088;&#1080;&#1073;&#1072;&#1074;&#1080;&#1100; &#1077;&#1075;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1091;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1089;&#1090;&#1072;&#1083; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-"</span>,1,,SUB
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">sub</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rsp</span>)    # &#1074;&#1099;&#1095;&#1077;&#1089;&#1090;&#1100; &#1077;&#1075;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1080;&#1079; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1089;&#1090;&#1072;&#1083; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1084;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"*"</span>,1,,MUL
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1074;&#1079;&#1103;&#1090;&#1100; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;
+    <span style="color: #af00ff;">imul</span>    <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rax</span>      # &#1091;&#1084;&#1085;&#1086;&#1078;&#1080;&#1090;&#1100; &#1080;&#1093; &#1076;&#1088;&#1091;&#1075; &#1085;&#1072; &#1076;&#1088;&#1091;&#1075;&#1072;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # &#1080;&#1075;&#1085;&#1086;&#1088;&#1080;&#1088;&#1091;&#1077;&#1084; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Насколько мне известно, в 64-разрядном режиме нет аналога <code>CDQ</code> поэтому в <code>/MOD</code> регистр
+<code>%rdx</code> очищается вручную. Тогда он полностью становится эквивалентом <code>U/MOD</code>. Тут нужно
+было бы анализировать старший знаковый байт и эмулировать <code>CDQ</code> но пока для простоты и
+скорости сделано так как сделано.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="mod"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"/MOD"</span>,4,,DIVMOD
+    <span style="color: #af00ff;">xor</span> <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">idiv</span>    <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdx</span>            # push &#1086;&#1089;&#1090;&#1072;&#1090;&#1086;&#1082;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # push &#1095;&#1072;&#1089;&#1090;&#1085;&#1086;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"U/MOD"</span>,5,,UDIVMOD
+    <span style="color: #af00ff;">xor</span> <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">div</span>  <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rdx</span>               # push &#1086;&#1089;&#1090;&#1072;&#1090;&#1086;&#1082;
+    <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>               # push &#1095;&#1072;&#1089;&#1090;&#1085;&#1086;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<p>
+Множество сравнительных операций, таких как <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, и.т.д
+</p>
+
+<p>
+Стандарт ANSI Forth говорит, что слова сравнения должны возвращать все двоичные разряды
+равные единице для TRUE, и все двоичные разряды равные нулю для FALSE. Для
+программистов на языке Си это немного странное соглашение, поэтому этот Forth не
+следует ему и возвращает более нормальное (для программистов на Си) значение <code>1</code> для
+TRUE и <code>0</code> для FALSE.
+</p>
+
+<p>
+Причиной этого соглашения является то, что при его использовании слова AND, OR, XOR и
+INVERT могут функционировать одновременно как логические операторы, так и как побитовые
+операторы. Для сравнения, если использовать соглашение языка Си, что FALSE = 0 и TRUE =
+1, вам нужны два набора операторов: <code>&amp;&amp;</code> и <code>&amp;</code>, <code>||</code> и <code>|</code>, и.т.д.
+</p>
+
+<p>
+В будущем я планирую приблизить этот Forth к стандарту ANSI и отказаться от
+использования boolean-соглашений языка Си везде, кроме вызова сишных API. Минусом
+такого подхода будет увеличение накладных расходов при вызове сишных API на конвертацию
+логических значений, и необходимость аккуратно отследить все места изменений.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="comparison"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"="</span>,1,,EQU
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1090;&#1077;&#1082;&#1072; &#1088;&#1072;&#1074;&#1085;&#1099;?
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">sete</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;&gt;"</span>,2,,NEQU
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1076;&#1074;&#1072; &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1093; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1077; &#1088;&#1072;&#1074;&#1085;&#1099;?
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setne</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;"</span>,1,,LT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">setl</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;"</span>,1,,GT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">setg</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&lt;="</span>,2,,LE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">setle</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;="</span>,2,,GE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">setge</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0="</span>,2,,ZEQU
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1088;&#1072;&#1074;&#1077;&#1085; &#1085;&#1091;&#1083;&#1102;?
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setz</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;&gt;"</span>,3,,ZNEQU
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1074;&#1077;&#1088;&#1093;&#1085;&#1080;&#1081; &#1101;&#1083;&#1077;&#1084;&#1077;&#1085;&#1090; &#1089;&#1090;&#1077;&#1082;&#1072; &#1085;&#1077; &#1088;&#1072;&#1074;&#1077;&#1085; &#1085;&#1091;&#1083;&#1102;?
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setnz</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;"</span>,2,,ZLT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # comparisons with 0
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setl</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&gt;"</span>,2,,ZGT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setg</span>    <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&lt;="</span>,3,,ZLE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setle</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0&gt;="</span>,3,,ZGE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">setge</span>   <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">movzb</span>   <span style="color: #af5f00;">%al</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"AND"</span>,3,,AND
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; AND
+    <span style="color: #af00ff;">and</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rsp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"OR"</span>,2,,OR
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; OR
+    <span style="color: #af00ff;">or</span>      <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rsp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"XOR"</span>,3,,XOR
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1073;&#1080;&#1090;&#1086;&#1074;&#1099;&#1081; XOR
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rsp</span>)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"INVERT"</span>,6,,INVERT
+    <span style="color: #af00ff;">notq</span>    (<span style="color: #af5f00;">%rsp</span>)          # &#1101;&#1090;&#1086; &#1073;&#1080;&#1090;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; <span style="color: #87005f;">"NOT"</span> (&#1089;&#1084;. NEGATE and NOT)
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-8" class="outline-3">
+<h3 id="sec-1-8">EXIT - Возвращение из форт-слов</h3>
+<div class="outline-text-3" id="text-1-8">
+<p>
+Благодаря макросам тут нет никаких изменений, кроме размера регистра.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="exit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EXIT"</span>,4,,EXIT
+    <span style="color: #af00ff;">POPRSP</span>  <span style="color: #af5f00;">%rsi</span>            # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1080;&#1079; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; &#1074; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">NEXT</span>                    # &#1057;&#1076;&#1077;&#1083;&#1072;&#1090;&#1100; NEXT
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-9" class="outline-3">
+<h3 id="sec-1-9">Литералы</h3>
+<div class="outline-text-3" id="text-1-9">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_lit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"LIT"</span>,3,,LIT
+    # <span style="color: #af5f00;">%rsi</span> &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1091;&#1102; &#1082;&#1086;&#1084;&#1072;&#1085;&#1076;&#1091;, &#1085;&#1086; &#1074; &#1101;&#1090;&#1086;&#1084; &#1089;&#1083;&#1091;&#1095;&#1072;&#1077; &#1101;&#1090;&#1086; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081;
+    # &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;, &#1087;&#1088;&#1077;&#1076;&#1089;&#1090;&#1072;&#1074;&#1083;&#1103;&#1102;&#1097;&#1080;&#1081; &#1089;&#1086;&#1073;&#1086;&#1081; 8-&#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1086;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;. &#1055;&#1086;&#1083;&#1091;&#1095;&#1077;&#1085;&#1080;&#1077; &#1101;&#1090;&#1086;&#1075;&#1086; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;&#1072; &#1074; <span style="color: #af5f00;">%rax</span>
+    # &#1080; &#1080;&#1085;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090; <span style="color: #af5f00;">%rsi</span> &#1085;&#1072; x86 -  &#1101;&#1090;&#1086; &#1091;&#1076;&#1086;&#1073;&#1085;&#1072;&#1103; &#1086;&#1076;&#1085;&#1086;&#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1072;&#1103; &#1080;&#1085;&#1089;&#1090;&#1088;&#1091;&#1082;&#1094;&#1080;&#1103;! (&#1089;&#1084;. NEXT macro)
+    <span style="color: #af00ff;">lodsq</span>
+    # push literal &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-10" class="outline-3">
+<h3 id="sec-1-10">Память</h3>
+<div class="outline-text-3" id="text-1-10">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="store"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"!"</span>,1,,STORE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089;, &#1082;&#1091;&#1076;&#1072; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rbx</span>)    # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1086; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"@"</span>,1,,FETCH
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1081; &#1085;&#1072;&#1076;&#1086; &#1074;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rbx</span>), <span style="color: #af5f00;">%rax</span>    # &#1074;&#1099;&#1103;&#1089;&#1085;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # push-&#1080;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"+!"</span>,2,,ADDSTORE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1091;&#1102; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1085;&#1072; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rbx</span>)    # &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"-!"</span>,2,,SUBSTORE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1091;&#1102; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1085;&#1072; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">sub</span>     <span style="color: #af5f00;">%rax</span>, (<span style="color: #af5f00;">%rbx</span>)    # &#1074;&#1099;&#1095;&#1080;&#1090;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1080;&#1079; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="char_store"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C!"</span>,2,,STOREBYTE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089;, &#1082;&#1091;&#1076;&#1072; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1090;&#1100;
+    <span style="color: #af00ff;">movb</span>    <span style="color: #af5f00;">%al</span>, (<span style="color: #af5f00;">%rbx</span>)     # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1087;&#1086; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C@"</span>,2,,FETCHBYTE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # &#1079;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1081; &#1085;&#1072;&#1076;&#1086; &#1074;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      # &#1086;&#1095;&#1080;&#1097;&#1072;&#1077;&#1084; &#1088;&#1077;&#1075;&#1080;&#1089;&#1090;&#1088; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rbx</span>), <span style="color: #af5f00;">%al</span>     # &#1074;&#1099;&#1103;&#1089;&#1085;&#1103;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1086; &#1101;&#1090;&#1086;&#1084;&#1091; &#1072;&#1076;&#1088;&#1077;&#1089;&#1091;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # push-&#1080;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+
+# C@C! - &#1101;&#1090;&#1086; &#1087;&#1086;&#1083;&#1077;&#1079;&#1085;&#1099;&#1081; &#1087;&#1088;&#1080;&#1084;&#1080;&#1090;&#1080;&#1074; &#1076;&#1083;&#1103; &#1082;&#1086;&#1087;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; &#1073;&#1072;&#1081;&#1090;
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"C@C!"</span>,4,,CCOPY
+    <span style="color: #af00ff;">mov</span>     8(<span style="color: #af5f00;">%rsp</span>), <span style="color: #af5f00;">%rbx</span>   # &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rbx</span>), <span style="color: #af5f00;">%al</span>     # &#1087;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1073;&#1072;&#1081;&#1090; &#1080;&#1079; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">stosb</span>                   # &#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1073;&#1072;&#1081;&#1090; &#1074; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>            # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">incq</span>    8(<span style="color: #af5f00;">%rsp</span>)         # &#1091;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">NEXT</span>
+
+# CMOVE - &#1086;&#1087;&#1077;&#1088;&#1072;&#1094;&#1080;&#1103; &#1082;&#1086;&#1087;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; &#1073;&#1083;&#1086;&#1082;&#1072; &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CMOVE"</span>,5,,CMOVE
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsi</span>, <span style="color: #af5f00;">%rdx</span>      # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>            # length
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # &#1072;&#1076;&#1088;&#1077;&#1089; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082;&#1072;
+    <span style="color: #af00ff;">rep</span>     movsb           # &#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1080;&#1089;&#1090;&#1086;&#1095;&#1085;&#1080;&#1082; &#1074; &#1087;&#1088;&#1080;&#1077;&#1084;&#1085;&#1080;&#1082; length &#1088;&#1072;&#1079;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rsi</span>      # &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-11" class="outline-3">
+<h3 id="sec-1-11">Встроенные переменные</h3>
+<div class="outline-text-3" id="text-1-11">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defvar"><span style="color: #af00ff;">.macro</span> defvar name, namelen, flags=0, label, initial=0
+    <span style="color: #af00ff;">defcode</span> \name,\namelen,\flags,\label
+    <span style="color: #af00ff;">push</span>    $var_\name
+    <span style="color: #af00ff;">NEXT</span>
+    <span style="color: #af00ff;">.data</span>
+    <span style="color: #af00ff;">.align</span> 8
+    <span style="color: #af00ff;">var_</span>\name :
+    <span style="color: #af00ff;">.quad</span> \initial
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+<p>
+Встроенные переменные:
+</p>
+<ul class="org-ul">
+<li>STATE - состояние интерпретации (ноль) или компиляции слова (не ноль)
+</li>
+<li>LATEST - указатель на последнее заданное слово в словаре.
+</li>
+<li>HERE - указатель на следующий свободный байт памяти. При компиляции скомпилированные
+слова помещаются по этому указателю, а потом он передвигается дальше.
+</li>
+<li>S0 - хранит адрес вершины стека параметров.
+</li>
+<li>BASE - текущая база (radix) для печати и чтения чисел.
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="built_in_vars"><span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"STATE"</span>,5,,STATE
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"HERE"</span>,4,,HERE
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"LATEST"</span>,6,,LATEST,name_SYSCALL0  # SYSCALL0 &#1076;&#1086;&#1083;&#1078;&#1077;&#1085; &#1073;&#1099;&#1090;&#1100; &#1087;&#1086;&#1089;&#1083;&#1077;&#1076;&#1085;&#1080;&#1084; &#1074;&#1089;&#1090;&#1088;&#1086;&#1077;&#1085;&#1085;&#1099;&#1084; &#1089;&#1083;&#1086;&#1074;&#1086;&#1084;
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"S0"</span>,2,,SZ
+<span style="color: #0000ff;">defvar</span> <span style="color: #87005f;">"BASE"</span>,4,,BASE,10
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-12" class="outline-3">
+<h3 id="sec-1-12">Встроенные константы</h3>
+<div class="outline-text-3" id="text-1-12">
+<p>
+Встроенные константы:
+</p>
+<ul class="org-ul">
+<li>VERSION    - это текущая версия этого Forth.
+</li>
+<li>R0         - максимальный адрес (адрес дна) стека возвратов.
+</li>
+<li>DOCOL      - Указатель на DOCOL.
+</li>
+<li>F＿IMMED   - текущее значение флага IMMEDIATE.
+</li>
+<li>F＿HIDDEN  - Текущее значение флага HIDDEN.
+</li>
+<li>F＿LENMASK - Маска длины в  flags/len байте
+</li>
+<li>SYS＿* и числовые коды различных системных вызовов Linux (из &lt;asm/unistd.h&gt;)
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macro_defconst"><span style="color: #af00ff;">.macro</span> defconst name, namelen, flags=0, label, value
+    <span style="color: #af00ff;">defcode</span> \name,\namelen,\flags,\label
+    <span style="color: #af00ff;">push</span> $\value
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #af00ff;">.endm</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="built_in_constants"><span style="color: #af00ff;">.set</span> JONES_VERSION,47
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"VERSION"</span>,7,,VERSION,JONES_VERSION
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"R0"</span>,2,,RZ,return_stack_top
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"DOCOL"</span>,5,,__DOCOL,DOCOL
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_IMMED"</span>,7,,__F_IMMED,F_IMMED
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_HIDDEN"</span>,8,,__F_HIDDEN,F_HIDDEN
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"F_LENMASK"</span>,9,,__F_LENMASK,F_LENMASK
+
+<span style="color: #af00ff;">.set</span> sys_exit,60
+<span style="color: #af00ff;">.set</span> sys_read,0
+<span style="color: #af00ff;">.set</span> sys_write,1
+<span style="color: #af00ff;">.set</span> sys_open,5
+<span style="color: #af00ff;">.set</span> sys_close,6
+<span style="color: #af00ff;">.set</span> sys_creat,8
+<span style="color: #af00ff;">.set</span> sys_unlink,0xA
+<span style="color: #af00ff;">.set</span> sys_lseek,0x13
+<span style="color: #af00ff;">.set</span> sys_truncate,0x5C
+
+<span style="color: #af00ff;">.set</span> stdin,0
+<span style="color: #af00ff;">.set</span> stdout,1
+<span style="color: #af00ff;">.set</span> stderr,2
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_EXIT"</span>,8,,SYS_EXIT,sys_exit
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_OPEN"</span>,8,,SYS_OPEN,sys_open
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_CLOSE"</span>,9,,SYS_CLOSE,sys_close
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_READ"</span>,8,,SYS_READ,sys_read
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_WRITE"</span>,9,,SYS_WRITE,sys_write
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"SYS_CREAT"</span>,9,,SYS_CREAT,sys_creat
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_RDONLY"</span>,8,,__O_RDONLY,0
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_WRONLY"</span>,8,,__O_WRONLY,1
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_RDWR"</span>,6,,__O_RDWR,2
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_CREAT"</span>,7,,__O_CREAT,0100
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_EXCL"</span>,6,,__O_EXCL,0200
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_TRUNC"</span>,7,,__O_TRUNC,01000
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_APPEND"</span>,8,,__O_APPEND,02000
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"O_NONBLOCK"</span>,10,,__O_NONBLOCK,04000
+
+<span style="color: #af00ff;">.set</span> wordsize,8
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"WORDSIZE"</span>,8,,WORDSIZE,wordsize
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-13" class="outline-3">
+<h3 id="sec-1-13">Стек возвратов</h3>
+<div class="outline-text-3" id="text-1-13">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="words_for_retstack"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"&gt;R"</span>,2,,TOR
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # pop &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">PUSHRSP</span> <span style="color: #af5f00;">%rax</span>            # push <span style="color: #af5f00;">%rax</span> &#1085;&#1072; &#1089;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"R&gt;"</span>,2,,FROMR
+    <span style="color: #af00ff;">POPRSP</span>  <span style="color: #af5f00;">%rax</span>            # pop &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # push <span style="color: #af5f00;">%rax</span> &#1085;&#1072; &#1089;&#1090;&#1077;&#1082; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;&#1086;&#1074;
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RSP@"</span>,4,,RSPFETCH
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbp</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RSP!"</span>,4,,RSPSTORE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbp</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"RDROP"</span>,5,,RDROP
+    <span style="color: #af00ff;">add</span>     $8, <span style="color: #af5f00;">%rbp</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-14" class="outline-3">
+<h3 id="sec-1-14">Стек данных</h3>
+<div class="outline-text-3" id="text-1-14">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="data_stack_words"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DSP@"</span>,4,,DSPFETCH
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsp</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"DSP!"</span>,4,,DSPSTORE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsp</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-15" class="outline-3">
+<h3 id="sec-1-15">Ввод и вывод: KEY EMIT WORD NUMBER</h3>
+<div class="outline-text-3" id="text-1-15">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_key">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"KEY"</span>,3,,KEY
+    <span style="color: #af00ff;">call</span> _KEY
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            #       # push-&#1080;&#1084; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1077;&#1085;&#1085;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>                    #
+<span style="color: #0000ff;">_KEY</span>:                       # &lt;--+
+    <span style="color: #af00ff;">mov</span>     (currkey), <span style="color: #af5f00;">%rbx</span> #    |  # &#1041;&#1077;&#1088;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; currkey &#1074; <span style="color: #af5f00;">%rbx</span>
+    <span style="color: #af00ff;">cmp</span>     (bufftop), <span style="color: #af5f00;">%rbx</span> #    |  # (bufftop &gt;= currkey)? - &#1074; &#1073;&#1091;&#1092;&#1077;&#1088;&#1077; &#1077;&#1089;&#1090;&#1100; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1099;?
+    <span style="color: #af00ff;">jge</span>     1f              #-+  |  # ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076;
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      # |  |  # ?-&#1044;&#1072;,  (1) &#1087;&#1077;&#1088;&#1077;&#1085;&#1086;&#1089;&#1080;&#1084; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;, &#1085;&#1072; &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081;
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rbx</span>), <span style="color: #af5f00;">%al</span>     # |  |  #        &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; currkey &#1074; <span style="color: #af5f00;">%rax</span>,
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%rbx</span>            # |  |  #        (2) &#1080;&#1085;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084; &#1082;&#1086;&#1087;&#1080;&#1102; currkey
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rbx</span>, (currkey) # |  |  #        (3) &#1079;&#1072;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1077;&#1084; &#1077;&#1077; &#1074; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1091;&#1102; currkey,
+    <span style="color: #af00ff;">ret</span>                     # |  |  #        &#1080; &#1074;&#1099;&#1093;&#1086;&#1076;&#1080;&#1084; (&#1074; <span style="color: #af5f00;">%rax</span> &#1083;&#1077;&#1078;&#1080;&#1090; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;)
+    # ---------------- RET    |  |
+<span style="color: #0000ff;">1</span>:  #                     &lt;---+  |  # &#1041;&#1091;&#1092;&#1077;&#1088; &#1074;&#1074;&#1086;&#1076;&#1072; &#1087;&#1091;&#1089;&#1090;, &#1089;&#1076;&#1077;&#1083;&#1072;&#1077;&#1084; read &#1080;&#1079; stdin
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            #    |  # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; <span style="color: #af5f00;">%rsi</span> &amp; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>            #    |  #
+    <span style="color: #af00ff;">mov</span>     $stdin, <span style="color: #af5f00;">%rdi</span>    #    |  #  param1: &#1044;&#1077;&#1089;&#1082;&#1088;&#1080;&#1087;&#1090;&#1086;&#1088; stdin &#1074; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">mov</span>     $input_buffer, <span style="color: #af5f00;">%rsi</span> #|  #  param2: &#1050;&#1083;&#1072;&#1076;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089; &#1073;&#1091;&#1092;&#1077;&#1088;&#1072; &#1074;&#1074;&#1086;&#1076;&#1072; &#1074; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsi</span>, currkey   #    |  #  &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1077;&#1075;&#1086; (&#1072;&#1076;&#1088;&#1077;&#1089; &#1073;&#1091;&#1092;&#1077;&#1088;&#1072;) &#1074;&#1074;&#1086;&#1076;&#1072; &#1074; currkey
+    <span style="color: #af00ff;">mov</span>     $INPUT_BUFFER_SIZE, <span style="color: #af5f00;">%rdx</span> # param3: &#1052;&#1072;&#1082;&#1089;&#1080;&#1084;&#1072;&#1083;&#1100;&#1085;&#1072;&#1103; &#1076;&#1083;&#1080;&#1085;&#1072; &#1074;&#1074;&#1086;&#1076;&#1072; &#1074; <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">mov</span>     $sys_read, <span style="color: #af5f00;">%rax</span> #    |  #  SYSCALL read &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">syscall</span>                 #    |  #  SYSCALL
+    # &#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1103;&#1077;&#1084; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1077;&#1085;&#1085;&#1086;&#1077;     |  # &#1076;&#1086;&#1083;&#1078;&#1085;&#1086; &#1073;&#1099;&#1090;&#1100; &#1082;&#1086;&#1083;&#1080;&#1095;&#1077;&#1089;&#1090;&#1074;&#1086; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074; + '\n'
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      #    |  # (<span style="color: #af5f00;">%rax</span> &lt;= 0)?
+    <span style="color: #af00ff;">jbe</span>     2f              #-+  |  # ?-&#1044;&#1072;, &#1101;&#1090;&#1086; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076;
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rsi</span>      # |  |  # ?-&#1053;&#1077;&#1090;, (1) &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1074; <span style="color: #af5f00;">%rsi</span> &#1082;&#1086;&#1083;-&#1074;&#1086; &#1087;&#1088;&#1086;&#1095;&#1080;&#1090;&#1072;&#1085;&#1085;&#1099;&#1093; &#1073;&#1072;&#1081;&#1090;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsi</span>, (bufftop) # |  |  #        (2) &#1079;&#1072;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1077;&#1084; <span style="color: #af5f00;">%rsi</span> &#1074; bufftop
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # |  |  # &#1058;&#1077;&#1087;&#1077;&#1088;&#1100; &#1084;&#1086;&#1078;&#1085;&#1086; &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; <span style="color: #af5f00;">%rdi</span> &amp; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # |  |
+    <span style="color: #af00ff;">jmp</span>     _KEY            # |  |
+    # ------------------------|--+
+<span style="color: #0000ff;">2</span>:  #                     &lt;---+     # &#1054;&#1096;&#1080;&#1073;&#1082;&#1072; &#1080;&#1083;&#1080; &#1082;&#1086;&#1085;&#1077;&#1094; &#1087;&#1086;&#1090;&#1086;&#1082;&#1072; &#1074;&#1074;&#1086;&#1076;&#1072; - &#1074;&#1099;&#1093;&#1086;&#1076;&#1080;&#1084;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            #       # &#1057;&#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1085;&#1072;&#1076;&#1086; &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; <span style="color: #af5f00;">%rdi</span> &amp; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            #
+    <span style="color: #af00ff;">mov</span>     $sys_exit, <span style="color: #af5f00;">%rax</span>         # param1: SYSCALL #1 (exit)
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rdi</span>, <span style="color: #af5f00;">%rdi</span>              # param2: &#1082;&#1086;&#1076; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1072;
+    <span style="color: #af00ff;">syscall</span>                         # SYSCALL
+    # --------------- EXIT
+    <span style="color: #af00ff;">.data</span>
+    <span style="color: #af00ff;">.align</span> 8
+<span style="color: #0000ff;">currkey</span>:
+    # &#1061;&#1088;&#1072;&#1085;&#1080;&#1090; &#1089;&#1084;&#1077;&#1097;&#1077;&#1085;&#1080;&#1077; &#1085;&#1072; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1077; &#1087;&#1086;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077; &#1074; &#1073;&#1091;&#1092;&#1077;&#1088;&#1077; &#1074;&#1074;&#1086;&#1076;&#1072; (&#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1073;&#1091;&#1076;&#1077;&#1090; &#1087;&#1088;&#1086;&#1095;&#1080;&#1090;&#1072;&#1085; &#1087;&#1086; &#1085;&#1077;&#1084;&#1091;)
+    <span style="color: #af00ff;">.quad</span> input_buffer
+<span style="color: #0000ff;">bufftop</span>:
+    # &#1061;&#1088;&#1072;&#1085;&#1080;&#1090; &#1074;&#1077;&#1088;&#1096;&#1080;&#1085;&#1091; &#1073;&#1091;&#1092;&#1077;&#1088;&#1072; &#1074;&#1074;&#1086;&#1076;&#1072; (&#1087;&#1086;&#1089;&#1083;&#1077;&#1076;&#1085;&#1080;&#1077; &#1074;&#1072;&#1083;&#1080;&#1076;&#1085;&#1099;&#1077; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; + 1)
+    <span style="color: #af00ff;">.quad</span> input_buffer
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_emit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EMIT"</span>,4,,EMIT
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">call</span>    _EMIT
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_EMIT</span>:
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            #    |  #
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>            #    |  #
+    <span style="color: #af00ff;">mov</span>     $stdout, <span style="color: #af5f00;">%rdi</span>           # param1: stdout &#1074; $rdi
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%al</span>, emit_scratch       # &#1073;&#1077;&#1088;&#1077;&#1084; &#1073;&#1072;&#1081;&#1090; &#1080; &#1079;&#1072;&#1085;&#1086;&#1089;&#1080;&#1084; &#1077;&#1075;&#1086; &#1074; emit_scratch
+    <span style="color: #af00ff;">mov</span>     $emit_scratch, <span style="color: #af5f00;">%rsi</span>     # param2: &#1072;&#1076;&#1088;&#1077;&#1089; &#1074;&#1099;&#1074;&#1086;&#1076;&#1080;&#1084;&#1086;&#1075;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1074; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     $1, <span style="color: #af5f00;">%rdx</span>                # param3: &#1076;&#1083;&#1080;&#1085;&#1072;
+    <span style="color: #af00ff;">mov</span>     $sys_write, <span style="color: #af5f00;">%rax</span>        # SYSCALL write
+    <span style="color: #af00ff;">syscall</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            #    |
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            #    |
+    <span style="color: #af00ff;">ret</span>
+
+    <span style="color: #af00ff;">.data</span>           # NB: &#1087;&#1088;&#1086;&#1097;&#1077; &#1079;&#1072;&#1087;&#1080;&#1089;&#1072;&#1090;&#1100; &#1074; .data section
+<span style="color: #0000ff;">emit_scratch</span>:
+    <span style="color: #af00ff;">.space</span> 1        # &#1052;&#1077;&#1089;&#1090;&#1086; &#1076;&#1083;&#1103; &#1073;&#1072;&#1081;&#1090;&#1072;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1074;&#1099;&#1074;&#1086;&#1076;&#1080;&#1090; EMIT
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_word">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"WORD"</span>,4,,WORD
+    <span style="color: #af00ff;">call</span>    _WORD
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>            # push base address
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>            # push length
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_WORD</span>:
+    # &#1048;&#1097;&#1077;&#1084; &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1085;&#1077;&#1087;&#1088;&#1086;&#1073;&#1077;&#1083;&#1100;&#1085;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;, &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1082;&#1072;&#1103; &#1082;&#1086;&#1084;&#1084;&#1077;&#1085;&#1090;&#1099;, &#1085;&#1072;&#1095;&#1080;&#1085;&#1072;&#1102;&#1097;&#1080;&#1077;&#1089;&#1103; &#1089; &#1086;&#1073;&#1088;&#1072;&#1090;&#1085;&#1086;&#1075;&#1086; &#1089;&#1083;&#1101;&#1096;&#1072;
+<span style="color: #0000ff;">1</span>:                      # &lt;---+
+    <span style="color: #af00ff;">call</span>    _KEY            # |     # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1091;&#1102; &#1073;&#1091;&#1082;&#1074;&#1091;, &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1091;&#1102; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">cmpb</span>    $'\\', <span style="color: #af5f00;">%al</span>      # |     # (&#1069;&#1090;&#1086; &#1085;&#1072;&#1095;&#1072;&#1083;&#1086; &#1082;&#1086;&#1084;&#1084;&#1077;&#1085;&#1090;&#1072;&#1088;&#1080;&#1103;)?
+    <span style="color: #af00ff;">je</span>      3f              #-|---+ # ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076;
+    <span style="color: #af00ff;">cmpb</span>    $' ', <span style="color: #af5f00;">%al</span>       # |   | # ?-&#1053;&#1077;&#1090;. (&#1069;&#1090;&#1086; &#1087;&#1088;&#1086;&#1073;&#1077;&#1083;, &#1074;&#1086;&#1079;&#1088;&#1072;&#1090; &#1082;&#1072;&#1088;&#1077;&#1090;&#1082;&#1080;, &#1087;&#1077;&#1088;&#1077;&#1074;&#1086;&#1076; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;)?
+    <span style="color: #af00ff;">jbe</span>     1b              #-+   | # ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1085;&#1072;&#1079;&#1072;&#1076;
+    #                             |
+    # &#1048;&#1097;&#1077;&#1084; &#1082;&#1086;&#1085;&#1077;&#1094; &#1089;&#1083;&#1086;&#1074;&#1072;, &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1099; &#1087;&#1086; &#1084;&#1077;&#1088;&#1077; &#1087;&#1088;&#1086;&#1076;&#1074;&#1080;&#1078;&#1077;&#1085;&#1080;&#1103;
+    <span style="color: #af00ff;">mov</span>     $word_buffer, <span style="color: #af5f00;">%rdi</span>  # | # &#1059;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1099;&#1081; &#1073;&#1091;&#1092;&#1077;&#1088;
+<span style="color: #0000ff;">2</span>:                      # &lt;---+   |
+    <span style="color: #af00ff;">stosb</span>                   # |   | # &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1074; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1099;&#1081; &#1073;&#1091;&#1092;&#1077;&#1088;
+    <span style="color: #af00ff;">call</span>    _KEY            # |   | # &#1042;&#1099;&#1079;&#1099;&#1074;&#1072;&#1077;&#1084; KEY &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1073;&#1091;&#1076;&#1077;&#1090; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1077;&#1085; &#1074; <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">cmpb</span>    $' ', <span style="color: #af5f00;">%al</span>       # |   | # (&#1069;&#1090;&#1086; &#1087;&#1088;&#1086;&#1073;&#1077;&#1083;, &#1074;&#1086;&#1079;&#1088;&#1072;&#1090; &#1082;&#1072;&#1088;&#1077;&#1090;&#1082;&#1080;, &#1087;&#1077;&#1088;&#1077;&#1074;&#1086;&#1076; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;)?
+    <span style="color: #af00ff;">ja</span>      2b              #-+   | # &#1045;&#1089;&#1083;&#1080; &#1085;&#1077;&#1090;, &#1087;&#1086;&#1074;&#1090;&#1086;&#1088;&#1080;&#1084;
+    #                       #     |
+    # &#1042;&#1077;&#1088;&#1085;&#1077;&#1084; &#1089;&#1083;&#1086;&#1074;&#1086; (&#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1090;&#1072;&#1090;&#1080;&#1095;&#1077;&#1089;&#1082;&#1080;&#1081; &#1073;&#1091;&#1092;&#1077;&#1088; &#1095;&#1077;&#1088;&#1077;&#1093; <span style="color: #af5f00;">%rcx</span>) &#1080; &#1077;&#1075;&#1086; &#1076;&#1083;&#1080;&#1085;&#1091; (&#1095;&#1077;&#1088;&#1077;&#1079; <span style="color: #af5f00;">%rdi</span>)
+    <span style="color: #af00ff;">sub</span>     $word_buffer, <span style="color: #af5f00;">%rdi</span>  # |
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdi</span>, <span style="color: #af5f00;">%rcx</span>      #     | # return: &#1076;&#1083;&#1080;&#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">mov</span>     $word_buffer, <span style="color: #af5f00;">%rdi</span>  # | # return: &#1072;&#1076;&#1088;&#1077;&#1089; &#1073;&#1091;&#1092;&#1077;&#1088;&#1072;
+    <span style="color: #af00ff;">ret</span>                     #     |
+    # ----------------- RET       |
+    #                             |
+    # &#1069;&#1090;&#1086; &#1082;&#1086;&#1084;&#1084;&#1077;&#1085;&#1090;&#1072;&#1088;&#1080;&#1081;, &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1082;&#1072;&#1077;&#1084; | &#1077;&#1075;&#1086; &#1076;&#1086; &#1082;&#1086;&#1085;&#1094;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+<span style="color: #0000ff;">3</span>:                      # &lt;---+ &lt;-+
+    <span style="color: #af00ff;">call</span>    _KEY            # |
+    <span style="color: #af00ff;">cmpb</span>    $'\n', <span style="color: #af5f00;">%al</span>      # |     # KEY &#1074;&#1077;&#1088;&#1085;&#1091;&#1083; &#1082;&#1086;&#1085;&#1077;&#1094; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;?
+    <span style="color: #af00ff;">jne</span>     3b              #-+     # &#1053;&#1077;&#1090;, &#1087;&#1086;&#1074;&#1090;&#1086;&#1088;&#1080;&#1084;
+    <span style="color: #af00ff;">jmp</span>     1b              #
+    # ---------------- to 1
+
+    <span style="color: #af00ff;">.data</span>
+    # &#1057;&#1090;&#1072;&#1090;&#1080;&#1095;&#1077;&#1089;&#1082;&#1080;&#1081; &#1073;&#1091;&#1092;&#1077;&#1088;, &#1074; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1084; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090;&#1089;&#1103; WORD.
+    # &#1055;&#1086;&#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1077; &#1074;&#1099;&#1079;&#1086;&#1074;&#1099; &#1087;&#1077;&#1088;&#1077;&#1079;&#1072;&#1087;&#1080;&#1089;&#1099;&#1074;&#1072;&#1102;&#1090; &#1101;&#1090;&#1086;&#1090; &#1073;&#1091;&#1092;&#1077;&#1088;.
+    # &#1052;&#1072;&#1082;&#1089;&#1080;&#1084;&#1072;&#1083;&#1100;&#1085;&#1072;&#1103; &#1076;&#1083;&#1080;&#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1072; - 32 &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1072;.
+<span style="color: #0000ff;">word_buffer</span>:
+    <span style="color: #af00ff;">.space</span> 32
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_number"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"NUMBER"</span>,6,,NUMBER
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>            # length of string
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # start address of string
+    <span style="color: #af00ff;">call</span>    _NUMBER
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # parsed number
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>            # number of unparsed characters (0 = no error)
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">_NUMBER</span>:
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rbx</span>
+    # &#1055;&#1086;&#1087;&#1099;&#1090;&#1082;&#1072; &#1088;&#1072;&#1089;&#1087;&#1072;&#1088;&#1089;&#1080;&#1090;&#1100; &#1087;&#1091;&#1089;&#1090;&#1091;&#1102; &#1089;&#1090;&#1088;&#1086;&#1082;&#1091; &#1101;&#1090;&#1086; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072; &#1085;&#1086; &#1084;&#1099; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; 0
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">jz</span>  5f                  #-&gt; RET #
+    # &#1057;&#1090;&#1088;&#1086;&#1082;&#1072; &#1085;&#1077; &#1087;&#1091;&#1089;&#1090;&#1072;, &#1073;&#1091;&#1076;&#1077;&#1084; &#1088;&#1072;&#1079;&#1073;&#1080;&#1088;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">mov</span>     (var_BASE), <span style="color: #af5f00;">%rdx</span>#       # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; BASE &#1074; <span style="color: #af5f00;">%dl</span>
+    # &#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1080;&#1084;, &#1084;&#1086;&#1078;&#1077;&#1090; &#1073;&#1099;&#1090;&#1100; &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; '-'?
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rdi</span>), <span style="color: #af5f00;">%bl</span>     #       # <span style="color: #af5f00;">%bl</span> = &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%rdi</span>            #       #
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            #       # push 0 &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">cmpb</span>    $'-', <span style="color: #af5f00;">%bl</span>       #       # (&#1054;&#1090;&#1088;&#1080;&#1094;&#1072;&#1090;&#1077;&#1083;&#1100;&#1085;&#1086;&#1077; &#1095;&#1080;&#1089;&#1083;&#1086;)?
+    <span style="color: #af00ff;">jnz</span> 2f                  #-+     # ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; &#1082;&#1086;&#1085;&#1074;&#1077;&#1088;&#1090;&#1072;&#1094;&#1080;&#1080; (2)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # |     # ?-&#1044;&#1072;, &#1079;&#1072;&#1073;&#1077;&#1088;&#1077;&#1084; &#1086;&#1073;&#1088;&#1072;&#1090;&#1085;&#1086; 0 &#1080;&#1079; &#1089;&#1090;&#1077;&#1082;&#1072;,
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>            # |     #       push &#1085;&#1077; &#1085;&#1086;&#1083;&#1100; &#1074; &#1089;&#1090;&#1077;&#1082;, &#1082;&#1072;&#1082; &#1080;&#1085;&#1076;&#1080;&#1082;&#1072;&#1090;&#1086;&#1088; &#1086;&#1090;&#1088;&#1080;&#1094;&#1072;&#1090;&#1077;&#1083;&#1100;&#1085;&#1086;&#1075;&#1086;
+    <span style="color: #af00ff;">dec</span>     <span style="color: #af5f00;">%rcx</span>            # |     #       &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1080;&#1084; &#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082; &#1086;&#1089;&#1090;&#1072;&#1074;&#1096;&#1080;&#1093;&#1089;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;
+    <span style="color: #af00ff;">jnz</span> 1f                  #-----+ #       (&#1057;&#1090;&#1088;&#1086;&#1082;&#1072; &#1079;&#1072;&#1082;&#1086;&#1085;&#1095;&#1080;&#1083;&#1072;&#1089;&#1100;)? ?-&#1053;&#1077;&#1090;: &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076; &#1085;&#1072; (1)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # |   | #       ?-&#1044;&#1072; - &#1101;&#1090;&#1086; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;, &#1089;&#1090;&#1088;&#1086;&#1082;&#1072; <span style="color: #87005f;">"-"</span>. &#1047;&#1072;&#1073;&#1080;&#1088;&#1072;&#1077;&#1084; &#1080;&#1079; &#1089;&#1090;&#1077;&#1082;&#1072;
+    <span style="color: #af00ff;">mov</span>     $1, <span style="color: #af5f00;">%rcx</span>        # |   | #            &#1087;&#1086;&#1084;&#1077;&#1097;&#1072;&#1077;&#1084; &#1074; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1091;&#1102; &#1085;&#1077;&#1088;&#1072;&#1089;&#1087;&#1072;&#1088;&#1089;&#1077;&#1085;&#1085;&#1091;&#1102; &#1076;&#1083;&#1080;&#1085;&#1091;
+    <span style="color: #af00ff;">ret</span>                     # |   | #            &#1077;&#1076;&#1080;&#1085;&#1080;&#1094;&#1091; &#1080; &#1074;&#1099;&#1093;&#1086;&#1076;&#1080;&#1084;.
+    # --------------------- # |   | # -------------------------------------------------------
+    # &#1062;&#1080;&#1082;&#1083; &#1095;&#1090;&#1077;&#1085;&#1080;&#1103; &#1095;&#1080;&#1089;&#1077;&#1083;     # |   | #
+<span style="color: #0000ff;">1</span>:  #                    &lt;========+ #
+    <span style="color: #af00ff;">imul</span>    <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rax</span>      # |   | # <span style="color: #af5f00;">%rax</span> *= BASE
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rdi</span>), <span style="color: #af5f00;">%bl</span>     # |   | # <span style="color: #af5f00;">%bl</span> = &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1080;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1074; &#1089;&#1090;&#1088;&#1086;&#1082;&#1077;
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%rdi</span>            # |   | # &#1059;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100;
+<span style="color: #0000ff;">2</span>:  #                    &lt;----+   | #
+    # &#1055;&#1088;&#1077;&#1086;&#1073;&#1088;&#1072;&#1079;&#1091;&#1077;&#1084; 0-9, A-Z &#1074; &#1095;&#1080;&#1089;&#1083;&#1072; 0-35.
+    <span style="color: #af00ff;">subb</span>    $'0', <span style="color: #af5f00;">%bl</span>       #     | # (&lt; '0')?
+    <span style="color: #af00ff;">jb</span>  4f                  #---+ | # ?-&#1044;&#1072;, &#1093;&#1077;&#1088;&#1085;&#1103; &#1082;&#1072;&#1082;&#1072;&#1103;-&#1090;&#1086;, &#1072; &#1085;&#1077; &#1094;&#1080;&#1092;&#1088;&#1072;, &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;, &#1080;&#1076;&#1077;&#1084; &#1085;&#1072; (4)
+    <span style="color: #af00ff;">cmp</span>     $10, <span style="color: #af5f00;">%bl</span>        #   | | # ?-&#1053;&#1077;&#1090;, (&lt;= '9')?
+    <span style="color: #af00ff;">jb</span>  3f                  #-+ | | #        ?-&#1044;&#1072;, &#1080;&#1076;&#1077;&#1084; &#1085;&#1072; (3), &#1101;&#1090;&#1086; &#1095;&#1080;&#1089;&#1083;&#1086; &#1084;&#1077;&#1078;&#1076;&#1091; 0 &#1080; 9
+    <span style="color: #af00ff;">subb</span>    $17, <span style="color: #af5f00;">%bl</span>        # | | | #        ?-&#1053;&#1077;&#1090;, (&lt; 'A')? &#1087;&#1086;&#1090;&#1086;&#1084;&#1091; &#1095;&#1090;&#1086; (17 = 'A'-'0')
+    <span style="color: #af00ff;">jb</span>  4f                  #---+ | #               ?-&#1044;&#1072;, &#1101;&#1090;&#1086; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;, &#1080;&#1076;&#1077;&#1084; &#1085;&#1072; (4)
+    <span style="color: #af00ff;">addb</span>    $10, <span style="color: #af5f00;">%bl</span>        # | | | #               ?-&#1053;&#1077;&#1090;, &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1082; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1102; 10
+<span style="color: #0000ff;">3</span>:  #                     &lt;---+ | | #
+    <span style="color: #af00ff;">cmp</span>     <span style="color: #af5f00;">%dl</span>, <span style="color: #af5f00;">%bl</span>        #   | | #                      (RESULT &gt;= BASE)?
+    <span style="color: #af00ff;">jge</span> 4f                  #---+ | #                      ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1073;&#1086;&#1088;, &#1080;&#1076;&#1077;&#1084; &#1085;&#1072; (4)
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rax</span>      #   | | #                      ?-&#1053;&#1077;&#1090;, &#1074;&#1089;&#1077; &#1074; &#1087;&#1086;&#1088;&#1103;&#1076;&#1082;&#1077;. &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084;
+    <span style="color: #af00ff;">dec</span>     <span style="color: #af5f00;">%rcx</span>            #   | | #                        RESULT &#1082; <span style="color: #af5f00;">%rax</span> &#1080; LOOP-&#1080;&#1084; &#1076;&#1072;&#1083;&#1100;&#1096;&#1077;.
+    <span style="color: #af00ff;">jnz</span> 1b                  #---|-+ #
+<span style="color: #0000ff;">4</span>:  #                     &lt;-----+   #
+    # &#1058;&#1091;&#1090; &#1084;&#1099; &#1086;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1084;&#1089;&#1103; &#1077;&#1089;&#1083;&#1080; &#1094;&#1080;&#1082;&#1083; &#1079;&#1072;&#1082;&#1086;&#1085;&#1095;&#1080;&#1083;&#1089;&#1103; - &#1090;&#1086;&#1075;&#1076;&#1072; &#1091; &#1085;&#1072;&#1089; <span style="color: #af5f00;">%rcx</span>=0
+    # &#1042; &#1080;&#1085;&#1086;&#1084; &#1089;&#1083;&#1091;&#1095;&#1072;&#1077; <span style="color: #af5f00;">%rcx</span> &#1089;&#1086;&#1076;&#1077;&#1088;&#1078;&#1080;&#1090; &#1082;&#1086;&#1083;&#1080;&#1095;&#1077;&#1089;&#1090;&#1074;&#1086; &#1085;&#1077;&#1088;&#1072;&#1089;&#1087;&#1072;&#1088;&#1089;&#1077;&#1085;&#1085;&#1099;&#1093; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;
+    # &#1045;&#1089;&#1083;&#1080; &#1091; &#1085;&#1072;&#1089; &#1086;&#1090;&#1088;&#1080;&#1094;&#1072;&#1090;&#1077;&#1083;&#1100;&#1085;&#1099;&#1081; &#1088;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;, &#1090;&#1086; &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; '-' (&#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1077;&#1085; &#1074; &#1089;&#1090;&#1077;&#1082;&#1077;)
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            #       #
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rbx</span>      #       # (&#1054;&#1090;&#1088;&#1080;&#1094;&#1072;&#1090;&#1077;&#1083;&#1100;&#1085;&#1086;&#1077; &#1095;&#1080;&#1089;&#1083;&#1086;)?
+    <span style="color: #af00ff;">jz</span>  5f                  #-+     # ?-&#1053;&#1077;&#1090;, &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; &#1082;&#1072;&#1082; &#1077;&#1089;&#1090;&#1100; (5)
+    <span style="color: #af00ff;">neg</span>     <span style="color: #af5f00;">%rax</span>            # |     # ?-&#1044;&#1072;, &#1080;&#1085;&#1074;&#1077;&#1088;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084;
+<span style="color: #0000ff;">5</span>:  #                     &lt;---+
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-16" class="outline-3">
+<h3 id="sec-1-16">FIND - просмотр словаря</h3>
+<div class="outline-text-3" id="text-1-16">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_find">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"FIND"</span>,4,,FIND
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>            # <span style="color: #af5f00;">%rcx</span> = &#1076;&#1083;&#1080;&#1085;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # <span style="color: #af5f00;">%rdi</span> = &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">call</span>    _FIND
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # <span style="color: #af5f00;">%rax</span> = &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1083;&#1086;&#1074;&#1072; (&#1080;&#1083;&#1080; &#1085;&#1086;&#1083;&#1100;)
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_FIND</span>:
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; <span style="color: #af5f00;">%rsi</span> - &#1090;&#1072;&#1082; &#1084;&#1099; &#1089;&#1084;&#1086;&#1078;&#1077;&#1084; &#1080;&#1089;&#1087;&#1086;&#1083;&#1100;&#1079;&#1086;&#1074;&#1072;&#1090;&#1100; &#1101;&#1090;&#1086;&#1090;
+                            # &#1088;&#1077;&#1075;&#1080;&#1089;&#1090;&#1088; &#1076;&#1083;&#1103; &#1089;&#1088;&#1072;&#1074;&#1085;&#1077;&#1085;&#1080;&#1103; &#1089;&#1090;&#1088;&#1086;&#1082; &#1082;&#1086;&#1084;&#1072;&#1085;&#1076;&#1086;&#1081; CMPSB
+    # &#1047;&#1076;&#1077;&#1089;&#1100; &#1084;&#1099; &#1085;&#1072;&#1095;&#1080;&#1085;&#1072;&#1077;&#1084; &#1080;&#1089;&#1082;&#1072;&#1090;&#1100; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077; &#1101;&#1090;&#1086; &#1089;&#1083;&#1086;&#1074;&#1086; &#1086;&#1090; &#1082;&#1086;&#1085;&#1094;&#1072; &#1082; &#1085;&#1072;&#1095;&#1072;&#1083;&#1091; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1103;
+    <span style="color: #af00ff;">mov</span>     (var_LATEST), <span style="color: #af5f00;">%rdx</span>          # <span style="color: #af5f00;">%rdx</span> &#1090;&#1077;&#1087;&#1077;&#1088;&#1100; &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1087;&#1086;&#1089;&#1083;&#1077;&#1076;&#1085;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077;
+<span style="color: #0000ff;">1</span>:  #                   &lt;------------+
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rdx</span>      # (&#1074; <span style="color: #af5f00;">%rdx</span> &#1085;&#1072;&#1093;&#1086;&#1076;&#1080;&#1090;&#1089;&#1103; NULL-&#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100;, &#1090;.&#1077;. &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1100; &#1082;&#1086;&#1085;&#1095;&#1080;&#1083;&#1089;&#1103;)?
+    <span style="color: #af00ff;">je</span>  4f                  #-----+  |  # ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076; &#1082; (4)
+    #                             |  |
+    # &#1057;&#1088;&#1072;&#1074;&#1085;&#1080;&#1084; &#1086;&#1078;&#1080;&#1076;&#1072;&#1077;&#1084;&#1091;&#1102; &#1076;&#1083;&#1080;&#1085;&#1091; &#1080; &#1076;&#1083;&#1080;&#1085;&#1091; &#1089;&#1083;&#1086;&#1074;&#1072;
+    # &#1042;&#1085;&#1080;&#1084;&#1072;&#1085;&#1080;&#1077;, &#1077;&#1089;&#1083;&#1080; F_HIDDEN &#1091;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1083;&#1077;&#1085; &#1076;&#1083;&#1103; &#1101;&#1090;&#1086;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072;, &#1090;&#1086; &#1089;&#1086;&#1074;&#1087;&#1072;&#1076;&#1077;&#1085;&#1080;&#1103; &#1085;&#1077; &#1073;&#1091;&#1076;&#1077;&#1090;.
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      #     |  |  # &#1054;&#1095;&#1080;&#1097;&#1072;&#1077;&#1084; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">movb</span>    8(<span style="color: #af5f00;">%rdx</span>), <span style="color: #af5f00;">%al</span>    #     |  |  # <span style="color: #af5f00;">%al</span> = flags+length
+    <span style="color: #af00ff;">andb</span>    $(F_HIDDEN|F_LENMASK), <span style="color: #af5f00;">%al</span>  # <span style="color: #af5f00;">%al</span> = &#1090;&#1077;&#1087;&#1077;&#1088;&#1100; &#1076;&#1083;&#1080;&#1085;&#1072; &#1080;&#1084;&#1077;&#1085;&#1080; (&#1084;&#1072;&#1089;&#1082;&#1080;&#1088;&#1091;&#1077;&#1084; &#1092;&#1083;&#1072;&#1075;&#1080;)
+    <span style="color: #af00ff;">cmpb</span>    <span style="color: #af5f00;">%cl</span>, <span style="color: #af5f00;">%al</span>        #     |  |  # (&#1044;&#1083;&#1080;&#1085;&#1099; &#1086;&#1076;&#1080;&#1085;&#1072;&#1082;&#1086;&#1074;&#1099;&#1077;?)
+    <span style="color: #af00ff;">jne</span> 2f                  #--+  |  |  # ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076; &#1082; (2)
+    #                          |  |  |
+    # &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; &#1076;&#1077;&#1090;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;&#1091; &#1089;&#1088;&#1072;&#1074;&#1085;&#1077;&#1085;&#1080;&#1102;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rcx</span>            #  |  |  |  # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; &#1076;&#1083;&#1080;&#1085;&#1091;, &#1087;&#1086;&#1090;&#1086;&#1084;&#1091; &#1095;&#1090;&#1086; repe cmpsb &#1091;&#1084;&#1077;&#1085;&#1100;&#1096;&#1072;&#1077;&#1090; <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>            #  |  |  |  # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089;, &#1087;&#1086;&#1090;&#1086;&#1084;&#1091; &#1095;&#1090;&#1086; repe cmpsb &#1076;&#1074;&#1080;&#1075;&#1072;&#1077;&#1090; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">lea</span>     9(<span style="color: #af5f00;">%rdx</span>), <span style="color: #af5f00;">%rsi</span>   #  |  |  |  # &#1047;&#1072;&#1075;&#1088;&#1091;&#1078;&#1072;&#1077;&#1084; &#1074; <span style="color: #af5f00;">%rsi</span> &#1072;&#1076;&#1088;&#1077;&#1089; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1080;&#1084;&#1077;&#1085;&#1080; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">repe</span>    cmpsb           #  |  |  |  # &#1057;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1077;&#1084;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            #  |  |  |  # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; &#1072;&#1076;&#1088;&#1077;&#1089;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>            #  |  |  |  # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; &#1076;&#1083;&#1080;&#1085;&#1091;
+    <span style="color: #af00ff;">jne</span> 2f                  #--+  |  |  # ?-&#1045;&#1089;&#1083;&#1080; &#1085;&#1077; &#1088;&#1072;&#1074;&#1085;&#1099; - &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076; &#1082; (2)
+    #                          |  |  |
+    # &#1057;&#1090;&#1088;&#1086;&#1082;&#1080; &#1088;&#1072;&#1074;&#1085;&#1099; - &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1080;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1079;&#1072;&#1075;&#1086;&#1083;&#1086;&#1074;&#1086;&#1082; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            #  |  |  |  # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rax</span>      #  |  |  |  # <span style="color: #af5f00;">%rdx</span> &#1074;&#1089;&#1077; &#1077;&#1097;&#1077; &#1089;&#1086;&#1076;&#1077;&#1088;&#1078;&#1080;&#1090; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;
+    <span style="color: #af00ff;">ret</span>                     #  |  |  |  # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;
+    # ----------------- RET    |  |  |
+<span style="color: #0000ff;">2</span>:  #                     &lt;----+  |  |
+    <span style="color: #af00ff;">mov</span>     (<span style="color: #af5f00;">%rdx</span>), <span style="color: #af5f00;">%rdx</span>    #     |  |  # &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1087;&#1086; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1102; &#1082; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1077;&#1084;&#1091; &#1089;&#1083;&#1086;&#1074;&#1091;
+    <span style="color: #af00ff;">jmp</span> 1b                  #     |  |  # &#1048; &#1079;&#1072;&#1094;&#1080;&#1082;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084;&#1089;&#1103;
+    # ----------------------------|--+
+<span style="color: #0000ff;">4</span>:  #                     &lt;-------+
+    # &#1057;&#1083;&#1086;&#1074;&#1086; &#1085;&#1077; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1086;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1077;&#1085;&#1085;&#1099;&#1081; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1080;&#1084; &#1085;&#1086;&#1083;&#1100; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">ret</span>                     # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tcfa">    <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"&gt;CFA"</span>,4,,TCFA
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">call</span>    _TCFA
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_TCFA</span>:
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">add</span>     $8, <span style="color: #af5f00;">%rdi</span>        # &#1055;&#1088;&#1086;&#1087;&#1091;&#1089;&#1082;&#1072;&#1077;&#1084; LINK - &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1087;&#1088;&#1077;&#1076;&#1099;&#1076;&#1091;&#1097;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rdi</span>), <span style="color: #af5f00;">%al</span>     # &#1047;&#1072;&#1075;&#1088;&#1091;&#1078;&#1072;&#1077;&#1084; flags+len &#1074; <span style="color: #af5f00;">%al</span>
+    <span style="color: #af00ff;">inc</span>     <span style="color: #af5f00;">%rdi</span>            # &#1055;&#1088;&#1086;&#1087;&#1091;&#1089;&#1082;&#1072;&#1077;&#1084; flags+len &#1073;&#1072;&#1081;&#1090;
+    <span style="color: #af00ff;">andb</span>    $F_LENMASK, <span style="color: #af5f00;">%al</span> # &#1052;&#1072;&#1089;&#1082;&#1080;&#1088;&#1091;&#1077;&#1084;, &#1095;&#1090;&#1086;&#1073;&#1099; &#1087;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1076;&#1083;&#1080;&#1085;&#1091; &#1080;&#1084;&#1077;&#1085;&#1080;, &#1073;&#1077;&#1079; &#1092;&#1083;&#1072;&#1075;&#1086;&#1074;
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rdi</span>      # &#1055;&#1088;&#1086;&#1087;&#1091;&#1089;&#1082;&#1072;&#1077;&#1084; &#1080;&#1084;&#1103;
+    <span style="color: #af00ff;">add</span>     $7, <span style="color: #af5f00;">%rdi</span>        # &#1059;&#1095;&#1080;&#1090;&#1099;&#1074;&#1072;&#1077;&#1084; &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">and</span>     $~7, <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tdfa"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"&gt;DFA"</span>,4,,TDFA
+    <span style="color: #af00ff;">.quad</span> TCFA       # &gt;CFA     (&#1087;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; code field address)
+    <span style="color: #af00ff;">.quad</span> INCR8      # 8+       (&#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; 8, &#1095;&#1090;&#1086;&#1073;&#1099; &#1087;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1072;&#1076;&#1088;&#1077;&#1089; &#1087;&#1077;&#1088;&#1074;&#1086;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072; &#1074; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1085;&#1080;&#1080;)
+    <span style="color: #af00ff;">.quad</span> EXIT       # EXIT     (&#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1089;&#1103;)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-17" class="outline-3">
+<h3 id="sec-1-17">Компиляция</h3>
+<div class="outline-text-3" id="text-1-17">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_create"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CREATE"</span>,6,,CREATE
+
+    # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; length &#1080; address &#1080;&#1084;&#1077;&#1085;&#1080; &#1080;&#1079; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>            # <span style="color: #af5f00;">%rcx</span> = length
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rbx</span>            # <span style="color: #af5f00;">%rbx</span> = address
+
+    # &#1060;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; LINK
+    <span style="color: #af00ff;">mov</span>     (var_HERE), <span style="color: #af5f00;">%rdi</span># <span style="color: #af5f00;">%rdi</span> &#1090;&#1077;&#1087;&#1077;&#1088;&#1100; &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1079;&#1072;&#1075;&#1086;&#1083;&#1086;&#1074;&#1086;&#1082;
+    <span style="color: #af00ff;">mov</span>     (var_LATEST), <span style="color: #af5f00;">%rax</span> # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1087;&#1086;&#1089;&#1083;&#1077;&#1076;&#1085;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086; -
+                            # - &#1101;&#1090;&#1086; LINK &#1089;&#1086;&#1079;&#1076;&#1072;&#1074;&#1072;&#1077;&#1084;&#1086;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">stosq</span>                   # &#1080; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; &#1077;&#1075;&#1086; &#1074; &#1092;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084;&#1086;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;
+
+    # &#1060;&#1086;&#1088;&#1084;&#1080;&#1088;&#1091;&#1077;&#1084; &#1041;&#1072;&#1081;&#1090; &#1076;&#1083;&#1080;&#1085;&#1099; &#1080; &#1080;&#1084;&#1103; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%cl</span>,<span style="color: #af5f00;">%al</span>         # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1076;&#1083;&#1080;&#1085;&#1091;
+    <span style="color: #af00ff;">stosb</span>                   # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; length/flags &#1073;&#1072;&#1081;&#1090;.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            # &#1053;&#1077;&#1085;&#1072;&#1076;&#1086;&#1083;&#1075;&#1086; &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rsi</span>      # &#1074; <span style="color: #af5f00;">%rsi</span> &#1090;&#1077;&#1087;&#1077;&#1088;&#1100; &#1072;&#1076;&#1088;&#1077;&#1089; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1080;&#1084;&#1077;&#1085;&#1080;
+    <span style="color: #af00ff;">rep</span>     movsb           # &#1050;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1080;&#1084;&#1103; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">add</span>     $7, <span style="color: #af5f00;">%rdi</span>        # &#1042;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1084; &#1074;&#1099;&#1088;&#1072;&#1074;&#1085;&#1080;&#1074;&#1072;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">and</span>     $~7, <span style="color: #af5f00;">%rdi</span>
+
+    # &#1054;&#1073;&#1085;&#1086;&#1074;&#1080;&#1084; LATEST &#1080; HERE.
+    <span style="color: #af00ff;">mov</span>     (var_HERE), <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, (var_LATEST)
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdi</span>, (var_HERE)
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_comma"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">","</span>,1,,COMMA
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>      # &#1042;&#1079;&#1103;&#1090;&#1100; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093; &#1074; <span style="color: #af5f00;">%rax</span> &#1090;&#1086; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;, &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1077; &#1073;&#1091;&#1076;&#1077;&#1084; &#1074;&#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1080;&#1074;&#1072;&#1090;&#1100;
+    <span style="color: #af00ff;">call</span>    _COMMA
+    <span style="color: #af00ff;">NEXT</span>
+<span style="color: #0000ff;">_COMMA</span>:
+    <span style="color: #af00ff;">mov</span>     (var_HERE), <span style="color: #af5f00;">%rdi</span>  # &#1087;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; HERE &#1074; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">stosq</span>                     # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1100; &#1087;&#1086; &#1085;&#1077;&#1084;&#1091; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1080;&#1079; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdi</span>, (var_HERE)  # &#1054;&#1073;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; HERE (&#1080;&#1089;&#1087;&#1086;&#1083;&#1100;&#1079;&#1091;&#1103; &#1080;&#1085;&#1082;&#1088;&#1077;&#1084;&#1077;&#1085;&#1090;, &#1089;&#1076;&#1077;&#1083;&#1072;&#1085;&#1085;&#1099;&#1081; STOSQ)
+    <span style="color: #af00ff;">ret</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_rbrac"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"["</span>,1,F_IMMED,LBRAC
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, (var_STATE)   # &#1059;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; STATE &#1074; 0
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"]"</span>,1,,RBRAC
+    <span style="color: #af00ff;">movq</span>    $1, (var_STATE)     # &#1059;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; STATE &#1074; 1
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_colon"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">":"</span>,1,,COLON
+    <span style="color: #af00ff;">.quad</span> WORD               # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1080;&#1084;&#1103; &#1085;&#1086;&#1074;&#1086;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">.quad</span> CREATE             # CREATE &#1079;&#1072;&#1075;&#1086;&#1083;&#1086;&#1074;&#1086;&#1082; &#1079;&#1072;&#1087;&#1080;&#1089;&#1080; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1103;
+    <span style="color: #af00ff;">.quad</span> LIT, DOCOL, COMMA  # &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; DOCOL (&#1082;&#1072;&#1082; codeword).
+    <span style="color: #af00ff;">.quad</span> LATEST, FETCH, HIDDEN # &#1044;&#1077;&#1083;&#1072;&#1077;&#1084; &#1089;&#1083;&#1086;&#1074;&#1086; &#1089;&#1082;&#1088;&#1099;&#1090;&#1099;&#1084; (&#1089;&#1084;. &#1085;&#1080;&#1078;&#1077; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1077; HIDDEN).
+    <span style="color: #af00ff;">.quad</span> RBRAC              # &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1074; &#1088;&#1077;&#1078;&#1080;&#1084; &#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1103;&#1094;&#1080;&#1080;
+    <span style="color: #af00ff;">.quad</span> EXIT               # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080;
+</pre>
+</div>
+
+<p>
+<code>;</code> (SEMICOLON) также элегантно прост. Обратите внимание на флаг F＿IMMED.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_semicolon"><span style="color: #0000ff;">defword</span> <span style="color: #87005f;">";"</span>,1,F_IMMED,SEMICOLON
+    <span style="color: #af00ff;">.quad</span> LIT, EXIT, COMMA   # &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; EXIT (&#1090;&#1072;&#1082; &#1089;&#1083;&#1086;&#1074;&#1086; &#1076;&#1077;&#1083;&#1072;&#1077;&#1090; RETURN).
+    <span style="color: #af00ff;">.quad</span> LATEST, FETCH, HIDDEN # &#1055;&#1077;&#1088;&#1077;&#1082;&#1083;&#1102;&#1095;&#1072;&#1077;&#1084; HIDDEN flag  (&#1089;&#1084;. &#1085;&#1080;&#1078;&#1077; &#1076;&#1083;&#1103; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1103;).
+    <span style="color: #af00ff;">.quad</span> LBRAC              # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084;&#1089;&#1103; &#1074; IMMEDIATE &#1088;&#1077;&#1078;&#1080;&#1084;.
+    <span style="color: #af00ff;">.quad</span> EXIT               # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1080;&#1079; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-18" class="outline-3">
+<h3 id="sec-1-18">Расширение компилятора</h3>
+<div class="outline-text-3" id="text-1-18">
+</div><div id="outline-container-sec-1-18-1" class="outline-4">
+<h4 id="sec-1-18-1">IMMEDIATE</h4>
+<div class="outline-text-4" id="text-1-18-1">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_immediate"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"IMMEDIATE"</span>,9,F_IMMED,IMMEDIATE
+    <span style="color: #af00ff;">mov</span>     (var_LATEST), <span style="color: #af5f00;">%rdi</span>  # LATEST &#1089;&#1083;&#1086;&#1074;&#1086; &#1074; <span style="color: #af5f00;">%rdi</span>.
+    <span style="color: #af00ff;">add</span>     $8, <span style="color: #af5f00;">%rdi</span>            # &#1058;&#1077;&#1087;&#1077;&#1088;&#1100; <span style="color: #af5f00;">%rdi</span> &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1073;&#1072;&#1081;&#1090; name/flags
+    <span style="color: #af00ff;">xorb</span>    $F_IMMED, (<span style="color: #af5f00;">%rdi</span>)    # &#1055;&#1077;&#1088;&#1077;&#1082;&#1083;&#1102;&#1095;&#1080;&#1090;&#1100; the F_IMMED &#1073;&#1080;&#1090;.
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-18-2" class="outline-4">
+<h4 id="sec-1-18-2">HIDDEN</h4>
+<div class="outline-text-4" id="text-1-18-2">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_hidden"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"HIDDEN"</span>,6,,HIDDEN
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>                # &#1059;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1086; &#1074; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">add</span>     $8, <span style="color: #af5f00;">%rdi</span>            # &#1058;&#1077;&#1087;&#1077;&#1088;&#1100; &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; &#1085;&#1072; &#1073;&#1072;&#1081;&#1090; length/flags.
+    <span style="color: #af00ff;">xor</span>     $F_HIDDEN, (<span style="color: #af5f00;">%rdi</span>)   # &#1055;&#1077;&#1088;&#1077;&#1082;&#1083;&#1102;&#1095;&#1072;&#1077;&#1084; HIDDEN &#1073;&#1080;&#1090;.
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"HIDE"</span>,4,,HIDE
+    <span style="color: #af00ff;">.quad</span>    WORD                # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1089;&#1083;&#1086;&#1074;&#1086; (&#1080;&#1097;&#1091;&#1097;&#1077;&#1077; &#1079;&#1072; HIDE).
+    <span style="color: #af00ff;">.quad</span>    FIND                # &#1048;&#1097;&#1077;&#1084; &#1077;&#1075;&#1086; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077;
+    <span style="color: #af00ff;">.quad</span>    HIDDEN              # &#1059;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; F_HIDDEN &#1092;&#1083;&#1072;&#1075;.
+    <span style="color: #af00ff;">.quad</span>    EXIT                # &#1042;&#1099;&#1093;&#1086;&#1076;&#1080;&#1084;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-18-3" class="outline-4">
+<h4 id="sec-1-18-3">TICK</h4>
+<div class="outline-text-4" id="text-1-18-3">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tick"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"'"</span>,1,,TICK
+    <span style="color: #af00ff;">lodsq</span>                   # &#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1077;&#1075;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072; &#1080; &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1090;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086;
+    <span style="color: #af00ff;">push</span>     <span style="color: #af5f00;">%rax</span>           # Push &#1077;&#1075;&#1086; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-19" class="outline-3">
+<h3 id="sec-1-19">Ветвление</h3>
+<div class="outline-text-3" id="text-1-19">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_branch"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"BRANCH"</span>,6,,BRANCH
+    <span style="color: #af00ff;">add</span>     (<span style="color: #af5f00;">%rsi</span>),<span style="color: #af5f00;">%rsi</span>     # &#1076;&#1086;&#1073;&#1072;&#1074;&#1080;&#1090;&#1100; offset &#1082; instruction pointer
+    <span style="color: #af00ff;">NEXT</span>
+
+<span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"0BRANCH"</span>,7,,ZBRANCH
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      # &#1042;&#1077;&#1088;&#1096;&#1080;&#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1072; &#1088;&#1072;&#1074;&#1085;&#1072; &#1085;&#1091;&#1083;&#1102;?
+    <span style="color: #af00ff;">jz</span>      code_BRANCH     # &#1045;&#1089;&#1083;&#1080; &#1076;&#1072;, &#1074;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1085;&#1072;&#1079;&#1072;&#1076; &#1082; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080; BRANCH &#1074;&#1099;&#1096;&#1077;
+    <span style="color: #af00ff;">lodsq</span>                   # &#1080;&#1085;&#1072;&#1095;&#1077; &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1090;&#1080;&#1090;&#1100; &#1089;&#1084;&#1077;&#1097;&#1077;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-20" class="outline-3">
+<h3 id="sec-1-20">Строковые литералы - LITSTRING</h3>
+<div class="outline-text-3" id="text-1-20">
+<p>
+LITSTRING - это примитив, используемый для реализации операторов <code> ." </code> И <code> S" </code> (которые
+написаны в формате Forth). См. ниже определение этих операторов.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_lit"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"LITSTRING"</span>,9,,LITSTRING
+    <span style="color: #af00ff;">lodsq</span>                   # &#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1076;&#1083;&#1080;&#1085;&#1091; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            # push &#1072;&#1076;&#1088;&#1077;&#1089; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # push &#1076;&#1083;&#1080;&#1085;&#1091;
+    <span style="color: #af00ff;">add</span>     <span style="color: #af5f00;">%rax</span>,<span style="color: #af5f00;">%rsi</span>       # &#1087;&#1088;&#1086;&#1087;&#1091;&#1089;&#1090;&#1080;&#1090;&#1100; &#1089;&#1090;&#1088;&#1086;&#1082;&#1091;
+    <span style="color: #af00ff;">add</span>     $7,<span style="color: #af5f00;">%esi</span>         # &#1085;&#1086; &#1086;&#1082;&#1088;&#1091;&#1075;&#1083;&#1080;&#1090;&#1100; &#1076;&#1086; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1077;&#1081; 4 &#1073;&#1072;&#1081;&#1090;&#1086;&#1074;&#1086;&#1081; &#1075;&#1088;&#1072;&#1085;&#1080;&#1094;&#1099;
+    <span style="color: #af00ff;">and</span>     $~7,<span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-21" class="outline-3">
+<h3 id="sec-1-21">Печать строки - TELL</h3>
+<div class="outline-text-3" id="text-1-21">
+<p>
+TELL просто печатает строку. Это более эффективно определять в ассемблере, потому что
+мы можем сделать это одним из системных вызовов Linux.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_tell"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"TELL"</span>,4,,TELL
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdx</span>                # param3: &#1076;&#1083;&#1080;&#1085;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rcx</span>                # param2: &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080; &#1074;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086; &#1087;&#1086;&#1084;&#1077;&#1097;&#1072;&#1077;&#1084; &#1074; <span style="color: #af5f00;">%rcx</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>                # save <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>                # save <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">mov</span>     $stdout, <span style="color: #af5f00;">%rdi</span>       # param1: stdout
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rsi</span>          # param2: &#1072;&#1076;&#1088;&#1077;&#1089; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1097;&#1072;&#1077;&#1084; &#1074; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     $sys_write, <span style="color: #af5f00;">%rax</span>    # SYSCALL write
+    <span style="color: #af00ff;">syscall</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>                # restore <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>                # restore <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-22" class="outline-3">
+<h3 id="sec-1-22">QUIT</h3>
+<div class="outline-text-3" id="text-1-22">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_quit"># QUIT &#1085;&#1077; &#1076;&#1086;&#1083;&#1078;&#1085;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1090;&#1100;&#1089;&#1103; (&#1090;&#1077; &#1077;&#1089;&#1090;&#1100; &#1074;&#1099;&#1079;&#1099;&#1074;&#1072;&#1090;&#1100; EXIT).
+<span style="color: #0000ff;">defword</span> <span style="color: #87005f;">"QUIT"</span>,4,,QUIT
+    # &#1055;&#1086;&#1083;&#1086;&#1078;&#1080;&#1090;&#1100; &#1082;&#1086;&#1085;&#1089;&#1090;&#1072;&#1085;&#1090;&#1091; RZ (&#1085;&#1072;&#1095;&#1072;&#1083;&#1100;&#1085;&#1086;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;) &#1085;&#1072; &#1089;&#1090;&#1077;&#1082; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;&#1086;&#1074;.
+    <span style="color: #af00ff;">.quad</span> RZ
+    # &#1059;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;, &#1083;&#1077;&#1078;&#1072;&#1097;&#1077;&#1077; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;&#1086;&#1074;, &#1082;&#1072;&#1082; &#1085;&#1086;&#1074;&#1086;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1074;&#1077;&#1088;&#1096;&#1080;&#1085;&#1099; &#1089;&#1090;&#1077;&#1082;&#1072; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+    <span style="color: #af00ff;">.quad</span> RSPSTORE       # &#1069;&#1090;&#1086; &#1086;&#1095;&#1080;&#1097;&#1072;&#1077;&#1090; &#1089;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+    # &#1047;&#1072;&#1087;&#1091;&#1089;&#1090;&#1080;&#1090;&#1100; &#1080;&#1085;&#1090;&#1077;&#1088;&#1087;&#1088;&#1077;&#1090;&#1072;&#1090;&#1086;&#1088; &#1082;&#1086;&#1084;&#1072;&#1085;&#1076;                  &lt;------+
+    <span style="color: #af00ff;">.quad</span> INTERPRET      # &#1048;&#1085;&#1090;&#1077;&#1088;&#1087;&#1088;&#1077;&#1090;&#1080;&#1088;&#1086;&#1074;&#1072;&#1090;&#1100; &#1089;&#1083;&#1077;&#1076;&#1091;&#1102;&#1097;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;  |
+    # &#1048; &#1085;&#1072;&#1074;&#1089;&#1077;&#1075;&#1076;&#1072; &#1079;&#1072;&#1094;&#1080;&#1082;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;                                 |
+    <span style="color: #af00ff;">.quad</span> BRANCH,-16     # -----------------------------------
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-23" class="outline-3">
+<h3 id="sec-1-23">INTERPRET</h3>
+<div class="outline-text-3" id="text-1-23">
+<p>
+INTERPRET является REPL (см.: <a href="http://en.wikipedia.org/wiki/REPL">http://en.wikipedia.org/wiki/REPL</a>) внутри Forth.
+</p>
+
+<p>
+Этот интерпретатор довольно прост, но помните, что в Forth вы всегда можете
+переопределить его более мощным!
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_interpret"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"INTERPRET"</span>,9,,INTERPRET
+    <span style="color: #af00ff;">call</span>    _WORD           # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; <span style="color: #af5f00;">%rcx</span> = &#1076;&#1083;&#1080;&#1085;&#1091;, <span style="color: #af5f00;">%rdi</span> = &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1086;.
+    # &#1045;&#1089;&#1090;&#1100; &#1083;&#1080; &#1089;&#1083;&#1086;&#1074;&#1086; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077;?
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, (interpret_is_lit)    # &#1069;&#1090;&#1086; &#1085;&#1077; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083; (&#1080;&#1083;&#1080; &#1087;&#1086;&#1082;&#1072; &#1085;&#1077; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;)
+    <span style="color: #af00ff;">call</span>    _FIND           #           # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1074; <span style="color: #af5f00;">%eax</span> &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1079;&#1072;&#1075;&#1086;&#1083;&#1086;&#1074;&#1086;&#1082; &#1080;&#1083;&#1080; 0
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>      #           # (&#1057;&#1086;&#1074;&#1087;&#1072;&#1076;&#1077;&#1085;&#1080;&#1077;)?
+    <span style="color: #af00ff;">jz</span>  1f                  #--------+  # ?-&#1053;&#1077; &#1076;&#1091;&#1084;&#1072;&#1102;! &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076; &#1074;&#1087;&#1077;&#1088;&#1077;&#1076; &#1082; (1)
+    # &#1069;&#1090;&#1086; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1085;&#1086;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;   #        |  # ?-&#1044;&#1072;. &#1053;&#1072;&#1081;&#1076;&#1077;&#1085;&#1086; &#1089;&#1086;&#1074;&#1087;&#1072;&#1076;&#1072;&#1102;&#1097;&#1077;&#1077; &#1089;&#1083;&#1086;&#1074;&#1086;. &#1055;&#1088;&#1086;&#1076;&#1086;&#1083;&#1078;&#1072;&#1077;&#1084;.
+    # &#1069;&#1090;&#1086; IMMEDIATE-&#1089;&#1083;&#1086;&#1074;&#1086;?  #        |  #
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rdi</span>      #        |  # <span style="color: #af5f00;">%edi</span> = &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1086;
+    <span style="color: #af00ff;">movb</span>    8(<span style="color: #af5f00;">%rdi</span>), <span style="color: #af5f00;">%al</span>    #        |  # <span style="color: #af5f00;">%al</span> = flags+length.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            #        |  # &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1080;&#1084; &#1077;&#1075;&#1086; (flags+length) &#1085;&#1077;&#1085;&#1072;&#1076;&#1086;&#1083;&#1075;&#1086;
+    <span style="color: #af00ff;">call</span>    _TCFA           #        |  # &#1055;&#1088;&#1077;&#1086;&#1073;&#1088;&#1072;&#1079;&#1091;&#1077;&#1084; entry (&#1074; <span style="color: #af5f00;">%rdi</span>) &#1074; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; codeword
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            #        |  # &#1042;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; flags+length
+    <span style="color: #af00ff;">andb</span>    $F_IMMED, <span style="color: #af5f00;">%al</span>   #        |  # (&#1059;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1083;&#1077;&#1085; &#1092;&#1083;&#1072;&#1075; F_IMMED)?
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdi</span>, <span style="color: #af5f00;">%rax</span>      #        |  # <span style="color: #af5f00;">%rdi</span>-&gt;<span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">jnz</span>     4f              #--------|-+# ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1089;&#1088;&#1072;&#1079;&#1091; &#1082; &#1074;&#1099;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1102; (4)
+    <span style="color: #af00ff;">jmp</span> 2f                  #--+     | |# ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; &#1087;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1077; &#1088;&#1077;&#1078;&#1080;&#1084;&#1072; &#1088;&#1072;&#1073;&#1086;&#1090;&#1099; (2)
+    # --------------------- #  |     | |# -------------------------------------------------
+<span style="color: #0000ff;">1</span>:  #                   &lt;------|-----+ |
+    # &#1053;&#1077;&#1090; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077;, &#1073;&#1091;&#1076;&#1077;&#1084; &#1089;&#1095;&#1080;&#1090;&#1072;&#1090;&#1100;, &#1095;&#1090;&#1086; &#1101;&#1090;&#1086; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;
+    <span style="color: #af00ff;">incq</span>    (interpret_is_lit)#|       |# &#1059;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1084; &#1092;&#1083;&#1072;&#1075;
+    <span style="color: #af00ff;">call</span>    _NUMBER         #  |       |# &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1095;&#1080;&#1089;&#1083;&#1086; &#1074; <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rcx</span> &gt; 0 &#1077;&#1089;&#1083;&#1080; &#1086;&#1096;&#1080;&#1073;&#1082;&#1072;
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rcx</span>      #  |       |# (&#1059;&#1076;&#1072;&#1083;&#1086;&#1089;&#1100; &#1088;&#1072;&#1089;&#1087;&#1072;&#1088;&#1089;&#1080;&#1090;&#1100; &#1095;&#1080;&#1089;&#1083;&#1086;)?
+    <span style="color: #af00ff;">jnz</span> 6f                  #--|-----+ |# ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; (6)
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rbx</span>      #  |     | |# ?-&#1044;&#1072;, &#1055;&#1077;&#1088;&#1077;&#1084;&#1077;&#1097;&#1072;&#1077;&#1084; &#1095;&#1080;&#1089;&#1083;&#1086; &#1074; <span style="color: #af5f00;">%ebx</span>,
+    <span style="color: #af00ff;">mov</span>     $LIT, <span style="color: #af5f00;">%rax</span>      #  |     | |#     &#1059;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; &#1089;&#1083;&#1086;&#1074;&#1086; LIT &#1074; <span style="color: #af5f00;">%eax</span> &lt;&#1047;&#1040;&#1063;&#1045;&#1052;????&gt;
+<span style="color: #0000ff;">2</span>:  #                   &lt;------+     | |#
+    # &#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1080;&#1084; &#1074; &#1082;&#1072;&#1082;&#1086;&#1084; &#1084;&#1099; &#1088;&#1077;&#1078;&#1080;&#1084;&#1077;     | |#
+    <span style="color: #af00ff;">mov</span>     (var_STATE), <span style="color: #af5f00;">%rdx</span>#       | |#
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rdx</span>      #        | |#     (&#1052;&#1099; &#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1080;&#1088;&#1091;&#1077;&#1084;&#1089;&#1103; &#1080;&#1083;&#1080; &#1074;&#1099;&#1087;&#1086;&#1083;&#1085;&#1103;&#1077;&#1084;&#1089;&#1103;)?
+    <span style="color: #af00ff;">jz</span>  4f                  #-----+  | |#     ?-&#1042;&#1099;&#1087;&#1086;&#1083;&#1085;&#1103;&#1077;&#1084;&#1089;&#1103;. &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; (4)
+    <span style="color: #af00ff;">call</span>    _COMMA          #     |  | |#     ?-&#1050;&#1086;&#1084;&#1087;&#1080;&#1083;&#1080;&#1088;&#1091;&#1077;&#1084;&#1089;&#1103;. &#1044;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1085;&#1086;&#1077; &#1086;&#1087;&#1088;&#1077;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1077;
+    <span style="color: #af00ff;">mov</span>     (interpret_is_lit), <span style="color: #af5f00;">%rcx</span>#| |#
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rcx</span>      #     |  | |#       (&#1069;&#1090;&#1086; &#1073;&#1099;&#1083; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;)?
+    <span style="color: #af00ff;">jz</span>      3f              #--+  |  | |#       ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; NEXT
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rbx</span>, <span style="color: #af5f00;">%rax</span>      #  |  |  | |#       ?-&#1044;&#1072;, &#1087;&#1086;&#1101;&#1090;&#1086;&#1084;&#1091; &#1079;&#1072; LIT &#1089;&#1083;&#1077;&#1076;&#1091;&#1077;&#1090; &#1095;&#1080;&#1089;&#1083;&#1086;,
+    <span style="color: #af00ff;">call</span>    _COMMA          #  |  |  | |#            &#1074;&#1099;&#1079;&#1099;&#1074;&#1072;&#1077;&#1084; _COMMA, &#1095;&#1090;&#1086;&#1073;&#1099; &#1089;&#1082;&#1086;&#1084;&#1087;&#1080;&#1083;&#1080;&#1090;&#1100; &#1077;&#1075;&#1086;
+<span style="color: #0000ff;">3</span>:  #                   &lt;------+  |  | |#
+    <span style="color: #af00ff;">NEXT</span>                    #     |  | |# NEXT
+    # ---------------------       |  | |# -------------------------------------------------
+<span style="color: #0000ff;">4</span>:  #                   &lt;---------+&lt;-|-+
+    # &#1042;&#1099;&#1087;&#1086;&#1083;&#1085;&#1103;&#1077;&#1084;&#1089;&#1103;                    |
+    <span style="color: #af00ff;">mov</span>     (interpret_is_lit), <span style="color: #af5f00;">%rcx</span>#|
+    <span style="color: #af00ff;">test</span>    <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rcx</span>      #        |  # (&#1069;&#1090;&#1086; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;)?
+    <span style="color: #af00ff;">jnz</span> 5f                  #--+     |  # ?-&#1044;&#1072;, &#1087;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076;&#1080;&#1084; &#1082; (5)
+    # &#1053;&#1077; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;, &#1074;&#1099;&#1087;&#1086;&#1083;&#1085;&#1080;&#1084; &#1087;&#1088;&#1103;&#1084;&#1086; &#1089;&#1077;&#1081;&#1095;&#1072;&#1089;. &#1052;&#1099; &#1085;&#1077; &#1086;&#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1083;&#1103;&#1077;&#1084; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1072;, &#1085;&#1086;
+    # codeword &#1074; &#1082;&#1086;&#1085;&#1077;&#1095;&#1085;&#1086;&#1084; &#1080;&#1090;&#1086;&#1075;&#1077; &#1074;&#1099;&#1079;&#1086;&#1074;&#1077;&#1090; NEXT, &#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1087;&#1086;&#1074;&#1090;&#1086;&#1088;&#1085;&#1086; &#1074;&#1077;&#1088;&#1085;&#1077;&#1090; &#1094;&#1080;&#1082;&#1083; &#1074; QUIT
+    <span style="color: #af00ff;">jmp</span>     *(<span style="color: #af5f00;">%rax</span>)         #  |     |
+    # --------------------- #  |     |  # -------------------------------------------------
+<span style="color: #0000ff;">5</span>:  #                    &lt;-----+     |
+    # &#1042;&#1099;&#1087;&#1086;&#1083;&#1085;&#1103;&#1077;&#1084; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;, &#1095;&#1090;&#1086; &#1086;&#1079;&#1085;&#1072;&#1095;&#1072;&#1077;&#1090;, &#1095;&#1090;&#1086; &#1084;&#1099; push-&#1080;&#1084; &#1077;&#1075;&#1086; &#1074; &#1089;&#1090;&#1077;&#1082; &#1080; &#1076;&#1077;&#1083;&#1072;&#1077;&#1084; NEXT
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rbx</span>            #        |
+    <span style="color: #af00ff;">NEXT</span>                    #        |
+<span style="color: #0000ff;">6</span>:  #                    &lt;-----------+
+    # &#1052;&#1099; &#1079;&#1076;&#1077;&#1089;&#1100;, &#1077;&#1089;&#1083;&#1080; &#1085;&#1077; &#1087;&#1086;&#1083;&#1091;&#1095;&#1080;&#1083;&#1086;&#1089;&#1100; &#1088;&#1072;&#1089;&#1087;&#1072;&#1088;&#1089;&#1080;&#1090;&#1100; &#1095;&#1080;&#1089;&#1083;&#1086; &#1074; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1081; &#1073;&#1072;&#1079;&#1077; &#1080;&#1083;&#1080; &#1101;&#1090;&#1086;&#1075;&#1086;
+    # &#1089;&#1083;&#1086;&#1074;&#1072; &#1085;&#1077;&#1090; &#1074; &#1089;&#1083;&#1086;&#1074;&#1072;&#1088;&#1077;. &#1055;&#1077;&#1095;&#1072;&#1090;&#1072;&#1077;&#1084; &#1089;&#1086;&#1086;&#1073;&#1097;&#1077;&#1085;&#1080;&#1077; &#1086;&#1073; &#1086;&#1096;&#1080;&#1073;&#1082;&#1077; &#1080; 40 &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074; &#1082;&#1086;&#1085;&#1090;&#1077;&#1082;&#1089;&#1090;&#1072;.
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">mov</span>     $stderr, <span style="color: #af5f00;">%rdi</span>   #           # param1: stderr
+    <span style="color: #af00ff;">mov</span>     $errmsg, <span style="color: #af5f00;">%rsi</span>   #           # param2: &#1042;&#1099;&#1074;&#1086;&#1076;&#1080;&#1084;&#1072;&#1103; &#1089;&#1090;&#1088;&#1086;&#1082;&#1072;
+    <span style="color: #af00ff;">mov</span>     $errmsgend-errmsg, <span style="color: #af5f00;">%rdx</span>     # param3: &#1044;&#1083;&#1080;&#1085;&#1072; &#1074;&#1099;&#1074;&#1086;&#1076;&#1080;&#1084;&#1086;&#1081; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">mov</span>     $sys_write, <span style="color: #af5f00;">%rax</span>#           # SYSCALL write
+    <span style="color: #af00ff;">syscall</span>                 #           # SYSCALL
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>
+    # &#1054;&#1096;&#1080;&#1073;&#1082;&#1072; &#1087;&#1088;&#1086;&#1080;&#1079;&#1086;&#1096;&#1083;&#1072; &#1087;&#1077;&#1088;&#1077;&#1076; currkey
+    <span style="color: #af00ff;">mov</span>     (currkey), <span style="color: #af5f00;">%rcx</span> #
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rdx</span>      #
+    <span style="color: #af00ff;">sub</span>     $input_buffer, <span style="color: #af5f00;">%rdx</span>         # <span style="color: #af5f00;">%rdx</span> = (currkey - buffer) (&#1076;&#1083;&#1080;&#1085;&#1072; &#1073;&#1091;&#1092;&#1077;&#1088;&#1072; &#1087;&#1077;&#1088;&#1077;&#1076; currkey)
+    <span style="color: #af00ff;">cmp</span>     $40, <span style="color: #af5f00;">%rdx</span>       #           # (if &gt; 40)?
+    <span style="color: #af00ff;">jle</span> 7f                  #--+        # ?-&#1053;&#1077;&#1090;, &#1087;&#1077;&#1095;&#1072;&#1090;&#1072;&#1077;&#1084; &#1074;&#1089;&#1077;
+    <span style="color: #af00ff;">mov</span>     $40, <span style="color: #af5f00;">%rdx</span>       #  |        # ?-&#1044;&#1072;, &#1087;&#1077;&#1095;&#1072;&#1090;&#1072;&#1090;&#1100; &#1090;&#1086;&#1083;&#1100;&#1082;&#1086; 40 &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;
+<span style="color: #0000ff;">7</span>:  #                    &lt;-----+
+    <span style="color: #af00ff;">sub</span>     <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rcx</span>      #           # <span style="color: #af5f00;">%rcx</span> = start of area to print, <span style="color: #af5f00;">%edx</span> = length
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">mov</span>     $stderr, <span style="color: #af5f00;">%rdi</span>               # param1: stderr
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rcx</span>, <span style="color: #af5f00;">%rsi</span>                  # param2: &#1042;&#1099;&#1074;&#1086;&#1076;&#1080;&#1084;&#1072;&#1103; &#1089;&#1090;&#1088;&#1086;&#1082;&#1072;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rdx</span>, <span style="color: #af5f00;">%rdx</span>                  # param3: &#1044;&#1083;&#1080;&#1085;&#1072;
+    <span style="color: #af00ff;">mov</span>     $sys_write, <span style="color: #af5f00;">%eax</span>            # SYSCALL write
+    <span style="color: #af00ff;">syscall</span>                 #           # SYSCALL
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdx</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>
+    # &#1042;&#1099;&#1074;&#1077;&#1076;&#1077;&#1084; &#1087;&#1077;&#1088;&#1077;&#1074;&#1086;&#1076; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">mov</span>     $stderr, <span style="color: #af5f00;">%rdi</span>               # param1: stderr
+    <span style="color: #af00ff;">mov</span>     $errmsgnl, <span style="color: #af5f00;">%rsi</span> #           # param2: newline
+    <span style="color: #af00ff;">mov</span>     $1, <span style="color: #af5f00;">%edx</span>        #           # param3: &#1044;&#1083;&#1080;&#1085;&#1072;
+    <span style="color: #af00ff;">mov</span>     $sys_write, <span style="color: #af5f00;">%eax</span>            # SYSCALL write
+    <span style="color: #af00ff;">syscall</span>                 #           # SYSCALL
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">NEXT</span>                    #           # NEXT
+    # ---------------------
+    <span style="color: #af00ff;">.section</span> .rodata
+<span style="color: #0000ff;">errmsg</span>:
+    <span style="color: #af00ff;">.ascii</span> <span style="color: #87005f;">"PARSE ERROR: "</span>
+<span style="color: #0000ff;">errmsgend</span>:
+<span style="color: #0000ff;">errmsgnl</span>:
+    <span style="color: #af00ff;">.ascii</span> <span style="color: #87005f;">"\n"</span>
+
+    <span style="color: #af00ff;">.data</span>                   # NB: &#1087;&#1088;&#1086;&#1097;&#1077; &#1079;&#1072;&#1087;&#1080;&#1089;&#1072;&#1090;&#1100; &#1074; .data section
+    <span style="color: #af00ff;">.align</span> 8
+<span style="color: #0000ff;">interpret_is_lit</span>:
+    <span style="color: #af00ff;">.quad</span> 0                  # &#1060;&#1083;&#1072;&#1075; &#1083;&#1080;&#1090;&#1077;&#1088;&#1072;&#1083;&#1072;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-24" class="outline-3">
+<h3 id="sec-1-24">CHAR</h3>
+<div class="outline-text-3" id="text-1-24">
+<p>
+CHAR помещает код ASCII первого символа следующего слова в стек. Например, <code>CHAR A</code>
+кладет 65 в стек.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_char"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"CHAR"</span>,4,,CHAR
+    <span style="color: #af00ff;">call</span>    _WORD           # &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; <span style="color: #af5f00;">%ecx</span> = length, <span style="color: #af5f00;">%edi</span> = &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1083;&#1086;&#1074;&#1086;.
+    <span style="color: #af00ff;">xor</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">movb</span>    (<span style="color: #af5f00;">%rdi</span>), <span style="color: #af5f00;">%al</span>     # &#1055;&#1086;&#1083;&#1091;&#1095;&#1072;&#1077;&#1084; &#1087;&#1077;&#1088;&#1074;&#1099;&#1081; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083; &#1089;&#1083;&#1086;&#1074;&#1072;
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # &#1050;&#1083;&#1072;&#1076;&#1077;&#1084; &#1077;&#1075;&#1086; &#1074; &#1089;&#1090;&#1077;&#1082;
+    <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-25" class="outline-3">
+<h3 id="sec-1-25">EXECUTE</h3>
+<div class="outline-text-3" id="text-1-25">
+<p>
+EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
+в коде Forth для получения более подробной информации.
+</p>
+
+<p>
+С точки зрения реализации EXECUTE делает следующее:
+</p>
+<ul class="org-ul">
+<li>берет указатель на <code>codeword</code> слова, которое нужно выполнить.
+</li>
+<li>т.к. этот <code>codeword</code> сам является указателем на процедуру выполнения (такую, как
+DOCON) - осуществляется переход по нему. Т.е. управление передается этой процедуре.
+</li>
+</ul>
+
+<p>
+После перехода на токен его NEXT выйдет из текущего слова.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_execute"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"EXECUTE"</span>,7,,EXECUTE
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rax</span>            # &#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1090;&#1086;&#1082;&#1077;&#1085; &#1074;&#1099;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1103; &#1074; <span style="color: #af5f00;">%eax</span>
+    <span style="color: #af00ff;">jmp</span>     *(<span style="color: #af5f00;">%rax</span>)         # &#1080; &#1074;&#1099;&#1087;&#1086;&#1083;&#1085;&#1080;&#1090;&#1100; jump &#1085;&#1072; &#1085;&#1077;&#1075;&#1086;.
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-26" class="outline-3">
+<h3 id="sec-1-26">DODOES</h3>
+<div class="outline-text-3" id="text-1-26">
+<p>
+Работа этого кода объясняется во второй части
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="dodoes"><span style="color: #0000ff;">DODOES</span>:
+    <span style="color: #af00ff;">PUSHRSP</span> <span style="color: #af5f00;">%rsi</span>            # (&#1089;) &#1057;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; ESI &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074;
+
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # (b,d) CALL-RETADDR -&gt; ESI
+
+    <span style="color: #af00ff;">lea</span>     4(<span style="color: #af5f00;">%rax</span>), <span style="color: #af5f00;">%rax</span>   # (a) &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1080;&#1090;&#1100; param-field DEUX
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rax</span>            # (a) push &#1077;&#1075;&#1086; &#1085;&#1072; &#1089;&#1090;&#1077;&#1082; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;
+
+    <span style="color: #af00ff;">NEXT</span>                    # (e) &#1074;&#1099;&#1079;&#1074;&#1072;&#1090;&#1100; &#1080;&#1085;&#1090;&#1077;&#1088;&#1087;&#1088;&#1077;&#1090;&#1072;&#1090;&#1086;&#1088;
+
+<span style="color: #0000ff;">defconst</span> <span style="color: #87005f;">"DODOES_ADDR"</span>,11,,DODOES_ADDR,DODOES
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-27" class="outline-3">
+<h3 id="sec-1-27">Системные вызовы</h3>
+<div class="outline-text-3" id="text-1-27">
+<p>
+SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См.
+список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3
+параметров syscall, а также номер системного вызова.
+</p>
+
+<p>
+В этом Forth SYSCALL0 должен быть последним словом во встроенном (ассемблерном)
+словаре, потому что мы инициализируем переменную LATEST, чтобы указать на нее. Это
+означает, что если вы хотите расширить ассемблерную часть, вы должны поместить новые
+слова перед SYSCALL0 или изменить способ инициализации LATEST.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="word_syscalls"><span style="color: #af0000;">/*</span>
+<span style="color: #af0000;">;; defcode "SYSCALL3",8,,SYSCALL3</span>
+<span style="color: #af0000;">;;     pop     %eax            # &#1053;&#1086;&#1084;&#1077;&#1088; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1085;&#1086;&#1075;&#1086; &#1074;&#1099;&#1079;&#1086;&#1074;&#1072; (&#1089;&#1084;. &lt;asm/unistd.h&gt;)</span>
+<span style="color: #af0000;">;;     pop     %ebx            # &#1055;&#1077;&#1088;&#1074;&#1099;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;.</span>
+<span style="color: #af0000;">;;     pop     %ecx            # &#1042;&#1090;&#1086;&#1088;&#1086;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;</span>
+<span style="color: #af0000;">;;     pop     %edx            # &#1058;&#1088;&#1077;&#1090;&#1080;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;</span>
+<span style="color: #af0000;">;;     int     $0x80</span>
+<span style="color: #af0000;">;;     push    %eax            # &#1056;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;</span>
+<span style="color: #af0000;">;;     NEXT</span>
+<span style="color: #af0000;">*/</span>
+  <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"SYSCALL3"</span>,8,,SYSCALL3
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rsi</span>,<span style="color: #af5f00;">%r10</span> #save <span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rdi</span>,<span style="color: #af5f00;">%r9</span> #save <span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rax</span>        # System call number (see &lt;asm/unistd.h&gt;)
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rdi</span>        # First parameter.
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rsi</span>        # Second parameter
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rdx</span>        # Third parameter
+  <span style="color: #af00ff;">syscall</span>
+  <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>       # Result (negative for -errno)
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r10</span>,<span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r9</span>,<span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">NEXT</span>
+<span style="color: #af0000;">/*</span>
+<span style="color: #af0000;">;; defcode "SYSCALL2",8,,SYSCALL2</span>
+<span style="color: #af0000;">;;     pop     %eax            # &#1053;&#1086;&#1084;&#1077;&#1088; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1085;&#1086;&#1075;&#1086; &#1074;&#1099;&#1079;&#1086;&#1074;&#1072; (&#1089;&#1084;. &lt;asm/unistd.h&gt;)</span>
+<span style="color: #af0000;">;;     pop     %ebx            # &#1055;&#1077;&#1088;&#1074;&#1099;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;.</span>
+<span style="color: #af0000;">;;     pop     %ecx            # &#1042;&#1090;&#1086;&#1088;&#1086;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;</span>
+<span style="color: #af0000;">;;     int     $0x80</span>
+<span style="color: #af0000;">;;     push    %eax            # &#1056;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;</span>
+<span style="color: #af0000;">;;     NEXT</span>
+<span style="color: #af0000;">*/</span>
+  <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"SYSCALL2"</span>,8,,SYSCALL2
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rsi</span>,<span style="color: #af5f00;">%r10</span> #save <span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rdi</span>,<span style="color: #af5f00;">%r9</span> #save <span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rax</span>        # System call number (see &lt;asm/unistd.h&gt;)
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rdi</span>        # First parameter.
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rsi</span>        # Second parameter
+  <span style="color: #af00ff;">syscall</span>
+  <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>       # Result (negative for -errno)
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r10</span>,<span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r9</span>,<span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">NEXT</span>
+<span style="color: #af0000;">/*</span>
+<span style="color: #af0000;">;; defcode "SYSCALL1",8,,SYSCALL1</span>
+<span style="color: #af0000;">;;     pop     %eax            # &#1053;&#1086;&#1084;&#1077;&#1088; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1085;&#1086;&#1075;&#1086; &#1074;&#1099;&#1079;&#1086;&#1074;&#1072; (&#1089;&#1084;. &lt;asm/unistd.h&gt;)</span>
+<span style="color: #af0000;">;;     pop     %ebx            # &#1055;&#1077;&#1088;&#1074;&#1099;&#1081; &#1087;&#1072;&#1088;&#1072;&#1084;&#1077;&#1090;&#1088;.</span>
+<span style="color: #af0000;">;;     int     $0x80</span>
+<span style="color: #af0000;">;;     push    %eax            # &#1056;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;</span>
+<span style="color: #af0000;">;;     NEXT</span>
+<span style="color: #af0000;">*/</span>
+  <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"SYSCALL1"</span>,8,,SYSCALL1
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rsi</span>,<span style="color: #af5f00;">%r10</span> #save <span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%rdi</span>,<span style="color: #af5f00;">%r9</span> #save <span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rax</span>        # System call number (see &lt;asm/unistd.h&gt;)
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rdi</span>        # First parameter.
+  <span style="color: #af00ff;">syscall</span>
+  <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>       # Result (negative for -errno)
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r10</span>,<span style="color: #af5f00;">%rsi</span>
+  <span style="color: #af00ff;">mov</span> <span style="color: #af5f00;">%r9</span>,<span style="color: #af5f00;">%rdi</span>
+  <span style="color: #af00ff;">NEXT</span>
+<span style="color: #af0000;">/*</span>
+<span style="color: #af0000;">;; defcode "SYSCALL0",8,,SYSCALL0</span>
+<span style="color: #af0000;">;;     pop     %eax            # &#1053;&#1086;&#1084;&#1077;&#1088; &#1089;&#1080;&#1089;&#1090;&#1077;&#1084;&#1085;&#1086;&#1075;&#1086; &#1074;&#1099;&#1079;&#1086;&#1074;&#1072; (&#1089;&#1084;. &lt;asm/unistd.h&gt;)</span>
+<span style="color: #af0000;">;;     int     $0x80</span>
+<span style="color: #af0000;">;;     push    %eax            # &#1056;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090;</span>
+<span style="color: #af0000;">;;     NEXT</span>
+<span style="color: #af0000;">*/</span>
+  <span style="color: #af00ff;">defcode</span> <span style="color: #87005f;">"SYSCALL0"</span>,8,,SYSCALL0
+  <span style="color: #af00ff;">pop</span> <span style="color: #af5f00;">%rax</span>        # System call number (see &lt;asm/unistd.h&gt;)
+  <span style="color: #af00ff;">syscall</span>
+  <span style="color: #af00ff;">push</span> <span style="color: #af5f00;">%rax</span>       # Result (negative for -errno)
+  <span style="color: #af00ff;">NEXT</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-1-28" class="outline-3">
+<h3 id="sec-1-28">Сегмент стека и буффер ввода</h3>
+<div class="outline-text-3" id="text-1-28">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="sys_ret_stack_and_input_buffer">    <span style="color: #af00ff;">.bss</span>
+
+    # &#1057;&#1090;&#1077;&#1082; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090;&#1086;&#1074; Forth
+    <span style="color: #af00ff;">.set</span> RETURN_STACK_SIZE,8192
+    <span style="color: #af00ff;">.align</span> 4096
+<span style="color: #0000ff;">return_stack</span>:
+    <span style="color: #af00ff;">.space</span> RETURN_STACK_SIZE
+<span style="color: #0000ff;">return_stack_top</span>:           # Initial top of return stack.
+
+    # &#1041;&#1091;&#1092;&#1077;&#1088; &#1074;&#1074;&#1086;&#1076;&#1072;
+    <span style="color: #af00ff;">.set</span> INPUT_BUFFER_SIZE,4096
+    <span style="color: #af00ff;">.align</span> 4096
+<span style="color: #0000ff;">input_buffer</span>:
+    <span style="color: #af00ff;">.space</span> INPUT_BUFFER_SIZE
+
+    # &#1041;&#1091;&#1092;&#1077;&#1088; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093; - c&#1102;&#1076;&#1072; &#1091;&#1082;&#1072;&#1079;&#1099;&#1074;&#1072;&#1077;&#1090; HERE
+    <span style="color: #af00ff;">.set</span> INITIAL_DATA_SEGMENT_SIZE,65536
+    <span style="color: #af00ff;">.align</span> 4096
+<span style="color: #0000ff;">data_buffer</span>:
+    <span style="color: #af00ff;">.space</span> INITIAL_DATA_SEGMENT_SIZE
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-2" class="outline-2">
+<h2 id="sec-2">Tangling</h2>
+<div class="outline-text-2" id="text-2">
+<p>
+Теперь мы можем переходить к высокоуровневой части. Она лежит в разделе: <a href="jonesforth-2.html">Forth-часть</a>
+</p>
+
+<p>
+А тут осталась только сборка всего кода в один ассемблерный файл:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="macros"><span style="color: #0000ff;">&lt;&lt;macro_next</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_pushrsp</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_poprsp</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_defword</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_defcode</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_defvar</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macro_defconst</span>&gt;&gt;
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="assembly"><span style="color: #0000ff;">&lt;&lt;flags</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;macros</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;built_in_vars</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;built_in_constants</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;asm_docol</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;words_for_retstack</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;simple_primitives</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;mod</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;comparison</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;exit</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;store</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;char_store</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;data_stack_words</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_key</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_emit</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_word</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_find</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_tcfa</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_tdfa</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_number</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_lit</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_tell</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_create</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_comma</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_rbrac</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_colon</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_semicolon</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_immediate</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_hidden</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_tick</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_interpret</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_branch</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_quit</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_char</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_execute</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;dodoes</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;word_syscalls</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;asm_entry</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;sys_ret_stack_and_input_buffer</span>&gt;&gt;
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>
