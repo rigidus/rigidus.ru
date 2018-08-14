@@ -4166,103 +4166,7 @@ END-CODE   <span style="color: #af0000;">\ &#1079;&#1072;&#1074;&#1077;&#1088;&#
 <div class="outline-text-3" id="text-1-31">
 <p>
 Чтобы обеспечить сохранение продолжений нам нужен специальный стек продолжений, назовем
-его <code>стек L</code>. На вершину этого стека будет указывать <code>L@</code>, также мы имеем слова,
-предназначенные для работы с этим стеком: <code>&gt;L</code> и <code>L&gt;</code>.
-</p>
-
-<p>
-Для того чтобы сохранить продолжение у нас есть слово PRO:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-forth" id="call/cc_PRO">: PRO R&gt; R&gt; &gt;L EXECUTE LDROP <span style="color: #af00ff;">;</span>
-</pre>
-</div>
-
-<p>
-Это слово работает так: Оно снимает со стека возвратов два адреса:
-</p>
-<ul class="org-ul">
-<li>адрес возврата из <code>PRO</code>, назовем его <code>#1</code>
-</li>
-<li>адрес возврата из слова, которое вызвало <code>PRO</code>, назовем его <code>#2</code>
-</li>
-</ul>
-
-<p>
-Это <code>#2</code> оно кладет на стек <code>L</code>, стек продолжений. После этого <code>#1</code> вызывается с
-помощью EXECUTE, таким образом мы осуществляем возврат из слова PRO.
-</p>
-
-<p>
-Дальше у нас есть слово <code>ITER1</code>, которое использует <code>PRO</code> и содержит в себе вызов
-<code>CONT</code>
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-forth" id="call/cc_ITER1">: ITER1 PRO 1 CONT <span style="color: #af00ff;">;</span>
-</pre>
-</div>
-
-<p>
-Что же такое CONT? А вот что:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-forth" id="call/cc_CONT">: CONT L@ EXECUTE <span style="color: #af00ff;">;</span>
-</pre>
-</div>
-
-<p>
-Таким образом, если мы составим слово TEST вида:
-</p>
-
-<div class="org-src-container">
-
-<pre class="src src-forth" id="call/cc_TEST">: TEST ITER1 . <span style="color: #af00ff;">;</span>
-</pre>
-</div>
-
-<p>
-То произойдет вот что:
-</p>
-
-<p>
-<code>TEST</code> вызывает <code>ITER1</code>, оставляя на стеке возвратов адрес возврата <code>#2</code> на инструкцию
-"точка" в <code>TEST</code>.
-</p>
-
-<p>
-<code>ITER1</code> вызывает <code>PRO</code>, оставляя на стеке возвратов адрес возврата <code>#1</code>, на инструкцию
-<code>1</code>. в слове <code>ITER</code>.
-</p>
-
-<p>
-<code>PRO</code> кладет <code>#2</code> на стек продолжений, а <code>#1</code> запускает, после чего мы оказываемся в
-<code>ITER1</code>.
-</p>
-
-<p>
-Далее на стек данных кладется единица, после чего вызывается <code>CONT</code>, который берет
-продолжение с вершины стека <code>L</code>, и делает <code>EXECUTE</code>, попадая в инструкции "точка" слова
-<code>TEST</code>
-</p>
-
-<p>
-Все вместе реализует "вызов с текущим продолжением" на стеке <code>L</code> и вызов этого
-продолжения с помощью слова <code>CONT</code>.
-</p>
-
-<p>
-Вот поясняющая диаграмма:
-</p>
-
-<p>
-[TODO:gmm] В слове <code>CONT</code> видимо не <code>EXECUTE</code> а другое слово, умеющее помещать адрес
-на стек возврата.
+его <code>стек L</code>. Проследить за работой продолжений легче, если использовать диаграмму:
 </p>
 
 
@@ -4270,6 +4174,108 @@ END-CODE   <span style="color: #af0000;">\ &#1079;&#1072;&#1074;&#1077;&#1088;&#
 <p><img src="../../../img/forth-interpret-46.png" alt="forth-interpret-46.png">
 </p>
 </div>
+
+<p>
+Вот описание работы продолжений:
+</p>
+
+<p>
+Слово <code>TEST</code> вызывает <code>ITER</code>, оставляя на стеке возвратов адрес возврата на инструкцию
+"точка" в <code>TEST</code>, который мы обозначим как <code>ret-test-dot</code>:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-test-dot</code>
+</li>
+</ul>
+
+<p>
+<code>ITER</code> вызывает <code>PRO</code>, оставляя на стеке возвратов адрес возврата на инструкцию <code>1</code> в
+слове <code>ITER</code>, который мы обозначим как <code>ret-iter-one</code>.
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-test-dot</code> <code>ret-iter-one</code>
+</li>
+</ul>
+
+<p>
+<code>PRO</code> снимает со стека возвратов (и кладет на стек данных) сначала <code>ret-iter-one</code>, а
+потом <code>ret-test-dot</code>, но <code>#ret-test-dot</code> сразу перемещается на стек <code>L</code>, а
+<code>ret-iter-one</code> становится аргументом следующей операции <code>ENTER</code>, которая снимает его со
+стека данных, перемещает на стек возвратов и прыгает на него при исполнении <code>EXIT</code>,
+т.е. "точки с запятой". Так мы оказываемся на вызове <code>1</code> слова <code>ITER</code>. На этом этапе
+<code>ret-iter-one</code> перестает существовать, а <code>ret-test-dot</code> лежит на стеке <code>#L</code>. На стеке
+возвратов лежит адрес возврата в <code>PRO</code>, указывающий на <code>LDROP</code>, потому что он был туда
+положен когда мы входили в слово <code>ENTER</code>:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-pro-ldrop</code>
+</li>
+<li>L: <code>ret-test-dot</code>
+</li>
+</ul>
+
+<p>
+Вызов <code>1</code> кладет на стек данных единицу. Стеки теперь выглядят так:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-pro-ldrop</code>
+</li>
+<li>L: <code>ret-test-dot</code>
+</li>
+<li>D: 1
+</li>
+</ul>
+
+<p>
+Вызывается <code>CONT</code>. Внутри <code>CONT</code> есть слово <code>L@</code> которое копирует <code>ret-test-dot</code> с вершины
+стека <code>L</code> на стек данных:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-pro-ldrop</code>
+</li>
+<li>L: <code>ret-test-dot</code>
+</li>
+<li>D: 1 <code>ret-test-dot</code>
+</li>
+</ul>
+
+<p>
+После этого вызывается ENTER. Его вызов приводит к сохранению адреса "точки с запятой"
+слова <code>CONT</code> в стек возвратов:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-pro-ldrop</code> <code>ret-iter-semicolon</code> <code>ret-cont-semicolon</code>
+</li>
+<li>L: <code>ret-test-dot</code>
+</li>
+<li>D: 1 <code>ret-test-dot</code>
+</li>
+</ul>
+
+<p>
+После чего <code>ENTER</code> отправляет адрес <code>ret-test-dot</code> со стека данных в стек возвратов, а потом
+его точка с запятой снимает <code>ret-test-dot</code> со стека возвратов и прыгает на него. Мы
+оказываемся на адресе инструкции "точка" слова <code>TEST</code>, а стеки выглядят так:
+</p>
+<ul class="org-ul">
+<li>R: <code>ret-pro-ldrop</code> <code>ret-iter-semicolon</code> <code>ret-cont-semicolon</code>
+</li>
+<li>L: <code>ret-test-dot</code>
+</li>
+<li>D: 1
+</li>
+</ul>
+
+<p>
+"Точка" снимает со стека единицу и выводит ее, но самое интересное происходит
+потом. Следующая инструкция <code>EXIT</code> ("точка с запятой" слова <code>TEST</code>)
+вызывает возврат на <code>EXIT</code> слова <code>CONT</code>, а он в свою очередь - на <code>EXIT</code> слова <code>ITER</code>,
+и в конце концов на <code>LDROP</code> слова <code>PRO</code>, который убирает "продолжение" со стека <code>L</code>
+</p>
+
+<p>
+Все вместе реализует "вызов с текущим продолжением" или call/cc
+</p>
 </div>
 </div>
 
