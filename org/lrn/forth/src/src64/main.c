@@ -17,7 +17,8 @@ SDL_Texture*  field_texture = NULL;
 int main(int argc, char * argv[])
 {
     forth_asm_argc = argc;
-    forth_asm_argv = argv;
+    forth_asm_argv = (void*)argv;
+
     __asm("call forth_asm_start");
 
     /* gameover_flag = 0; */

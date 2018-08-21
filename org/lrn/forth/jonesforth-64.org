@@ -92,6 +92,158 @@
       .quad QUIT
 #+END_SRC
 
+** Сишная точка входа
+
+Чтобы иметь возможность подключать библиотеки языка Си мы собираем исполнямый файл из
+двух частей - сишного, который содержит точку входа и подключение необходимых библиотек
+и ассемблерного, который содержит Fort-машину. Этой Forth-машине передается управление,
+когда сишная часть выполнила всю необходимую инициализацию.
+
+Например, мы сохраняем для будущего использования ~argc~ и ~argv~ - количество
+параметров переданных в командной строке и указатель на эти параметры:
+
+#+NAME: save_cmdline_args
+#+BEGIN_SRC c
+  forth_asm_argc = argc;
+  forth_asm_argv = (void*)argv;
+#+END_SRC
+
+Переменные, в которых хранятся эти значения, должны быть определены в отдельном
+h-файле, чтобы они были видны и ассемблерному и сишному коду:
+
+#+NAME: shared_vars
+#+BEGIN_SRC c
+  int    forth_asm_argc;
+  void  *forth_asm_argv;
+#+END_SRC
+
+Там же следует определить прототипы ассемблерных функкций, чтобы сишный код о них
+узнал:
+
+#+NAME: asm_func_prototypes
+#+BEGIN_SRC c
+  void asmo_init();
+  void forth_asm_start();
+#+END_SRC
+
+В результате h-файл будет таким:
+
+#+BEGIN_SRC c :tangle src/inc64/asm.h :noweb tangle :exports code :padline no :comments none
+  #include <asm-generic/unistd.h>
+
+  <<shared_vars>>
+
+  <<asm_func_prototypes>>
+#+END_SRC
+
+Одной из важных используемых библиотек является SDL2, которую планируется использовать
+для визуализации. Отдельные куски, иллюстрирующие её использование оставлены для
+будущих расширений.
+
+#+BEGIN_SRC c :tangle src/src64/main.c :noweb tangle :exports code :padline no :comments none
+  /* g++ sdltest.c `pkg-config --cflags --libs sdl2` -o sdltest   */
+  /* https://github.com/mahiuchun/Snake-SDL */
+
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <time.h>
+  #include <SDL2/SDL.h>
+
+  #include "sdlwrap.h"
+  #include "asm.h"
+
+  SDL_Texture*  fruit_texture = NULL;
+  SDL_Texture*  shead_texture = NULL;
+  SDL_Texture*  snake_texture = NULL;
+  SDL_Texture*  field_texture = NULL;
+
+  int main(int argc, char * argv[])
+  {
+      <<save_cmdline_args>>
+
+      __asm("call forth_asm_start");
+
+      /* gameover_flag = 0; */
+      /* int delay = 16; */
+      /* init(); */
+      /* render(); */
+      /* for (;;) { */
+      /*     input(); */
+      /*     __asm("call forth_asm_start"); */
+      /*     __asm("call update2"); */
+      /*     /\* update(); *\/ */
+      /*     if (gameover_flag) { */
+      /*         gameover(); */
+      /*     } */
+      /*     __asm("call render"); */
+      /*     /\* render(); *\/ */
+      /*     SDL_Delay(delay * 10); */
+      /* } */
+      return 0;
+  }
+#+END_SRC
+
+** Make-файл
+
+Так как ~tangling~ не сохраняет правильно табуляции этот Makefile приведен тут для
+справочных целей.
+
+#+BEGIN_SRC makefile
+  SHELL = /bin/sh
+
+  CC = gcc
+  CFLAGS  += -m64 -g
+  LDFLAGS += -m64 -g
+
+  TARGET = forth64
+
+  INC = inc64
+
+  CSRC = main.c sdlwrap.c
+  ASMO = jonesforth.o
+  TOASMS = $(CSRC:.c=.s)
+  OBJS = $(CSRC:.c=.o) $(ASMS:.s=.o)
+
+
+  .SUFFIXES:
+  .SUFFIXES: .c .o .s
+
+  .PHONY: all toasm clean
+
+  VPATH = src64:inc64
+
+  CFLAGS  += $(shell pkg-config --cflags  sdl2)
+  LDFLAGS += $(shell pkg-config --libs    sdl2)
+
+
+  all: sdlwrap.o jonesforth.o main.o
+      $(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
+
+  sdlwrap.o: sdlwrap.c
+      $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+  main.o: main.c
+      $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+  jonesforth.o: jonesforth.s
+      $(CC) -c $(CFLAGS) $^ -o $@
+
+  toasm: $(CSRC)
+      $(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)
+
+  clean:
+      rm -Rf $(TARGET) $(OBJS) $(ASMO) $(TOASMS)
+
+  run:
+      cat jonesforth.f - | ./$(TARGET)
+
+  test:
+      cat jonesforth.f test.f | ./$(TARGET)
+
+  :test
+      car
+#+END_SRC
+
 ** Маски для FLAGS/LENGHT
 
 Остаются без изменений
