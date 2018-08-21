@@ -1062,6 +1062,12 @@ defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 
     /* Assembler entry point. */
 
+    .data
+    .globl forth_asm_argc
+forth_asm_argc:
+    .quad 0                  # Количество параметров командной строки
+
+
     .text
     .globl  forth_asm_start
     .type   forth_asm_start, @function
