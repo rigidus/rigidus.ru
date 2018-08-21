@@ -645,8 +645,8 @@ _TCFA:
     inc     %rdi            # Пропускаем flags+len байт
     andb    $F_LENMASK, %al # Маскируем, чтобы получить длину имени, без флагов
     add     %rax, %rdi      # Пропускаем имя
-    add     $7, %rdi        # Учитываем выравнивание
-    and     $~7, %rdi
+    add     $(wordsize-1), %rdi        # Учитываем выравнивание
+    and     $~(wordsize-1), %rdi
     ret
 
 defword ">DFA",4,,TDFA
@@ -728,8 +728,8 @@ defcode "LITSTRING",9,,LITSTRING
     push    %rsi            # push адрес начала строки
     push    %rax            # push длину
     add     %rax,%rsi       # пропустить строку
-    add     $7,%esi         # но округлить до следующей 4 байтовой границы
-    and     $~7,%esi
+    add     $(wordsize-1),%esi         # выровнять
+    and     $~(wordsize-1),%esi
     NEXT
 
 defcode "TELL",4,,TELL
@@ -764,8 +764,8 @@ defcode "CREATE",6,,CREATE
     mov     %rbx, %rsi      # в %rsi теперь адрес начала имени
     rep     movsb           # Копируем имя слова
     pop     %rsi            # Восстановим %rsi
-    add     $7, %rdi        # Вычислим выравнивание
-    and     $~7, %rdi
+    add     $(wordsize-1), %rdi        # Вычислим выравнивание
+    and     $~(wordsize-1), %rdi
 
     # Обновим LATEST и HERE.
     mov     (var_HERE), %rax
