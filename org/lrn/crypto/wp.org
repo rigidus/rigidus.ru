@@ -231,8 +231,52 @@ YES для транзакций, которые набрали более чем
 
 #+BEGIN_SRC forth :tangle .f :noweb tangle :exports code :padline no :comments none
   : BASE-G-NODES
-      ." 127.0.0.1:5501 127.0.0.1:5502 127.0.0.1:5503 127.0.0.1:5504 127.0.0.1:5505 "
+      ." '᚜127.0.0.1:5501 127.0.0.1:5502 127.0.0.1:5503 127.0.0.1:5504 127.0.0.1:5505᚛"
   ;
+#+END_SRC
+
+Мы хотим узнать, если ли данные в хранилище, и если их нет, то сохранить этот
+захардкоженный список. Для этого мы реализуем процедуру, которая:
+- отправит команду ноде, чтобы узнать, сколько элементов сохранено по ключу
+- получит ответ
+- сравнит его с нулем
+- если он равен нулю, то отправит команду на запись по ключу
+
+#+BEGIN_SRC forth :tangle .f :noweb tangle :exports code :padline no :comments none
+  : ENSURE-G-NODES
+      ." ᚜length ᚜gethash «g-nodes-list» storage᚛᚛" CR
+      NUMBER
+      0= IF
+          ." ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛" CR
+      THEN
+  ;
+#+END_SRC
+
+Отлично, теперь у нас гарантированно непустое хранилище. Но этого мало, потому что мы
+понимаем, что текущий контракт был вызван потому, что нода получила транзакцию, которая
+перевела некоторое количество средств на адрес этого контракта.
+
+#+BEGIN_SRC lisp
+  (ql:quickload "alexandria")
+
+  (let* ((path "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src")
+         (proc (sb-ext:run-program (format nil "~A/~A" path "forth64") '()
+                                   :environment '("testenv=testdata" "testenv=testdata2")
+                                   :wait nil :input :stream :output :stream))
+         (base (alexandria:read-file-into-string (format nil "~A/~A" path "jonesforth.f"))))
+    (with-open-stream (input (sb-ext:process-input proc))
+      (with-open-stream (output (sb-ext:process-output proc))
+        (format input "~A" base)
+        (force-output input)
+        (unless (equal "VFM VERSION 47 OK" (read-line output))
+          (error "VFM Welcome Error"))
+        (loop :for idx from 1 do
+           (tagbody loop-body
+              (handler-case
+                  (let ((in-string (read-line output)))
+                    (format t "~%[~A]~A" idx in-string))
+                (END-OF-FILE () (return idx)))))
+        )))
 #+END_SRC
 
 Для формирования нового списка узлов G-Node будет использоваться контракт, в адрес
@@ -486,6 +530,25 @@ VDN-токен состоит из:
 
 ** Кипящий слой и архивный блокчейн
 * Смарт-контракты
+** Протокол обмена
+
+Чтобы упросить взаимодействие между нодой и смарт-контрактом они будут посылать друг
+другу валидный код, который можно будет выполнить внутри того окружения, для которого
+он предназначен. В будущем, для большего формализма можно будет отдельно
+специфицировать каждую команду.
+
+** Unicode-символы
+
+Здесь есть одна трудность, связанная с тем, что Forth воспринимает круглые скобки как
+символ комментария даже внутри закавыченной строки. Поэтому мы заменим эти скобки на
+UNICODE-символы:
+- U+169b Ps OGHAM FEATHER MARK ᚛
+- U+169c Pe OGHAM REVERSED FEATHER MARK ᚜
+
+Мы также заменим обычные кавычки на кавычки-елочки:
+- U+AB: LEFT-POINTING DOUBLE ANGLE QUOTATION MARK «
+- U+BB: RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK »
+
 ** Запуск
 
 Запуск вот так (пример):
