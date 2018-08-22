@@ -292,8 +292,36 @@ YES для транзакций, которые набрали более чем
            (force-output input)
            (unless (equal "VFM VERSION 47 OK" (read-line output))
              (error "VFM Welcome Error"))
-           ,@body
-           ))))
+           ,@body))))
+
+  (defun vfm-write (input msg)
+    (format t "★ ~A CR~%" msg)
+    (format input "~A CR~%" msg)
+    (force-output input))
+
+  (defun vfm-read (output &key (label "") (cnt 1))
+    (loop :for idx :from 1 :to cnt :collect
+       (let ((in-string (read-line output)))
+         (format t "[~A] ~A ∴ ~A~%" idx label in-string)
+         in-string)))
+
+  (with-run-vfm (*sender* *amount*)
+    (format t "~%~%-----------------~%")
+    ;;
+    (vfm-write input "1 2 3 .S")
+    (vfm-read output)
+    ;;
+    (vfm-write input "ENVIRON")
+    (vfm-read output :label "BETA" :cnt 4)
+    ;;
+    (vfm-write input "BYE")
+    ;;
+    (loop :for idx from 1 do
+       (tagbody loop-body
+          (handler-case
+              (let ((in-string (read-line output)))
+                (format t "~%[~A]~A" idx in-string))
+                        (END-OF-FILE () (return idx))))))
 #+END_SRC
 
 Узел, который хочет стать G-нодой формирует транзакцию на адрес смарт-контракта, что
@@ -353,6 +381,16 @@ YES для транзакций, которые набрали более чем
           (force-output input)))))
 
   (with-run-vfm (*sender* *amount*)
+
+    (format input "~A~%" "ENVIRON BYE")
+    (force-output input)
+    (loop :for idx from 1 do
+       (tagbody loop-body
+          (handler-case
+              (let ((in-string (read-line output)))
+                (format t "~%[~A]~A" idx in-string))
+                        (END-OF-FILE () (return idx))))))
+
     ;; (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
     ;;        (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f"))))
       ;; (format input "~A" smart)
@@ -368,13 +406,13 @@ YES для транзакций, которые набрали более чем
 
       ;; (format input "~%CR ENVIRON  CR BYE ~%")
       ;; (force-output input)
-      (loop :for idx from 1 do
-         (tagbody loop-body
-            (handler-case
-                (let ((result (lift input output)))
-                  (format input "~A" result)
-                  (force-output))
-              (END-OF-FILE () (return "idx"))))))
+      ;; (loop :for idx from 1 do
+      ;;    (tagbody loop-body
+      ;;       (handler-case
+      ;;           (let ((result (lift input output)))
+      ;;             (format input "~A" result)
+      ;;             (force-output))
+  ;;         (END-OF-FILE () (return "idx"))))))
 #+END_SRC
 
 Для формирования нового списка узлов G-Node будет использоваться контракт, в адрес
