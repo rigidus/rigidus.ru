@@ -229,7 +229,8 @@ YES для транзакций, которые набрали более чем
 хранилище не содержит список - значит мы запускаем контракт в первый раз и тогда мы
 кладем в него захардкоженый список. Нам пока хватит пяти элементов.
 
-#+BEGIN_SRC forth :tangle .f :noweb tangle :exports code :padline no :comments none
+#+NAME: base_g_nodes
+#+BEGIN_SRC forth
   : BASE-G-NODES
       ." '᚜127.0.0.1:5501 127.0.0.1:5502 127.0.0.1:5503 127.0.0.1:5504 127.0.0.1:5505᚛"
   ;
@@ -242,7 +243,8 @@ YES для транзакций, которые набрали более чем
 - сравнит его с нулем
 - если он равен нулю, то отправит команду на запись по ключу
 
-#+BEGIN_SRC forth :tangle .f :noweb tangle :exports code :padline no :comments none
+#+NAME: ensure_g_nodes
+#+BEGIN_SRC forth
   : ENSURE-G-NODES
       ." ᚜length ᚜gethash «g-nodes-list» storage᚛᚛" CR
       NUMBER
@@ -270,7 +272,7 @@ YES для транзакций, которые набрали более чем
   (defparameter *amount* 100)
 #+END_SRC
 
-И передать их как переменные окружения:
+И передать их как переменные окружения, для чего соорудим специальный макрос:
 
 #+NAME: with_run_vfm
 #+BEGIN_SRC lisp
@@ -278,7 +280,7 @@ YES для транзакций, которые набрали более чем
 
   (defmacro with-run-vfm ((sender amount) &body body)
     `(let* ((path "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src")
-            (proc (sb-ext:run-program (format nil "~A/~A" path "forth64") '("asd1" "zxc2" "qwe3")
+            (proc (sb-ext:run-program (format nil "~A/~A" path "forth64") '("asd" "qwe")
                                       :environment (list
                                                     (format nil "sender=~A" ,sender)
                                                     (format nil "amount=~A" ,amount))
@@ -294,19 +296,85 @@ YES для транзакций, которые набрали более чем
            ))))
 #+END_SRC
 
+Узел, который хочет стать G-нодой формирует транзакцию на адрес смарт-контракта, что
+приводит к его запуску. Смарт-контакт анализирует свой ~storage~ и если он пуст,
+заполняет его захардкоженным списком адресов нод, как уже было сказано выше.
+
+Затем смарт-контракт должен запросить у ноды содержимое ~storage~ по ключу
+~sender-а~. Возвращаемое значение содержит сумму, которую ~sender~ перечислял на адрес
+смарт-контракта. К этому содержимому необходимо прибавить ~amount~ и сохранить новое
+значение по тому же ключу.
+
+#+BEGIN_SRC forth :tangle smart-g-nodes.f :noweb tangle :exports code :padline no :comments none
+  <<base_g_nodes>>
+
+  <<ensure_g_nodes>>
+
+  : ADD-AMOUNT
+      ENSURE-G-NODES
+      \ ." ᚜gethash «0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a» storage 0᚛᚛" CR
+      \ NUMBER
+      \ 0= IF
+      \     ." ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛" CR
+      \ THEN
+  ;
+#+END_SRC
+
+
+
 Запуск с передачей параметров командной строки и переменных окружения
 
 #+NAME: run_vfm
 #+BEGIN_SRC lisp
+  (ql:quickload :cl-ppcre)
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
+
+  (let ((storage (make-hash-table :test #'equal)))
+    (defun get-current-storage ()
+      storage)
+    (setf (gethash "key" storage) "val"))
+
+  (defun lift (input output)
+    (let ((in-string (read-line output)))
+      (format t "~%:: ~A" in-string)
+      (setf in-string (ppcre:regex-replace-all "᚜" in-string "("))
+      (setf in-string (ppcre:regex-replace-all "᚛" in-string ")"))
+      (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
+      (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
+      (let ((lift-str (read-from-string in-string)))
+        (format t "~%★ ~A" (bprint lift-str))
+        (let ((lift-eval-result (bprint (eval `(let ((storage (get-current-storage)))
+                                                 ,(read-from-string in-string))))))
+          (format t "~%☭ ~A~%" lift-eval-result)
+          (format input "~A~%" lift-eval-result)
+          (force-output input)))))
+
   (with-run-vfm (*sender* *amount*)
-    (format input "~A~%" "ENVIRON BYE")
-    (force-output input)
-    (loop :for idx from 1 do
-       (tagbody loop-body
-          (handler-case
-              (let ((in-string (read-line output)))
-                (format t "~%[~A]~A" idx in-string))
-            (END-OF-FILE () (return idx))))))
+    ;; (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
+    ;;        (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f"))))
+      ;; (format input "~A" smart)
+      ;; (force-output input)
+
+      ;; (format input "ADD-AMOUNT~%")
+      ;; (force-output input)
+
+      ;; (lift input output)
+
+      ;; (format input "BYE~%")
+      ;; (force-output input)
+
+      ;; (format input "~%CR ENVIRON  CR BYE ~%")
+      ;; (force-output input)
+      (loop :for idx from 1 do
+         (tagbody loop-body
+            (handler-case
+                (let ((result (lift input output)))
+                  (format input "~A" result)
+                  (force-output))
+              (END-OF-FILE () (return "idx"))))))
 #+END_SRC
 
 Для формирования нового списка узлов G-Node будет использоваться контракт, в адрес
