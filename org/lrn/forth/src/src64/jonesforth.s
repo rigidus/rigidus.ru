@@ -403,6 +403,22 @@ defcode "INVERT",6,,INVERT
     notq    (%rsp)          # это битовая функция "NOT" (см. NEGATE and NOT)
     NEXT
 
+defcode "ARGC",4,,ARGC
+    movq    (forth_asm_argc), %rax
+    push    %rax
+    NEXT
+defcode "ARGV",4,,ARGV
+    movq    (forth_asm_argv), %rax
+    push    %rax
+    NEXT
+
+
+
+defcode "ENV",3,,ENV
+    movq    (environ), %rax
+    push    %rax
+    NEXT
+
 defcode "EXIT",4,,EXIT
     POPRSP  %rsi            # Восстановить указатель из стека возвратов в %rsi
     NEXT                    # Сделать NEXT
@@ -1063,9 +1079,12 @@ defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
     /* Assembler entry point. */
 
     .data
+
     .globl forth_asm_argc
 forth_asm_argc:
     .quad 0                  # Количество параметров командной строки
+
+    .globl forth_asm_argv
 forth_asm_argv:
     .quad 0                  # Указатель на параметры командной строки
 
