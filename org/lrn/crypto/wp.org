@@ -240,16 +240,28 @@ YES для транзакций, которые набрали более чем
 захардкоженный список. Для этого мы реализуем процедуру, которая:
 - отправит команду ноде, чтобы узнать, сколько элементов сохранено по ключу
 - получит ответ
-- сравнит его с нулем
-- если он равен нулю, то отправит команду на запись по ключу
+- распарсит его
+- если ответ не является числом - отправит ноде вызов процедуры обработки ошибки
+- иначе: сравнит его с нулем
+- если он равен нулю, то отправит команду на запись по ключу.
 
 #+NAME: ensure_g_nodes
 #+BEGIN_SRC forth
   : ENSURE-G-NODES
+      \ Request count of g-nodes-list from storage
       ." ᚜length ᚜gethash «g-nodes-list» storage᚛᚛" CR
-      NUMBER
+      \ Read and parsing response
+      WORD NUMBER
       0= IF
-          ." ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛" CR
+          \ Number is ok, parsing success
+          0= IF
+              \ Number is 0, set base-g-nodes as default g-nodes-list
+              ." ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛" CR
+          THEN \ GOTO EXIT
+      ELSE
+          \ Wrong number
+          DROP \ Drop bad parsing number
+          ." ᚜smart-contract-error «wrong-node-result-number»᚛" CR
       THEN
   ;
 #+END_SRC
@@ -425,11 +437,8 @@ YES для транзакций, которые набрали более чем
 
   : ADD-AMOUNT
       ENSURE-G-NODES
-      \ ." ᚜gethash «0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a» storage 0᚛᚛" CR
-      \ NUMBER
-      \ 0= IF
-      \     ." ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛" CR
-      \ THEN
+      ." ᚜gethash «0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a» storage 0᚛᚛" CR
+      \ Что делать дальше?
   ;
 #+END_SRC
 
