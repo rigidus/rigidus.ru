@@ -272,7 +272,8 @@ YES для транзакций, которые набрали более чем
   (defparameter *amount* 100)
 #+END_SRC
 
-И передать их как переменные окружения, для чего соорудим специальный макрос:
+И передать их как переменные окружения, для чего соорудим специальный макрос
+~with-run-vfm~:
 
 #+NAME: with_run_vfm
 #+BEGIN_SRC lisp
@@ -293,20 +294,33 @@ YES для транзакций, которые набрали более чем
            (unless (equal "VFM VERSION 47 OK" (read-line output))
              (error "VFM Welcome Error"))
            ,@body))))
+#+END_SRC
 
-  (defun vfm-write (input msg)
-    (format t "★ ~A CR~%" msg)
-    (format input "~A CR~%" msg)
+Для логгирования взаимодействия с консолью нам также понадобятся специальные процедуры
+~vfm-write~ и ~vfm-read~, которые осуществляют ввод и вывод с логгированием на
+отправляющей стороне. Важно отметить, что из-за использования построчного чтения ввод и
+вывод буферизуется, поэтому необходимо передавать слово ~CR~ в конце посылки.
+
+#+NAME: vfm_read_write
+#+BEGIN_SRC lisp
+  (defun vfm-write (input msg &optional (terminator " CR"))
+    (format t "» ~A~A~%" msg terminator)
+    (format input "~A~A~%" msg terminator)
     (force-output input))
 
   (defun vfm-read (output &key (label "") (cnt 1))
     (loop :for idx :from 1 :to cnt :collect
        (let ((in-string (read-line output)))
-         (format t "[~A] ~A ∴ ~A~%" idx label in-string)
+         (format t "[~A] ~A « ~A~%" idx label in-string)
          in-string)))
+#+END_SRC
 
+Теперь мы можем выполнить пример - закоченную сессию обмена данными:
+
+#+NAME: vfm_example
+#+BEGIN_SRC lisp
   (with-run-vfm (*sender* *amount*)
-    (format t "~%~%-----------------~%")
+    (format t "~%~%----------------- begin~%")
     ;;
     (vfm-write input "1 2 3 .S")
     (vfm-read output)
@@ -315,14 +329,85 @@ YES для транзакций, которые набрали более чем
     (vfm-read output :label "BETA" :cnt 4)
     ;;
     (vfm-write input "BYE")
-    ;;
+    ;; Чтение из канала пока не наткнемся на EOF (оставлено для отладочных целей)
     (loop :for idx from 1 do
        (tagbody loop-body
           (handler-case
               (let ((in-string (read-line output)))
                 (format t "~%[~A]~A" idx in-string))
-                        (END-OF-FILE () (return idx))))))
+            (END-OF-FILE () (progn
+                              (format t "----------------- end~%")
+                              (return nil))))))
+    (values))
 #+END_SRC
+
+Возвращаясь к ~ensore-g-nodes~ нам понадобится также процедура, которая преобразует
+скобки и кавычки, которые мы получаем в ответе, а также исполняет ответ в контексте
+вызывающего процесса:
+
+-----------------------
+
+#+NAME: vfm_eval
+#+BEGIN_SRC lisp
+  (ql:quickload :cl-ppcre)
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
+
+  (let ((storage (make-hash-table :test #'equal)))
+    (defun get-current-storage ()
+      storage)
+    (setf (gethash "key" storage) "val"))
+
+  ;; (output &key (label "") (cnt 1))
+
+  (defun vfm-eval (input output)
+    (let ((in-string (read-line output)))
+      (format t "~%:: ~A" in-string)
+      (setf in-string (ppcre:regex-replace-all "᚜" in-string "("))
+      (setf in-string (ppcre:regex-replace-all "᚛" in-string ")"))
+      (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
+      (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
+      (let ((lift-str (read-from-string in-string)))
+        (format t "~%★ ~A" (bprint lift-str))
+        (let ((lift-eval-result (bprint (eval `(let ((storage (get-current-storage)))
+                                                 ,(read-from-string in-string))))))
+          (format t "~%☭ ~A~%" lift-eval-result)
+          (format input "~A~%" lift-eval-result)
+          (force-output input)))))
+
+
+  (with-run-vfm (*sender* *amount*)
+    (format t "~%~%----------------- begin~%")
+    ;;
+    (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
+           (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f"))))
+      (vfm-write input smart "")
+      (vfm-write input "" "")
+
+      ;; (vfm-read output)
+      ;;
+      (vfm-write input "ADD-AMOUNT" "")
+      (vfm-read output :label "ALFA")
+      ;;
+      (vfm-write input "0 BYE" "")
+      ;; (vfm-read output :label "BETA" :cnt 1)
+      ;;
+      ;; (vfm-write input " .S CR BYE" "")
+      ;; Чтение из канала пока не наткнемся на EOF (оставлено для отладочных целей)
+      (loop :for idx from 1 do
+         (tagbody loop-body
+            (handler-case
+                (let ((in-string (read-line output)))
+                  (format t "~%[~A]~A" idx in-string))
+              (END-OF-FILE () (progn
+                                (format t "----------------- end~%")
+                                (return nil))))))
+      (values)))
+
+#+END_SRC
+
 
 Узел, который хочет стать G-нодой формирует транзакцию на адрес смарт-контракта, что
 приводит к его запуску. Смарт-контакт анализирует свой ~storage~ и если он пуст,
