@@ -1,0 +1,568 @@
+#+STARTUP: showall indent hidestars
+
+* Demo 2.0 Intro to VFM Step-by-step
+
+Доклад будет техническим. Слабонервных просим удалиться.
+
+- Срыв покровов с вопроса "почему Forth?"
+  - Экскурс в Bitcoin
+  - Чего не хватает
+- Другой конкатенативный язык
+- Базовые элементы компиляции
+- Inter-Process-Communication
+- Storage
+- Контракт G-нод
+
+* Bitcoin Script
+
+- Forth-like
+- Stack-based
+- Reverce-polish
+- Concatenative
+- Turing incomplete
+
+* Forth-like & stack based
+
+#+BEGIN_SRC forth
+  2 3 OP_ADD 5 OP_EQUAL
+#+END_SRC
+
+#+results:
+[[file:img/bitcoin_script_adding.png]]
+
+- ☑ Forth-like
+- ☑ Stack-based
+- ☑ Reverce-polish
+- Concatenative
+- Turing incomplete
+
+* Concatenative: ~scriptPubKey~ & ~scriptSig~
+
+- ~scriptPubKey~ записывается в предшествующую транзакцию и определяет условия.
+- ~scriptSig~ записывается в будущую транзакцию и должен их удовлетворить
+
+Чтобы проверить транзакцию, выполняется результат конкатенации ~scriptSig~ +
+~scriptPubKey~. Если выполнение завершено успешно, транзакция действительна.
+
+[[file:img/bitcoin_txs.png]]
+
+Concatenative!
+
+* Sintetic example
+
+- ~scriptPubK~ (в предшествующей транзакции):
+
+#+BEGIN_SRC forth
+  OP_MUL 370 OP_EQUAL
+#+END_SRC
+
+- ~ScriptSig~ (в в последующей транзакции):
+
+#+BEGIN_SRC forth
+  10 37
+#+END_SRC
+
+Получившаяся программа:
+
+#+BEGIN_SRC forth
+  10 37 OP_MUL 370 OP_EQUAL
+#+END_SRC
+
+* Typical use: Pay to public key hash (P2PKH)
+
+- Alice владеет ~PrivKey~ -> ~PubK~ -> ~Addr~ -> и Боб узнает этот ~Addr~
+- Bob посылает транзакцию на ~Addr~ с кодом внутри ~scriptPubK~, таким, чтобы только
+  тот, кто владеет приватным ключом для адреса ~Addr~, мог потратить этот выход
+
+Когда Alice создает следующую транзакцию, она должна записать в ~scriptSig~:
+- подпись своей транзакции ~Sig~ приватным ключом ~PrivKey~.
+- публичный ключ ~PubK~
+
+Путем конкатенации программа станет такой:
+
+#+BEGIN_SRC forth
+  <Sig> <PubK> DUP HASH160 <Addr> EQUALVERIFY CHECKSIG
+#+END_SRC
+
+#+results:
+[[file:img/bitcoin_script_p2pkh.png]]
+
+* Что вам еще надо?
+
+- ☑ Forth-like
+- ☑ Stack-based
+- ☑ Reverce-polish
+- ☑ Concatenative
+- Turing incomplete
+
+Conditionals on Bitcoin Script:
+
+#+BEGIN_SRC forth
+  2 3 OP_ADD
+  5 OP_EQUAL
+  OP_IF OP_RETURN OP_ENDIF
+  ...
+#+END_SRC
+
+Только вперед!
+
+* И немножко взад!
+
+- Чтобы ходить назад, нам нужны адреса
+
+#+BEGIN_SRC forth
+    10
+  LOOP:
+    DUP PRINT
+    1 -
+    DUP 0 !=
+    0BRANCH LOOP
+    ...
+#+END_SRC
+
+
+#+results:
+[[file:img/loop.png]]
+
+* Considered Harmful
+
+[[file:img/goto.png]]
+
+* Conditions (1/2)
+
+Условное выражение вида:
+
+#+BEGIN_SRC forth
+  ...
+  condition IF
+      true-part-1
+      true-part-2
+      ...
+  THEN
+  rest-1
+  rest-1
+  ...
+#+END_SRC
+
+* Conditions (2/2)
+
+компилируется в:
+
+#+results:
+[[file:img/forth-interpret-control-01.png]]
+
+#+BEGIN_SRC forth
+  ...
+  condition
+  0BRANCH OFFSET-REST  true-part-1  true-part-2  ...
+  rest-1
+  rest-2
+  ...
+#+END_SRC
+
+где OFFSET-REST - это смещение до ~rest~
+
+* Else (1/2)
+
+Более сложное условное выражение вида:
+
+#+BEGIN_SRC forth
+  ...
+  condition IF
+      true-part-1
+      true-part-2
+      ...
+  ELSE
+      false-part-1
+      false-part-2
+      ...
+  THEN
+  rest-1
+  rest-2
+  ...
+#+END_SRC
+
+* Else (2/2)
+
+компилируется в:
+
+#+results:
+[[file:img/forth-interpret-control-02.png]]
+
+* BEGIN - UNTIL (1/2)
+
+Цикл с постусловием
+
+#+BEGIN_SRC forth
+  BEGIN
+      loop-part-1
+      loop-part-2
+      ...
+  condition UNTIL
+#+END_SRC
+
+* BEGIN - UNTIL (2/2)
+
+компилируется в:
+
+#+results:
+[[file:img/forth-interpret-control-03.png]]
+
+Или, в текстовой нотации:
+
+#+BEGIN_SRC forth
+  loop-part-1
+  loop-part-2
+  condition 0BRANCH OFFSET
+#+END_SRC
+
+* BEGIN - AGAIN (1/2)
+* BEGIN - WHILE - REPEAT (1/2)
+
+Это цикл с предусловием.
+
+#+BEGIN_SRC forth
+  BEGIN
+      condition
+  WHILE
+          loop-part-1
+          loop-part-2
+          ...
+  REPEAT
+  rest-1
+  rest-1
+#+END_SRC
+
+* BEGIN - WHILE - REPEAT (2/2)
+
+компилируется в:
+
+[[file:img/forth-interpret-control-05.png]]
+
+Или в текстовой нотации:
+
+#+BEGIN_SRC forth
+  condition
+  0BRANCH OFFSET-REST loop-part-1 loop-part-1
+  BRANCH OFFSET-BACK
+  rest-1 rest1
+#+END_SRC
+
+* Mission complete!
+
+- ☑ Forth-like
+- ☑ Stack-based
+- ☑ Reverce-polish
+- ☑ Concatenative
+- ☑ Turing (in)complete
+
+Написано. Работает. Покрыто тестами.
+
+* Inter-Process Communication (IPC)
+
+[[file:img/interstate60.jpg]]
+
+* VFM as process (1/2)
+
+No network. No protocol. No bugs.
+
+- Base Operation System Platform Communication Stack:
+  - Standart Input
+  - Standart Output
+  - Environment
+[[file:img/vfm-in-os.png]]
+* VFM as process (2/2)
+
+- Optional:
+  - FileIO
+  - Signal
+  - Unix Sockets
+  - Berkley Sockets
+  - Message queue
+  - Pipe/Named pipe
+  - Shared memory
+  - Message passing
+  - Memory-mapped files
+
+* VFM isolation
+
+#+results:
+[[file:img/vfm-in-os-in-docker.png]]
+
+* VFM frontend
+[[file:img/vfm-in-os-in-docker-with-nginx.png]]
+[[file:img/vfm-in-os-in-docker-with-nginx-separate.png]]
+* Node storage
+[[file:img/vfm-storage.png]]
+* Node context
+[[file:img/vfm-context.png]]
+* Контракт G-нод (1/3)
+
+- Мы храним список текущих G-нод в storage смарт-контракта
+  - Если там пусто, значит контракт запущен в первый раз, надо положить туда
+    захардкоженный список первых нод.
+
+Мы хотим узнать, если ли данные в хранилище, и если их нет, то сохранить этот
+захардкоженный список. Для этого мы реализуем процедуру, которая:
+- отправит команду ноде, чтобы узнать, сколько элементов сохранено по ключу
+- получит ответ
+- распарсит его
+- если ответ не является числом - отправит ноде вызов процедуры обработки ошибки
+- иначе: сравнит его с нулем
+- если он равен нулю, то отправит команду на запись по ключу.
+
+* Контракт G-нод (2/3)
+
+#+BEGIN_SRC forth
+  : ENSURE-G-NODES
+      \ Request count of g-nodes-list from storage
+      ." ᚜length ᚜gethash «g-nodes-list» storage᚛᚛" CR
+      \ Read and parsing response
+      WORD NUMBER
+      0= IF
+          \ Number is ok, parsing success
+          0= IF
+              \ Number is 0, set base-g-nodes as default g-nodes-list
+              ." ᚜prog1 1 ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛᚛" CR
+              WORD 2DROP \ Read and drop response
+          THEN \ GOTO EXIT
+      ELSE
+          \ Wrong number
+          DROP \ Drop bad parsing number
+          ." ᚜smart-contract-error «wrong-node-result-number»᚛" CR
+      THEN
+  ;
+#+END_SRC
+
+* Контракт G-нод (3/3)
+
+На стороне ноды я реализовал:
+- запуск VFM
+- передачу параметров командной строки и параметров, передаваемых в окружении
+- получение и отправку сообщений
+- выполнение полученных инжектов внутри контекста
+
+Осталось не реализованным:
+- Сохранение контекста в БД (тривиально)
+
+* Sources
+
+#+BEGIN_SRC ditaa :file img/bitcoin_script_adding.png
+       +---+         +---+
+       | 3 |         | 5 |
++---+  +---+  +---+  +---+  +---+
+| 2 |  | 2 |  | 5 |  | 5 |  | 1 |
++---+  +---+  +---+  +---+  +---+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/bitcoin_script_p2pkh.png
+                             +----------+
+                             | Addr     |
+                   +------+  +----------+
+                   | pubK |  | PubKHash |
+         +------+  +------+  +----------+  +------+
+         | pubK |  | pubK |  | pubK     |  | pubK |
++-----+  +------+  +------+  +----------+  +------+  +---+
+| sig |  | sig  |  | sig  |  | sig      |  | sig  |  | 1 |
++-----+  +------+  +------+  +----------+  +------+  +---+
+#+END_SRC
+
+#+results:
+[[file:img/bitcoin_script_p2pkh.png]]
+
+
+#+BEGIN_SRC ditaa :file img/bitcoin_txs.png
++-------+--------------+-++-+---+       +--------+-++-+-----------+---+
+| Tx-01 | scriptPubKey | || |   |       | Tx-02  | || | scriptSig |   |
++-------+------+-------+-++-+---+       +--------+-++-+-----+-----+---+
+               |                                            |
+               +---------------------------+                |
+                                           |                |
+                                           V                |
+                        +-----------+--------------+        |
+                        | scriptSig | scriptPubKey |        |
+                        +-----------+--------------+        |
+                              ^                             |
+                              |                             |
+                              +-----------------------------+
+#+END_SRC
+
+
+#+BEGIN_SRC ditaa :file img/loop.png
+  +-----+-----+-------+---+---+-----+---+-----------+----------+-----------+
+  | 10  | DUP | PRINT | 1 | - | DUP | 0 | NOT_EQUAL | 0BRANCH  | [address] |
+  +-----+-----+-------+---+---+-----+---+-----------+----------+-----+-----+
+        ^                                                            |
+        |                                                            |
+        +------------------------------------------------------------+
+
+#+END_SRC
+
+
+#+BEGIN_SRC ditaa :file img/forth-interpret-control-02.png
+  | ...                       |
+  +---------------------------+
+  | addr of condition    cAAF |
+  +---------------------------+
+  | addr of 0BRANCH      cC44 |
+  +---------------------------+
+  | OFFSET FALSE         cC44 +---+
+  +---------------------------+   |
+  | addr of true part 1  cAFA |   |
+  +---------------------------+   |
+  | addr of true part 2  cAFA |   |
+  +---------------------------+   |
+  | ...                  cAFA |   |
+  +---------------------------+   |
+  | addr of BRANCH       c7A7 |   |
+  +---------------------------+   |
+  | OFFSET REST          c7A7 +---|---+
+  +---------------------------+<--+   |
+  | addr of false part 1 cF77 |       |
+  +---------------------------+       |
+  | addr of false part 2 cF77 |       |
+  +---------------------------+       |
+  | ...                  cF77 |       |
+  +---------------------------+<------+
+  | rest 1               cAAF |
+  +---------------------------+
+  | rest 2               cAAF |
+  +---------------------------+
+  | ...                       |
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/forth-interpret-control-03.png
+  | ...                       |
+  +---------------------------+<--+
+  | addr of loop part 1  cAFA |   |
+  +---------------------------+   |
+  | addr of loop part 2  cAFA |   |
+  +---------------------------+   |
+  | ...                       |   |
+  +---------------------------+   |
+  | addr of condition    cAAF |   |
+  +---------------------------+   |
+  | addr of 0BRANCH      cC44 |   |
+  +---------------------------+   |
+  | OFFSET               cC44 +---+
+  +---------------------------+
+  | ...                       |
+#+END_SRC
+
+
+#+BEGIN_SRC ditaa :file img/forth-interpret-control-05.png
+  | ...                       |
+  +---------------------------+<------+
+  | addr of condition    cAAF |       |
+  +---------------------------+       |
+  | addr of 0BRANCH      cC44 |       |
+  +---------------------------+       |
+  | OFFSET REST          cC44 +---+   |
+  +---------------------------+   |   |
+  | addr of loop part 1  cAFA |   |   |
+  +---------------------------+   |   |
+  | addr of loop part 2  cAFA |   |   |
+  +---------------------------+   |   |
+  | ...                  cAFA |   |   |
+  +---------------------------+   |   |
+  | addr of BRANCH       c7A7 |   |   |
+  +---------------------------+   |   |
+  | OFFSET-BACK          c7A7 +---|---+
+  +---------------------------+<--+
+  | rest 1               cAAF |
+  +---------------------------+
+  | rest 2               cAAF |
+  +---------------------------+
+  | ...                       |
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-in-os.png
+  +-------------------------------------+
+  | Linux                               |
+  |   +--------------+        +------+  |
+  |   | Node         | stdin  | VFM  |  |
+  |   |              |<------>|      |  |
+  |   |              | stdout |      |  |
+  |   +--------------+        +------+  |
+  +-------------------------------------+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-in-os-in-docker.png
+  +---------------------------------------------+
+  | Linux                                       |
+  |   +--------------+        +--------------+  |
+  |   | Node         |        | Docker       |  |
+  |   |              |<------>|     +-----+  |  |
+  |   |              |        |<--->| VFM |  |  |
+  |   |              |        |     |     |  |  |
+  |   |              |        |     +-----+  |  |
+  |   +--------------+        +--------------+  |
+  +---------------------------------------------+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-in-os-in-docker-with-nginx.png
+  +--------------------------------------------------------------+
+  | Linux                                                        |
+  |   +--------------+        +-------------------------------+  |
+  |   | Node         |        | Docker                        |  |
+  |   |              |<------>|     +-----------+     +-----+ |  |
+  |   |              |        |<--->| Nginx/CGI |<--->| VFM | |  |
+  |   |              |        |     |           |     |     | |  |
+  |   |              |        |     +-----------+     +-----+ |  |
+  |   +--------------+        +-------------------------------+  |
+  +--------------------------------------------------------------+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-in-os-in-docker-with-nginx-separate.png
+  +---------------------+  +-------------------------------------+
+  | Linux               |  | Linux                               |
+  |   +--------------+  |  |  +-------------------------------+  |
+  |   | Node         |  |  |  | Docker                        |  |
+  |   |              |<------>|     +-----------+     +-----+ |  |
+  |   |              |  |  |  |<--->| Nginx/CGI |<--->| VFM | |  |
+  |   |              |  |  |  |     |           |     |     | |  |
+  |   |              |  |  |  |     +-----------+     +-----+ |  |
+  |   +--------------+  |  |  +-------------------------------+  |
+  +---------------------+  +-------------------------------------+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-storage.png
+  +-------------------------------------+
+  | Linux                               |
+  |   +--------------+        +------+  |
+  |   | Node         | stdin  | VFM  |  |
+  |   |      +------>|<------>|      |  |
+  |   |      |       | stdout |      |  |
+  |   |      V       |        +------+  |
+  |   | +----------+ |                  |
+  |   | |  S_STORE | |                  |
+  |   | |  S_LOAD  | |                  |
+  |   | +----+-----+ |                  |
+  |   |      |       |                  |
+  |   |      V       |                  |
+  |   | +----------+ |                  |
+  |   | | Storage  | |                  |
+  |   | |          | |                  |
+  |   | +----------+ |                  |
+  |   +--------------+                  |
+  +-------------------------------------+
+#+END_SRC
+
+#+BEGIN_SRC ditaa :file img/vfm-context.png
+  +------------------------------------------------+
+  | Linux                                          |
+  |   +-------------------------+        +------+  |
+  |   | Node                    | stdin  | VFM  |  |
+  |   |      +----------------->|<------>|      |  |
+  |   |      |      inject      | stdout |      |  |
+  |   |      V                  |        +------+  |
+  |   | +----------+            |                  |
+  |   | | Context  |            |                  |
+  |   | |          |            |                  |
+  |   | |  +=======+==+  +----+ |                  |
+  |   | |  | Storage  +->+ BD | |                  |
+  |   | +--|          |  |    | |                  |
+  |   |    +----------+  +----+ |                  |
+  |   +-------------------------+                  |
+  +------------------------------------------------+
+#+END_SRC
