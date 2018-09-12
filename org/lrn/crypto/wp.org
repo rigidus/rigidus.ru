@@ -258,7 +258,7 @@ YES для транзакций, которые набрали более чем
               \ Number is 0, set base-g-nodes as default g-nodes-list
               ." ᚜prog1 1 ᚜setf ᚜gethash «g-nodes-list» storage᚛ " BASE-G-NODES ." ᚛᚛" CR
               WORD 2DROP \ Read and drop response
-          THEN \ GOTO EXIT
+          THEN \ Goto Exit
       ELSE
           \ Wrong number
           DROP \ Drop bad parsing number
@@ -317,14 +317,14 @@ YES для транзакций, которые набрали более чем
 #+NAME: vfm_read_write
 #+BEGIN_SRC lisp
   (defun vfm-write (input msg &optional (terminator " CR"))
-    (format t "» ~A~A~%" msg terminator)
+    (format t "»[~A~A~%]»~%~%" msg terminator) ;; два последних перевода строки - для отделения вывода
     (format input "~A~A~%" msg terminator)
     (force-output input))
 
   (defun vfm-read (output &key (label "") (cnt 1))
     (loop :for idx :from 1 :to cnt :collect
        (let ((in-string (read-line output)))
-         (format t "[~A] ~A « ~A~%" idx label in-string)
+         (format t "[~A] ~A «[~A]«~%" idx label in-string)
          in-string)))
 #+END_SRC
 
@@ -382,9 +382,9 @@ YES для транзакций, которые набрали более чем
       (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
       (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
       (let ((eval-list (read-from-string in-string)))
-        (format t "~%★ ~A~%" (bprint eval-list))
-        (let ((eval-result (bprint (eval `(let ((storage (get-current-storage)))
-                                            ,eval-list)))))
+        ;; (format t "~%★ ~A~%" (bprint eval-list))
+        (let ((eval-result (eval `(let ((storage (get-current-storage)))
+                                    ,eval-list))))
           ;; (format t "~%☭ ~A~%" eval-result)
           eval-result))))
 
@@ -404,25 +404,27 @@ YES для транзакций, которые набрали более чем
     (format t "~%~%----------------- begin~%")
     ;;
     (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
-           (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f"))))
+           (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f")))
+           (result))
       (vfm-write input smart "")
-      (vfm-write input "ADD-AMOUNT" "")
-      (vfm-rep input output)
-      (vfm-rep input output)
-      (vfm-write input "1 2 3 .S CR BYE" "")
-      (vfm-rep input output)
-      (vfm-rep input output) ;; exit by EOF
-
-      ;; Чтение из канала пока не наткнемся на EOF (оставлено для отладочных целей)
-      ;; (loop :for idx :from 1 do
-      ;;    (tagbody loop-body
-      ;;       (handler-case
-      ;;           (let ((in-string (read-line output)))
-      ;;             (format t "~%<<~A>>~A~%" idx in-string))
-      ;;         (END-OF-FILE () (progn
-      ;;                           (format t "----------------- end~%")
-      ;;                           (return nil))))))
+      (vfm-write input "ALFA" "")
+      (block repl-block
+        (handler-case
+            (tagbody
+             repl
+               (setf result (vfm-eval (vfm-read output)))
+               (vfm-write input result "")
+               (go repl))
+          (END-OF-FILE () (progn
+                            (format t "----------------- end~%")
+                            (return-from repl-block nil)))))
       (values)))
+
+  (defun do-beta ()
+    (format nil "BETA"))
+
+  (defun do-gamma ()
+    (format nil "GAMMA"))
 
   ;; (gethash "g-nodes-list" (get-current-storage))
 #+END_SRC
@@ -442,17 +444,52 @@ YES для транзакций, которые набрали более чем
 
   <<ensure_g_nodes>>
 
+  \ : -TEXT ( a1 # а2 -- f=сравнение | полож=1>2 | отр=1<2 )
+  \    2DUP + SWAP DО DROP 2+ DUP 2- @
+  \      I @ - DUP IF DUP ABS / LEAVE THEN
+  \    2 +LOOP SWAP DROP ;
+
+
+
+  \ : -TEXT ( a1 # а2 -- f=сравнение | полож=1>2 | отр=1<2 )
+  \    2DUP + SWAP DО DROP 2+ DUP 2- @
+  \      I @ - DUP IF DUP ABS / LEAVE THEN
+  \    2 +LOOP SWAP DROP ;
+
+
   : ADD-AMOUNT
       ENSURE-G-NODES
       ." ᚜gethash «0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a» storage 0᚛᚛" CR
-      \ Что делать дальше?
-      \ Добавить к этому AMOUNT и записать в STORAGE
+      \ Read and parsing response
+      WORD NUMBER
+      0= IF
+          \ Number is ok, parsing success
+          \ Добавить к этому AMOUNT и записать в STORAGE
+          \ ...
+          DROP
+      ELSE
+          \ Wrong number
+          DROP \ Drop bad parsing number
+          ." ᚜smart-contract-error «wrong-node-result-number»᚛" CR
+      THEN
+  ;
+
+  : ALFA
+      ." ᚜do-beta᚛" CR \ CR нужен, чтобы завершить ввод команды
+  ;
+
+  : BETA
+      ." ᚜do-gamma᚛" CR
+  ;
+
+  : GAMMA
+      BYE
   ;
 #+END_SRC
 
-
-
 Запуск с передачей параметров командной строки и переменных окружения
+
+[TODO:gmm] - Слово поиска в окружении
 
 #+NAME: run_vfm
 #+BEGIN_SRC lisp
