@@ -388,6 +388,18 @@ YES для транзакций, которые набрали более чем
           ;; (format t "~%☭ ~A~%" eval-result)
           eval-result))))
 
+  (defmacro vfm-rep (input output)
+    `(block vfm-rep-blk
+       (handler-case
+           (let* ((in-string (vfm-read ,output))
+                  (result (if (equal "᚜" (subseq (car in-string) 0 1))
+                              (vfm-eval in-string)
+                              (car in-string))))
+             (vfm-write ,input result ""))
+         (END-OF-FILE () (progn
+                           (format t "----------------- end~%")
+                           (return-from vfm-rep-blk nil))))))
+
   (with-run-vfm (*sender* *amount*)
     (format t "~%~%----------------- begin~%")
     ;;
@@ -395,19 +407,21 @@ YES для транзакций, которые набрали более чем
            (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f"))))
       (vfm-write input smart "")
       (vfm-write input "ADD-AMOUNT" "")
-      (vfm-write input (vfm-eval (vfm-read output)) "")
-      (vfm-write input (vfm-eval (vfm-read output)) "")
+      (vfm-rep input output)
+      (vfm-rep input output)
+      (vfm-write input "1 2 3 .S CR BYE" "")
+      (vfm-rep input output)
+      (vfm-rep input output) ;; exit by EOF
 
-      (vfm-write input " .S CR BYE" "")
       ;; Чтение из канала пока не наткнемся на EOF (оставлено для отладочных целей)
-      (loop :for idx :from 1 do
-         (tagbody loop-body
-            (handler-case
-                (let ((in-string (read-line output)))
-                  (format t "~%<<~A>>~A~%" idx in-string))
-              (END-OF-FILE () (progn
-                                (format t "----------------- end~%")
-                                (return nil))))))
+      ;; (loop :for idx :from 1 do
+      ;;    (tagbody loop-body
+      ;;       (handler-case
+      ;;           (let ((in-string (read-line output)))
+      ;;             (format t "~%<<~A>>~A~%" idx in-string))
+      ;;         (END-OF-FILE () (progn
+      ;;                           (format t "----------------- end~%")
+      ;;                           (return nil))))))
       (values)))
 
   ;; (gethash "g-nodes-list" (get-current-storage))
