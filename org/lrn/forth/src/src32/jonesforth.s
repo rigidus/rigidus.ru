@@ -3,53 +3,53 @@
 .set F_LENMASK,0x1f  # length mask
 
 .macro NEXT
-    lodsq
-    jmp *(%rax)
+    lodsl
+    jmp *(%eax)
 .endm
 
 .macro PUSHRSP reg
-    lea     -8(%rbp),%rbp   # декремент %rbp на 8
-    mov     \reg,(%rbp)     # push reg в стек возвратов
+    lea     -4(%ebp), %ebp  # декремент %ebp на 4
+    movl    \reg, (%ebp)    # push reg в стек возвратов
 .endm
 
 .macro POPRSP reg
-    mov (%rbp),\reg         # pop вершину стека возвратов в reg
-    lea 8(%rbp),%rbp        # инкремент %rbp на 8
+    mov     (%ebp), \reg    # pop вершину стека возвратов в reg
+    lea     4(%ebp), %ebp   # инкремент %ebp на 4
 .endm
 
     .set link,0             # Инициализировать начальное значение
                             # переменной времени компиляции link
 .macro defword name, namelen, flags=0, label
     .section .rodata
-    .align 8
+    .align 4
     .globl name_\label
 name_\label :
-    .quad link              # link
+    .int link               # link
     .set link,name_\label
     .byte \flags+\namelen   # flags + байт длины
     .ascii "\name"          # имя
-    .align 8                # выравнивание на 8-байтовую границу
+    .align 4                # выравнивание на 4-х байтовую границу
     .globl \label
 \label :
-    .quad DOCOL             # codeword - указатель на функцию-интепретатор
+    .int DOCOL              # codeword - указатель на функцию-интепретатор
     # дальше будут идти указатели на слова
 .endm
 
 .macro defcode name, namelen, flags=0, label
     .section .rodata
-    .align 8
+    .align 4
     .globl name_\label
 name_\label :
-    .quad   link               # link
+    .int    link               # link
     .set    link,name_\label
     .byte   \flags+\namelen    # flags + байт длины
     .ascii  "\name"            # имя
-    .align  8                  # выравнивание на 4-х байтовую границу
+    .align  4                  # выравнивание на 4-х байтовую границу
     .globl  \label
 \label :
-    .quad   code_\label        # codeword
+    .int    code_\label        # codeword
     .text
-    //.align 8
+    //.align 4
     .globl  code_\label
 code_\label :
     # далее следует ассемблерный код
@@ -60,9 +60,9 @@ code_\label :
     push    $var_\name
     NEXT
     .data
-    .align 8
+    .align 4
     var_\name :
-    .quad \initial
+    .int \initial
 .endm
 
 .macro defconst name, namelen, flags=0, label, value
@@ -116,428 +116,403 @@ defconst "O_TRUNC",7,,__O_TRUNC,01000
 defconst "O_APPEND",8,,__O_APPEND,02000
 defconst "O_NONBLOCK",10,,__O_NONBLOCK,04000
 
+.set wordsize,4
+defconst "WORDSIZE",8,,WORDSIZE,wordsize
+
     .text
     .align 4
 DOCOL:
-    PUSHRSP %rsi            # Сохранить %rsi в стеке возвратов
-    leal    8(%rax), %rsi   # %rsi теперь указывает на param-field
-    NEXT                    # Делаем NEXT
-
-    .text
-    .align 8
-DOCOL:
-    PUSHRSP %rsi            # Сохранить %rsi в стеке возвратов
-    leaq    8(%rax), %rsi   # %rsi теперь указывает на param-field
-    /*
-    # Или другими словами:
-    # add   $8, %rax
-    # mov   %rax, %rsi
-    */
+    PUSHRSP %esi            # Сохранить %esi в стеке возвратов
+    leal    4(%eax), %esi   # %esi теперь указывает на param-field
     NEXT                    # Делаем NEXT
 
 defcode ">R",2,,TOR
-    pop     %rax            # pop со стека данных в %rax
-    PUSHRSP %rax            # push %rax на стек возвратов
+    popl    %eax            # pop со стека данных в %eax
+    PUSHRSP %eax            # push %eax на стек возвратов
     NEXT
 
 defcode "R>",2,,FROMR
-    POPRSP  %rax            # pop со стека возвратов в %rax
-    pushl   %rax            # push %rax на стек параметров
+    POPRSP  %eax            # pop со стека возвратов в %eax
+    pushl   %eax            # push %eax на стек параметров
     NEXT
 
 defcode "RSP@",4,,RSPFETCH
-    pushl    %rbp
+    pushl    %ebp
     NEXT
 
 defcode "RSP!",4,,RSPSTORE
-    popl    %rbp
+    popl    %ebp
     NEXT
 
 defcode "RDROP",5,,RDROP
-    addl    $8, %rbp
+    addl    $4, %ebp
     NEXT
 
 defcode "DROP",4,,DROP
-    popl    %rax            # сбросить верхний элемент стека
+    popl    %eax            # сбросить верхний элемент стека
     NEXT
 
 defcode "SWAP",4,,SWAP
-    popl    %rax            # поменять местами два верхних элемента на стеке
-    popl    %rbx
-    pushl   %rax
-    pushl   %rbx
+    popl    %eax            # поменять местами два верхних элемента на стеке
+    popl    %ebx
+    pushl   %eax
+    pushl   %ebx
     NEXT
 
 defcode "DUP",3,,DUP
-    mov     (%rsp), %rax    # дублировать верхний элемент стека
-    pushl   %rax
+    mov     (%esp), %eax    # дублировать верхний элемент стека
+    pushl   %eax
     NEXT
 
 defcode "OVER",4,,OVER
-    mov     8(%rsp), %rax   # взять второй от верха элемент стека
-    pushl   %rax            # и положить его копию сверху
+    mov     4(%esp), %eax   # взять второй от верха элемент стека
+    pushl   %eax            # и положить его копию сверху
     NEXT
 
 defcode "ROT",3,,ROT
-    popl    %rax
-    popl    %rbx
-    popl    %rcx
-    pushl   %rbx
-    pushl   %rax
-    pushl   %rcx
+    popl    %eax
+    popl    %ebx
+    popl    %ecx
+    pushl   %ebx
+    pushl   %eax
+    pushl   %ecx
     NEXT
 
 defcode "-ROT",4,,NROT
-    popl    %rax
-    popl    %rbx
-    popl    %rcx
-    pushl   %rax
-    pushl   %rcx
-    pushl   %rbx
+    popl    %eax
+    popl    %ebx
+    popl    %ecx
+    pushl   %eax
+    pushl   %ecx
+    pushl   %ebx
     NEXT
 
 defcode "2DROP",5,,TWODROP
-    popl    %rax            # сбросить два верхних элемента со стека
-    popl    %rax
+    popl    %eax            # сбросить два верхних элемента со стека
+    popl    %eax
     NEXT
 
 defcode "2DUP",4,,TWODUP
-    movl    (%rsp), %rax    # дублировать два верхних элемента на стеке
-    movl    8(%rsp), %rbx
-    pushl   %rbx
-    pushl   %rax
+    movl    (%esp), %eax    # дублировать два верхних элемента на стеке
+    movl    4(%esp), %ebx
+    pushl   %ebx
+    pushl   %eax
     NEXT
 
 defcode "2SWAP",5,,TWOSWAP
-    popl    %rax            # поменять местами две пары элементов на стеке
-    popl    %rbx
-    popl    %rcx
-    popl    %rdx
-    pushl   %rbx
-    pushl   %rax
-    pushl   %rdx
-    pushl   %rcx
+    popl    %eax            # поменять местами две пары элементов на стеке
+    popl    %ebx
+    popl    %ecx
+    popl    %edx
+    pushl   %ebx
+    pushl   %eax
+    pushl   %edx
+    pushl   %ecx
     NEXT
 
 defcode "?DUP",4,,QDUP
-    movl    (%rsp), %rax    # дублировать верхний элемент стека если он не нулевой
-    test    %rax, %rax
+    movl    (%esp), %eax    # дублировать верхний элемент стека если он не нулевой
+    test    %eax, %eax
     jz      1f
-    pushl   %rax
+    pushl   %eax
 1:
     NEXT
 
 defcode "1+",2,,INCR
-    incl    (%rsp)          # увеличить верхний элемент стека на единицу
+    incl    (%esp)          # увеличить верхний элемент стека на единицу
     NEXT
 
 defcode "1-",2,,DECR
-    decl    (%rsp)          # уменьшить верхний элемент стека на единицу
+    decl    (%esp)          # уменьшить верхний элемент стека на единицу
     NEXT
 
 defcode "4+",2,,INCR4
-    addl    $4, (%rsp)      # увеличить верхний элемент стека на 4
+    addl    $4, (%esp)      # увеличить верхний элемент стека на 4
     NEXT
 
 defcode "4-",2,,DECR4
-    subl    $4, (%rsp)      # уменьшить верхний элемент стека на 4
-    NEXT
-
-defcode "8+",2,,INCR8
-    addl    $8, (%rsp)      # увеличить верхний элемент стека на 8
-    NEXT
-
-defcode "8-",2,,DECR8
-    subl    $8, (%rsp)      # уменьшить верхний элемент стека на 8
+    subl    $4, (%esp)      # уменьшить верхний элемент стека на 4
     NEXT
 
 defcode "+",1,,ADD
-    popl    %rax            # взять верхний элемент со стека
-    addl    %rax, (%rsp)    # прибавиь его значение к элементу, который стал верхним
+    popl    %eax            # взять верхний элемент со стека
+    addl    %eax, (%esp)    # прибавиь его значение к элементу, который стал верхним
     NEXT
 
 defcode "-",1,,SUB
-    popl    %rax            # взять верхний элемент со стека
-    subl    %rax, (%rsp)    # вычесть его значение из элемента, который стал верхним верхним
+    popl    %eax            # взять верхний элемент со стека
+    subl    %eax, (%esp)    # вычесть его значение из элемента, который стал верхним верхним
     NEXT
 
 defcode "*",1,,MUL
-    popl    %rax            # взять со стека верхний элемент
-    popl    %rbx            # взять со стека следующий верхний элемент
-    imull   %rbx, %rax      # умножить их друг на друга
-    pushl   %rax            # игнорируем переполнение
+    popl    %eax            # взять со стека верхний элемент
+    popl    %ebx            # взять со стека следующий верхний элемент
+    imull   %ebx, %eax      # умножить их друг на друга
+    pushl   %eax            # игнорируем переполнение
     NEXT
 
 defcode "/MOD",4,,DIVMOD
-    xor %rdx, %rdx
-    pop     %rbx
-    pop     %rax
-    idiv    %rbx
-    push    %rdx            # push остаток
-    push    %rax            # push частное
+    pop     %ebx
+    pop     %eax
+    cdq
+    idivl   %ebx
+    pushl   %edx            # push остаток
+    pushl   %eax            # push частное
     NEXT
 
 defcode "U/MOD",5,,UDIVMOD
-    xor %rdx, %rdx
-    pop %rbx
-    pop %rax
-    div  %rbx
-    push %rdx               # push остаток
-    push %rax               # push частное
+    xor %edx, %edx
+    pop %ebx
+    pop %eax
+    divl %ebx
+    push %edx               # push остаток
+    push %eax               # push частное
     NEXT
 
 defcode "=",1,,EQU
-    pop     %rax            # два верхних элемента стека равны?
-    pop     %rbx
-    cmp     %rbx, %rax
+    popl    %eax            # два верхних элемента стека равны?
+    popl    %ebx
+    cmpl    %ebx, %eax
     sete    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "<>",2,,NEQU
-    pop     %rax            # два верхних элемента стека не равны?
-    pop     %rbx
-    cmp     %rbx, %rax
+    popl    %eax            # два верхних элемента стека не равны?
+    popl    %ebx
+    cmpl    %ebx, %eax
     setne   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "<",1,,LT
-    pop     %rax
-    pop     %rbx
-    cmp     %rax, %rbx
+    popl    %eax
+    popl    %ebx
+    cmpl    %eax, %ebx
     setl    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode ">",1,,GT
-    pop     %rax
-    pop     %rbx
-    cmp     %rax, %rbx
+    popl    %eax
+    popl    %ebx
+    cmpl    %eax, %ebx
     setg    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "<=",2,,LE
-    pop     %rax
-    pop     %rbx
-    cmp     %rax, %rbx
+    popl    %eax
+    popl    %ebx
+    cmpl    %eax, %ebx
     setle   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode ">=",2,,GE
-    pop     %rax
-    pop     %rbx
-    cmp     %rax, %rbx
+    popl    %eax
+    popl    %ebx
+    cmpl    %eax, %ebx
     setge   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0=",2,,ZEQU
-    pop     %rax            # верхний элемент стека равен нулю?
-    test    %rax, %rax
+    popl    %eax            # верхний элемент стека равен нулю?
+    test    %eax, %eax
     setz    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0<>",3,,ZNEQU
-    pop     %rax            # верхний элемент стека не равен нулю?
-    test    %rax, %rax
+    popl    %eax            # верхний элемент стека не равен нулю?
+    testl   %eax, %eax
     setnz   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0<",2,,ZLT
-    pop     %rax            # comparisons with 0
-    test    %rax, %rax
+    popl    %eax            # comparisons with 0
+    test    %eax, %eax
     setl    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0>",2,,ZGT
-    pop     %rax
-    test    %rax, %rax
+    popl    %eax
+    testl   %eax, %eax
     setg    %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0<=",3,,ZLE
-    pop     %rax
-    test    %rax, %rax
+    popl    %eax
+    testl   %eax, %eax
     setle   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "0>=",3,,ZGE
-    pop     %rax
-    test    %rax, %rax
+    popl    %eax
+    test    %eax, %eax
     setge   %al
-    movzb   %al, %rax
-    push    %rax
+    movzbl  %al, %eax
+    pushl   %eax
     NEXT
 
 defcode "AND",3,,AND
-    pop     %rax            # битовый AND
-    and     %rax, (%rsp)
+    popl    %eax            # битовый AND
+    andl    %eax, (%esp)
     NEXT
 
 defcode "OR",2,,OR
-    pop     %rax            # битовый OR
-    or      %rax, (%rsp)
+    popl    %eax            # битовый OR
+    orl     %eax, (%esp)
     NEXT
 
 defcode "XOR",3,,XOR
-    pop     %rax            # битовый XOR
-    xor     %rax, (%rsp)
+    popl    %eax            # битовый XOR
+    xorl    %eax, (%esp)
     NEXT
 
 defcode "INVERT",6,,INVERT
-    not     (%rsp)          # это битовая функция "NOT" (см. NEGATE and NOT)
+    notl    (%esp)          # это битовая функция "NOT" (см. NEGATE and NOT)
     NEXT
 
 defcode "EXIT",4,,EXIT
-    POPRSP  %rsi            # Восстановить указатель из стека возвратов в %rsi
+    POPRSP  %esi            # Восстановить указатель из стека возвратов в %esi
     NEXT                    # Сделать NEXT
 
 defcode "!",1,,STORE
-    popl    %rbx            # забираем со стека адрес, куда будем сохранять
-    popl    %rax            # забираем со стека данные, которые будем сохранять
-    movl    %rax, (%rbx)    # сохраняем данные по адресу
+    popl    %ebx            # забираем со стека адрес, куда будем сохранять
+    popl    %eax            # забираем со стека данные, которые будем сохранять
+    movl    %eax, (%ebx)    # сохраняем данные по адресу
     NEXT
 
 defcode "@",1,,FETCH
-    popl    %rbx            # забираем со стека адрес переменной, значение которой надо вернуть
-    movl    (%rbx), %rax    # выясняем значение по этому адресу
-    pushl   %rax            # push-им значение в стек
+    popl    %ebx            # забираем со стека адрес переменной, значение которой надо вернуть
+    movl    (%ebx), %eax    # выясняем значение по этому адресу
+    pushl   %eax            # push-им значение в стек
     NEXT
 
 defcode "+!",2,,ADDSTORE
-    popl    %rbx            # забираем со стека адрес переменной, которую будем увеличивать
-    popl    %rax            # забираем значение на которое будем увеличивать
-    addl    %rax, (%rbx)    # добавляем значение к переменной по этому адресу
+    popl    %ebx            # забираем со стека адрес переменной, которую будем увеличивать
+    popl    %eax            # забираем значение на которое будем увеличивать
+    addl    %eax, (%ebx)    # добавляем значение к переменной по этому адресу
     NEXT
 
 defcode "-!",2,,SUBSTORE
-    popl    %rbx            # забираем со стека адрес переменной, которую будем уменьшать
-    popl    %rax            # забираем значение на которое будем уменьшать
-    subl    %rax, (%rbx)    # вычитаем значение из переменной по этому адресу
+    popl    %ebx            # забираем со стека адрес переменной, которую будем уменьшать
+    popl    %eax            # забираем значение на которое будем уменьшать
+    subl    %eax, (%ebx)    # вычитаем значение из переменной по этому адресу
     NEXT
 
 defcode "C!",2,,STOREBYTE
-    popl    %rbx            # забираем со стека адрес, куда будем сохранять
-    popl    %rax            # забираем со стека данные, которые будем сохранять
-    movb    %al, (%rbx)     # сохраняем данные по адресу
+    popl    %ebx            # забираем со стека адрес, куда будем сохранять
+    popl    %eax            # забираем со стека данные, которые будем сохранять
+    movb    %al, (%ebx)     # сохраняем данные по адресу
     NEXT
 
 defcode "C@",2,,FETCHBYTE
-    popl    %rbx            # забираем со стека адрес переменной, значение которой надо вернуть
-    xorl    %rax, %rax      # очищаем регистр %rax
-    movb    (%rbx), %al     # выясняем значение по этому адресу
-    push    %rax            # push-им значение в стек
+    popl    %ebx            # забираем со стека адрес переменной, значение которой надо вернуть
+    xorl    %eax, %eax      # очищаем регистр %eax
+    movb    (%ebx), %al     # выясняем значение по этому адресу
+    push    %eax            # push-им значение в стек
     NEXT
 
 # C@C! - это полезный примитив для копирования байт
 defcode "C@C!",4,,CCOPY
-    movl    8(%rsp), %rbx   # адрес источника
-    movb    (%rbx), %al     # получаем байт из источника
-    popl    %rdi            # адрес приемника
+    movl    4(%esp), %ebx   # адрес источника
+    movb    (%ebx), %al     # получаем байт из источника
+    popl    %edi            # адрес приемника
     stosb                   # копируем байт в приемник
-    push    %rdi            # увеличиваем адрес приемника
-    incl    8(%rsp)         # увеличиваем адрес источника
+    push    %edi            # увеличиваем адрес приемника
+    incl    4(%esp)         # увеличиваем адрес источника
     NEXT
 
 # CMOVE - операция копирования блока байтов
 defcode "CMOVE",5,,CMOVE
-    movl    %rsi, %rdx      # сохраним %rsi
-    popl    %rcx            # length
-    popl    %rdi            # адрес приемника
-    popl    %rsi            # адрес источника
+    movl    %esi, %edx      # сохраним %esi
+    popl    %ecx            # length
+    popl    %edi            # адрес приемника
+    popl    %esi            # адрес источника
     rep     movsb           # копируем источник в приемник length раз
-    movl    %rdx, %rsi      # восстанавливаем %rsi
+    movl    %edx, %esi      # восстанавливаем %esi
     NEXT
 
 defcode "DSP@",4,,DSPFETCH
-    mov     %rsp, %rax
-    push    %rax
+    mov     %esp, %eax
+    push    %eax
     NEXT
 
 defcode "DSP!",4,,DSPSTORE
-    popl    %rsp
+    popl    %esp
     NEXT
 
     defcode "KEY",3,,KEY
     call _KEY
-    push    %rax            #       # push-им возвращенный символ на стек
+    push    %eax            #       # push-им возвращенный символ на стек
     NEXT                    #
 _KEY:                       # <--+
-    mov     (currkey), %rbx #    |  # Берем указатель currkey в %rbx
-    cmp     (bufftop), %rbx #    |  # (bufftop >= currkey)? - в буфере есть символы?
+    mov     (currkey), %ebx #    |  # Берем указатель currkey в %ebx
+    cmp     (bufftop), %ebx #    |  # (bufftop >= currkey)? - в буфере есть символы?
     jge     1f              #-+  |  # ?-Нет, переходим вперед
-    xor     %rax, %rax      # |  |  # ?-Да,  (1) переносим символ, на который
-    mov     (%rbx), %al     # |  |  #        указывает bufftop в %rax,
-    inc     %rbx            # |  |  #        (2) инкрементируем копию bufftop
-    mov     %rbx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
-    ret                     # |  |  #        и выходим (в %rax лежит символ)
+    xor     %eax, %eax      # |  |  # ?-Да,  (1) переносим символ, на который
+    mov     (%ebx), %al     # |  |  #        указывает currkey в %eax,
+    inc     %ebx            # |  |  #        (2) инкрементируем копию currkey
+    mov     %ebx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
+    ret                     # |  |  #        и выходим (в %eax лежит символ)
     # ---------------- RET    |  |
 1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
-    push    %rsi            #    |  #
-    push    %rdi            #    |  #
-    mov     $sys_read, %rax #    |  #  param0: SYSCALL #3 (read) в %rax
-    mov     $stdin, %rdi    #    |  #  param1: Дескриптор #0 (stdin) в %rdi
-    mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi ?
-    mov     %rsi, currkey   #    |  #  Сохраняем его (адрес буфера) ввода в currkey
-    mov     $INPUT_BUFFER_SIZE, %rdx # param3: Максимальная длина ввода в %rdx
-    syscall                 #    |  #  SYSCALL
-    pop     %rdi            #    |
-    pop     %rsi            #    |
+    mov     $sys_read, %eax #    |  # param1: SYSCALL #3 (read)
+    mov     $stdin, %ebx    #    |  # param2: Дескриптор #2 (stdin)
+    mov     $input_buffer, %ecx #|  # param3: Кладем адрес буфера ввода в %ecx
+    mov     %ecx, currkey   #    |  # Сохраняем адрес буфера ввода в currkey
+    mov     $INPUT_BUFFER_SIZE, %edx # Максимальная длина ввода
+    int     $0x80           #    |  # SYSCALL
     # Проверяем возвращенное     |  # должно быть количество символов + '\n'
-    test    %rax, %rax      #    |  # (%rax <= 0)?
+    test    %eax, %eax      #    |  # (%eax <= 0)?
     jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
-    addl    %rax, %rcx      # |  |  # ?-Нет, (1) добавляем в %rcx кол-во прочитанных байт
-    mov     %rcx, bufftop   # |  |  #        (2) записываем %rcx в bufftop
+    addl    %eax, %ecx      # |  |  # ?-Нет, (1) добавляем в %ecx кол-во прочитанных байт
+    mov     %ecx, (bufftop) # |  |  #        (2) записываем %ecx в bufftop
     jmp     _KEY            # |  |
     # ------------------------|--+
 2:  #                     <---+     # Ошибка или конец потока ввода - выходим
-    mov     $sys_exit, %rax         # param1: SYSCALL #1 (exit)
-    xor     %rdi, %rdi              # param2: код возврата
-    syscall                         # SYSCALL
+    mov     $sys_exit, %eax         # param1: SYSCALL #1 (exit)
+    xor     %ebx, %ebx              # param2: код возврата
+    int     $0x80                   # SYSCALL
     # --------------- EXIT
     .data
-    .align 8
+    .align 4
 currkey:
     # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
-    .quad input_buffer
+    .int input_buffer
 bufftop:
     # Хранит вершину буфера ввода (последние валидные данные + 1)
-    .quad input_buffer
+    .int input_buffer
 
 defcode "EMIT",4,,EMIT
-    popl    %rax
+    popl    %eax
     call    _EMIT
     NEXT
 _EMIT:
-    push    %rsi            #    |  #
-    push    %rdi            #    |  #
-    mov     $sys_write, %rax        # SYSCALL #4 (write)
-    movl    $stdout, %rdi           # param1: stdout в $rdi
-    mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
-    mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
-    mov     $1, %rdx                # param3: длина
-    syscall
-    pop     %rdi            #    |
-    pop     %rsi            #    |
+    movl    $stdout, %ebx            # param1: stdout
+    mov     %al, emit_scratch   # берем байт и заносим его в emit_scratch
+    mov     $emit_scratch, %ecx # param2: адрес выводимого значения
+    mov     $1, %edx            # param3: длина
+    mov     $sys_write, %eax    # SYSCALL #4 (write)
+    int     $0x80
     ret
 
     .data           # NB: проще записать в .data section
@@ -546,30 +521,30 @@ emit_scratch:
 
     defcode "WORD",4,,WORD
     call    _WORD
-    push    %rdi            # push base address
-    push    %rcx            # push length
+    push    %edi            # push base address
+    push    %ecx            # push length
     NEXT
 _WORD:
     # Ищем первый непробельный символ, пропуская комменты, начинающиеся с обратного слэша
 1:                      # <---+
-    call    _KEY            # |     # Получаем следующую букву, возвращаемую в %rax
+    call    _KEY            # |     # Получаем следующую букву, возвращаемую в %eax
     cmpb    $'\\', %al      # |     # (Это начало комментария)?
     je      3f              #-|---+ # ?-Да, переходим вперед
     cmpb    $' ', %al       # |   | # ?-Нет. (Это пробел, возрат каретки, перевод строки)?
     jbe     1b              #-+   | # ?-Да, переходим назад
     #                             |
     # Ищем конец слова, сохраняя символы по мере продвижения
-    mov     $word_buffer, %rdi  # | # Указатель на возвращаемый буфер
+    mov     $word_buffer, %edi  # | # Указатель на возвращаемый буфер
 2:                      # <---+   |
     stosb                   # |   | # Добавляем символ в возвращаемый буфер
     call    _KEY            # |   | # Вызываем KEY символ будет возвращен в %al
     cmpb    $' ', %al       # |   | # (Это пробел, возрат каретки, перевод строки)?
     ja      2b              #-+   | # Если нет, повторим
     #                       #     |
-    # Вернем слово (указатель на статический буфер черех %rcx) и его длину (через %rdi)
-    sub     $word_buffer, %rdi  # |
-    mov     %rdi, %rcx      #     | # return: длина слова
-    mov     $word_buffer, %rdi  # | # return: адрес буфера
+    # Вернем слово (указатель на статический буфер черех %ecx) и его длину (через %edi)
+    sub     $word_buffer, %edi  # |
+    mov     %edi, %ecx      #     | # return: длина слова
+    mov     $word_buffer, %edi  # | # return: адрес буфера
     ret                     #     |
     # ----------------- RET       |
     #                             |
@@ -589,108 +564,108 @@ word_buffer:
     .space 32
 
     defcode "FIND",4,,FIND
-    pop     %rcx            # %rcx = длина строки
-    pop     %rdi            # %rdi = адрес строки
+    pop     %ecx            # %ecx = длина строки
+    pop     %edi            # %edi = адрес строки
     call    _FIND
-    push    %rax            # %rax = адрес слова (или ноль)
+    push    %eax            # %eax = адрес слова (или ноль)
     NEXT
 _FIND:
-    push    %rsi            # Сохраним %rsi - так мы сможем использовать этот
+    push    %esi            # Сохраним %esi - так мы сможем использовать этот
                             # регистр для сравнения строк командой CMPSB
     # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
-    mov     (var_LATEST), %rdx          # %rdx теперь указывает на последнее слово в словаре
+    mov     (var_LATEST), %edx          # %edx теперь указывает на последнее слово в словаре
 1:  #                   <------------+
-    test    %rdx, %rdx      # (в %rdx находится NULL-указатель, т.е. словарь кончился)?
+    test    %edx, %edx      # (в %edx находится NULL-указатель, т.е. словарь кончился)?
     je  4f                  #-----+  |  # ?-Да, переходим вперед к (4)
     #                             |  |
     # Сравним ожидаемую длину и длину слова
     # Внимание, если F_HIDDEN установлен для этого слова, то совпадения не будет.
-    xor     %rax, %rax      #     |  |  # Очищаем %rax
-    movb    8(%rdx), %al    #     |  |  # %al = flags+length
+    xor     %eax, %eax      #     |  |  # Очищаем %eax
+    movb    4(%edx), %al    #     |  |  # %al = flags+length
     andb    $(F_HIDDEN|F_LENMASK), %al  # %al = теперь длина имени (маскируем флаги)
     cmpb    %cl, %al        #     |  |  # (Длины одинаковые?)
     jne 2f                  #--+  |  |  # ?-Нет, переходим вперед к (2)
     #                          |  |  |
     # Переходим к детальному сравнению
-    push    %rcx            #  |  |  |  # Сохраним длину, потому что repe cmpsb уменьшает %rcx
-    push    %rdi            #  |  |  |  # Сохраним адрес, потому что repe cmpsb двигает %rdi
-    lea     9(%rdx), %rsi   #  |  |  |  # Загружаем в %rsi адрес начала имени слова
+    push    %ecx            #  |  |  |  # Сохраним длину, потому что repe cmpsb уменьшает %ecx
+    push    %edi            #  |  |  |  # Сохраним адрес, потому что repe cmpsb двигает %edi
+    lea     5(%edx), %esi   #  |  |  |  # Загружаем в %esi адрес начала имени слова
     repe    cmpsb           #  |  |  |  # Сравниваем
-    pop     %rdi            #  |  |  |  # Восстанавливаем адрес
-    pop     %rcx            #  |  |  |  # Восстановим длину
+    pop     %edi            #  |  |  |  # Восстанавливаем адрес
+    pop     %ecx            #  |  |  |  # Восстановим длину
     jne 2f                  #--+  |  |  # ?-Если не равны - переходим вперед к (2)
     #                          |  |  |
-    # Строки равны - возвратим указатель на заголовок в %rax
-    pop     %rsi            #  |  |  |  # Восстановим %rsi
-    mov     %rdx, %rax      #  |  |  |  # %rdx все еще содержит указатель, который возвращаем
+    # Строки равны - возвратим указатель на заголовок в %eax
+    pop     %esi            #  |  |  |  # Восстановим %esi
+    mov     %edx, %eax      #  |  |  |  # %edx все еще содержит указатель, который возвращаем
     ret                     #  |  |  |  # Возврат
     # ----------------- RET    |  |  |
 2:  #                     <----+  |  |
-    mov     (%rdx), %rdx    #     |  |  # Переходим по указателю к следующему слову
+    mov     (%edx), %edx    #     |  |  # Переходим по указателю к следующему слову
     jmp 1b                  #     |  |  # И зацикливаемся
     # ----------------------------|--+
 4:  #                     <-------+
     # Слово не найдено
-    pop     %rsi            # Восстановим сохраненный %rsi
-    xor     %rax, %rax      # Возвратим ноль в %rax
+    pop     %esi            # Восстановим сохраненный %esi
+    xor     %eax, %eax      # Возвратим ноль в %eax
     ret                     # Возврат
 
     defcode ">CFA",4,,TCFA
-    pop     %rdi
+    pop     %edi
     call    _TCFA
-    push    %rdi
+    push    %edi
     NEXT
 _TCFA:
-    xor     %rax, %rax
-    add     $8, %rdi        # Пропускаем LINK - указатель на предыдущее слово
-    movb    (%rdi), %al     # Загружаем flags+len в %al
-    inc     %rdi            # Пропускаем flags+len байт
+    xor     %eax, %eax
+    add     $4, %edi        # Пропускаем LINK - указатель на предыдущее слово
+    movb    (%edi), %al     # Загружаем flags+len в %al
+    inc     %edi            # Пропускаем flags+len байт
     andb    $F_LENMASK, %al # Маскируем, чтобы получить длину имени, без флагов
-    add     %rax, %rdi      # Пропускаем имя
-    addl    $7, %rdi        # Учитываем выравнивание
-    andl    $~7, %rdi
+    add     %eax, %edi      # Пропускаем имя
+    addl    $3, %edi        # Учитываем выравнивание
+    andl    $~3, %edi
     ret
 
 defword ">DFA",4,,TDFA
-    .quad TCFA       # >CFA     (получаем code field address)
-    .quad INCR8      # 8+       (добавляем 8, чтобы получить адрес первого слова в опредении)
-    .quad EXIT       # EXIT     (возвращаемся)
+    .int TCFA       # >CFA     (получаем code field address)
+    .int INCR4      # 4+       (добавляем 4, чтобы получить адрес первого слова в опредении)
+    .int EXIT       # EXIT     (возвращаемся)
 
 defcode "NUMBER",6,,NUMBER
-    pop     %rcx            # length of string
-    pop     %rdi            # start address of string
+    pop     %ecx            # length of string
+    pop     %edi            # start address of string
     call    _NUMBER
-    push    %rax            # parsed number
-    push    %rcx            # number of unparsed characters (0 = no error)
+    push    %eax            # parsed number
+    push    %ecx            # number of unparsed characters (0 = no error)
     NEXT
 
 _NUMBER:
-    xor     %rax, %rax
-    xor     %rbx, %rbx
+    xor     %eax, %eax
+    xor     %ebx, %ebx
     # Попытка распарсить пустую строку это ошибка но мы возвращаем 0
-    test    %rcx, %rcx
+    test    %ecx, %ecx
     jz  5f                  #-> RET #
     # Строка не пуста, будем разбирать
-    movl    (var_BASE), %rdx#       # Получаем BASE в %dl
+    movl    (var_BASE), %edx#       # Получаем BASE в %dl
     # Проверим, может быть первый символ '-'?
-    movb    (%rdi), %bl     #       # %bl = первый символ строки
-    inc     %rdi            #       #
-    push    %rax            #       # push 0 в стек
+    movb    (%edi), %bl     #       # %bl = первый символ строки
+    inc     %edi            #       #
+    push    %eax            #       # push 0 в стек
     cmpb    $'-', %bl       #       # (Отрицательное число)?
     jnz 2f                  #-+     # ?-Нет, переходим к конвертации (2)
-    pop     %rax            # |     # ?-Да, заберем обратно 0 из стека,
-    push    %rbx            # |     #       push не ноль в стек, как индикатор отрицательного
-    dec     %rcx            # |     #       уменьшим счетчик оставшихся символов
+    pop     %eax            # |     # ?-Да, заберем обратно 0 из стека,
+    push    %ebx            # |     #       push не ноль в стек, как индикатор отрицательного
+    dec     %ecx            # |     #       уменьшим счетчик оставшихся символов
     jnz 1f                  #-----+ #       (Строка закончилась)? ?-Нет: переход на (1)
-    pop     %rbx            # |   | #       ?-Да - это ошибка, строка "-". Забираем из стека
-    movl    $1, %rcx        # |   | #            помещаем в возвращаемую нераспарсенную длину
+    pop     %ebx            # |   | #       ?-Да - это ошибка, строка "-". Забираем из стека
+    movl    $1, %ecx        # |   | #            помещаем в возвращаемую нераспарсенную длину
     ret                     # |   | #            единицу и выходим.
     # --------------------- # |   | # -------------------------------------------------------
     # Цикл чтения чисел     # |   | #
 1:  #                    <========+ #
-    imull   %rdx, %rax      # |   | # %rax *= BASE
-    movb    (%rdi), %bl     # |   | # %bl = следующий символ в строке
-    inc     %rdi            # |   | # Увеличиваем указатель
+    imull   %edx, %eax      # |   | # %eax *= BASE
+    movb    (%edi), %bl     # |   | # %bl = следующий символ в строке
+    inc     %edi            # |   | # Увеличиваем указатель
 2:  #                    <----+   | #
     # Преобразуем 0-9, A-Z в числа 0-35.
     subb    $'0', %bl       #     | # (< '0')?
@@ -703,91 +678,86 @@ _NUMBER:
 3:  #                     <---+ | | #
     cmp     %dl, %bl        #   | | #                      (RESULT >= BASE)?
     jge 4f                  #---+ | #                      ?-Да, перебор, идем на (4)
-    add     %rbx, %rax      #   | | #                      ?-Нет, все в порядке. Добавляем
-    dec     %rcx            #   | | #                        RESULT к %rax и LOOP-им дальше.
+    add     %ebx, %eax      #   | | #                      ?-Нет, все в порядке. Добавляем
+    dec     %ecx            #   | | #                        RESULT к %eax и LOOP-им дальше.
     jnz 1b                  #---|-+ #
 4:  #                     <-----+   #
-    # Тут мы оказываемся если цикл закончился - тогда у нас %rcx=0
-    # В ином случае %rcx содержит количество нераспарсенных символов
+    # Тут мы оказываемся если цикл закончился - тогда у нас %ecx=0
+    # В ином случае %ecx содержит количество нераспарсенных символов
     # Если у нас отрицательный результат, то первый символ '-' (сохранен в стеке)
-    pop     %rbx            #       #
-    test    %rbx, %rbx      #       # (Отрицательное число)?
+    pop     %ebx            #       #
+    test    %ebx, %ebx      #       # (Отрицательное число)?
     jz  5f                  #-+     # ?-Нет, возвращаем как есть (5)
-    neg     %rax            # |     # ?-Да, инвертируем
+    neg     %eax            # |     # ?-Да, инвертируем
 5:  #                     <---+
     ret
 
 defcode "LIT",3,,LIT
-    # %rsi указывает на следующую команду, но в этом случае это указатель на следующий
-    # литерал, представляющий собой 8-байтовое значение. Получение этого литерала в %rax
-    # и инкремент %rsi на x86 -  это удобная однобайтовая инструкция! (см. NEXT macro)
-    lodsq
+    # %esi указывает на следующую команду, но в этом случае это указатель на следующий
+    # литерал, представляющий собой 4 байтовое значение. Получение этого литерала в %eax
+    # и инкремент %esi на x86 -  это удобная однобайтовая инструкция! (см. NEXT macro)
+    lodsl
     # push literal в стек
-    push %rax
+    push %eax
     NEXT
 defcode "LITSTRING",9,,LITSTRING
-    lodsq                   # Получить длину строки
-    push    %rsi            # push адрес начала строки
-    push    %rax            # push длину
-    addl    %rax,%rsi       # пропустить строку
-    addl    $7,%esi         # но округлить до следующей 4 байтовой границы
-    andl    $~7,%esi
+    lodsl                   # Получить длину строки
+    push    %esi            # push адрес начала строки
+    push    %eax            # push длину
+    addl    %eax,%esi       # пропустить строку
+    addl    $3,%esi         # но округлить до следующей 4 байтовой границы
+    andl    $~3,%esi
     NEXT
 
 defcode "TELL",4,,TELL
-    pop     %rdx                # param3: длина строки
-    pop     %rcx                # param2: адрес строки временно помещаем в %rcx
-    push    %rsi                # save %rsi
-    push    %rdi                # save %rdi
-    mov     $stdout, %rdi       # param1: stdout
-    mov     %rcx, %rsi          # param2: адрес строки перемещаем в %rsi
-    mov     $sys_write, %rax    # SYSCALL #4 (write)
-    syscall
-    pop     %rdi                # restore %rdi
-    pop     %rsi                # restore %rsi
+    pop     %edx                # param3: длина строки
+    pop     %ecx                # param2: адрес строки
+    mov     $stdout, %ebx       # param1: stdout
+    mov     $sys_write, %eax    # SYSCALL #4 (write)
+    int     $0x80
     NEXT
 
 defcode "CREATE",6,,CREATE
 
     # Получаем length и address имени из стека данных
-    pop     %rcx            # %rcx = length
-    pop     %rbx            # %rbx = address
+    pop     %ecx            # %ecx = length
+    pop     %ebx            # %ebx = address
 
     # Формируем указатель LINK
-    movl    (var_HERE), %rdi# %rdi теперь указывает на заголовок
-    movl    (var_LATEST), %rax # Получаем указатель на последнее слово -
+    movl    (var_HERE), %edi# %edi теперь указывает на заголовок
+    movl    (var_LATEST), %eax # Получаем указатель на последнее слово -
                             # - это LINK создаваемого слова
     stosl                   # и сохраняем его в формируемое слово
 
     # Формируем Байт длины и имя слова
     mov     %cl,%al         # Получаем длину
     stosb                   # Сохраняем length/flags байт.
-    push    %rsi            # Ненадолго сохраним %rsi
-    mov     %rbx, %rsi      # в %rsi теперь адрес начала имени
+    push    %esi            # Ненадолго сохраним %esi
+    mov     %ebx, %esi      # в %esi теперь адрес начала имени
     rep     movsb           # Копируем имя слова
-    pop     %rsi            # Восстановим %rsi
-    addl    $7, %rdi        # Вычислим выравнивание
-    andl    $~7, %rdi
+    pop     %esi            # Восстановим %esi
+    addl    $3, %edi        # Вычислим выравнивание
+    andl    $~3, %edi
 
     # Обновим LATEST и HERE.
-    movl    (var_HERE), %rax
-    movl    %rax, (var_LATEST)
-    movl    %rdi, (var_HERE)
+    movl    (var_HERE), %eax
+    movl    %eax, (var_LATEST)
+    movl    %edi, (var_HERE)
     NEXT
 
 defcode ",",1,,COMMA
-    pop     %rax      # Взять со стека данных в %rax то значение, которое будем вкомпиливать
+    pop     %eax      # Взять со стека данных в %eax то значение, которое будем вкомпиливать
     call    _COMMA
     NEXT
 _COMMA:
-    movl    (var_HERE), %rdi  # получить указатель HERE в %rdi
-    stosl                     # Сохраниь по нему значение из %rax
-    movl    %rdi, (var_HERE)  # Обновить HERE (используя инкремент, сделанный STOSL)
+    movl    (var_HERE), %edi  # получить указатель HERE в %edi
+    stosl                     # Сохраниь по нему значение из %eax
+    movl    %edi, (var_HERE)  # Обновить HERE (используя инкремент, сделанный STOSL)
     ret
 
 defcode "[",1,F_IMMED,LBRAC
-    xor     %rax, %rax
-    movl    %rax, (var_STATE)   # Установить STATE в 0
+    xor     %eax, %eax
+    movl    %eax, (var_STATE)   # Установить STATE в 0
     NEXT
 
 defcode "]",1,,RBRAC
@@ -795,141 +765,121 @@ defcode "]",1,,RBRAC
     NEXT
 
 defword ":",1,,COLON
-    .quad WORD               # Получаем имя нового слова
-    .quad CREATE             # CREATE заголовок записи словаря
-    .quad LIT, DOCOL, COMMA  # Добавляем DOCOL (как codeword).
-    .quad LATEST, FETCH, HIDDEN # Делаем слово скрытым (см. ниже определение HIDDEN).
-    .quad RBRAC              # Переходим в режим компиляции
-    .quad EXIT               # Возврат из функции
+    .int WORD               # Получаем имя нового слова
+    .int CREATE             # CREATE заголовок записи словаря
+    .int LIT, DOCOL, COMMA  # Добавляем DOCOL (как codeword).
+    .int LATEST, FETCH, HIDDEN # Делаем слово скрытым (см. ниже определение HIDDEN).
+    .int RBRAC              # Переходим в режим компиляции
+    .int EXIT               # Возврат из функции
 
 defword ";",1,F_IMMED,SEMICOLON
-    .quad LIT, EXIT, COMMA   # Добавляем EXIT (так слово делает RETURN).
-    .quad LATEST, FETCH, HIDDEN # Переключаем HIDDEN flag  (см. ниже для определения).
-    .quad LBRAC              # Возвращаемся в IMMEDIATE режим.
-    .quad EXIT               # Возврат из функции
+    .int LIT, EXIT, COMMA   # Добавляем EXIT (так слово делает RETURN).
+    .int LATEST, FETCH, HIDDEN # Переключаем HIDDEN flag  (см. ниже для определения).
+    .int LBRAC              # Возвращаемся в IMMEDIATE режим.
+    .int EXIT               # Возврат из функции
 
 defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
-    mov     (var_LATEST), %rdi  # LATEST слово в %rdi.
-    add     $8, %rdi            # Теперь %rdi указывает на байт name/flags
-    xor     $F_IMMED, (%rdi)    # Переключить the F_IMMED бит.
+    movl    (var_LATEST), %edi  # LATEST слово в %edi.
+    addl    $4, %edi            # Теперь %edi указывает на байт name/flags
+    xorb    $F_IMMED, (%edi)    # Переключить the F_IMMED бит.
     NEXT
 
 defcode "HIDDEN",6,,HIDDEN
-    pop     %rdi                # Указатель на слово в %rdi
-    add     $8, %rdi            # Теперь указывает на байт length/flags.
-    xor     $F_HIDDEN, (%rdi)   # Переключаем HIDDEN бит.
+    pop     %edi                # Указатель на слово в %edi
+    addl    $4, %edi            # Теперь указывает на байт length/flags.
+    xorb    $F_HIDDEN, (%edi)   # Переключаем HIDDEN бит.
     NEXT
 
 defword "HIDE",4,,HIDE
-    .quad    WORD                # Получаем слово (ищущее за HIDE).
-    .quad    FIND                # Ищем его в словаре
-    .quad    HIDDEN              # Устанавливаем F_HIDDEN флаг.
-    .quad    EXIT                # Выходим
+    .int    WORD                # Получаем слово (ищущее за HIDE).
+    .int    FIND                # Ищем его в словаре
+    .int    HIDDEN              # Устанавливаем F_HIDDEN флаг.
+    .int    EXIT                # Выходим
 
 defcode "'",1,,TICK
-    lodsq                   # Получить адрес следующего слова и пропустить его
-    push     %rax           # Push его в стек
+    lodsl                   # Получить адрес следующего слова и пропустить его
+    pushl    %eax           # Push его в стек
     NEXT
 
 defcode "INTERPRET",9,,INTERPRET
-    call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
+    call    _WORD           # Возвращает %ecx = длину, %edi = указатель на слово.
     # Есть ли слово в словаре?
-    xor     %rax, %rax
-    mov     %rax, (interpret_is_lit)    # Это не литерал (или пока не литерал)
+    xor     %eax, %eax
+    movl    %eax, (interpret_is_lit)    # Это не литерал (или пока не литерал)
     call    _FIND           #           # Возвращает в %eax указатель на заголовок или 0
-    test    %rax, %rax      #           # (Совпадение)?
+    test    %eax, %eax      #           # (Совпадение)?
     jz  1f                  #--------+  # ?-Не думаю! Переход вперед к (1)
     # Это словарное слово   #        |  # ?-Да. Найдено совпадающее слово. Продолжаем.
     # Это IMMEDIATE-слово?  #        |  #
-    mov     %rax, %rdi      #        |  # %edi = указатель на слово
-    movb    8(%rdi), %al    #        |  # %al = flags+length.
-    push    %rax            #        |  # Сохраним его (flags+length) ненадолго
-    call    _TCFA           #        |  # Преобразуем entry (в %rdi) в указатель на codeword
-    pop     %rax            #        |  # Восстановим flags+length
+    mov     %eax, %edi      #        |  # %edi = указатель на слово
+    movb    4(%edi), %al    #        |  # %al = flags+length.
+    push    %eax            #        |  # Сохраним его (flags+length) ненадолго
+    call    _TCFA           #        |  # Преобразуем entry (в %edi) в указатель на codeword
+    pop     %eax            #        |  # Восстановим flags+length
     andb    $F_IMMED, %al   #        |  # (Установлен флаг F_IMMED)?
-    mov     %rdi, %rax      #        |  # %rdi->%rax
+    mov     %edi, %eax      #        |  # %edi->%eax
     jnz     4f              #--------|-+# ?-Да, переходим сразу к выполнению (4)
     jmp 2f                  #--+     | |# ?-Нет, переходим к проверке режима работы (2)
     # --------------------- #  |     | |# -------------------------------------------------
 1:  #                   <------|-----+ |
     # Нет в словаре, будем считать, что это литерал
-    incq    (interpret_is_lit)#|       |# Установим флаг
-    call    _NUMBER         #  |       |# Возвращает число в %rax, %rcx > 0 если ошибка
-    test    %rcx, %rcx      #  |       |# (Удалось распарсить число)?
+    incl    (interpret_is_lit)#|       |# Установим флаг
+    call    _NUMBER         #  |       |# Возвращает число в in %eax, %ecx > 0 если ошибка
+    test    %ecx, %ecx      #  |       |# (Удалось распарсить число)?
     jnz 6f                  #--|-----+ |# ?-Нет, переходим к (6)
-    mov     %rax, %rbx      #  |     | |# ?-Да, Перемещаем число в %ebx,
-    mov     $LIT, %rax      #  |     | |#     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
+    mov     %eax, %ebx      #  |     | |# ?-Да, Перемещаем число в %ebx,
+    mov     $LIT, %eax      #  |     | |#     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
 2:  #                   <------+     | |#
     # Проверим в каком мы режиме     | |#
-    mov     (var_STATE), %rdx#       | |#
-    test    %rdx, %rdx      #        | |#     (Мы компилируемся или выполняемся)?
+    movl    (var_STATE), %edx#       | |#
+    test    %edx, %edx      #        | |#     (Мы компилируемся или выполняемся)?
     jz  4f                  #-----+  | |#     ?-Выполняемся. Переходим к (4)
     call    _COMMA          #     |  | |#     ?-Компилируемся. Добавляем словарное определение
-    mov     (interpret_is_lit), %rcx#| |#
-    test    %rcx, %rcx      #     |  | |#       (Это был литерал)?
+    mov     (interpret_is_lit), %ecx#| |#
+    test    %ecx, %ecx      #     |  | |#       (Это был литерал)?
     jz      3f              #--+  |  | |#       ?-Нет, переходим к NEXT
-    mov     %rbx, %rax      #  |  |  | |#       ?-Да, поэтому за LIT следует число,
+    mov     %ebx, %eax      #  |  |  | |#       ?-Да, поэтому за LIT следует число,
     call    _COMMA          #  |  |  | |#            вызываем _COMMA, чтобы скомпилить его
 3:  #                   <------+  |  | |#
     NEXT                    #     |  | |# NEXT
     # ---------------------       |  | |# -------------------------------------------------
 4:  #                   <---------+<-|-+
     # Выполняемся                    |
-    mov     (interpret_is_lit), %rcx#|
-    test    %rcx, %rcx      #        |  # (Это литерал)?
+    mov     (interpret_is_lit), %ecx#|
+    test    %ecx, %ecx      #        |  # (Это литерал)?
     jnz 5f                  #--+     |  # ?-Да, переходим к (5)
     # Не литерал, выполним прямо сейчас. Мы не осуществляем возврата, но
     # codeword в конечном итоге вызовет NEXT, который повторно вернет цикл в QUIT
-    jmp     *(%rax)         #  |     |
+    jmp     *(%eax)         #  |     |
     # --------------------- #  |     |  # -------------------------------------------------
 5:  #                    <-----+     |
     # Выполняем литерал, что означает, что мы push-им его в стек и делаем NEXT
-    push    %rbx            #        |
+    push    %ebx            #        |
     NEXT                    #        |
 6:  #                    <-----------+
     # Мы здесь, если не получилось распарсить число в текущей базе или этого
     # слова нет в словаре. Печатаем сообщение об ошибке и 40 символов контекста.
-    push    %rsi
-    push    %rdi
-    push    %rdx
-    mov     $sys_write, %rax#           # SYSCALL #4 (write)
-    mov     $stderr, %rdi   #           # param1: stderr
-    mov     $errmsg, %rsi   #           # param2: Выводимая строка
-    mov     $errmsgend-errmsg, %rdx     # param3: Длина выводимой строки
-    syscall                 #           # SYSCALL
-    pop     %rdx
-    pop     %rdi
-    pop     %rsi
+    mov     $sys_write, %eax#           # SYSCALL #4 (write)
+    mov     $stderr, %ebx   #           # param1: stderr
+    mov     $errmsg, %ecx   #           # param2: Выводимая строка
+    mov     $errmsgend-errmsg, %edx     # param3: Длина выводимой строки
+    int     $0x80           #           # SYSCALL
     # Ошибка произошла перед currkey
-    mov     (currkey), %rcx #
-    mov     %rcx, %rdx      #
-    sub     $input_buffer, %rdx         # %rdx = (currkey - buffer) (длина буфера перед currkey)
-    cmp     $40, %rdx       #           # (if > 40)?
+    mov     (currkey), %ecx #
+    mov     %ecx, %edx      #
+    sub     $input_buffer, %edx         # %edx = (currkey - buffer) (длина буфера перед currkey)
+    cmp     $40, %edx       #           # (if > 40)?
     jle 7f                  #--+        # ?-Нет, печатаем все
-    mov     $40, %rdx       #  |        # ?-Да, печатать только 40 символов
+    mov     $40, %edx       #  |        # ?-Да, печатать только 40 символов
 7:  #                    <-----+
-    sub     %rdx, %rcx      #           # %ecx = start of area to print, %edx = length
-    push    %rsi
-    push    %rdi
-    push    %rdx
+    sub     %edx, %ecx      #           # %ecx = start of area to print, %edx = length
     mov     $sys_write, %eax            # SYSCALL #4 (write)
-    mov     $stderr, %rdi               # param1: stderr
-    mov     %rcx, %rsi                  # param2: Выводимая строка
-    mov     %rdx, $rdx                  # param3: Длина
-    syscall                 #           # SYSCALL
-    pop     %rdx
-    pop     %rdi
-    pop     %rsi
+    int     $0x80           #           # SYSCALL
     # Выведем перевод строки
-    push    %rsi
-    push    %rdi
     mov     $sys_write, %eax            # SYSCALL #4 (write)
-    mov     $stderr, $rdi               # param1: stderr
-    mov     $errmsgnl, %rsi #           # param2: newline
-    mov     $1, %edx        #           # param3: Длина
-    syscall                 #           # SYSCALL
-    pop     %rdi
-    pop     %rsi
+    mov     $errmsgnl, %ecx #           # newline
+    mov     $1, %edx        #           # Длина
+    int     $0x80           #           # SYSCALL
     NEXT                    #           # NEXT
     # ---------------------
     .section .rodata
@@ -940,126 +890,84 @@ errmsgnl:
     .ascii "\n"
 
     .data                   # NB: проще записать в .data section
-    .align 8
+    .align 4
 interpret_is_lit:
-    .quad 0                  # Флаг литерала
+    .int 0                  # Флаг литерала
 
 defcode "BRANCH",6,,BRANCH
-    add     (%rsi),%rsi     # добавить offset к instruction pointer
+    add     (%esi),%esi     # добавить offset к instruction pointer
     NEXT
 
 defcode "0BRANCH",7,,ZBRANCH
-    pop     %rax
-    test    %rax, %rax      # Вершина стека равна нулю?
+    pop     %eax
+    test    %eax, %eax      # Вершина стека равна нулю?
     jz      code_BRANCH     # Если да, вернуться назад к функции BRANCH выше
-    lodsq                   # иначе пропустить смещение
+    lodsl                   # иначе пропустить смещение
     NEXT
 
 # QUIT не должна возвращаться (те есть вызывать EXIT).
 defword "QUIT",4,,QUIT
     # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
-    .quad RZ
+    .int RZ
     # Установить значение, лежащее на стеке параметров, как новое значение вершины стека возвратов
-    .quad RSPSTORE       # Это очищает стек возвратов
+    .int RSPSTORE       # Это очищает стек возвратов
     # Запустить интерпретатор команд                  <-----+
-    .quad INTERPRET      # Интерпретировать следующее слово  |
+    .int INTERPRET      # Интерпретировать следующее слово  |
     # И навсегда зациклиться                                |
-    .quad BRANCH,-16     # -----------------------------------
+    .int BRANCH,-8      # -----------------------------------
 
 defcode "CHAR",4,,CHAR
     call    _WORD           # Возвращает %ecx = length, %edi = указатель на слово.
-    xor     %rax, %rax
-    movb    (%rdi), %al     # Получаем первый символ слова
-    push    %rax            # Кладем его в стек
+    xor     %eax, %eax
+    movb    (%edi), %al     # Получаем первый символ слова
+    push    %eax            # Кладем его в стек
     NEXT
 
 defcode "EXECUTE",7,,EXECUTE
-    pop     %rax            # Получить токен выполнения в %eax
-    jmp     *(%rax)         # и выполнить jump на него.
+    pop     %eax            # Получить токен выполнения в %eax
+    jmp     *(%eax)         # и выполнить jump на него.
 
 DODOES:
-    PUSHRSP %rsi            # (с) Сохраняем ESI на стеке возвратов
+    PUSHRSP %esi            # (с) Сохраняем ESI на стеке возвратов
 
-    pop     %rsi            # (b,d) CALL-RETADDR -> ESI
+    pop     %esi            # (b,d) CALL-RETADDR -> ESI
 
-    lea     4(%rax), %rax   # (a) вычислить param-field DEUX
-    pushl   %rax            # (a) push его на стек данных
+    lea     4(%eax), %eax   # (a) вычислить param-field DEUX
+    pushl   %eax            # (a) push его на стек данных
 
     NEXT                    # (e) вызвать интерпретатор
 
 defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 
-;; defcode "SYSCALL3",8,,SYSCALL3
-;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
-;;     pop     %ebx            # Первый параметр.
-;;     pop     %ecx            # Второй параметр
-;;     pop     %edx            # Третий параметр
-;;     int     $0x80
-;;     push    %eax            # Результат
-;;     NEXT
+defcode "SYSCALL3",8,,SYSCALL3
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
+    pop     %ecx            # Второй параметр
+    pop     %edx            # Третий параметр
+    int     $0x80
+    push    %eax            # Результат
+    NEXT
 
-  defcode "SYSCALL3",8,,SYSCALL3
-  mov %rsi,%r10 //save %rsi
-  mov %rdi,%r9 //save %rdi
-  pop %rax        // System call number (see <asm/unistd.h>)
-  pop %rdi        // First parameter.
-  pop %rsi        // Second parameter
-  pop %rdx        // Third parameter
-  syscall
-  push %rax       // Result (negative for -errno)
-  mov %r10,%rsi
-  mov %r9,%rdi
-  NEXT
+defcode "SYSCALL2",8,,SYSCALL2
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
+    pop     %ecx            # Второй параметр
+    int     $0x80
+    push    %eax            # Результат
+    NEXT
 
-;; defcode "SYSCALL2",8,,SYSCALL2
-;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
-;;     pop     %ebx            # Первый параметр.
-;;     pop     %ecx            # Второй параметр
-;;     int     $0x80
-;;     push    %eax            # Результат
-;;     NEXT
+defcode "SYSCALL1",8,,SYSCALL1
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    pop     %ebx            # Первый параметр.
+    int     $0x80
+    push    %eax            # Результат
+    NEXT
 
-  defcode "SYSCALL2",8,,SYSCALL2
-  mov %rsi,%r10 //save %rsi
-  mov %rdi,%r9 //save %rdi
-  pop %rax        // System call number (see <asm/unistd.h>)
-  pop %rdi        // First parameter.
-  pop %rsi        // Second parameter
-  syscall
-  push %rax       // Result (negative for -errno)
-  mov %r10,%rsi
-  mov %r9,%rdi
-  NEXT
-
-;; defcode "SYSCALL1",8,,SYSCALL1
-;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
-;;     pop     %ebx            # Первый параметр.
-;;     int     $0x80
-;;     push    %eax            # Результат
-;;     NEXT
-
-  defcode "SYSCALL1",8,,SYSCALL1
-  mov %rsi,%r10 //save %rsi
-  mov %rdi,%r9 //save %rdi
-  pop %rax        // System call number (see <asm/unistd.h>)
-  pop %rdi        // First parameter.
-  syscall
-  push %rax       // Result (negative for -errno)
-  mov %r10,%rsi
-  mov %r9,%rdi
-  NEXT
-
-;; defcode "SYSCALL0",8,,SYSCALL0
-;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
-;;     int     $0x80
-;;     push    %eax            # Результат
-;;     NEXT
-
-  defcode "SYSCALL0",8,,SYSCALL0
-  pop %rax        // System call number (see <asm/unistd.h>)
-  syscall
-  push %rax       // Result (negative for -errno)
-  NEXT
+defcode "SYSCALL0",8,,SYSCALL0
+    pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
+    int     $0x80
+    push    %eax            # Результат
+    NEXT
 
     /* Assembler entry point. */
 
@@ -1069,21 +977,21 @@ defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 forth_asm_start:
     # Сбрасываем флаг направления
     cld
-    # Записываем вершину стека параметров %rsp в переменную S0
-    mov     %rsp, (var_S0)
-    # Устанавливаем стек возвратов %rbp
-    mov     $return_stack_top, %rbp
+    # Записываем вершину стека параметров %esp в переменную S0
+    mov     %esp, (var_S0)
+    # Устанавливаем стек возвратов %ebp
+    mov     $return_stack_top, %ebp
     # Устанавливаем указатель HERE на начало области данных.
-    mov     $data_buffer, %rax
-    mov     %rax, (var_HERE)
+    mov     $data_buffer, %eax
+    mov     %eax, (var_HERE)
     # Инициализируем IP
-    mov     $cold_start, %rsi
+    mov     $cold_start, %esi
     # Запускаем интерпретатор
     NEXT
 
     .section .rodata
 cold_start:                             # High-level code without a codeword.
-    .quad QUIT
+    .int QUIT
 
     .bss
 
