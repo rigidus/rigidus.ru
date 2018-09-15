@@ -8,10 +8,22 @@ TARGET = forth32
 
 INC = inc32
 
-CSRC = main.c sdlwrap.c
-ASMO = jonesforth.o
-TOASMS = $(CSRC:.c=.s)
-OBJS = $(CSRC:.c=.o) $(ASMS:.s=.o)
+CSRC_MAIN = main32.c
+CSRC_SDLWRAP = sdlwrap32.c
+CSRCS = $(CSRC_MAIN) $(CSRC_SDLWRAP)
+
+TOASMS = $(CSRCS:.c=.s)
+
+ASRC_MAIN = jonesforth32.s
+
+OBJ_MAIN = $(CSRC_MAIN:.c=.o)
+OBJ_SDLWRAP = $(CSRC_SDLWRAP:.c=.o)
+OBJ_ASM = $(ASRC_MAIN:.s=.o)
+
+OBJS = $(CSRCS:.c=.o) $(OBJ_ASM) $(TOASMS:.s=.o)
+
+FSRC = jonesforth.f
+TEST = test.f
 
 
 .SUFFIXES:
@@ -25,26 +37,26 @@ CFLAGS  += $(shell pkg-config --cflags  sdl2)
 LDFLAGS += $(shell pkg-config --libs    sdl2)
 
 
-all: sdlwrap.o jonesforth.o main.o
+all: $(OBJ_SDLWRAP) $(OBJ_ASM) $(OBJ_MAIN)
 	$(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
 
-sdlwrap.o: sdlwrap.c
+$(OBJ_SDLWRAP): $(CSRC_SDLWRAP)
 	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
-main.o: main.c
+$(OBJ_MAIN): $(CSRC_MAIN)
 	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
-jonesforth.o: jonesforth.s
+$(OBJ_ASM): $(ASRC_MAIN)
 	$(CC) -c $(CFLAGS) $^ -o $@
 
 toasm: $(CSRC)
 	$(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)
 
 clean:
-	rm -Rf $(TARGET) $(OBJS) $(ASMO) $(TOASMS)
+	rm -Rf $(TARGET) $(OBJS) $(OBJ_ASM) $(TOASMS)
 
 run:
-	cat jonesforth.f - | ./$(TARGET)
+	cat $(FSRC) - | ./$(TARGET)
 
 test:
-	cat jonesforth.f test.f | ./$(TARGET)
+	cat $(FSRC) $(TEST) | ./$(TARGET)
