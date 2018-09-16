@@ -407,12 +407,11 @@ defcode "ARGC",4,,ARGC
     movq    (forth_asm_argc), %rax
     push    %rax
     NEXT
+
 defcode "ARGV",4,,ARGV
     movq    (forth_asm_argv), %rax
     push    %rax
     NEXT
-
-
 
 defcode "ENV",3,,ENV
     movq    (environ), %rax

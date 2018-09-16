@@ -22,7 +22,6 @@ int main(int argc, char * argv[])
     /* Disable buffering */
     setbuf(stdout, NULL);
 
-
     __asm("call forth_asm_start");
 
     /* gameover_flag = 0; */
