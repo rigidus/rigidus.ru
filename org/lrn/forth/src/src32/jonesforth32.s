@@ -390,6 +390,21 @@ defcode "INVERT",6,,INVERT
     notl    (%esp)          # это битовая функция "NOT" (см. NEGATE and NOT)
     NEXT
 
+defcode "ARGC",4,,ARGC
+    mov     (forth_asm_argc), %eax
+    push    %eax
+    NEXT
+
+defcode "ARGV",4,,ARGV
+    mov     (forth_asm_argv), %eax
+    push    %eax
+    NEXT
+
+defcode "ENV",3,,ENV
+    mov     (environ), %eax
+    push    %eax
+    NEXT
+
 defcode "EXIT",4,,EXIT
     POPRSP  %esi            # Восстановить указатель из стека возвратов в %esi
     NEXT                    # Сделать NEXT

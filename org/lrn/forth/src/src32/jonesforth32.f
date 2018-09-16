@@ -826,27 +826,10 @@
     AGAIN
 ;
 
-: ARGC
-    S0 @ @
-;
-
-: NARGV  ( n -- str u )
-    1+ CELLS S0 @ + ( get the address of argv[n] entry )
-    @ ( get the address of the string )
-    DUP STRLEN ( and get its length / turn it into a Forth string )
-;
-
-\ : ENVIRON   ( -- addr )
-\     ARGC    ( number of command line parameters on the stack to skip )
-\     2 +     ( skip command line count and NULL pointer after the command line args )
-\     CELLS   ( convert to an offset )
-\     S0 @ +  ( add to base stack address )
-\ ;
-
-: NARGV  ( n -- str u )
-    1+ CELLS ARGV + ( get the address of argv[n] entry )
-    @ ( get the address of the string )
-    DUP STRLEN ( and get its length / turn it into a Forth string )
+: NARGV
+    1+ CELLS ARGV +
+    @
+    DUP STRLEN
 ;
 
 : PRNTCMDARGS
@@ -1248,6 +1231,5 @@ HEX
 DECIMAL
 WELCOME
 HIDE WELCOME
-BYE
 
 \ LATEST @ @ @ 200 DUMP
