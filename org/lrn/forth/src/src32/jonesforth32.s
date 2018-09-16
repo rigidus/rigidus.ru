@@ -971,7 +971,20 @@ defcode "SYSCALL0",8,,SYSCALL0
 
     /* Assembler entry point. */
 
+    .data
+
+    .align 4
+    .globl forth_asm_argc
+forth_asm_argc:
+    .int  0                  # Количество параметров командной строки
+
+    .align 4
+    .globl forth_asm_argv
+forth_asm_argv:
+    .int  0                  # Указатель на параметры командной строки
+
     .text
+
     .globl  forth_asm_start
     .type   forth_asm_start, @function
 forth_asm_start:

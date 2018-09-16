@@ -1080,15 +1080,18 @@ defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 
     .data
 
+    .align 8
     .globl forth_asm_argc
 forth_asm_argc:
     .quad 0                  # Количество параметров командной строки
 
+    .align 8
     .globl forth_asm_argv
 forth_asm_argv:
     .quad 0                  # Указатель на параметры командной строки
 
     .text
+
     .globl  forth_asm_start
     .type   forth_asm_start, @function
 forth_asm_start:
