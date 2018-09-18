@@ -826,11 +826,13 @@
     AGAIN
 ;
 
-: NARGV  ( n -- str u )
-    1+ CELLS ARGV + ( get the address of argv[n] entry )
-    @ ( get the address of the string )
-    DUP STRLEN ( and get its length / turn it into a Forth string )
-;
+\ 
+
+\ 
+
+\ 
+
+
 
 : PRNTCMDARGS
     0
@@ -843,51 +845,9 @@
     DROP
 ;
 
-: ENVIRON
-    ENV @
-    BEGIN
-        DUP \ for TELL
-        DUP STRLEN
-        TELL CR
-        \ next
-        DUP STRLEN + 1+
-        DUP C@
-        0= IF
-            DROP
-            EXIT
-        THEN
-    AGAIN
-;
 
-: ENVLOOKUP
-    ENV @
-    BEGIN
-        >R 2DUP SWAP R>
-        DUP >R \ save curr (!)
 
-        SUBSTRCMP
 
-        1 = IF
-            >R      \ save addr2offset
-            DROP    \ drop addr1offset
-            2DROP   \ drop varlen & varnameaddr
-            R>      \ restore addr2offset
-            RDROP   \ drop curr
-            EXIT
-        THEN
-        2DROP \ drop offsets
-        R>    \ restore curr (!)
-
-        \ next
-        DUP STRLEN + 1+
-        DUP C@
-        0= IF
-            DROP  \ curr
-            2DROP \ varlen & varnameaddr
-            0 EXIT
-        THEN
-    AGAIN
-;
 
 : BYE ( -- )
     0 ( return code  (0) )
@@ -1052,47 +1012,47 @@ HEX
     TWO-REG MODR/M C,
 ;
 
-HEX
-: (DOCON) IMMEDIATE
-      8D C, 40 C, 04 C,  \ lea     4(%eax), %eax
-      8B C, 00 C,        \ movl    (%eax), %eax
-      50 C,              \ pushl   %eax
-      AD C, FF C, 20 C,  \ NEXT
-;
+\ HEX
+\ : (DOCON) IMMEDIATE
+\       8D C, 40 C, 04 C,  \ lea     4(%eax), %eax
+\       8B C, 00 C,        \ movl    (%eax), %eax
+\       50 C,              \ pushl   %eax
+\       AD C, FF C, 20 C,  \ NEXT
+\ ;
 
-HEX
-: =NEXT ( addr -- next? )
-    DUP C@ AD <> IF DROP FALSE EXIT THEN
-    1+ DUP C@ FF <> IF DROP FALSE EXIT THEN
-    1+     C@ 20 <> IF      FALSE EXIT THEN
-    TRUE
-;
-DECIMAL
-
-(  (INLINE) is the lowlevel inline function. )
-:  (INLINE) ( cfa -- )
-    @ ( remember codeword points to the code )
-    BEGIN ( copy bytes until we hit NEXT macro )
-        DUP =NEXT NOT
-    WHILE
-            DUP C@ C,
-            1+
-    REPEAT
-    DROP
-;
-
-: INLINE IMMEDIATE
-    WORD FIND ( find the word in the dictionary )
-    >CFA ( codeword )
-
-    DUP @ DOCOL = IF ( check codeword <> DOCOL  (ie. not a Forth word) )
-        ." Cannot INLINE Forth words" CR ABORT
-    THEN
-
-    (INLINE)
-;
-
-HIDE =NEXT
+\ HEX
+\ : =NEXT ( addr -- next? )
+\     DUP C@ AD <> IF DROP FALSE EXIT THEN
+\     1+ DUP C@ FF <> IF DROP FALSE EXIT THEN
+\     1+     C@ 20 <> IF      FALSE EXIT THEN
+\     TRUE
+\ ;
+\ DECIMAL
+\ 
+\ (  (INLINE) is the lowlevel inline function. )
+\ :  (INLINE) ( cfa -- )
+\     @ ( remember codeword points to the code )
+\     BEGIN ( copy bytes until we hit NEXT macro )
+\         DUP =NEXT NOT
+\     WHILE
+\             DUP C@ C,
+\             1+
+\     REPEAT
+\     DROP
+\ ;
+\ 
+\ : INLINE IMMEDIATE
+\     WORD FIND ( find the word in the dictionary )
+\     >CFA ( codeword )
+\ 
+\     DUP @ DOCOL = IF ( check codeword <> DOCOL  (ie. not a Forth word) )
+\         ." Cannot INLINE Forth words" CR ABORT
+\     THEN
+\ 
+\     (INLINE)
+\ ;
+\ 
+\ HIDE =NEXT
 
 : WELCOME
     S" TEST-MODE" FIND NOT IF
@@ -1100,130 +1060,133 @@ HIDE =NEXT
     THEN
 ;
 
-: DEFCONST
-    WORD             \ прочтем слово с stdin
-    CREATE           \ создадим заголовок слова
-    0 ,              \ вместо codeword вкомпилим заглушку-ноль
-    ,                \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
-    [COMPILE] [      \ вкомпилить в DEFCONST переход в immediate-режим
-    \ Здесь, во время определения слова DEFCONST мы можем
-    \ вычислить начало ассемблерного кода, вкомпилив его адрес как литерал
-    \ чтобы во время выполнения DEFCONST заменить codeword создаваемого
-    \ дочернего слова на адрес машинного кода
-    LIT
-    [            \ Ненадолго переходим в IMMEDIATE-режим - compile-time вычисления
-      HEX
-      HERE @ 6 WORDSIZE * +
-                     \ Вычисляем адрес начала машинного кода относительно HERE:
-                     \ сейчас будет вкомпилен вычисленный адрес, потом
-                     \ еще 5 команд, всего 6, умножаем на размер машинного слова
-      ,              \ И вкомпиливаем его в DEFCONST
-    ]            \ Возврат из IMMEDIATE-режима
-    LATEST @ >CFA    \ получаем CFA дочернего слова
-    !                \ сохраняем адрес начала машинного кода в codeword дочернего кода
-    EXIT             \ вкомпилить в DEFCONST вызов слова EXIT,
-                     \ чтобы при исполнении DEFCONST осуществить возврат.
-    (DOCON)          \ А дальше "немедленно" вкомпилить машинный код
-;
 
-: (;CODE)
-    R>                  \ pop-ит адрес машинного кода со стека возвратов
-    LATEST @ >CFA       \ берет адрес codeword последнего слова
-    !                   \ сохраняет адрес машинного кода в codeword создаваемого слова
-;
+\ : DEFCONST
+\     WORD             \ прочтем слово с stdin
+\     CREATE           \ создадим заголовок слова
+\     0 ,              \ вместо codeword вкомпилим заглушку-ноль
+\     ,                \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\     [COMPILE] [      \ вкомпилить в DEFCONST переход в immediate-режим
+\     \ Здесь, во время определения слова DEFCONST мы можем
+\     \ вычислить начало ассемблерного кода, вкомпилив его адрес как литерал
+\     \ чтобы во время выполнения DEFCONST заменить codeword создаваемого
+\     \ дочернего слова на адрес машинного кода
+\     LIT
+\     [            \ Ненадолго переходим в IMMEDIATE-режим - compile-time вычисления
+\       HEX
+\       HERE @ 6 WORDSIZE * +
+\                      \ Вычисляем адрес начала машинного кода относительно HERE:
+\                      \ сейчас будет вкомпилен вычисленный адрес, потом
+\                      \ еще 5 команд, всего 6, умножаем на размер машинного слова
+\       ,              \ И вкомпиливаем его в DEFCONST
+\     ]            \ Возврат из IMMEDIATE-режима
+\     LATEST @ >CFA    \ получаем CFA дочернего слова
+\     !                \ сохраняем адрес начала машинного кода в codeword дочернего кода
+\     EXIT             \ вкомпилить в DEFCONST вызов слова EXIT,
+\                      \ чтобы при исполнении DEFCONST осуществить возврат.
+\     (DOCON)          \ А дальше "немедленно" вкомпилить машинный код
+\ ;
 
-: ;CODE
-    ' (;CODE) ,      \ вкомпилить (;CODE) в определение
-    [COMPILE] [      \ вкомпилить переход в immediate-режим
-    \ ASSEMBLER         \ включить ассемблер (пока он всегда включен)
-; IMMEDIATE          \ Это слово немедленного исполнения!
+\ : (;CODE)
+\     R>                  \ pop-ит адрес машинного кода со стека возвратов
+\     LATEST @ >CFA       \ берет адрес codeword последнего слова
+\     !                   \ сохраняет адрес машинного кода в codeword создаваемого слова
+\ ;
 
-: END-CODE  ( -- )  \ Завершить ассемблерное определение
-    LATEST @ HIDDEN EXIT
-; IMMEDIATE
+\ : ;CODE
+\     ' (;CODE) ,      \ вкомпилить (;CODE) в определение
+\     [COMPILE] [      \ вкомпилить переход в immediate-режим
+\     \ ASSEMBLER         \ включить ассемблер (пока он всегда включен)
+\ ; IMMEDIATE          \ Это слово немедленного исполнения!
 
-: DEFCONST
-    WORD    \ прочтем слово с stdin
-    CREATE  \ создадим заголовок слова
-    0 ,     \ вместо codeword вкомпилим заглушку-ноль
-    ,       \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\ : END-CODE  ( -- )  \ Завершить ассемблерное определение
+\     LATEST @ HIDDEN EXIT
+\ ; IMMEDIATE
 
-    ;CODE   \ завершить высокоуровневый код и начать низкоуровневый
+\ : DEFCONST
+\     WORD    \ прочтем слово с stdin
+\     CREATE  \ создадим заголовок слова
+\     0 ,     \ вместо codeword вкомпилим заглушку-ноль
+\     ,       \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\ 
+\     ;CODE   \ завершить высокоуровневый код и начать низкоуровневый
+\ 
+\     04 MOD-DISP-SHORT EAX EAX LEA        \   LEA   4(%EAX), %EAX
+\     MOD-DISP-NONE EAX EAX MOV-R32,R/M32  \   MOV   (%EAX), %EAX
+\     EAX PUSH                             \   PUSH  %EAX
+\     NEXT                                 \   NEXT
+\ 
+\ END-CODE   \ завершить ассемблерное определение
 
-    04 MOD-DISP-SHORT EAX EAX LEA        \   LEA   4(%EAX), %EAX
-    MOD-DISP-NONE EAX EAX MOV-R32,R/M32  \   MOV   (%EAX), %EAX
-    EAX PUSH                             \   PUSH  %EAX
-    NEXT                                 \   NEXT
+\ 1337 DEFCONST PUSH1337
 
-END-CODE   \ завершить ассемблерное определение
 
-1337 DEFCONST PUSH1337
 
-: DOES>
-    ' (;CODE) ,                \ вкомпилить (;CODE) в определение
-    0E8 C,                     \ вкомпилить байт опкода CALL
-    DODOES_ADDR HERE @ WORDSIZE + - ,  \ относительное смещение к DODOES
-; IMMEDIATE
+\ : DOES>
+\     ' (;CODE) ,                \ вкомпилить (;CODE) в определение
+\     0E8 C,                     \ вкомпилить байт опкода CALL
+\     DODOES_ADDR HERE @ WORDSIZE + - ,  \ относительное смещение к DODOES
+\ ; IMMEDIATE
 
-: MAKE-CONST ( n -- )
-    WORD     \ прочтем слово с stdin
-    CREATE   \ создадим заголовок слова
-    0 ,      \ вместо codeword вкомпилим заглушку-ноль
-    ,        \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
-  DOES>      \ завершение "создающей" части, начало части "действия"
-    @        \ прочесть значение из param-field дочернего слова,
-             \ разыменовать для получения содержимого
-;
+\ : MAKE-CONST ( n -- )
+\     WORD     \ прочтем слово с stdin
+\     CREATE   \ создадим заголовок слова
+\     0 ,      \ вместо codeword вкомпилим заглушку-ноль
+\     ,        \ скомпилируем param-field взяв его со стека (в нашем примере - 1337)
+\   DOES>      \ завершение "создающей" части, начало части "действия"
+\     @        \ прочесть значение из param-field дочернего слова,
+\              \ разыменовать для получения содержимого
+\ ;
 
-: DOFIELD \ Действие FIELD
-  DOES>
-    @        \ разыменовать значение из param-field дочернего слова, чтобы получить размер #
-    +        \ и сложить его с вершиной стека
-;
+\ : DOFIELD \ Действие FIELD
+\   DOES>
+\     @        \ разыменовать значение из param-field дочернего слова, чтобы получить размер #
+\     +        \ и сложить его с вершиной стека
+\ ;
+\ 
+\ : FIELD ( # n ++ # )  \ Определение FIELD со смещением "#" и размером "n"
+\     WORD     \ прочтем слово с stdin
+\     CREATE   \ создадим заголовок слова
+\     0 ,      \ вместо codeword вкомпилим заглушку-ноль
+\     OVER     \ push-им копию размера # на вершину стека (# n # --)
+\     ,        \ скомпилируем размер в param-field взяв его со стека (# n --)
+\     +        \ сложим размер с текущим смещением
+\     DOFIELD
+\ ;
 
-: FIELD ( # n ++ # )  \ Определение FIELD со смещением "#" и размером "n"
-    WORD     \ прочтем слово с stdin
-    CREATE   \ создадим заголовок слова
-    0 ,      \ вместо codeword вкомпилим заглушку-ноль
-    OVER     \ push-им копию размера # на вершину стека (# n # --)
-    ,        \ скомпилируем размер в param-field взяв его со стека (# n --)
-    +        \ сложим размер с текущим смещением
-    DOFIELD
-;
+\ 0  \ Начальное смещение
+\ 4 CHARS FIELD ALFA      \ Создана константа ALFA со значением 0
+\ 3 CELLS FIELD BETA      \ Создана константа BETA со значением 4 [0+4]
+\ 2 CELLS FIELD GAMMA     \ Создана константа GAMMA со значением 16 [4+(3*4)] (0x10)
+\ \ В стеке осталось значение 24 [16+(2*4)] - это размер всей структуры (0x18)
+\ \ Сохраним его в константу
+\ CONSTANT FOO-SIZE
 
-0  \ Начальное смещение
-4 CHARS FIELD ALFA      \ Создана константа ALFA со значением 0
-3 CELLS FIELD BETA      \ Создана константа BETA со значением 4 [0+4]
-2 CELLS FIELD GAMMA     \ Создана константа GAMMA со значением 16 [4+(3*4)] (0x10)
-\ В стеке осталось значение 24 [16+(2*4)] - это размер всей структуры (0x18)
-\ Сохраним его в константу
-CONSTANT FOO-SIZE
+\ : STRUCT ( -- addr 0 ; -- size )
+\     WORD     \ прочтем слово с stdin
+\     CREATE   \ создадим заголовок слова
+\     0 ,      \ вместо codeword вкомпилим заглушку-ноль
+\     HERE @   \ оставим  для END-STRUCT в стеке адрес, на который указывает HERE
+\     0        \ оставим в стеке ноль в качестве начального размера структуры для FIELD
+\     0 ,      \ скомпилируем ноль в param-field дочернего слова как заглушку размера структуры
+\   DOES>      \ завершение "создающей" части, начало части "действия"
+\     @        \ прочесть значение из param-field дочернего слова,
+\              \ разыменовать для получения содержимого
+\ ;
 
-: STRUCT ( -- addr 0 ; -- size )
-    WORD     \ прочтем слово с stdin
-    CREATE   \ создадим заголовок слова
-    0 ,      \ вместо codeword вкомпилим заглушку-ноль
-    HERE @   \ оставим  для END-STRUCT в стеке адрес, на который указывает HERE
-    0        \ оставим в стеке ноль в качестве начального размера структуры для FIELD
-    0 ,      \ скомпилируем ноль в param-field дочернего слова как заглушку размера структуры
-  DOES>      \ завершение "создающей" части, начало части "действия"
-    @        \ прочесть значение из param-field дочернего слова,
-             \ разыменовать для получения содержимого
-;
+\ : END-STRUCT ( addr size -- )
+\     SWAP ! \ сохранить размер по адресу
+\ ;
 
-: END-STRUCT ( addr size -- )
-    SWAP ! \ сохранить размер по адресу
-;
-
-STRUCT point \ -- a-addr 0 ; -- length-of-point
-    1 CELLS FIELD p.x             \ -- a-addr cell
-    1 CELLS FIELD p.y             \ -- a-addr cell*2
-END-STRUCT
-
-STRUCT rect    \ -- a-addr 0 ; -- length-of-rect
-    point FIELD r.top-left        \ -- a-addr cell*2
-    point FIELD r.bottom-right    \ -- a-addr cell*4
-END-STRUCT
+\ STRUCT point \ -- a-addr 0 ; -- length-of-point
+\     1 CELLS FIELD p.x             \ -- a-addr cell
+\     1 CELLS FIELD p.y             \ -- a-addr cell*2
+\ END-STRUCT
+\ 
+\ STRUCT rect    \ -- a-addr 0 ; -- length-of-rect
+\     point FIELD r.top-left        \ -- a-addr cell*2
+\     point FIELD r.bottom-right    \ -- a-addr cell*4
+\ END-STRUCT
 
 DECIMAL
 WELCOME
