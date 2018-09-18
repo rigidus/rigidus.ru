@@ -336,8 +336,8 @@ YES для транзакций, которые набрали более чем
     `(let* ((path *vfm-path*)
             (proc (sb-ext:run-program (format nil "~A/~A" path "forth64") '("asd" "qwe")
                                       :environment (list
-                                                    (format nil "sender=~A" ,sender)
-                                                    (format nil "amount=~A" ,amount))
+                                                    (format nil "SENDER=~A" ,sender)
+                                                    (format nil "AMOUNT=~A" ,amount))
                                       :wait nil :input :stream :output :stream))
             (base (alexandria:read-file-into-string (format nil "~A/~A" path *vfm-path-lib*))))
        (with-open-stream (input (sb-ext:process-input proc))
@@ -370,7 +370,7 @@ YES для транзакций, которые набрали более чем
          in-string)))
 #+END_SRC
 
-Теперь мы можем выполнить пример - закоченную сессию обмена данными. В этом примере мы
+Теперь мы можем выполнить пример - законченную сессию обмена данными. В этом примере мы
 проверяем, что стек смарт-контракта работает и печатается нормально, и выводим (для
 проверки) переданные смарт-контракту переменные окружения (мы заранее знаем, сколько
 строк хотим получить)
@@ -513,24 +513,100 @@ YES для транзакций, которые набрали более чем
 приводит к его запуску. Смарт-контакт анализирует свой ~storage~ и если он пуст,
 заполняет его захардкоженным списком адресов нод, как уже было сказано выше.
 
-[TODO:gmm] - Остановимся пока здесь.
-
-[TODO:gmm] - Слово поиска в окружении
-
 Затем смарт-контракт должен запросить у ноды содержимое ~storage~ по ключу
 ~sender-а~. Возвращаемое значение содержит сумму, которую ~sender~ перечислял на адрес
 смарт-контракта. К этому содержимому необходимо прибавить ~amount~ и сохранить новое
 значение по тому же ключу.
+
+#+NAME: test
+#+BEGIN_SRC forth
+  : TST
+      \ get sender zerostring pointer from ENV
+
+      S" SENDER=" ENVLOOKUP
+      DUP 0= IF
+          ." ᚜smart-contract-error «wrong-sender»᚛" CR
+          BYE
+      THEN
+
+      \ save sender to stack and convert to lenstr
+      DUP STRLEN 2DUP ( len sender-pnt len sender-pnt -- )
+
+      \ get sender amount from storage, or 0 if not exists
+
+      ." ᚜gethash «" TELL ." » storage 0᚛᚛" CR
+      \ read answer
+      WORD NUMBER
+      0 <> IF
+          ." ᚜smart-contract-error «wrong-amount-from-storage»᚛" CR
+          BYE
+      THEN
+
+
+      \ here amount saved to stack ( storage-val len sender-pnt -- )
+
+
+      \ Get amount from env as string
+      S" AMOUNT=" ENVLOOKUP
+      DUP 0= IF
+          ." ᚜smart-contract-error «wrong-amount-from-env»᚛" CR
+          BYE
+      THEN
+
+      \ Parse amount to integer
+      DUP STRLEN NUMBER
+      \ If not correct amount then error
+      0 <> IF
+          ." ᚜smart-contract-error «wrong-amount-2»᚛" CR
+          BYE
+      THEN
+
+      \ Add amount from env and amount from storage
+      + ( result len sender-pnt )
+
+      >R \ save result
+
+      \ Write result to storage
+      ." ᚜setf ᚜gethash «" TELL ." » storage᚛" R> . ." ᚛" CR
+
+      WORD 2DROP \ Read and drop response
+      BYE
+  ;
+#+END_SRC
+
+
+#+BEGIN_SRC lisp
+  (defun vfm-dbg (param)
+    (format t "{{===---~A---===}}~%" param)
+    (format nil ""))
+
+  ;; ." ᚜vfm-dbg-die «" .S  ." »᚛" CR
+
+  (defun vfm-dbg-die (param)
+    (format t "{{===---~A---===}}~%" param)
+    (format nil "BYE"))
+
+  (with-run-vfm (*sender* *amount*)
+      (format t "~%~%----------------- begin~%")
+      ;;
+      (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
+             (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f")))
+             (result))
+        (vfm-write input smart "")
+        (vfm-write input "TST" "")
+        (vfm-repl input output)
+        (values)))
+
+  ;; (gethash "0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a" (get-current-storage))
+#+END_SRC
+
 
 #+BEGIN_SRC forth :tangle smart-g-nodes.f :noweb tangle :exports code :padline no :comments none
   <<base_g_nodes>>
 
   <<ensure_g_nodes>>
 
-  \ : -TEXT ( a1 # а2 -- f=сравнение | полож=1>2 | отр=1<2 )
-  \    2DUP + SWAP DО DROP 2+ DUP 2- @
-  \      I @ - DUP IF DUP ABS / LEAVE THEN
-  \    2 +LOOP SWAP DROP ;
+  <<test>>
 
   : ADD-AMOUNT
       ENSURE-G-NODES
