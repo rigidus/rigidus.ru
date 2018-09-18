@@ -99,7 +99,7 @@ host-машиной на Си, Java или даже Lisp.
 Makefile, а просто держу его рядом с литературным исходником. Тем не менее копия для
 справочных целей остается тут:
 
-#+NAME: Makefile
+#+NAME: Makefile32
 #+BEGIN_SRC makefile
   SHELL = /bin/sh
 
@@ -107,14 +107,27 @@ Makefile, а просто держу его рядом с литературны
   CFLAGS  += -m32 -g
   LDFLAGS += -m32 -g
 
-  TARGET = forth
+  TARGET = forth32
 
-  INC = inc
+  SRC = src32
+  INC = inc32
 
-  CSRC = main.c sdlwrap.c
-  ASMO = jonesforth.o
-  TOASMS = $(CSRC:.c=.s)
-  OBJS = $(CSRC:.c=.o) $(ASMS:.s=.o)
+  CSRC_MAIN = main32.c
+  CSRC_SDLWRAP = sdlwrap32.c
+  CSRCS = $(CSRC_MAIN) $(CSRC_SDLWRAP)
+
+  TOASMS = $(CSRCS:.c=.s)
+
+  ASRC_MAIN = jonesforth32.s
+
+  OBJ_MAIN = $(CSRC_MAIN:.c=.o)
+  OBJ_SDLWRAP = $(CSRC_SDLWRAP:.c=.o)
+  OBJ_ASM = $(ASRC_MAIN:.s=.o)
+
+  OBJS = $(CSRCS:.c=.o) $(OBJ_ASM) $(TOASMS:.s=.o)
+
+  FSRC = jonesforth.f
+  TEST = test.f
 
 
   .SUFFIXES:
@@ -122,29 +135,35 @@ Makefile, а просто держу его рядом с литературны
 
   .PHONY: all toasm clean
 
-  VPATH = src:inc
+  VPATH = $(SRC):$(INC)
 
   CFLAGS  += $(shell pkg-config --cflags  sdl2)
   LDFLAGS += $(shell pkg-config --libs    sdl2)
 
 
-  all: sdlwrap.o jonesforth.o main.o
+  all: $(OBJ_SDLWRAP) $(OBJ_ASM) $(OBJ_MAIN)
       $(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
 
-  sdlwrap.o: sdlwrap.c
+  $(OBJ_SDLWRAP): $(CSRC_SDLWRAP)
       $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
-  main.o: main.c
+  $(OBJ_MAIN): $(CSRC_MAIN)
       $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
-  jonesforth.o: jonesforth.s
+  $(OBJ_ASM): $(ASRC_MAIN)
       $(CC) -c $(CFLAGS) $^ -o $@
 
   toasm: $(CSRC)
       $(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)
 
   clean:
-      rm -Rf $(TARGET) $(OBJS) $(ASMO) $(TOASMS)
+      rm -Rf $(TARGET) $(OBJS) $(OBJ_ASM) $(TOASMS)
+
+  run:
+      cat $(SRC)/$(FSRC) - | ./$(TARGET)
+
+  test:
+      cat $(SRC)/$(FSRC) $(TEST) | ./$(TARGET)
 #+END_SRC
 
 ** Кросс-компиляция из x64
@@ -253,4 +272,10 @@ bash-скрипт ~go.sh~, который копирует Makefile и собр�
 
 #+BEGIN_SRC sh
   cat jonesforth.f myfunctions.f - | ./jonesforth
+#+END_SRC
+
+В Makefile это указано как цель =run=, поэтому можно просто запустить:
+
+#+BEGIN_SRC sh
+  make -f Makefile32 run
 #+END_SRC
