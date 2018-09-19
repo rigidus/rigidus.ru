@@ -243,7 +243,7 @@ YES для транзакций, которые набрали более чем
 #+NAME: base_g_nodes
 #+BEGIN_SRC forth
   : BASE-G-NODES
-      ." '᚜«127.0.0.1:5501» «127.0.0.1:5502» «127.0.0.1:5503» «127.0.0.1:5504» «127.0.0.1:5505»᚛"
+      ." '᚜«5501» «5502» «5503» «5504» «5505»᚛"
   ;
 #+END_SRC
 
@@ -515,12 +515,14 @@ YES для транзакций, которые набрали более чем
 
 Затем смарт-контракт должен запросить у ноды содержимое ~storage~ по ключу
 ~sender-а~. Возвращаемое значение содержит сумму, которую ~sender~ перечислял на адрес
-смарт-контракта. К этому содержимому необходимо прибавить ~amount~ и сохранить новое
-значение по тому же ключу.
+смарт-контракта ранее. К этому содержимому необходимо прибавить ~amount~, т.е. сумму,
+перечисленную сейчас и сохранить новое значение по тому же ключу. Этим занимается
+процедура =add-amount=:
 
-#+NAME: test
+#+NAME: add_amount
 #+BEGIN_SRC forth
-  : TST
+  : ADD-AMOUNT
+      ENSURE-G-NODES
       \ get sender zerostring pointer from ENV
 
       S" SENDER=" ENVLOOKUP
@@ -574,6 +576,7 @@ YES для транзакций, которые набрали более чем
   ;
 #+END_SRC
 
+Для отладочных целей мы можем вызывать ее так:
 
 #+BEGIN_SRC lisp
   (defun vfm-dbg (param)
@@ -593,39 +596,31 @@ YES для транзакций, которые набрали более чем
              (smart (alexandria:read-file-into-string (format nil "~A/~A" wp-path "smart-g-nodes.f")))
              (result))
         (vfm-write input smart "")
-        (vfm-write input "TST" "")
+        (vfm-write input "ADD-AMOUNT" "")
         (vfm-repl input output)
         (values)))
 
   ;; (gethash "0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a" (get-current-storage))
 #+END_SRC
 
+Когда начинается новый раунд, вызывающая нода должна запустить процедуру, которая
+выполнят следующие действия:
+- проверяет, корректно ли работали G-ноды в завершенном раунде (как?)
+- освобождает депозиты корректно отработавших нод, создавая транзакции на ~transfer~
+- формирует новый список G-нод (видимо отсортировав кандидатов по размеру депозитов)
+
+[TODO:gmm] - NewRoundProcedure
+
+Общий контракт собирается из всех перечисленных выше процедур:
 
 #+BEGIN_SRC forth :tangle smart-g-nodes.f :noweb tangle :exports code :padline no :comments none
   <<base_g_nodes>>
 
   <<ensure_g_nodes>>
 
-  <<test>>
-
-  : ADD-AMOUNT
-      ENSURE-G-NODES
-      ." ᚜gethash «0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a» storage 0᚛᚛" CR
-      \ Read and parsing response
-      WORD NUMBER
-      0= IF
-          \ Number is ok, parsing success
-          \ Добавить к этому AMOUNT и записать в STORAGE
-          \ ...
-          DROP
-      ELSE
-          \ Wrong number
-          DROP \ Drop bad parsing number
-          ." ᚜smart-contract-error «wrong-node-result-number»᚛" CR
-      THEN
-  ;
-
   <<contract_alfa_beta_gamma>>
+
+  <<add_amount>>
 #+END_SRC
 
 Для формирования нового списка узлов G-Node будет использоваться контракт, в адрес
