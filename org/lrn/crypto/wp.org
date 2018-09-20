@@ -798,7 +798,146 @@ G-ноды записывают в цепочку, выполняя консен
 
 ****
 
+** Multisig 2of3
+
+Первое что стоит сделать - это создать новый аккаунт, который позже станет
+смарт-аккаунтом в тестовой сети. Для этого мы просто можем поменять сид в настройках
+консоли, например изменив последнее слово. Из консоли то же самое можно сделать с
+помощью команды
+
+#+BEGIN_SRC js
+  env.SEED = "industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter rig"
+#+END_SRC
+
+Потом кинуть деньги на аккаунт через Faucet https://testnet.wavesexplorer.com/faucet
+Нам нужны эти деньги, потому что контракт самостоятельно платит за исходящие с него
+транзакции.
+
+Чтобы получить адрес созданного аккаунта мы можем использовать в консоли
+вызов:
+
+#+BEGIN_SRC js
+  address()
+#+END_SRC
+
+Потом нам нужно создать три аккаунта, т.е. три пары ключей, которые назовем Alice, Bob,
+Carol. Смарт-аккаунт будет проверять, что минимум два из трех подписали транзакцию,
+если нет - транзакция будет отклонена.
+
+#+BEGIN_SRC js
+  env.SEED = "alice"
+  alice = keyPair()
+      => { private:EUzwt3buFVEyWAQQpt8ZXxDiEG51W7DhW6Hft54UHFfk,
+           public:5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM}
+  env.SEED = "bob"
+  bob = keyPair()
+      => { private:7V13MftX7mbcZpEkzyUgsj5S7CwgvCyqqFc2ire7X7WC,
+           public:2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF
+         }
+  env.SEED = "carol"
+  carol = keyPair()
+      => { private:b5oyxKsU51B3tMq352jYmdMQgVFuvrQwH35CkQ2C3tu,
+           public:DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY
+         }
+#+END_SRC
+
+В конце надо не забыть вернуть правильный SEDD обратно, ведь от его имени будут
+выполнять все дальнейшие действия:
+
+#+BEGIN_SRC js
+  env.SEED = "industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter rig"
+#+END_SRC
+
+
+Теперь мы можем создать контракт по шаблону из New->Sample->Multisig(2of3), в котором
+заменим публичные ключи проверяющих
+
+#+BEGIN_SRC js
+  let alicePubKey  = base58'5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM'
+  let bobPubKey    = base58'2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF'
+  let carolPubKey  = base58'DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY'
+
+  let aliceSigned  = if(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey  )) then 1 else 0
+  let bobSigned    = if(sigVerify(tx.bodyBytes, tx.proofs[1], bobPubKey    )) then 1 else 0
+  let carolSigned  = if(sigVerify(tx.bodyBytes, tx.proofs[2], carolPubbKey )) then 1 else 0
+
+  aliceSigned + bobSigned + cooperSigned >= 2
+#+END_SRC
+
+Если мы хотим проверять отдельно разные типы транзакций, можно сделать так:
+
+#+BEGIN_SRC js
+  let alicePubKey  = base58'5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM'
+  let bobPubKey    = base58'2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF'
+  let carolPubKey  = base58'DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY'
+
+  match tx {
+    case tx:DataTransaction =>
+      if(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey)) then true else false
+    case _ =>
+      let aliceSigned   = if(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey)) then 1 else 0
+      let bobSigned     = if(sigVerify(tx.bodyBytes, tx.proofs[1], bobPubKey))   then 1 else 0
+      let carolSigned   = if(sigVerify(tx.bodyBytes, tx.proofs[1], carolPubKey)) then 1 else 0
+      aliceSigned + bobSigned + carolSigned >= 2
+  };
+#+END_SRC
+
+Получить контракт в консоли IDE можно через вызов
+
+#+BEGIN_SRC js
+  contract()
+#+END_SRC
+
+Соответственно скомпилировать его можно так:
+
+#+BEGIN_SRC js
+  compile(contract())
+#+END_SRC
+
+Теперь можго сформировать транзакцию на установку скрипта для текущего аккаунта:
+
+#+BEGIN_SRC js
+  Tx = setScript({script:compile(contract())})
+#+END_SRC
+
+И разослать её броадкастом:
+
+#+BEGIN_SRC js
+  broadcast(Tx)
+#+END_SRC
+
+Скрипт на аккаунт установлен.
+
+Теперь мы хотим сформировать дата-транзакцию, подписав ее неправильно. Мы должны явно
+указать повышенный ~fee~ (найти формулу для рассчета) и можем явно указать
+~senderPublicKey~:
+
+#+BEGIN_SRC js
+  wrongDataTx = data({data:[{key:"abcd", value:42}],
+                      senderPublicKey:"FHKJnbEnPZZXsrVTaaL68hCU9BsGiBoyWyT4DAp83oxQ",
+                      fee:500000})
+#+END_SRC
+
+[TODO:gmm] - Как определить что транзакция отклонена?
+
+Теперь подпишем транзакцию правильно. Для этого во втором параметре нужно указать
+корректные SEEDs:
+
+
+#+BEGIN_SRC js
+  wrongDataTx = data({data:[{key:"abcd", value:42}],
+                      senderPublicKey:"FHKJnbEnPZZXsrVTaaL68hCU9BsGiBoyWyT4DAp83oxQ",
+                      fee:500000},
+                     ["wfewv wefewf wefewf"])
+#+END_SRC
+
+[TODO:gmm] - Как нам определить что все прошло успешно?
+
 ** Голосование
+
+Для начала нам нужен инициатор голосования, вернее его аккаунт. Надо его создать, а
+потом послать транзакцию SetScriptTransaction, в которой должен быть скомпилированный
+контракт.
 
 Инициатор начинает голосование, публикуя Data-транзакцию с адреса, которым он
 владеет. В этой дата-транзакции он сообщает, что хочет выставить на голосование перевод
