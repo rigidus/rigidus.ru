@@ -750,6 +750,7 @@ G-ноды записывают в цепочку, выполняя консен
 | returnpayments | reject      | reject      |
 | fin            | reject      | finished    |
 | fin            | success     | finished    |
+| clean          | finished    | finished    |
 
 И по этой таблице можно построить входные данные для графа с помощью вот такого кода:
 
@@ -1188,8 +1189,8 @@ UNICODE-символы:
   (ql:quickload "closer-mop")
   (ql:quickload "anaphora")
   (ql:quickload "postmodern")
-
   (ql:quickload "restas")
+  (ql:quickload "restas-directory-publisher")
 
   (restas:define-module #:node
     (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
@@ -1207,8 +1208,24 @@ UNICODE-символы:
 
   (in-package :node)
 
-  (restas:define-route robots ("/robots.txt")
-    (format nil "User-agent: *~%Disallow: "))
+  (defparameter *base-dir*
+    (merge-pathnames
+     (make-pathname :directory '(:relative "repo/rigidus.ru"))
+     (user-homedir-pathname)))
+
+  (defparameter *base-path* (directory-namestring *base-dir*))
+
+  (restas:mount-module -css- (#:restas.directory-publisher)
+    (:url "/css/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "css"))
+                      ,*base-dir*)))
+
+  (restas:mount-module -js- (#:restas.directory-publisher)
+    (:url "/js/")
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "js"))
+                      ,*base-dir*)))
 
   (restas:debug-mode-on)
   ;; (restas:debug-mode-off)
@@ -1216,9 +1233,7 @@ UNICODE-символы:
   ;; init ends here
 
   (restas:define-route index ("/")
-    (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/temp.htm"))
-
-
+    (alexandria:read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/temp.html"))
 #+END_SRC
 
 * TODO Сущности и операции над ними
