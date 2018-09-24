@@ -415,6 +415,9 @@ YES для транзакций, которые набрали более чем
     `(subseq (with-output-to-string (*standard-output*)
                (pprint ,var)) 1))
 
+  (defparameter *contracts* (make-hash-table :test #'equal))
+  (defparameter *storages* (make-hash-table :test #'equal))
+
   (let ((storage (make-hash-table :test #'equal)))
     (defun get-current-storage ()
       storage)
@@ -1293,22 +1296,38 @@ UNICODE-символы:
                           (make-resource
                            "contracts"
                            (list
-                            (make-endpoint "get_contract_body" "contracts" "get" "Get contract"
-                                           (make-curl-get "blocks" "get_height"))
-                            (make-endpoint "get_contract_storage" "contracts" "get" "Get storage"
-                                           (make-curl-get "blocks" "get_height"))
-                            (make-endpoint "new_contract" "contracts" "post" "Publish contract"
-                                           ;; (make-curl-post "contracts" "new_contract")
-                                           (swgr:parameters
-                                            (list :body
-                                                  "{\"contract\":{\"body\":\"012345DEADBEEF\"}}")))
-                            (make-endpoint "call_contract" "contracts" "post" "Call contract"
-                                           ;; (make-curl-post "contracts" "call_contract")
+                            (make-endpoint "new_contract" "contracts" "post" "Publish new contract"
+                                           (make-curl-post "contracts" "new_contract" "new_contract" "")
                                            (swgr:parameters
                                             (list :params
                                                   (list
-                                                   (list :body (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))
-                                                   (list :body (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))))))))
+                                                   (list :name "contract_code" :field "contract_code" :descr "hash of contract"
+                                                         :body "")
+                                                   (list :name "constructor" :field "constructor" :descr "name of constructor" :tag "input"
+                                                         :body "")))))
+                            (make-endpoint "get_contract_storage" "contracts" "get" "Get storage variables"
+                                           (make-curl-get "contracts" "get_contract_storage")
+                                           (swgr:parameters
+                                            (list :params
+                                                  (list
+                                                   (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
+                                                         :body (format nil "012345DEADBEEF"))))))
+                            (make-endpoint "get_contract_code" "contracts" "get" "Get contract code"
+                                           (make-curl-get "contracts" "get_contract_code")
+                                           (swgr:parameters
+                                            (list :params
+                                                  (list
+                                                   (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
+                                                         :body (format nil "012345DEADBEEF"))))))
+                            (make-endpoint "call_contract" "contracts" "post" "call contract function"
+                                           (make-curl-post "contracts" "call_contract" "call_contract" "")
+                                           (swgr:parameters
+                                            (list :params
+                                                  (list
+                                                   (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
+                                                         :body "")
+                                                   (list :name "call_function" :field "call_function" :descr "name of function" :tag "input"
+                                                         :body "")))))))
                           (make-resource
                            "transactions"
                            (list
@@ -1330,6 +1349,43 @@ UNICODE-символы:
     ;;       (format nil "get: empty~%")
     ;;       (format nil "get: ~A~%" params))))
     (cl-user::bprint (length *blocks*)))
+
+  (restas:define-route contracts/new_contract/post ("contracts/new_contract" :method :post)
+    ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
+    ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
+    (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
+           (contract-code (cdr (assoc :contract--code req)))
+           (constructor (cdr (assoc :contract--code req))))
+      (setf contract-code (string-trim '(#\Space #\Tab #\Newline) contract-code))
+      (let ((hash (cl-user::sha-256 contract-code)))
+        (setf (gethash hash cl-user::*contracts*) contract-code)
+        (setf (gethash hash cl-user::*storages*) nil)
+        (format nil "~A~%" (cl-user::bprint hash)))))
+
+  (restas:define-route contracts/get_contract_storage ("contracts/get_contract_storage")
+    (let ((hash (hunchentoot:get-parameter "hash")))
+      (if (null hash)
+          (format nil "Error: bad param!~%")
+          (let ((storage (gethash hash cl-user::*storages* nil)))
+            (cl-user::bprint storage)))))
+
+  (restas:define-route contracts/get_contract_code ("contracts/get_contract_code")
+    (let ((hash (hunchentoot:get-parameter "hash")))
+      (if (null hash)
+          (format nil "Error: bad param!~%")
+          (let ((code (gethash hash cl-user::*contracts* nil)))
+            (cl-user::bprint code)))))
+
+  (restas:define-route contracts/call_contract/post ("contracts/call_contract" :method :post)
+    ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
+    ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
+    (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
+           (hash (cdr (assoc :hash req)))
+           (call (cdr (assoc :call--function req)))
+           (code (gethash hash cl-user::*contracts*)))
+      (if (null code)
+          (format nil "~A~%" "Contract not exists")
+          (format nil "~A~%" "[TODO:gmm]"))))
 
   (closure-template:compile-template
    :common-lisp-backend (merge-pathnames

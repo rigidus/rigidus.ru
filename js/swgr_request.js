@@ -3,15 +3,18 @@ function swgr_request (url, method, dataparam, place)
   // alert(method);
   var config = {};
   $(dataparam).serializeArray().map(function(item) {
-    if ( config[item.name] ) {
-      if ( typeof(config[item.name]) === "string" ) {
-            config[item.name] = [config[item.name]];
-        }
-        config[item.name].push(item.value);
-    } else {
+    // alert(item.name);
+    // if ( config[item.name] ) {
+    //   if ( typeof(config[item.name]) === "string" ) {
+    //     config[item.name] = [config[item.name]];
+    //   }
+    //     // config[item.name].push(item.value);
+    // } else {
         config[item.name] = item.value;
-    }
+    // }
   });
+
+  // alert(JSON.stringify(config));
 
   if (method == "post") {
     databody = JSON.stringify(config);
