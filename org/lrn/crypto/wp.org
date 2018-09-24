@@ -1252,28 +1252,25 @@ UNICODE-символы:
   ;; (restas:debug-mode-off)
   (setf hunchentoot:*catch-errors-p* t)
 
-  (defparameter *example* (format nil "{ \"block\" : [ ] }"))
   (defparameter *request-address* "localhost:2345")
 
+  (defun make-endpoint (name group method notes curl &optional (parameters ""))
+    (list :group group :method method :endpoint name
+          :notes notes :curl curl :parameters parameters))
+
+  (defun make-resource (name endpoints)
+    (list :resource name :endpoints endpoints))
 
   (restas:define-route swgr ("/")
-    (swgr:all (list :head (swgr:head)
-                    :body (swgr:body (list :group "blocks"
-                                           :endpoints (list
-                                                       (list :group "blocks"
-                                                             :method "get"
-                                                             :endpoint "get_height"
-                                                             :notes "Request of height"
-                                                             :example *example*
-                                                             :curl (format nil "curl -X GET --header 'Accept: application/json' 'http://~A/blocks/get_height'" *request-address*))
-                                                       (list :group "blocks"
-                                                             :method "post"
-                                                             :endpoint "new_block"
-                                                             :notes "Send new block from network"
-                                                             :parameters (swgr:parameters)
-                                                             :example *example*
-                                                             :curl (format nil "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d '{ \"block\" : [ ] }' 'http://~A/blocks/new_block'" *request-address*))
-                                                       ))))))
+    (swgr:all
+     (list
+      :head (swgr:head)
+      :body (swgr:body
+             (list
+              :resources (list
+                          (make-resource "blocks" (list (make-endpoint "get_height" "blocks" "get" "Request of height" (format nil "curl -X GET --header 'Accept: application/json' 'http://~A/blocks/get_height'" *request-address*))
+                                                        (make-endpoint "new_block" "blocks" "post" "Send new block from network" (format nil "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d '{ \"block\" : [ ] }' 'http://~A/blocks/new_block'" *request-address*) (swgr:parameters))))
+                          ))))))
 
   (restas:define-route blocks/get_height ("/blocks/get_height")
     " { \"height\" : 111 }  ")
