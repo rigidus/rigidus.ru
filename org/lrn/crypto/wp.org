@@ -1261,6 +1261,14 @@ UNICODE-символы:
   (defun make-resource (name endpoints)
     (list :resource name :endpoints endpoints))
 
+  (defun make-curl (method resource endpoint)
+    (format nil "curl -X ~A  --header 'Accept: application/json' ~A 'http://~A/~A/~A'"
+            (string-upcase method)
+            (if (equal "POST" (string-upcase method))
+                "-d '{}'"
+                "")
+            ,*request-address* resource endpoint))
+
   (restas:define-route swgr ("/")
     (swgr:all
      (list
@@ -1268,17 +1276,27 @@ UNICODE-символы:
       :body (swgr:body
              (list
               :resources (list
-                          (make-resource "blocks" (list (make-endpoint "get_height" "blocks" "get" "Request of height" (format nil "curl -X GET --header 'Accept: application/json' 'http://~A/blocks/get_height'" *request-address*))
-                                                        (make-endpoint "new_block" "blocks" "post" "Send new block from network" (format nil "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d '{ \"block\" : [ ] }' 'http://~A/blocks/new_block'" *request-address*) (swgr:parameters (list :body "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))))))))))
+                          (make-resource
+                           "blocks"
+                           (list
+                            (make-endpoint "get_height" "blocks" "get" "Request of height"
+                                           (make-curl "get" "blocks" "get_height")
+                                           (swgr:parameters (list :body "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))
+                            (make-endpoint "new_block" "blocks" "post" "Send new block from network"
+                                           (format nil "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d '{ \"block\" : [ ] }' 'http://~A/blocks/new_block'" *request-address*)
+                                           (swgr:parameters (list :body "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))))))))))
 
   (restas:define-route blocks/get_height ("/blocks/get_height")
-    (format nil "{ \"height\" : \"~A\" }" (format nil "~A" (hunchentoot:get-parameters*))))
+    (let ((params (hunchentoot:get-parameters*)))
+      (if (= 0 (length params))
+          (format nil "get: empty~%")
+          (format nil "get: ~A~%" params))))
 
   (restas:define-route blocks/new_block ("/blocks/new_block")
     " { \"height\" : 222 }  ")
 
   (restas:define-route blocks/new_block/post ("/blocks/new_block" :method :post)
-    (format nil "~A" (hunchentoot:raw-post-data :force-text t)))
+    (format nil "post: ~A" (hunchentoot:raw-post-data :force-text t)))
 
   (closure-template:compile-template
    :common-lisp-backend (merge-pathnames

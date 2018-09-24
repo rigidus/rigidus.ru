@@ -1,5 +1,6 @@
 function swgr_request (url, method, dataparam, place)
 {
+  // alert(method);
   var config = {};
   $(dataparam).serializeArray().map(function(item) {
     if ( config[item.name] ) {
@@ -12,12 +13,12 @@ function swgr_request (url, method, dataparam, place)
     }
   });
 
-  if (method=="post") {
+  if (method == "post") {
     databody = JSON.stringify(config);
-    alert(databody);
+    // alert(databody);
   } else {
     databody = config;
-    alert(databody);
+    // alert(JSON.stringify(config));
   }
 
   $.ajax({
