@@ -1190,6 +1190,7 @@ UNICODE-символы:
   (ql:quickload "restas")
   (ql:quickload "restas-directory-publisher")
   (ql:quickload "closure-template")
+  (ql:quickload "cl-json")
 
   (defparameter *base-dir*
     (merge-pathnames
@@ -1254,6 +1255,8 @@ UNICODE-символы:
 
   (defparameter *request-address* "localhost:2345")
 
+  (defparameter *blocks* nil)
+
   (defun make-endpoint (name group method notes curl &optional (parameters ""))
     (list :group group :method method :endpoint name
           :notes notes :curl curl :parameters parameters))
@@ -1265,9 +1268,8 @@ UNICODE-символы:
     (format nil "curl -X GET --header 'Accept: application/json' 'http://~A/~A/~A'"
             ,*request-address* resource endpoint))
 
-  (defun make-curl-post (resource endpoint)
-    (format nil "curl -X POST --header 'Accept: application/json' -d '{}' 'http://~A/~A/~A'"
-            ,*request-address* resource endpoint))
+  (defun make-curl-post (resource endpoint field body)
+    (format nil "curl -X POST --header 'Accept: application/json' -d '{\"~A\":\"~A\"}' 'http://~A/~A/~A'" field body *request-address* resource endpoint))
 
   (restas:define-route swgr ("/")
     (swgr:all
@@ -1282,11 +1284,12 @@ UNICODE-символы:
                             (make-endpoint "get_height" "blocks" "get" "Request of height"
                                            (make-curl-get "blocks" "get_height"))
                             (make-endpoint "new_block" "blocks" "post" "Send new block from network"
-                                           (make-curl-post "blocks" "new_block")
+                                           (make-curl-post "blocks" "new_block" "newblock" "{\\\"hash\\\":\\\"012345DEADBEEF\\\"}")
                                            (swgr:parameters
-                                            (list :body
-                                                  "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))
-                            ))
+                                            (list :params
+                                                  (list
+                                                   (list :name "newblock" :field "newblock" :descr "new block"
+                                                         :body (format nil "{~%  \"hash\":\"012345DEADBEEF\"~%}"))))))))
                           (make-resource
                            "contracts"
                            (list
@@ -1295,15 +1298,17 @@ UNICODE-символы:
                             (make-endpoint "get_contract_storage" "contracts" "get" "Get storage"
                                            (make-curl-get "blocks" "get_height"))
                             (make-endpoint "new_contract" "contracts" "post" "Publish contract"
-                                           (make-curl-post "contracts" "new_contract")
+                                           ;; (make-curl-post "contracts" "new_contract")
                                            (swgr:parameters
                                             (list :body
                                                   "{\"contract\":{\"body\":\"012345DEADBEEF\"}}")))
                             (make-endpoint "call_contract" "contracts" "post" "Call contract"
-                                           (make-curl-post "contracts" "call_contract")
+                                           ;; (make-curl-post "contracts" "call_contract")
                                            (swgr:parameters
-                                            (list :body
-                                                  (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))))))
+                                            (list :params
+                                                  (list
+                                                   (list :body (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))
+                                                   (list :body (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))))))))
                           (make-resource
                            "transactions"
                            (list
@@ -1318,13 +1323,17 @@ UNICODE-символы:
           (format nil "get: ~A~%" params))))
 
   (restas:define-route blocks/new_block/post ("/blocks/new_block" :method :post)
-    (format nil "post: ~A~%" (hunchentoot:raw-post-data :force-text t)))
+    ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
+    ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
+    (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
+           (blk (cdr (assoc :newblock req)))
+           (new (cl-json:decode-json-from-string blk)))
+      (format nil "~A~%" (cl-user::bprint (push new *blocks*)))))
 
   (closure-template:compile-template
    :common-lisp-backend (merge-pathnames
                          (make-pathname :name "swgr" :type "htm")
                          ,*tpl-path*))
-
 #+END_SRC
 
 * TODO Сущности и операции над ними
