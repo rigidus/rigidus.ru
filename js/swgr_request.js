@@ -12,15 +12,20 @@ function swgr_request (url, method, dataparam, place)
     }
   });
 
-  // alert(JSON.stringify(config));
+  if (method=="post") {
+    databody = JSON.stringify(config);
+    alert(databody);
+  } else {
+    databody = config;
+    alert(databody);
+  }
 
   $.ajax({
     type: method.toUpperCase(),
     url: url,
-    data: JSON.stringify(config), //dataparam,
+    data: databody,
     success: function (data) {
-      // alert(place);
-      // alert(data);
+      // alert(1);
       $(place).html(data);
     },
     error: function (data) {
