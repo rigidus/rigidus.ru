@@ -1261,12 +1261,12 @@ UNICODE-символы:
   (defun make-resource (name endpoints)
     (list :resource name :endpoints endpoints))
 
-  (defun make-curl (method resource endpoint)
-    (format nil "curl -X ~A  --header 'Accept: application/json' ~A 'http://~A/~A/~A'"
-            (string-upcase method)
-            (if (equal "POST" (string-upcase method))
-                "-d '{}'"
-                "")
+  (defun make-curl-get (resource endpoint)
+    (format nil "curl -X GET --header 'Accept: application/json' 'http://~A/~A/~A'"
+            ,*request-address* resource endpoint))
+
+  (defun make-curl-post (resource endpoint)
+    (format nil "curl -X POST --header 'Accept: application/json' -d '{}' 'http://~A/~A/~A'"
             ,*request-address* resource endpoint))
 
   (restas:define-route swgr ("/")
@@ -1280,11 +1280,36 @@ UNICODE-символы:
                            "blocks"
                            (list
                             (make-endpoint "get_height" "blocks" "get" "Request of height"
-                                           (make-curl "get" "blocks" "get_height")
-                                           (swgr:parameters (list :body "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))
+                                           (make-curl-get "blocks" "get_height"))
                             (make-endpoint "new_block" "blocks" "post" "Send new block from network"
-                                           (format nil "curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' -d '{ \"block\" : [ ] }' 'http://~A/blocks/new_block'" *request-address*)
-                                           (swgr:parameters (list :body "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))))))))))
+                                           (make-curl-post "blocks" "new_block")
+                                           (swgr:parameters
+                                            (list :body
+                                                  "{\"block\":{\"hash\":\"012345DEADBEEF\"}}")))
+                            ))
+                          (make-resource
+                           "contracts"
+                           (list
+                            (make-endpoint "get_contract_body" "contracts" "get" "Get contract"
+                                           (make-curl-get "blocks" "get_height"))
+                            (make-endpoint "get_contract_storage" "contracts" "get" "Get storage"
+                                           (make-curl-get "blocks" "get_height"))
+                            (make-endpoint "new_contract" "contracts" "post" "Publish contract"
+                                           (make-curl-post "contracts" "new_contract")
+                                           (swgr:parameters
+                                            (list :body
+                                                  "{\"contract\":{\"body\":\"012345DEADBEEF\"}}")))
+                            (make-endpoint "call_contract" "contracts" "post" "Call contract"
+                                           (make-curl-post "contracts" "call_contract")
+                                           (swgr:parameters
+                                            (list :body
+                                                  (format nil "{~%  \"contract\":\"012345DEADBEEF\",~%  \"function\":\"THE-FUNC\"~%}"))))))
+                          (make-resource
+                           "transactions"
+                           (list
+                            (make-endpoint "get_transaction" "transactions" "get" "Get transaction"
+                                           (make-curl-get "transactions" "get_transaction"))
+                            ))))))))
 
   (restas:define-route blocks/get_height ("/blocks/get_height")
     (let ((params (hunchentoot:get-parameters*)))
@@ -1292,11 +1317,8 @@ UNICODE-символы:
           (format nil "get: empty~%")
           (format nil "get: ~A~%" params))))
 
-  (restas:define-route blocks/new_block ("/blocks/new_block")
-    " { \"height\" : 222 }  ")
-
   (restas:define-route blocks/new_block/post ("/blocks/new_block" :method :post)
-    (format nil "post: ~A" (hunchentoot:raw-post-data :force-text t)))
+    (format nil "post: ~A~%" (hunchentoot:raw-post-data :force-text t)))
 
   (closure-template:compile-template
    :common-lisp-backend (merge-pathnames
