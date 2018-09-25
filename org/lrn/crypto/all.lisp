@@ -2,6 +2,7 @@
 (ql:quickload "closer-mop")
 (ql:quickload "anaphora")
 (ql:quickload "alexandria")
+(ql:quickload "flexi-streams")
 (ql:quickload "cl-ppcre")
 (ql:quickload "postmodern")
 (ql:quickload "restas")
@@ -69,7 +70,8 @@
 
 (defun sha-256 (str)
   (ironclad:byte-array-to-hex-string
-   (ironclad:digest-sequence :sha256 (ironclad:ascii-string-to-byte-array str))))
+   (ironclad:digest-sequence
+    :sha256 (flexi-streams:string-to-octets str :external-format :utf-8))))
 
 (defparameter *request-address* "localhost:2345")
 (defparameter *blocks* nil)
@@ -139,6 +141,51 @@
   (format t "{{===---~A---===}}~%" param)
   (format nil "BYE"))
 
+(defun get-storage (hash)
+  (gethash hash *storages* (make-hash-table :test #'equal)))
+
+(defun set-storage (hash new)
+  (setf (gethash hash *storages*) new))
+
+(defun run-vfm (vfm base code params env run hash)
+  (let* ((storage (make-hash-table :test #'equal))
+         (path *vfm-path*)
+         (proc (sb-ext:run-program
+                vfm params :environment env :wait nil :input :stream :output :stream)))
+    (with-open-stream (input (sb-ext:process-input proc))
+      (with-open-stream (output (sb-ext:process-output proc))
+        (format input "~a" base)
+        (force-output input)
+        (unless (equal "VFM VERSION 47 OK" (read-line output))
+          (error "VFM Welcome Error"))
+        (format t "~%~%----------------- begin~%")
+        (let* ((result))
+          (vfm-write input code "")
+          (vfm-write input run "")
+          ;; macroexpand of (vfm-repl input output)
+          (block repl-block
+            (handler-case
+                (tagbody repl
+                   (setf result
+                         ;; (vfm-eval (vfm-read output) get-curent-storage)
+                         (let ((in-string (format nil "~{~A ~}" (vfm-read output))))
+                           (setf in-string (ppcre:regex-replace-all "᚜" in-string "("))
+                           (setf in-string (ppcre:regex-replace-all "᚛" in-string ")"))
+                           (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
+                           (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
+                           (let ((eval-list (read-from-string in-string)))
+                             ;; (format t "~%★ ~A~%" (bprint eval-list))
+                             (let ((eval-result (eval `(let ((storage (get-storage ,hash)))
+                                                         (prog1 ,eval-list
+                                                           (set-storage ,hash storage))))))
+                               ;; (format t "~%☭ ~A~%" eval-result)
+                               eval-result))))
+                   (vfm-write input result "")
+                   (go repl))
+              (end-of-file nil
+                (progn (format t "----------------- end~%")
+                       (return-from repl-block nil)))))
+          (values))))))
 
 (defun make-endpoint (name group method notes curl &optional (parameters ""))
   (list :group group :method method :endpoint name
@@ -218,133 +265,91 @@
                           ))))))))
 
 (restas:define-route blocks/new_block/post ("/blocks/new_block" :method :post)
-  ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
-  ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
+  ;; (format nil "post::>> ~A~%" (bprint (hunchentoot:raw-post-data :force-text t))))
+  ;; (format nil "post:=>~%~A~%" (bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
   (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
          (blk (cdr (assoc :newblock req)))
          (new (cl-json:decode-json-from-string blk)))
-    (format nil "~A~%" (cl-user::bprint (push new *blocks*)))))
+    (format nil "~A~%" (bprint (push new *blocks*)))))
 
 (restas:define-route blocks/get_height ("/blocks/get_height")
   ;; (let ((params (hunchentoot:get-parameters*)))
   ;;   (if (= 0 (length params))
   ;;       (format nil "get: empty~%")
   ;;       (format nil "get: ~A~%" params))))
-  (cl-user::bprint (length *blocks*)))
+  (bprint (length *blocks*)))
 
 (restas:define-route contracts/new_contract/post ("contracts/new_contract" :method :post)
   (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
          (contract-code (cdr (assoc :contract--code req))))
     (setf contract-code (string-trim '(#\Space #\Tab #\Newline) contract-code))
-    (let ((hash (cl-user::sha-256 contract-code)))
-      (setf (gethash hash cl-user::*contracts*) contract-code)
-      (setf (gethash hash cl-user::*storages*) nil)
-      (format nil "~A~%" (cl-user::bprint hash)))))
+    (let ((hash (sha-256 contract-code)))
+      (setf (gethash hash *contracts*) contract-code)
+      (setf (gethash hash *storages*) nil)
+      (format nil "~A~%" (bprint hash)))))
 
 (restas:define-route contracts/get_contract_storage ("contracts/get_contract_storage")
   (let ((hash (hunchentoot:get-parameter "hash")))
     (if (null hash)
         (format nil "Error: bad param!~%")
-        (let ((storage (gethash hash cl-user::*storages* nil)))
-          (cl-user::bprint storage)))))
+        (bprint (get-storage hash)))))
 
 (restas:define-route contracts/get_contract_code ("contracts/get_contract_code")
   (let ((hash (hunchentoot:get-parameter "hash")))
     (if (null hash)
         (format nil "Error: bad param!~%")
-        (let ((code (gethash hash cl-user::*contracts* nil)))
-          (cl-user::bprint code)))))
+        (let ((code (gethash hash *contracts* nil)))
+          (bprint code)))))
 
 (restas:define-route contracts/call_contract/post ("contracts/call_contract" :method :post)
-  ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
+  ;; (format nil "post:=>~%~A~%" (bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
   (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
          (hash (cdr (assoc :hash req)))
          (call (cdr (assoc :call--function req)))
-         (code (gethash hash cl-user::*contracts*))
+         (code (gethash hash *contracts*))
          (sender (cdr (assoc :sender--hash req)))
          (amount (cdr (assoc :amount req))))
     (if (null code)
         (format nil "~A~%" "Contract not exists")
-        ;; (format nil "~A~%" code)
-        (cl-user::with-run-vfm (sender amount)
-          (format t "~%~%----------------- begin~%")
-          ;;
-          (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
-                 (result))
-            (vfm-write input code "")
-            (vfm-write input call "")
-            (vfm-repl input output)
-            (values)))
+        ;; (format nil "~A~%" code))))
+        (run-vfm
+         "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+         (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+         code
+         '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+         "TEST" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+        ;; (with-run-vfm (sender amount)
+        ;;   (format t "~%~%----------------- begin~%")
+        ;;   ;;
+        ;;   (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
+        ;;          (result))
+        ;;     (vfm-write input code "")
+        ;;     (vfm-write input call "")
+        ;;     (vfm-repl input output)
+        ;;     (values)))
         )))
 
 
+;; (let* ((hash "6b0264f3ca4bfeca3102927aee1ba98a4941585fa3d9c6519fe6ac032d18b38e")
+;;        (code (gethash hash *contracts*)))
+;;   (run-vfm
+;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    ": ALFA .\" ᚜do-beta᚛\" CR ;"
+;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+;;    "ALFA" hash))
 
-(defparameter *sender* (sha-256 "sender"))
-
-(defparameter *amount* 100)
-
-(defun do-beta ()
-  (format nil "BETA"))
-
-(defun do-gamma ()
-  (format nil "GAMMA"))
-
-
-(defun get-storage (hash)
-  (gethash hash *storages* (make-hash-table :test #'equal)))
-
-(defun set-storage (hash new)
-  (setf (gethash hash *storages*) new))
-
-(defun run-vfm (vfm base code params env run hash)
-  (let* ((storage (make-hash-table :test #'equal))
-         (path *vfm-path*)
-         (proc (sb-ext:run-program
-                vfm params :environment env :wait nil :input :stream :output :stream)))
-    (with-open-stream (input (sb-ext:process-input proc))
-      (with-open-stream (output (sb-ext:process-output proc))
-        (format input "~a" base)
-        (force-output input)
-        (unless (equal "VFM VERSION 47 OK" (read-line output))
-          (error "VFM Welcome Error"))
-        (format t "~%~%----------------- begin~%")
-        (let* ((result))
-          (vfm-write input code "")
-          (vfm-write input run "")
-          ;; macroexpand of (vfm-repl input output)
-          (block repl-block
-            (handler-case
-                (tagbody repl
-                   (setf result
-                         ;; (vfm-eval (vfm-read output) get-curent-storage)
-                         (let ((in-string (format nil "~{~A ~}" (vfm-read output))))
-                           (setf in-string (ppcre:regex-replace-all "᚜" in-string "("))
-                           (setf in-string (ppcre:regex-replace-all "᚛" in-string ")"))
-                           (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
-                           (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
-                           (let ((eval-list (read-from-string in-string)))
-                             ;; (format t "~%★ ~A~%" (bprint eval-list))
-                             (let ((eval-result (eval `(let ((storage (get-storage ,hash)))
-                                                         (prog1 ,eval-list
-                                                           (set-storage ,hash storage))))))
-                               ;; (format t "~%☭ ~A~%" eval-result)
-                               eval-result))))
-                   (vfm-write input result "")
-                   (go repl))
-              (end-of-file nil
-                (progn (format t "----------------- end~%")
-                       (return-from repl-block nil)))))
-          (values))))))
-
-(run-vfm
- "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
- (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
- (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")
- '("asd" "qwe") (list (format nil "SENDER=~A" *sender*) (format nil "AMOUNT=~A" *amount*))
- "ADD-AMOUNT" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+;; (run-vfm
+;;  "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+;;  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")
+;;  '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+;;  "ADD-AMOUNT" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
 
 ;; (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
 
 ;; (maphash #'(lambda (k v)
 ;;              (print (list k  v)))
 ;;          (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516"))
+
+;; (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
