@@ -290,8 +290,11 @@
   (format nil "GAMMA"))
 
 
-(defun get-storage (contract-hash)
-  (gethash contract-hash *storages* (make-hash-table :test #'equal)))
+(defun get-storage (hash)
+  (gethash hash *storages* (make-hash-table :test #'equal)))
+
+(defun set-storage (hash new)
+  (setf (gethash hash *storages*) new))
 
 (defun run-vfm (vfm base code params env run hash)
   (let* ((storage (make-hash-table :test #'equal))
@@ -321,8 +324,9 @@
                            (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
                            (let ((eval-list (read-from-string in-string)))
                              ;; (format t "~%★ ~A~%" (bprint eval-list))
-                             (let ((eval-result (eval `(let ((storage (get-storage hash)))
-                                                         ,eval-list))))
+                             (let ((eval-result (eval `(let ((storage (get-storage ,hash)))
+                                                         (prog1 ,eval-list
+                                                           (set-storage ,hash storage))))))
                                ;; (format t "~%☭ ~A~%" eval-result)
                                eval-result))))
                    (vfm-write input result "")
@@ -337,6 +341,10 @@
  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")
  '("asd" "qwe") (list (format nil "SENDER=~A" *sender*) (format nil "AMOUNT=~A" *amount*))
- "BYE" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+ "ADD-AMOUNT" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
 
-(get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+;; (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+
+;; (maphash #'(lambda (k v)
+;;              (print (list k  v)))
+;;          (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516"))
