@@ -1302,8 +1302,6 @@ UNICODE-символы:
                                             (list :params
                                                   (list
                                                    (list :name "contract_code" :field "contract_code" :descr "hash of contract"
-                                                         :body "")
-                                                   (list :name "constructor" :field "constructor" :descr "name of constructor" :tag "input"
                                                          :body "")))))
                             (make-endpoint "get_contract_storage" "contracts" "get" "Get storage variables"
                                            (make-curl-get "contracts" "get_contract_storage")
@@ -1327,6 +1325,10 @@ UNICODE-символы:
                                                    (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
                                                          :body "")
                                                    (list :name "call_function" :field "call_function" :descr "name of function" :tag "input"
+                                                         :body "")
+                                                   (list :name "sender_hash" :field "sender_hash" :descr "hash of sender" :tag "input"
+                                                         :body "")
+                                                   (list :name "amount" :field "amount" :descr "amount of money" :tag "input"
                                                          :body "")))))))
                           (make-resource
                            "transactions"
@@ -1351,11 +1353,8 @@ UNICODE-символы:
     (cl-user::bprint (length *blocks*)))
 
   (restas:define-route contracts/new_contract/post ("contracts/new_contract" :method :post)
-    ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
-    ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
     (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
-           (contract-code (cdr (assoc :contract--code req)))
-           (constructor (cdr (assoc :contract--code req))))
+           (contract-code (cdr (assoc :contract--code req))))
       (setf contract-code (string-trim '(#\Space #\Tab #\Newline) contract-code))
       (let ((hash (cl-user::sha-256 contract-code)))
         (setf (gethash hash cl-user::*contracts*) contract-code)
@@ -1377,20 +1376,33 @@ UNICODE-символы:
             (cl-user::bprint code)))))
 
   (restas:define-route contracts/call_contract/post ("contracts/call_contract" :method :post)
-    ;; (format nil "post::>> ~A~%" (cl-user::bprint (hunchentoot:raw-post-data :force-text t))))
     ;; (format nil "post:=>~%~A~%" (cl-user::bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
     (let* ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))
            (hash (cdr (assoc :hash req)))
            (call (cdr (assoc :call--function req)))
-           (code (gethash hash cl-user::*contracts*)))
+           (code (gethash hash cl-user::*contracts*))
+           (sender (cdr (assoc :sender--hash req)))
+           (amount (cdr (assoc :amount req))))
       (if (null code)
           (format nil "~A~%" "Contract not exists")
-          (format nil "~A~%" "[TODO:gmm]"))))
+          ;; (format nil "~A~%" code)
+          (cl-user::with-run-vfm (sender amount)
+            (format t "~%~%----------------- begin~%")
+            ;;
+            (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
+                   (result))
+              (vfm-write input code "")
+              (vfm-write input call "")
+              (vfm-repl input output)
+              (values)))
+          )))
+
 
   (closure-template:compile-template
    :common-lisp-backend (merge-pathnames
                          (make-pathname :name "swgr" :type "htm")
                          ,*tpl-path*))
+
 #+END_SRC
 
 * TODO Сущности и операции над ними
