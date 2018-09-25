@@ -285,14 +285,15 @@
     (setf contract-code (string-trim '(#\Space #\Tab #\Newline) contract-code))
     (let ((hash (sha-256 contract-code)))
       (setf (gethash hash *contracts*) contract-code)
-      (setf (gethash hash *storages*) nil)
+      (setf (gethash hash *storages*) (make-hash-table :test #'equal))
       (format nil "~A~%" (bprint hash)))))
 
 (restas:define-route contracts/get_contract_storage ("contracts/get_contract_storage")
   (let ((hash (hunchentoot:get-parameter "hash")))
     (if (null hash)
         (format nil "Error: bad param!~%")
-        (bprint (get-storage hash)))))
+        (bprint (alexandria:hash-table-alist
+                 (get-storage hash))))))
 
 (restas:define-route contracts/get_contract_code ("contracts/get_contract_code")
   (let ((hash (hunchentoot:get-parameter "hash")))
@@ -312,26 +313,42 @@
     (if (null code)
         (format nil "~A~%" "Contract not exists")
         ;; (format nil "~A~%" code))))
-        (run-vfm
-         "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-         (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-         code ;; ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;"
-         '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
-         "ALFA" hash))))
+        (bprint
+         (run-vfm
+          "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+          (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+          code ;; ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;"
+          '("asd" "qwe") (list (format nil "SENDER=~A" sender) (format nil "AMOUNT=~A" amount))
+          call hash)))))
 
 ;; for a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8
 (defun cl-user::do-beta-gamma ()
   "BYE")
 
+(defun do-beta-gamma ()
+  "BYE2")
 
-;; (let* ((hash "6b0264f3ca4bfeca3102927aee1ba98a4941585fa3d9c6519fe6ac032d18b38e")
-;;        (code (gethash hash *contracts*)))
+
+;; (let* ((hash "a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8")
+;;        (code (gethash hash *contracts*))
+;;        (call "ALFA"))
 ;;   (run-vfm
 ;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
 ;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-;;    ": ALFA .\" ᚜do-beta᚛\" CR ;"
+;;    code
 ;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
-;;    "ALFA" hash))
+;;    call hash))
+
+;; (let* ((hash "7cd58aa1f728697b8a400d8d1aa855f51c7566521e7fe252e8baaf064ef5b29e")
+;;        (code (gethash hash *contracts*))
+;;        (call "ADD-AMOUNT"))
+;;   (run-vfm
+;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/add-amount.f") ;;code
+;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+;;    call hash))
+
 
 ;; (run-vfm
 ;;  "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
