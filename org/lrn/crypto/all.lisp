@@ -299,7 +299,7 @@
     (if (null hash)
         (format nil "Error: bad param!~%")
         (let ((code (gethash hash *contracts* nil)))
-          (bprint code)))))
+          code))))
 
 (restas:define-route contracts/call_contract/post ("contracts/call_contract" :method :post)
   ;; (format nil "post:=>~%~A~%" (bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))
@@ -315,19 +315,13 @@
         (run-vfm
          "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
          (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-         code
+         code ;; ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;"
          '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
-         "TEST" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
-        ;; (with-run-vfm (sender amount)
-        ;;   (format t "~%~%----------------- begin~%")
-        ;;   ;;
-        ;;   (let* ((wp-path "/home/rigidus/repo/rigidus.ru/org/lrn/crypto")
-        ;;          (result))
-        ;;     (vfm-write input code "")
-        ;;     (vfm-write input call "")
-        ;;     (vfm-repl input output)
-        ;;     (values)))
-        )))
+         "ALFA" hash))))
+
+;; for a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8
+(defun cl-user::do-beta-gamma ()
+  "BYE")
 
 
 ;; (let* ((hash "6b0264f3ca4bfeca3102927aee1ba98a4941585fa3d9c6519fe6ac032d18b38e")
