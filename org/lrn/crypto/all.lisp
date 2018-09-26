@@ -364,3 +364,37 @@
 ;;          (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516"))
 
 ;; (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
+
+
+(defun get-height ()
+  4)
+
+(defparameter *storages* (make-hash-table :test #'equal))
+
+(alexandria:hash-table-alist (gethash "dbg" *storages*))
+
+(let* ((hash "dbg")
+       ;; (code (gethash hash *contracts*))
+       (call "RUN"))
+  (run-vfm
+   "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
+   '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+   call hash))
+
+;; (vfm-eval "᚜gethash «state» node::storage «prepared»᚛᚛"
+
+(let ((hash "jjdd"))
+  (let ((in-string "᚜gethash «state» node::storage «WORD prepared»᚛᚛"))
+    (setf in-string (ppcre:regex-replace-all "᚜" in-string "("))
+    (setf in-string (ppcre:regex-replace-all "᚛" in-string ")"))
+    (setf in-string (ppcre:regex-replace-all "«" in-string "\""))
+    (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
+    (let ((eval-list (read-from-string in-string)))
+      ;; (format t "~%★ ~A~%" (bprint eval-list))
+      (let ((eval-result (eval `(let ((storage (get-storage ,hash)))
+                                  (prog1 ,eval-list
+                                    (set-storage ,hash storage))))))
+        ;; (format t "~%☭ ~A~%" eval-result)
+        eval-result))))
