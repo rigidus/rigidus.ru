@@ -177,6 +177,7 @@
                              ;; (format t "~%★ ~A~%" (bprint eval-list))
                              (let ((eval-result (eval `(let ((storage (get-storage ,hash))
                                                              (procvfm ,proc))
+                                                         (declare (ignore procvfm))
                                                          (prog1 ,eval-list
                                                            (set-storage ,hash storage))))))
                                ;; (format t "~%☭ ~A~%" eval-result)
@@ -364,21 +365,25 @@
 
 
 (defun get-height ()
-  4)
+  7)
 
-;; (defparameter *storages* (make-hash-table :test #'equal))
+(defun send-money (&key amount to)
+  (format t "~% >>> SEND MONEY ~A TO \"~A\" <<<~%" amount to)
+  (values))
 
-;; (alexandria:hash-table-alist (gethash "dbg" *storages*))
+(defparameter *storages* (make-hash-table :test #'equal))
 
-;; (let* ((hash "dbg")
-;;        ;; (code (gethash hash *contracts*))
-;;        (call "RUN"))
-;;   (run-vfm
-;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
-;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
-;;    call hash))
+(alexandria:hash-table-alist (gethash "dbg" *storages*))
+
+(let* ((hash "dbg")
+       ;; (code (gethash hash *contracts*))
+       (call "RUN"))
+  (run-vfm
+   "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
+   '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+   call hash))
 
 ;; (vfm-eval "᚜gethash «state» node::storage «prepared»᚛᚛"
 
