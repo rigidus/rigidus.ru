@@ -175,7 +175,8 @@
                            (setf in-string (ppcre:regex-replace-all "»" in-string "\""))
                            (let ((eval-list (read-from-string in-string)))
                              ;; (format t "~%★ ~A~%" (bprint eval-list))
-                             (let ((eval-result (eval `(let ((storage (get-storage ,hash)))
+                             (let ((eval-result (eval `(let ((storage (get-storage ,hash))
+                                                             (procvfm ,proc))
                                                          (prog1 ,eval-list
                                                            (set-storage ,hash storage))))))
                                ;; (format t "~%☭ ~A~%" eval-result)
@@ -184,6 +185,9 @@
                    (go repl))
               (end-of-file nil
                 (progn (format t "----------------- end~%")
+                       (return-from repl-block nil)))
+              (sb-int:closed-stream-error nil
+                (progn (format t "----------------- abort~%")
                        (return-from repl-block nil)))))
           (values))))))
 
@@ -228,41 +232,29 @@
                                          (swgr:parameters
                                           (list :params
                                                 (list
-                                                 (list :name "contract_code" :field "contract_code" :descr "hash of contract"
-                                                       :body "")))))
+                                                 (list :name "contract_code" :field "contract_code" :descr "hash of contract" :body "")))))
                           (make-endpoint "get_contract_storage" "contracts" "get" "Get storage variables"
                                          (make-curl-get "contracts" "get_contract_storage")
                                          (swgr:parameters
                                           (list :params
                                                 (list
-                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
-                                                       :body (format nil "012345DEADBEEF"))))))
+                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input" :body "")))))
                           (make-endpoint "get_contract_code" "contracts" "get" "Get contract code"
                                          (make-curl-get "contracts" "get_contract_code")
                                          (swgr:parameters
                                           (list :params
                                                 (list
-                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
-                                                       :body (format nil "012345DEADBEEF"))))))
+                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input" :body "")))))
                           (make-endpoint "call_contract" "contracts" "post" "call contract function"
                                          (make-curl-post "contracts" "call_contract" "call_contract" "")
                                          (swgr:parameters
                                           (list :params
                                                 (list
-                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input"
-                                                       :body "")
-                                                 (list :name "call_function" :field "call_function" :descr "name of function" :tag "input"
-                                                       :body "")
-                                                 (list :name "sender_hash" :field "sender_hash" :descr "hash of sender" :tag "input"
-                                                       :body "")
-                                                 (list :name "amount" :field "amount" :descr "amount of money" :tag "input"
-                                                       :body "")))))))
-                        (make-resource
-                         "transactions"
-                         (list
-                          (make-endpoint "get_transaction" "transactions" "get" "Get transaction"
-                                         (make-curl-get "transactions" "get_transaction"))
-                          ))))))))
+                                                 (list :name "hash" :field "hash" :descr "hash of contract" :tag "input" :body "")
+                                                 (list :name "call_function" :field "call_function" :descr "name of function" :tag "input" :body "")
+                                                 (list :name "sender_hash" :field "sender_hash" :descr "hash of sender" :tag "input" :body "")
+                                                 (list :name "amount" :field "amount" :descr "amount of money" :tag "input" :body "")))))))
+                        ))))))
 
 (restas:define-route blocks/new_block/post ("/blocks/new_block" :method :post)
   ;; (format nil "post::>> ~A~%" (bprint (hunchentoot:raw-post-data :force-text t))))
@@ -328,6 +320,11 @@
 (defun do-beta-gamma ()
   "BYE2")
 
+(defun abortvfm (process)
+  (sb-ext:process-kill process 15 :pid)
+  (sb-ext:process-wait process)
+  (sb-ext:process-close process)
+  (sb-ext:process-exit-code process))
 
 ;; (let* ((hash "a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8")
 ;;        (code (gethash hash *contracts*))
