@@ -177,9 +177,14 @@
                              ;; (format t "~%★ ~A~%" (bprint eval-list))
                              (let ((eval-result (eval `(let ((storage (get-storage ,hash))
                                                              (procvfm ,proc))
+                                                         (flet ((abortvfm ()
+                                                                  (sb-ext:process-kill procvfm 15 :pid)
+                                                                  (sb-ext:process-wait procvfm)
+                                                                  (sb-ext:process-close procvfm)
+                                                                  (sb-ext:process-exit-code procvfm)))
                                                          (declare (ignore procvfm))
                                                          (prog1 ,eval-list
-                                                           (set-storage ,hash storage))))))
+                                                           (set-storage ,hash storage)))))))
                                ;; (format t "~%☭ ~A~%" eval-result)
                                eval-result))))
                    (vfm-write input result "")
@@ -321,12 +326,6 @@
 (defun do-beta-gamma ()
   "BYE2")
 
-(defun abortvfm (process)
-  (sb-ext:process-kill process 15 :pid)
-  (sb-ext:process-wait process)
-  (sb-ext:process-close process)
-  (sb-ext:process-exit-code process))
-
 ;; (let* ((hash "a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8")
 ;;        (code (gethash hash *contracts*))
 ;;        (call "ALFA"))
@@ -363,6 +362,8 @@
 
 ;; (get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
 
+(defun cl-user::get-height ()
+  (bprint (length *blocks*)))
 
 (defun get-height ()
   7)

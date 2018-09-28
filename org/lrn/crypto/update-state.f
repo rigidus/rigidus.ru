@@ -175,7 +175,7 @@
 
     \ if not fundraising time then abort
     1 <> IF
-        ." ᚜abortvfm procvfm᚛" CR
+        ." ᚜node::abortvfm᚛" CR
     THEN
 
     2DROP 2DROP
@@ -197,7 +197,7 @@
 
     \ if not fundraising time then abort
     1 <> IF
-        ." ᚜abortvfm procvfm᚛" CR
+        ." ᚜node::abortvfm᚛" CR
     THEN
 
     2DROP 2DROP
