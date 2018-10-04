@@ -148,8 +148,7 @@
   (setf (gethash hash *storages*) new))
 
 (defun run-vfm (vfm base code params env run hash)
-  (let* ((storage (make-hash-table :test #'equal))
-         (path *vfm-path*)
+  (let* ((path *vfm-path*)
          (proc (sb-ext:run-program
                 vfm params :environment env :wait nil :input :stream :output :stream)))
     (with-open-stream (input (sb-ext:process-input proc))
@@ -374,17 +373,17 @@
 
 (defparameter *storages* (make-hash-table :test #'equal))
 
-(alexandria:hash-table-alist (gethash "dbg" *storages*))
+;; (alexandria:hash-table-alist (gethash "dbg" *storages*))
 
-(let* ((hash "dbg")
-       ;; (code (gethash hash *contracts*))
-       (call "RUN"))
-  (run-vfm
-   "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-   (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
-   '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
-   call hash))
+;; (let* ((hash "dbg")
+;;        ;; (code (gethash hash *contracts*))
+;;        (call "RUN"))
+;;   (run-vfm
+;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
+;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
+;;    call hash))
 
 ;; (vfm-eval "᚜gethash «state» node::storage «prepared»᚛᚛"
 
