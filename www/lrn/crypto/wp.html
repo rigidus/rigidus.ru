@@ -27,6 +27,17 @@
 <li><a href="#sec-2-8">Регистрация кошелька</a></li>
 <li><a href="#sec-2-9">Покупка</a></li>
 <li><a href="#sec-2-10">Передача права владения</a></li>
+<li><a href="#sec-2-11">Краудфандинг</a>
+<ul>
+<li><a href="#sec-2-11-1">Дракон-схема</a></li>
+<li><a href="#sec-2-11-2">Конечно-автоматная модель</a></li>
+<li><a href="#sec-2-11-3">Функции</a></li>
+</ul>
+</li>
+<li><a href="#sec-2-12">Multisig 2of3</a></li>
+<li><a href="#sec-2-13">Голосование</a></li>
+<li><a href="#sec-2-14">Публикация контракта</a></li>
+<li><a href="#sec-2-15"><span class="todo TODO">TODO</span> Research</a></li>
 </ul>
 </li>
 <li><a href="#sec-3">Действующие лица</a>
@@ -39,7 +50,7 @@
 <li><a href="#sec-3-2-3">G-Node</a></li>
 </ul>
 </li>
-<li><a href="#sec-3-3"><span class="todo TODO">TODO</span> Транзакции</a></li>
+<li><a href="#sec-3-3">Транзакции</a></li>
 <li><a href="#sec-3-4">Токены</a></li>
 <li><a href="#sec-3-5">Вознаграждение</a></li>
 <li><a href="#sec-3-6">Диффы к смартам</a></li>
@@ -53,7 +64,8 @@
 <ul>
 <li><a href="#sec-4-1">Протокол обмена</a></li>
 <li><a href="#sec-4-2">Unicode-символы</a></li>
-<li><a href="#sec-4-3">Запуск и завершение</a></li>
+<li><a href="#sec-4-3">Запуск и завершение VFM</a></li>
+<li><a href="#sec-4-4">Web-сервер</a></li>
 </ul>
 </li>
 <li><a href="#sec-5"><span class="todo TODO">TODO</span> Сущности и операции над ними</a></li>
@@ -457,7 +469,7 @@ YES для транзакций, которые набрали более чем
 <div class="org-src-container">
 
 <pre class="src src-forth" id="base_g_nodes"><span style="color: #af00ff;">: </span><span style="color: #0000ff;">BASE-G-NODES
-</span>    <span style="color: #87005f;">." '&#5788;&#171;127.0.0.1:5501&#187; &#171;127.0.0.1:5502&#187; &#171;127.0.0.1:5503&#187; &#171;127.0.0.1:5504&#187; &#171;127.0.0.1:5505&#187;&#5787;"</span>
+</span>    <span style="color: #87005f;">." '&#5788;&#171;5501&#187; &#171;5502&#187; &#171;5503&#187; &#171;5504&#187; &#171;5505&#187;&#5787;"</span>
 <span style="color: #af00ff;">;</span>
 </pre>
 </div>
@@ -560,14 +572,17 @@ YES для транзакций, которые набрали более чем
 
 <pre class="src src-lisp" id="with_run_vfm">(ql:quickload <span style="color: #87005f;">"alexandria"</span>)
 
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vfm-path*</span> <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src"</span>)
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vfm-path-lib*</span> <span style="color: #87005f;">"src64/jonesforth64.f"</span>)
+
 (<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">with-run-vfm</span> ((sender amount) <span style="color: #008700;">&amp;body</span> body)
-  `(<span style="color: #af00ff;">let*</span> ((path <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src"</span>)
+  `(<span style="color: #af00ff;">let*</span> ((path *vfm-path*)
           (proc (sb-ext:run-program (format nil <span style="color: #87005f;">"~A/~A"</span> path <span style="color: #87005f;">"forth64"</span>) '(<span style="color: #87005f;">"asd"</span> <span style="color: #87005f;">"qwe"</span>)
                                     <span style="color: #5f5f87;">:environment</span> (list
-                                                  (format nil <span style="color: #87005f;">"sender=~A"</span> ,sender)
-                                                  (format nil <span style="color: #87005f;">"amount=~A"</span> ,amount))
+                                                  (format nil <span style="color: #87005f;">"SENDER=~A"</span> ,sender)
+                                                  (format nil <span style="color: #87005f;">"AMOUNT=~A"</span> ,amount))
                                     <span style="color: #5f5f87;">:wait</span> nil <span style="color: #5f5f87;">:input</span> <span style="color: #5f5f87;">:stream</span> <span style="color: #5f5f87;">:output</span> <span style="color: #5f5f87;">:stream</span>))
-          (base (alexandria:read-file-into-string (format nil <span style="color: #87005f;">"~A/~A"</span> path <span style="color: #87005f;">"jonesforth.f"</span>))))
+          (base (alexandria:read-file-into-string (format nil <span style="color: #87005f;">"~A/~A"</span> path *vfm-path-lib*))))
      (<span style="color: #af00ff;">with-open-stream</span> (input (sb-ext:process-input proc))
        (<span style="color: #af00ff;">with-open-stream</span> (output (sb-ext:process-output proc))
          (format input <span style="color: #87005f;">"~A"</span> base)
@@ -603,7 +618,7 @@ YES для транзакций, которые набрали более чем
 </div>
 
 <p>
-Теперь мы можем выполнить пример - закоченную сессию обмена данными. В этом примере мы
+Теперь мы можем выполнить пример - законченную сессию обмена данными. В этом примере мы
 проверяем, что стек смарт-контракта работает и печатается нормально, и выводим (для
 проверки) переданные смарт-контракту переменные окружения (мы заранее знаем, сколько
 строк хотим получить)
@@ -654,12 +669,28 @@ YES для транзакций, которые набрали более чем
   `(subseq (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
              (pprint ,var)) 1))
 
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*contracts*</span> (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*storages*</span> (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
+
 (<span style="color: #af00ff;">let</span> ((storage (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal)))
   (<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-current-storage</span> ()
     storage)
   (setf (gethash <span style="color: #87005f;">"key"</span> storage) <span style="color: #87005f;">"val"</span>))
 
 (gethash <span style="color: #87005f;">"g-nodes-list"</span> (get-current-storage))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-eval</span> (str-lst)
+  (<span style="color: #af00ff;">let</span> ((in-string (format nil <span style="color: #87005f;">"~{~A ~}"</span> str-lst)))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5788;"</span> in-string <span style="color: #87005f;">"("</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5787;"</span> in-string <span style="color: #87005f;">")"</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#171;"</span> in-string <span style="color: #87005f;">"\""</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#187;"</span> in-string <span style="color: #87005f;">"\""</span>))
+    (<span style="color: #af00ff;">let</span> ((eval-list (read-from-string in-string)))
+      <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9733; ~A~%" (bprint eval-list))</span>
+      (<span style="color: #af00ff;">let</span> ((eval-result (eval `(<span style="color: #af00ff;">let</span> ((storage (get-current-storage)))
+                                  ,eval-list))))
+        <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9773; ~A~%" eval-result)</span>
+        eval-result))))
 </pre>
 </div>
 
@@ -750,18 +781,121 @@ YES для транзакций, которые набрали более чем
 </p>
 
 <p>
-[TODO:gmm] - Остановимся пока здесь.
-</p>
-
-<p>
-[TODO:gmm] - Слово поиска в окружении
-</p>
-
-<p>
 Затем смарт-контракт должен запросить у ноды содержимое <code>storage</code> по ключу
 <code>sender-а</code>. Возвращаемое значение содержит сумму, которую <code>sender</code> перечислял на адрес
-смарт-контракта. К этому содержимому необходимо прибавить <code>amount</code> и сохранить новое
-значение по тому же ключу.
+смарт-контракта ранее. К этому содержимому необходимо прибавить <code>amount</code>, т.е. сумму,
+перечисленную сейчас и сохранить новое значение по тому же ключу. Этим занимается
+процедура <code>add-amount</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth" id="add_amount"><span style="color: #af00ff;">: </span><span style="color: #0000ff;">ADD-AMOUNT
+</span>    ENSURE-G-NODES
+    <span style="color: #af0000;">\ get sender zerostring pointer from ENV
+</span>
+    <span style="color: #87005f;">S" SENDER="</span> ENVLOOKUP
+    DUP 0= <span style="color: #af00ff;">IF</span>
+        <span style="color: #87005f;">." &#5788;smart-contract-error &#171;wrong-sender&#187;&#5787;"</span> CR
+        BYE
+    <span style="color: #af00ff;">THEN</span>
+
+    <span style="color: #af0000;">\ save sender to stack and convert to lenstr
+</span>    DUP STRLEN 2DUP <span style="color: #af0000;">( len sender-pnt len sender-pnt -- )</span>
+
+    <span style="color: #af0000;">\ get sender amount from storage, or 0 if not exists
+</span>
+    <span style="color: #87005f;">." &#5788;gethash &#171;"</span> TELL <span style="color: #87005f;">." &#187; storage 0&#5787;&#5787;"</span> CR
+    <span style="color: #af0000;">\ read answer
+</span>    WORD NUMBER
+    <span style="color: #008787;">0 </span>&lt;&gt; <span style="color: #af00ff;">IF</span>
+        <span style="color: #87005f;">." &#5788;smart-contract-error &#171;wrong-amount-from-storage&#187;&#5787;"</span> CR
+        BYE
+    <span style="color: #af00ff;">THEN</span>
+
+
+    <span style="color: #af0000;">\ here amount saved to stack ( storage-val len sender-pnt -- )
+</span>
+
+    <span style="color: #af0000;">\ Get amount from env as string
+</span>    <span style="color: #87005f;">S" AMOUNT="</span> ENVLOOKUP
+    DUP 0= <span style="color: #af00ff;">IF</span>
+        <span style="color: #87005f;">." &#5788;smart-contract-error &#171;wrong-amount-from-env&#187;&#5787;"</span> CR
+        BYE
+    <span style="color: #af00ff;">THEN</span>
+
+    <span style="color: #af0000;">\ Parse amount to integer
+</span>    DUP STRLEN NUMBER
+    <span style="color: #af0000;">\ If not correct amount then error
+</span>    <span style="color: #008787;">0 </span>&lt;&gt; <span style="color: #af00ff;">IF</span>
+        <span style="color: #87005f;">." &#5788;smart-contract-error &#171;wrong-amount-2&#187;&#5787;"</span> CR
+        BYE
+    <span style="color: #af00ff;">THEN</span>
+
+    <span style="color: #af0000;">\ Add amount from env and amount from storage
+</span>    + <span style="color: #af0000;">( result len sender-pnt )</span>
+
+    &gt;R <span style="color: #af0000;">\ save result
+</span>
+    <span style="color: #af0000;">\ Write result to storage
+</span>    <span style="color: #87005f;">." &#5788;setf &#5788;gethash &#171;"</span> TELL ." &#187; storage&#5787;" R&gt; . <span style="color: #87005f;">." &#5787;"</span> CR
+
+    WORD 2DROP <span style="color: #af0000;">\ Read and drop response
+</span>    BYE
+<span style="color: #af00ff;">;</span>
+</pre>
+</div>
+
+<p>
+Для отладочных целей мы можем вызывать ее так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-dbg</span> (param)
+  (format t <span style="color: #87005f;">"{{===---~A---===}}~%"</span> param)
+  (format nil <span style="color: #87005f;">""</span>))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">." &#5788;vfm-dbg-die &#171;" .S  ." &#187;&#5787;" CR</span>
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-dbg-die</span> (param)
+  (format t <span style="color: #87005f;">"{{===---~A---===}}~%"</span> param)
+  (format nil <span style="color: #87005f;">"BYE"</span>))
+
+(<span style="color: #af00ff;">with-run-vfm</span> (*sender* *amount*)
+    (format t <span style="color: #87005f;">"~%~%----------------- begin~%"</span>)
+    <span style="color: #af0000;">;;</span>
+    (<span style="color: #af00ff;">let*</span> ((wp-path <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/crypto"</span>)
+           (smart (alexandria:read-file-into-string (format nil <span style="color: #87005f;">"~A/~A"</span> wp-path <span style="color: #87005f;">"smart-g-nodes.f"</span>)))
+           (result))
+      (vfm-write input smart <span style="color: #87005f;">""</span>)
+      (vfm-write input <span style="color: #87005f;">"ADD-AMOUNT"</span> <span style="color: #87005f;">""</span>)
+      (vfm-repl input output)
+      (values)))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(gethash "0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a" (get-current-storage))</span>
+</pre>
+</div>
+
+<p>
+Когда начинается новый раунд, вызывающая нода должна запустить процедуру, которая
+выполнят следующие действия:
+</p>
+<ul class="org-ul">
+<li>проверяет, корректно ли работали G-ноды в завершенном раунде (как?)
+</li>
+<li>освобождает депозиты корректно отработавших нод, создавая транзакции на <code>transfer</code>
+</li>
+<li>формирует новый список G-нод (видимо отсортировав кандидатов по размеру депозитов)
+</li>
+</ul>
+
+<p>
+[TODO:gmm] - NewRoundProcedure
+</p>
+
+<p>
+Общий контракт собирается из всех перечисленных выше процедур:
 </p>
 
 <div class="org-src-container">
@@ -770,29 +904,9 @@ YES для транзакций, которые набрали более чем
 
 &lt;&lt;ensure_g_nodes&gt;&gt;
 
-<span style="color: #af0000;">\ : -TEXT ( a1 # &#1072;2 -- f=&#1089;&#1088;&#1072;&#1074;&#1085;&#1077;&#1085;&#1080;&#1077; | &#1087;&#1086;&#1083;&#1086;&#1078;=1&gt;2 | &#1086;&#1090;&#1088;=1&lt;2 )
-\    2DUP + SWAP D&#1054; DROP 2+ DUP 2- @
-\      I @ - DUP IF DUP ABS / LEAVE THEN
-\    2 +LOOP SWAP DROP ;
-</span>
-<span style="color: #af00ff;">: </span><span style="color: #0000ff;">ADD-AMOUNT
-</span>    ENSURE-G-NODES
-    <span style="color: #87005f;">." &#5788;gethash &#171;0a367b92cf0b037dfd89960ee832d56f7fc151681bb41e53690e776f5786998a&#187; storage 0&#5787;&#5787;"</span> CR
-    <span style="color: #af0000;">\ Read and parsing response
-</span>    WORD NUMBER
-    0= <span style="color: #af00ff;">IF</span>
-        <span style="color: #af0000;">\ Number is ok, parsing success
-</span>        <span style="color: #af0000;">\ &#1044;&#1086;&#1073;&#1072;&#1074;&#1080;&#1090;&#1100; &#1082; &#1101;&#1090;&#1086;&#1084;&#1091; AMOUNT &#1080; &#1079;&#1072;&#1087;&#1080;&#1089;&#1072;&#1090;&#1100; &#1074; STORAGE
-</span>        <span style="color: #af0000;">\ ...
-</span>        DROP
-    <span style="color: #af00ff;">ELSE</span>
-        <span style="color: #af0000;">\ Wrong number
-</span>        DROP <span style="color: #af0000;">\ Drop bad parsing number
-</span>        <span style="color: #87005f;">." &#5788;smart-contract-error &#171;wrong-node-result-number&#187;&#5787;"</span> CR
-    <span style="color: #af00ff;">THEN</span>
-<span style="color: #af00ff;">;</span>
-
 &lt;&lt;contract_alfa_beta_gamma&gt;&gt;
+
+&lt;&lt;add_amount&gt;&gt;
 </pre>
 </div>
 
@@ -967,6 +1081,601 @@ G-ноды не будут включить его в сеть.
 </div>
 </div>
 </div>
+
+<div id="outline-container-sec-2-11" class="outline-3">
+<h3 id="sec-2-11">Краудфандинг</h3>
+<div class="outline-text-3" id="text-2-11">
+</div><div id="outline-container-sec-2-11-1" class="outline-4">
+<h4 id="sec-2-11-1">Дракон-схема</h4>
+<div class="outline-text-4" id="text-2-11-1">
+<p>
+<div class="figure"><img src="/img/crowdfunding.png" alt="nil"/><p></p></div>
+</p>
+
+
+<div class="figure">
+<p><img src="../../../img/crowdfunding.png" alt="crowdfunding.png">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-2-11-2" class="outline-4">
+<h4 id="sec-2-11-2">Конечно-автоматная модель</h4>
+<div class="outline-text-4" id="text-2-11-2">
+<table id="crowdfunding_state">
+
+
+<colgroup>
+<col  class="left">
+
+<col  class="left">
+
+<col  class="left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="left">action</th>
+<th scope="col" class="left">from</th>
+<th scope="col" class="left">to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="left">start</td>
+<td class="left">prepared</td>
+<td class="left">fundraising</td>
+</tr>
+
+<tr>
+<td class="left">invest</td>
+<td class="left">fundraising</td>
+<td class="left">fundraising</td>
+</tr>
+
+<tr>
+<td class="left">good</td>
+<td class="left">fundraising</td>
+<td class="left">success</td>
+</tr>
+
+<tr>
+<td class="left">withdraw</td>
+<td class="left">success</td>
+<td class="left">success</td>
+</tr>
+
+<tr>
+<td class="left">bad</td>
+<td class="left">fundraising</td>
+<td class="left">fail</td>
+</tr>
+
+<tr>
+<td class="left">returnpayments</td>
+<td class="left">fail</td>
+<td class="left">fail</td>
+</tr>
+
+<tr>
+<td class="left">fin</td>
+<td class="left">fail</td>
+<td class="left">finished</td>
+</tr>
+
+<tr>
+<td class="left">fin</td>
+<td class="left">success</td>
+<td class="left">finished</td>
+</tr>
+
+<tr>
+<td class="left">clean</td>
+<td class="left">finished</td>
+<td class="left">finished</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+И по этой таблице можно построить входные данные для графа с помощью вот такого кода:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-emacs-lisp" id="crowdfunding_state_graph">(mapcar #'(<span style="color: #af00ff;">lambda</span> (x) (princ (format <span style="color: #87005f;">"%s -&gt; %s [label =\"%s\"];\n"</span> (second x) (third
+            x) (first x)))) table)
+</pre>
+</div>
+
+<p>
+И автоматически нарисовать то что у нас получилось:
+</p>
+
+
+<div class="figure">
+<p><img src="../../../img/crowdfunding-state.png" alt="crowdfunding-state.png">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-2-11-3" class="outline-4">
+<h4 id="sec-2-11-3">Функции</h4>
+<div class="outline-text-4" id="text-2-11-3">
+</div><ul class="org-ul"><li><a id="sec-2-11-3-1" name="sec-2-11-3-1"></a>Конструктор<br ><div class="outline-text-5" id="text-2-11-3-1">
+<p>
+Не требуется, т.к. все предустановки мы можем захардкодить
+</p>
+</div>
+</li>
+
+<li><a id="sec-2-11-3-2" name="sec-2-11-3-2"></a>Invest<br ><div class="outline-text-5" id="text-2-11-3-2">
+<p>
+Сначала обновляем состояние.
+</p>
+
+<p>
+Если состояние != fundraising то выходим, возвращая деньги (abortvfm), но записывая
+изменения состояния в storage. Тратится только газ на уже совершенные операции.
+</p>
+
+<p>
+Если состояние == fundraising, то добавляем amount в таблицу в storage и выходим
+</p>
+</div>
+</li>
+
+<li><a id="sec-2-11-3-3" name="sec-2-11-3-3"></a>Return Payment<br ><div class="outline-text-5" id="text-2-11-3-3">
+<p>
+Сначала обновляем состояние.
+</p>
+
+<p>
+Если состояние != fail то выходим, возвращая деньги (transfer), но записывая изменения
+состояния в storage. Тратится только газ на уже совершенные операции.
+</p>
+
+<p>
+Если состояние == fail, то отправляем transfer на вывод amount-а, соответствующего
+sender-у и выходим.
+</p>
+</div>
+</li>
+
+<li><a id="sec-2-11-3-4" name="sec-2-11-3-4"></a>Withdraw<br ><div class="outline-text-5" id="text-2-11-3-4">
+<p>
+Сначала обновляем состояние
+</p>
+
+<p>
+Если состояние != success то выходим. В противном случае отправляем трансфер на
+запрошенную сумму.
+</p>
+
+<p>
+Здесь нужен механизм передачи параметров в смарт-контракт, думаю можно передавать его
+через стек, так же как мы вызываем нужную функицию. Но тогда все доступные вызовы
+должны быть специфицированы вместе со своими параметрами, в целях безопасности.
+</p>
+</div>
+</li>
+
+<li><a id="sec-2-11-3-5" name="sec-2-11-3-5"></a>Deposit<br ><div class="outline-text-5" id="text-2-11-3-5">
+<p>
+Излекает значение депозита по ключу <code>sender</code>-а. Необязательная функция, т.к. можно
+просто прочитать это из <code>storage</code> любой ноды. [TODO:gmm] - Нужен API и explorer по
+storage.
+</p>
+</div>
+</li>
+
+<li><a id="sec-2-11-3-6" name="sec-2-11-3-6"></a>Update state<br ><div class="outline-text-5" id="text-2-11-3-6">
+<p>
+<div class="figure"><img src="/img/update-state.drn.png" alt="nil"/><p></p></div>
+</p>
+
+
+<div class="figure">
+<p><img src="../../../img/update-state.drn.png" alt="update-state.drn.png">
+</p>
+</div>
+</div>
+</li></ul>
+</div>
+</div>
+
+<div id="outline-container-sec-2-12" class="outline-3">
+<h3 id="sec-2-12">Multisig 2of3</h3>
+<div class="outline-text-3" id="text-2-12">
+<p>
+Первое что стоит сделать - это создать новый аккаунт, который позже станет
+смарт-аккаунтом в тестовой сети. Для этого мы просто можем поменять сид в настройках
+консоли, например изменив последнее слово. Из консоли то же самое можно сделать с
+помощью команды
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">env.SEED = <span style="color: #87005f;">"industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter waves"</span>
+</pre>
+</div>
+
+<p>
+Потом кинуть деньги на аккаунт через Faucet <a href="https://testnet.wavesexplorer.com/faucet">https://testnet.wavesexplorer.com/faucet</a>
+Нам нужны эти деньги, потому что контракт самостоятельно платит за исходящие с него
+транзакции.
+</p>
+
+<p>
+Чтобы получить адрес созданного аккаунта мы можем использовать в консоли
+вызов:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">address()
+</pre>
+</div>
+
+<p>
+Потом нам нужно создать три аккаунта, т.е. три пары ключей, которые назовем Alice, Bob,
+Carol. Смарт-аккаунт будет проверять, что минимум два из трех подписали транзакцию,
+если нет - транзакция будет отклонена.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">env.SEED = <span style="color: #87005f;">"alice"</span>
+alice = keyPair()
+    =&gt; { <span style="color: #af00ff;">private</span>:EUzwt3buFVEyWAQQpt8ZXxDiEG51W7DhW6Hft54UHFfk,
+         <span style="color: #af00ff;">public</span>:5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM}
+env.SEED = <span style="color: #87005f;">"bob"</span>
+bob = keyPair()
+    =&gt; { <span style="color: #af00ff;">private</span>:7V13MftX7mbcZpEkzyUgsj5S7CwgvCyqqFc2ire7X7WC,
+         <span style="color: #af00ff;">public</span>:2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF
+       }
+env.SEED = <span style="color: #87005f;">"carol"</span>
+carol = keyPair()
+    =&gt; { <span style="color: #af00ff;">private</span>:b5oyxKsU51B3tMq352jYmdMQgVFuvrQwH35CkQ2C3tu,
+         <span style="color: #af00ff;">public</span>:DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY
+       }
+</pre>
+</div>
+
+<p>
+В конце надо не забыть вернуть правильный SEDD обратно, ведь от его имени будут
+выполнять все дальнейшие действия:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">env.SEED = <span style="color: #87005f;">"industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter waves"</span>
+</pre>
+</div>
+
+
+<p>
+Теперь мы можем создать контракт по шаблону из New-&gt;Sample-&gt;Multisig(2of3), в котором
+заменим публичные ключи проверяющих
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js"><span style="color: #af00ff;">let</span> <span style="color: #af5f00;">alicePubKey</span>  = base58<span style="color: #87005f;">'5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM'</span>
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">bobPubKey</span>    = base58<span style="color: #87005f;">'2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF'</span>
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">carolPubKey</span>  = base58<span style="color: #87005f;">'DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY'</span>
+
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">aliceSigned</span>  = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey  )) then 1 <span style="color: #af00ff;">else</span> 0
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">bobSigned</span>    = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[1], bobPubKey    )) then 1 <span style="color: #af00ff;">else</span> 0
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">carolSigned</span>  = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[2], carolPubKey  )) then 1 <span style="color: #af00ff;">else</span> 0
+
+aliceSigned + bobSigned + carolSigned &gt;= 2
+</pre>
+</div>
+
+<p>
+Если мы хотим проверять отдельно разные типы транзакций, можно сделать так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js"><span style="color: #af00ff;">let</span> <span style="color: #af5f00;">alicePubKey</span>  = base58<span style="color: #87005f;">'5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM'</span>
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">bobPubKey</span>    = base58<span style="color: #87005f;">'2KwU4vzdgPmKyf7q354H9kSyX9NZjNiq4qbnH2wi2VDF'</span>
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">carolPubKey</span>  = base58<span style="color: #87005f;">'DEEx1vXj96DvRtMjH86kLw1T5z5DPitvAZwR1izHN7EY'</span>
+
+match tx {
+  <span style="color: #af00ff;">case</span> tx:DataTransaction =&gt;
+    <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey)) then <span style="color: #008787;">true</span> <span style="color: #af00ff;">else</span> <span style="color: #008787;">false</span>
+  <span style="color: #af00ff;">case</span> _ =&gt;
+    <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">aliceSigned</span>   = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[0], alicePubKey)) then 1 <span style="color: #af00ff;">else</span> 0
+    <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">bobSigned</span>     = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[1], bobPubKey))   then 1 <span style="color: #af00ff;">else</span> 0
+    <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">carolSigned</span>   = <span style="color: #af00ff;">if</span>(sigVerify(tx.bodyBytes, tx.proofs[1], carolPubKey)) then 1 <span style="color: #af00ff;">else</span> 0
+    aliceSigned + bobSigned + carolSigned &gt;= 2
+}
+</pre>
+</div>
+
+<p>
+Получить контракт в консоли IDE можно через вызов
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">contract()
+</pre>
+</div>
+
+<p>
+Соответственно скомпилировать его можно так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">compile(contract())
+</pre>
+</div>
+
+<p>
+Теперь можно сформировать транзакцию на установку скрипта для текущего аккаунта:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">Tx = setScript({script:compile(contract())})
+</pre>
+</div>
+
+<p>
+И разослать её броадкастом:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">broadcast(Tx)
+</pre>
+</div>
+
+<p>
+Скрипт на аккаунт установлен.
+</p>
+
+<p>
+Теперь мы хотим сформировать дата-транзакцию, подписав ее неправильно. Мы должны явно
+указать повышенный <code>fee</code> (найти формулу для рассчета) и можем явно указать
+<code>senderPublicKey</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">wrongDataTx = data({data:[{key:<span style="color: #87005f;">"abcd"</span>, value:42}],
+                    senderPublicKey:<span style="color: #87005f;">"FHKJnbEnPZZXsrVTaaL68hCU9BsGiBoyWyT4DAp83oxQ"</span>,
+                    fee:500000})
+</pre>
+</div>
+
+<p>
+Теперь подпишем транзакцию правильно. Для этого во втором параметре нужно указать
+корректные SEEDs:
+</p>
+
+
+<div class="org-src-container">
+
+<pre class="src src-js">CorrectDataTx = data({data:[{key:<span style="color: #87005f;">"abcd"</span>, value:42}],
+                      senderPublicKey:<span style="color: #87005f;">"FHKJnbEnPZZXsrVTaaL68hCU9BsGiBoyWyT4DAp83oxQ"</span>,
+                      fee:500000},
+                     [<span style="color: #87005f;">"alice"</span>, <span style="color: #87005f;">"bob"</span>, <span style="color: #87005f;">"carol"</span>])
+
+CorrectDataTx = data({data:[{key:<span style="color: #87005f;">"abcd"</span>, value:42}],
+                      senderPublicKey: publicKey(),
+                      fee:500000},
+                     [<span style="color: #008787;">null</span>, <span style="color: #87005f;">"bob"</span>, <span style="color: #87005f;">"carol"</span>])
+
+CorrectDataTx.proofs = CorrectDataTx.proofs.slice(1)
+
+await broadcast(CorrectDataTx)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-2-13" class="outline-3">
+<h3 id="sec-2-13">Голосование</h3>
+<div class="outline-text-3" id="text-2-13">
+<p>
+Для начала нам нужен инициатор голосования, вернее его аккаунт. Убеждаемся что env.SEED
+правильный и узнаем адрес:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">env.SEED = <span style="color: #87005f;">"industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter testo"</span>
+address()
+   =&gt; 3N6RmmZJqrQMVb5DA7PiEoHR7uPugZZNeSy
+</pre>
+</div>
+
+<p>
+Потом кинуть деньги на аккаунт через Faucet <a href="https://testnet.wavesexplorer.com/faucet">https://testnet.wavesexplorer.com/faucet</a>
+</p>
+
+<p>
+Инициатор начинает голосование, публикуя Data-транзакцию со смарт-аккаунта. В этой
+дата-транзакции он сообщает, что хочет выставить на голосование перевод какого-то
+определенного кол-ва денег, на какой-то определенный адрес и голосовать могут владельцы
+определенного голосующего токена.
+</p>
+
+<p>
+Определим адрес и публичный ключ того, кому будем посылать деньги:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">env.SEED = <span style="color: #87005f;">"voter_recipient"</span>
+recipient_addr = address() =&gt; 3MzFm9PiLpm9KUNPNoYnuFg3rEW7xtrnqwt
+recipient_pubKey = publicKey() =&gt; EGMT6bHbpALigNdubwENGrU6un5FgMjojRGWokHxX8nn
+env.SEED = <span style="color: #87005f;">"industry unable prison quantum cram toast produce panda slow position coffee energy awesome route quarter testo"</span>
+</pre>
+</div>
+
+<p>
+а потом формируем транзакцию с предложением (важно чтобы был key - видимо это token<sub>name</sub>)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js">suggestion = data({data:[
+    { type: <span style="color: #87005f;">"string"</span>, key:<span style="color: #87005f;">"current_suggestion"</span>, value:<span style="color: #87005f;">"voting for send 2 waves for "</span>+recipient_addr },
+    { type: <span style="color: #87005f;">"string"</span>, key:<span style="color: #87005f;">"voters"</span>, value:<span style="color: #87005f;">"alice, bob, carol"</span> }
+], senderPublicKey: publicKey(), fee:500000})
+
+await broadcast(suggestion)
+</pre>
+</div>
+
+<p>
+Контракт в простейшем случае должен проверять, что голосующий хочет установить новое
+состояние такое, что "старое состояние" + "кол-во токенов на его счету" = "новое
+состояние". Это можно выразить так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-js"><span style="color: #af00ff;">let</span> <span style="color: #af5f00;">voterPubKey</span>  = base58<span style="color: #87005f;">'5AzfA9UfpWVYiwFwvdr77k6LWupSTGLb14b24oVdEpMM'</span>
+<span style="color: #af00ff;">let</span> <span style="color: #af5f00;">recp</span> = base58<span style="color: #87005f;">'erfrefr'</span>
+
+match (tx) {
+    <span style="color: #af00ff;">case</span> dt:DataTransaction =&gt;
+        <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">oldResult</span>    = extract(getInteger(dt.sender, <span style="color: #87005f;">"Result"</span>))
+        <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">newResult</span>    = extract(getInteger(dt.data,   <span style="color: #87005f;">"Result"</span>))
+        <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">voterAddress</span> = extract(getBinary(dt.data,    <span style="color: #87005f;">"voterAddress"</span>))
+        <span style="color: #af00ff;">let</span> <span style="color: #af5f00;">voterBalance</span> = wavesBalance(Address(voterAddress))
+        (
+            (newResult == oldResult + voterBalance) &amp;&amp;
+            (sigVerify(dt.bodyBytes, dt.proofs[0], voterPubKey)) &amp;&amp;
+            (size(dt.data) == 2)
+        )
+    <span style="color: #af00ff;">case</span> tt:TransferTransaction =&gt;
+        <span style="color: #af00ff;">if</span> (
+            (extract(getInteger(tx.sender, <span style="color: #87005f;">"Result"</span>)) &gt; 20) &amp;&amp;
+            (tt.amount == 20) &amp;&amp;
+            (addressFromRecipient(tt.recipient) == addressFromPublicKey(recp))
+        ) then <span style="color: #af00ff;">if</span> (
+            (extract(getInteger(tx.sender, <span style="color: #87005f;">"Result"</span>)) &lt;= 20)
+        ) then
+    <span style="color: #af00ff;">case</span> _ =&gt;
+        <span style="color: #008787;">false</span>
+}
+</pre>
+</div>
+
+<p>
+Таким образом, в этом сценарии учитываются только голоса "ЗА" предложение. Их должно
+быть больше какой-то константы, чтобы предложение прошло, иначе трансфер невозможен.
+</p>
+
+<p>
+Надо его создать, а
+потом послать транзакцию SetScriptTransaction, в которой должен быть скомпилированный
+контракт.
+</p>
+
+<p>
+Так как он отправляет эту транзакцию с адреса смарт-аккаунта, смарт-аккаунт может
+проверить, что это кол-во денег доступно для отправки. [TODO:gmm] - Как он может
+проверить свой баланс на этом этапе?
+</p>
+
+<p>
+Получить свой баланс он может так:
+</p>
+
+<pre class="example">
+accountBalance(addressOrAlias: Obj(bytes))
+</pre>
+
+<p>
+или (в ассетах) так:
+</p>
+
+<pre class="example">
+accountAssetBalance(addressOrAlias: Obj(bytes), assetId: BYTE_VECTOR)
+</pre>
+
+<p>
+Владельцы токена голосуют путем посылки со смарт-аккаунта дата-транзакции, в которой
+указывается:
+</p>
+<ul class="org-ul">
+<li>voter-address : true, т.е проголосовал
+</li>
+<li>approvedState : &lt;amount&gt;, т.е. проголосовал таким-то кол-вом голосующих токенов.
+</li>
+<li>voting : yes/no
+</li>
+</ul>
+
+<p>
+Так как смарт-аккаунт - это обобщение обычного аккаунта, то смарт может при отправке с
+него проверять не подпись, как обычный аккаунт, а в целом любое условие. Тут он должен
+проверить, что у голосующего есть это кол-во голосующих токенов
+</p>
+
+<p>
+(и по идее может проверить что эти токены он получил раньше чем началось голосование,
+тогда мы блокируем чит с голосованием, пересылкой и снова голосованием одними и теми же
+токенами) [TODO:gmm] - Как?
+</p>
+
+<p>
+Инициатор по окончании голосования посылает трансфер-транзакцию, а смарт-аккаунт
+разрешает ее только в том случае, если она совпадает с результатами голосования.
+</p>
+
+<p>
+[TODO:gmm] - Для отладки надо создать ассет - я могу сделать это из консоли? Если нет
+то как?
+</p>
+
+<p>
+if (tx.data.kind == "suggestion") then
+</p>
+
+<p>
+  else if
+if (accountBalance(addressFromPublicKey(contractPubKey)) &gt; tx.data.value) then true else false
+</p>
+</div>
+</div>
+
+<div id="outline-container-sec-2-14" class="outline-3">
+<h3 id="sec-2-14">Публикация контракта</h3>
+<div class="outline-text-3" id="text-2-14">
+<p>
+Нужен соответствующий тип транзакции, которая обрабатывается атомарно с вызовом
+конструктора (если он указан)
+</p>
+</div>
+</div>
+
+<div id="outline-container-sec-2-15" class="outline-3">
+<h3 id="sec-2-15"><span class="todo TODO">TODO</span> Research</h3>
+<div class="outline-text-3" id="text-2-15">
+<ul class="org-ul">
+<li>2 millionaires problem
+</li>
+<li>multiparty computations
+</li>
+<li>fully homomorphic encryption
+</li>
+<li>zk snarks Было бы круто увидеть код, который секьюрно складывает/умножает 3 числа,
+оттуда уже будем думать. И как снарки и вся эта штука работает понять хочется
+</li>
+</ul>
+</div>
+</div>
 </div>
 
 <div id="outline-container-sec-3" class="outline-2">
@@ -1016,7 +1725,7 @@ G-ноды не будут включить его в сеть.
 </ul>
 </div>
 
-<ul class="org-ul"><li><a id="sec-3-2-1-1" name="sec-3-2-1-1"></a><span class="todo TODO">TODO</span> Старт пользовательского узла<br ><div class="outline-text-5" id="text-3-2-1-1">
+<ul class="org-ul"><li><a id="sec-3-2-1-1" name="sec-3-2-1-1"></a>Старт пользовательского узла<br ><div class="outline-text-5" id="text-3-2-1-1">
 <p>
 При старте пользовательский узел должен узнать из своей конфигурации адреса системных
 узлов, чтобы:
@@ -1107,7 +1816,7 @@ G-ноды не будут включить его в сеть.
 </div>
 </li>
 
-<li><a id="sec-3-2-1-2" name="sec-3-2-1-2"></a><span class="todo TODO">TODO</span> Обработка запросов кошельков<br ><div class="outline-text-5" id="text-3-2-1-2">
+<li><a id="sec-3-2-1-2" name="sec-3-2-1-2"></a>Обработка запросов кошельков<br ><div class="outline-text-5" id="text-3-2-1-2">
 <p>
 [TODO:gmm] - Тут нужно сформулировать протокол обработки транзакции кошельком
 </p>
@@ -1161,7 +1870,7 @@ G-Node - это роль, которую может выполнять сист�
 </div>
 
 <div id="outline-container-sec-3-3" class="outline-3">
-<h3 id="sec-3-3"><span class="todo TODO">TODO</span> Транзакции</h3>
+<h3 id="sec-3-3">Транзакции</h3>
 <div class="outline-text-3" id="text-3-3">
 <p>
 Типы транзакий, формат, etc
@@ -1241,6 +1950,44 @@ VDN-токен состоит из:
 он предназначен. В будущем, для большего формализма можно будет отдельно
 специфицировать каждую команду.
 </p>
+
+<p>
+У ноды есть внешний http-json-api, который позволяет следующие операции:
+</p>
+<ul class="org-ul">
+<li>загрузка в VFM и вызов функции смарт-контракта
+</li>
+<li>получение storage смарт-контракта
+</li>
+<li>изменение высоты - соответствует получению валидного блока из сети
+</li>
+</ul>
+
+<p>
+VFM в процессе работы может выполнять сервисные функции
+</p>
+<ul class="org-ul">
+<li>запрос текущей высоты блока
+</li>
+<li>создание transfer-a (нода может проверять валидность)
+</li>
+<li>изменение своего storage
+</li>
+</ul>
+
+<p>
+При выполнении смарт-контракта нода должна создавать снапшот текущего состояния перед
+вызовом смарт-контракта и применять его атомарно после завершения работы виртуальной
+машины, чтобы избежать состояния гонки. Если в процессе работы следующая транзакция
+запустила тот же смарт-контракт, нода может мерджить изменения определяя конфликты. В
+случае конфликта второй (хронологически) контракт должен быть перезапущен после
+применения изменений состояния первого.
+</p>
+
+<p>
+Мы опираемся на то, что для всей сети упорядоченность транзакций одинакова. Для ряда
+топологий сети это может не выполняться.
+</p>
 </div>
 </div>
 
@@ -1272,12 +2019,375 @@ UNICODE-символы:
 </div>
 
 <div id="outline-container-sec-4-3" class="outline-3">
-<h3 id="sec-4-3">Запуск и завершение</h3>
+<h3 id="sec-4-3">Запуск и завершение VFM</h3>
 <div class="outline-text-3" id="text-4-3">
 <p>
 Смарт-контракт по завершении работы должен выполнить <code>BYE</code>, чтобы при завершении
 процесса был закрыты каналы i/o и вызывающий код получил <code>EOF</code>.
 </p>
+</div>
+</div>
+
+<div id="outline-container-sec-4-4" class="outline-3">
+<h3 id="sec-4-4">Web-сервер</h3>
+<div class="outline-text-3" id="text-4-4">
+<p>
+Веб-сервер нужен для того чтобы отвязать ноду от сети.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(ql:quickload <span style="color: #87005f;">"ironclad"</span>)
+(ql:quickload <span style="color: #87005f;">"closer-mop"</span>)
+(ql:quickload <span style="color: #87005f;">"anaphora"</span>)
+(ql:quickload <span style="color: #87005f;">"alexandria"</span>)
+(ql:quickload <span style="color: #87005f;">"flexi-streams"</span>)
+(ql:quickload <span style="color: #87005f;">"cl-ppcre"</span>)
+(ql:quickload <span style="color: #87005f;">"postmodern"</span>)
+(ql:quickload <span style="color: #87005f;">"restas"</span>)
+(ql:quickload <span style="color: #87005f;">"restas-directory-publisher"</span>)
+(ql:quickload <span style="color: #87005f;">"closure-template"</span>)
+(ql:quickload <span style="color: #87005f;">"cl-json"</span>)
+
+(<span style="color: #af00ff;">restas:define-module</span> #<span style="color: #5f5f87;">:node</span>
+  (<span style="color: #5f5f87;">:use</span> #<span style="color: #5f5f87;">:closer-mop</span> #<span style="color: #5f5f87;">:cl</span> #<span style="color: #5f5f87;">:iter</span> #<span style="color: #5f5f87;">:alexandria</span> #<span style="color: #5f5f87;">:anaphora</span> #<span style="color: #5f5f87;">:postmodern</span>)
+  (<span style="color: #5f5f87;">:shadowing-import-from</span> <span style="color: #5f5f87;">:closer-mop</span>
+                          <span style="color: #5f5f87;">:defclass</span>
+                          <span style="color: #5f5f87;">:defmethod</span>
+                          <span style="color: #5f5f87;">:standard-class</span>
+                          <span style="color: #5f5f87;">:ensure-generic-function</span>
+                          <span style="color: #5f5f87;">:defgeneric</span>
+                          <span style="color: #5f5f87;">:standard-generic-function</span>
+                          <span style="color: #5f5f87;">:class-name</span>))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*tpl-path*</span> (merge-pathnames
+                          (make-pathname <span style="color: #5f5f87;">:directory</span> '(<span style="color: #5f5f87;">:relative</span> <span style="color: #87005f;">"org/lrn/crypto"</span>))
+                          (merge-pathnames
+                           (make-pathname <span style="color: #5f5f87;">:directory</span> '(<span style="color: #5f5f87;">:relative</span> <span style="color: #87005f;">"repo/rigidus.ru"</span>))
+                           (user-homedir-pathname))))
+
+(closure-template:compile-template
+ <span style="color: #5f5f87;">:common-lisp-backend</span> (merge-pathnames
+                       (make-pathname <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"head"</span> <span style="color: #5f5f87;">:type</span> <span style="color: #87005f;">"htm"</span>)
+                       *tpl-path*))
+
+(closure-template:compile-template
+ <span style="color: #5f5f87;">:common-lisp-backend</span> (merge-pathnames
+                       (make-pathname <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"swgr"</span> <span style="color: #5f5f87;">:type</span> <span style="color: #87005f;">"htm"</span>)
+                       *tpl-path*))
+
+(restas:start '#<span style="color: #5f5f87;">:node</span> <span style="color: #5f5f87;">:port</span> 2345)
+
+(<span style="color: #af00ff;">in-package</span> <span style="color: #5f5f87;">:node</span>)
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*base-dir*</span>
+  (merge-pathnames
+   (make-pathname <span style="color: #5f5f87;">:directory</span> '(<span style="color: #5f5f87;">:relative</span> <span style="color: #87005f;">"repo/rigidus.ru"</span>))
+   (user-homedir-pathname)))
+
+(restas:mount-module -css- (#<span style="color: #5f5f87;">:restas.directory-publisher</span>)
+  (<span style="color: #5f5f87;">:url</span> <span style="color: #87005f;">"/css/"</span>)
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname <span style="color: #5f5f87;">:directory</span> '(<span style="color: #5f5f87;">:relative</span> <span style="color: #87005f;">"css"</span>))
+                    *base-dir*)))
+
+(restas:mount-module -js- (#<span style="color: #5f5f87;">:restas.directory-publisher</span>)
+  (<span style="color: #5f5f87;">:url</span> <span style="color: #87005f;">"/js/"</span>)
+  (restas.directory-publisher:*directory*
+   (merge-pathnames (make-pathname <span style="color: #5f5f87;">:directory</span> '(<span style="color: #5f5f87;">:relative</span> <span style="color: #87005f;">"js"</span>))
+                    *base-dir*)))
+
+(restas:debug-mode-on)
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(restas:debug-mode-off)</span>
+
+(setf hunchentoot:*catch-errors-p* t)
+
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">bprint</span> (var)
+  `(subseq (<span style="color: #af00ff;">with-output-to-string</span> (*standard-output*)
+             (pprint ,var)) 1))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">sha-256</span> (str)
+  (ironclad:byte-array-to-hex-string
+   (ironclad:digest-sequence
+    <span style="color: #5f5f87;">:sha256</span> (flexi-streams:string-to-octets str <span style="color: #5f5f87;">:external-format</span> <span style="color: #5f5f87;">:utf-8</span>))))
+
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*request-address*</span> <span style="color: #87005f;">"localhost:2345"</span>)
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*blocks*</span> nil)
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*contracts*</span> (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*storages*</span> (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vfm-path*</span> <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src"</span>)
+(<span style="color: #af00ff;">defparameter</span> <span style="color: #af5f00;">*vfm-path-lib*</span> <span style="color: #87005f;">"src64/jonesforth64.f"</span>)
+
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">with-run-vfm</span> ((sender amount) <span style="color: #008700;">&amp;body</span> body)
+  `(<span style="color: #af00ff;">let*</span> ((path *vfm-path*)
+          (proc (sb-ext:run-program (format nil <span style="color: #87005f;">"~A/~A"</span> path <span style="color: #87005f;">"forth64"</span>) '(<span style="color: #87005f;">"asd"</span> <span style="color: #87005f;">"qwe"</span>)
+                                    <span style="color: #5f5f87;">:environment</span> (list
+                                                  (format nil <span style="color: #87005f;">"SENDER=~A"</span> ,sender)
+                                                  (format nil <span style="color: #87005f;">"AMOUNT=~A"</span> ,amount))
+                                    <span style="color: #5f5f87;">:wait</span> nil <span style="color: #5f5f87;">:input</span> <span style="color: #5f5f87;">:stream</span> <span style="color: #5f5f87;">:output</span> <span style="color: #5f5f87;">:stream</span>))
+          (base (alexandria:read-file-into-string (format nil <span style="color: #87005f;">"~A/~A"</span> path *vfm-path-lib*))))
+     (<span style="color: #af00ff;">with-open-stream</span> (input (sb-ext:process-input proc))
+       (<span style="color: #af00ff;">with-open-stream</span> (output (sb-ext:process-output proc))
+         (format input <span style="color: #87005f;">"~A"</span> base)
+         (force-output input)
+         (<span style="color: #af00ff;">unless</span> (equal <span style="color: #87005f;">"VFM VERSION 47 OK"</span> (read-line output))
+           (<span style="color: #ff0000; font-weight: bold;">error</span> <span style="color: #87005f;">"VFM Welcome Error"</span>))
+         ,@body))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-write</span> (input msg <span style="color: #008700;">&amp;optional</span> (terminator <span style="color: #87005f;">" CR"</span>))
+  (format t <span style="color: #87005f;">"&#187;[~A~A~%]&#187;~%~%"</span> msg terminator) <span style="color: #af0000;">;; </span><span style="color: #af0000;">&#1076;&#1074;&#1072; &#1087;&#1086;&#1089;&#1083;&#1077;&#1076;&#1085;&#1080;&#1093; &#1087;&#1077;&#1088;&#1077;&#1074;&#1086;&#1076;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1080; - &#1076;&#1083;&#1103; &#1086;&#1090;&#1076;&#1077;&#1083;&#1077;&#1085;&#1080;&#1103; &#1074;&#1099;&#1074;&#1086;&#1076;&#1072;</span>
+  (format input <span style="color: #87005f;">"~A~A~%"</span> msg terminator)
+  (force-output input))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-read</span> (output <span style="color: #008700;">&amp;key</span> (label <span style="color: #87005f;">""</span>) (cnt 1))
+  (<span style="color: #af00ff;">loop</span> <span style="color: #5f5f87;">:for</span> idx <span style="color: #5f5f87;">:from</span> 1 <span style="color: #5f5f87;">:to</span> cnt <span style="color: #5f5f87;">:collect</span>
+     (<span style="color: #af00ff;">let</span> ((in-string (read-line output)))
+       (format t <span style="color: #87005f;">"[~A] ~A &#171;[~A]&#171;~%"</span> idx label in-string)
+       in-string)))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-eval</span> (str-lst get-current-storage)
+  (<span style="color: #af00ff;">let</span> ((in-string (format nil <span style="color: #87005f;">"~{~A ~}"</span> str-lst)))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5788;"</span> in-string <span style="color: #87005f;">"("</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5787;"</span> in-string <span style="color: #87005f;">")"</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#171;"</span> in-string <span style="color: #87005f;">"\""</span>))
+    (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#187;"</span> in-string <span style="color: #87005f;">"\""</span>))
+    (<span style="color: #af00ff;">let</span> ((eval-list (read-from-string in-string)))
+      <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9733; ~A~%" (bprint eval-list))</span>
+      (<span style="color: #af00ff;">let</span> ((eval-result (eval `(<span style="color: #af00ff;">let</span> ((storage (funcall get-current-storage)))
+                                  ,eval-list))))
+        <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9773; ~A~%" eval-result)</span>
+        eval-result))))
+
+(<span style="color: #af00ff;">defmacro</span> <span style="color: #0000ff;">vfm-repl</span> (input output)
+  `(<span style="color: #af00ff;">block</span> repl-block
+     (<span style="color: #af00ff;">handler-case</span>
+         (<span style="color: #af00ff;">tagbody</span>
+          repl
+            (setf result (vfm-eval (vfm-read ,output)))
+            (vfm-write ,input result <span style="color: #87005f;">""</span>)
+            (<span style="color: #af00ff;">go</span> repl))
+       (END-OF-FILE () (<span style="color: #af00ff;">progn</span>
+                         (format t <span style="color: #87005f;">"----------------- end~%"</span>)
+                         (<span style="color: #af00ff;">return-from</span> repl-block nil))))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-dbg</span> (param)
+  (format t <span style="color: #87005f;">"{{===---~A---===}}~%"</span> param)
+  (format nil <span style="color: #87005f;">""</span>))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">." &#5788;vfm-dbg-die &#171;" .S  ." &#187;&#5787;" CR</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">vfm-dbg-die</span> (param)
+  (format t <span style="color: #87005f;">"{{===---~A---===}}~%"</span> param)
+  (format nil <span style="color: #87005f;">"BYE"</span>))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">get-storage</span> (hash)
+  (gethash hash *storages* (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal)))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">set-storage</span> (hash new)
+  (setf (gethash hash *storages*) new))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">run-vfm</span> (vfm base code params env run hash)
+  (<span style="color: #af00ff;">let*</span> ((storage (make-hash-table <span style="color: #5f5f87;">:test</span> #'equal))
+         (path *vfm-path*)
+         (proc (sb-ext:run-program
+                vfm params <span style="color: #5f5f87;">:environment</span> env <span style="color: #5f5f87;">:wait</span> nil <span style="color: #5f5f87;">:input</span> <span style="color: #5f5f87;">:stream</span> <span style="color: #5f5f87;">:output</span> <span style="color: #5f5f87;">:stream</span>)))
+    (<span style="color: #af00ff;">with-open-stream</span> (input (sb-ext:process-input proc))
+      (<span style="color: #af00ff;">with-open-stream</span> (output (sb-ext:process-output proc))
+        (format input <span style="color: #87005f;">"~a"</span> base)
+        (force-output input)
+        (<span style="color: #af00ff;">unless</span> (equal <span style="color: #87005f;">"VFM VERSION 47 OK"</span> (read-line output))
+          (<span style="color: #ff0000; font-weight: bold;">error</span> <span style="color: #87005f;">"VFM Welcome Error"</span>))
+        (format t <span style="color: #87005f;">"~%~%----------------- begin~%"</span>)
+        (<span style="color: #af00ff;">let*</span> ((result))
+          (vfm-write input code <span style="color: #87005f;">""</span>)
+          (vfm-write input run <span style="color: #87005f;">""</span>)
+          <span style="color: #af0000;">;; </span><span style="color: #af0000;">macroexpand of (vfm-repl input output)</span>
+          (<span style="color: #af00ff;">block</span> repl-block
+            (<span style="color: #af00ff;">handler-case</span>
+                (<span style="color: #af00ff;">tagbody</span> repl
+                   (setf result
+                         <span style="color: #af0000;">;; </span><span style="color: #af0000;">(vfm-eval (vfm-read output) get-curent-storage)</span>
+                         (<span style="color: #af00ff;">let</span> ((in-string (format nil <span style="color: #87005f;">"~{~A ~}"</span> (vfm-read output))))
+                           (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5788;"</span> in-string <span style="color: #87005f;">"("</span>))
+                           (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#5787;"</span> in-string <span style="color: #87005f;">")"</span>))
+                           (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#171;"</span> in-string <span style="color: #87005f;">"\""</span>))
+                           (setf in-string (ppcre:regex-replace-all <span style="color: #87005f;">"&#187;"</span> in-string <span style="color: #87005f;">"\""</span>))
+                           (<span style="color: #af00ff;">let</span> ((eval-list (read-from-string in-string)))
+                             <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9733; ~A~%" (bprint eval-list))</span>
+                             (<span style="color: #af00ff;">let</span> ((eval-result (eval `(<span style="color: #af00ff;">let</span> ((storage (get-storage ,hash)))
+                                                         (<span style="color: #af00ff;">prog1</span> ,eval-list
+                                                           (set-storage ,hash storage))))))
+                               <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format t "~%&#9773; ~A~%" eval-result)</span>
+                               eval-result))))
+                   (vfm-write input result <span style="color: #87005f;">""</span>)
+                   (<span style="color: #af00ff;">go</span> repl))
+              (end-of-file nil
+                (<span style="color: #af00ff;">progn</span> (format t <span style="color: #87005f;">"----------------- end~%"</span>)
+                       (<span style="color: #af00ff;">return-from</span> repl-block nil)))))
+          (values))))))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">make-endpoint</span> (name group method notes curl <span style="color: #008700;">&amp;optional</span> (parameters <span style="color: #87005f;">""</span>))
+  (list <span style="color: #5f5f87;">:group</span> group <span style="color: #5f5f87;">:method</span> method <span style="color: #5f5f87;">:endpoint</span> name
+        <span style="color: #5f5f87;">:notes</span> notes <span style="color: #5f5f87;">:curl</span> curl <span style="color: #5f5f87;">:parameters</span> parameters))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">make-resource</span> (name endpoints)
+  (list <span style="color: #5f5f87;">:resource</span> name <span style="color: #5f5f87;">:endpoints</span> endpoints))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">make-curl-get</span> (resource endpoint)
+  (format nil <span style="color: #87005f;">"curl -X GET --header 'Accept: application/json' 'http://~A/~A/~A'"</span>
+          *request-address* resource endpoint))
+
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">make-curl-post</span> (resource endpoint field body)
+  (format nil <span style="color: #87005f;">"curl -X POST --header 'Accept: application/json' -d '{\"~A\":\"~A\"}' 'http://~A/~A/~A'"</span> field body *request-address* resource endpoint))
+
+(<span style="color: #af00ff;">restas:define-route</span> swgr (<span style="color: #87005f;">"/"</span>)
+  (swgr:all
+   (list
+    <span style="color: #5f5f87;">:head</span> (swgr:head)
+    <span style="color: #5f5f87;">:body</span> (swgr:body
+           (list
+            <span style="color: #5f5f87;">:resources</span> (list
+                        (make-resource
+                         <span style="color: #87005f;">"blocks"</span>
+                         (list
+                          (make-endpoint <span style="color: #87005f;">"get_height"</span> <span style="color: #87005f;">"blocks"</span> <span style="color: #87005f;">"get"</span> <span style="color: #87005f;">"Request of height"</span>
+                                         (make-curl-get <span style="color: #87005f;">"blocks"</span> <span style="color: #87005f;">"get_height"</span>))
+                          (make-endpoint <span style="color: #87005f;">"new_block"</span> <span style="color: #87005f;">"blocks"</span> <span style="color: #87005f;">"post"</span> <span style="color: #87005f;">"Send new block from network"</span>
+                                         (make-curl-post <span style="color: #87005f;">"blocks"</span> <span style="color: #87005f;">"new_block"</span> <span style="color: #87005f;">"newblock"</span> <span style="color: #87005f;">"{\\\"hash\\\":\\\"012345DEADBEEF\\\"}"</span>)
+                                         (swgr:parameters
+                                          (list <span style="color: #5f5f87;">:params</span>
+                                                (list
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"newblock"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"newblock"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"new block"</span>
+                                                       <span style="color: #5f5f87;">:body</span> (format nil <span style="color: #87005f;">"{~%  \"hash\":\"012345DEADBEEF\"~%}"</span>))))))))
+                        (make-resource
+                         <span style="color: #87005f;">"contracts"</span>
+                         (list
+                          (make-endpoint <span style="color: #87005f;">"new_contract"</span> <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"post"</span> <span style="color: #87005f;">"Publish new contract"</span>
+                                         (make-curl-post <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"new_contract"</span> <span style="color: #87005f;">"new_contract"</span> <span style="color: #87005f;">""</span>)
+                                         (swgr:parameters
+                                          (list <span style="color: #5f5f87;">:params</span>
+                                                (list
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"contract_code"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"contract_code"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"hash of contract"</span>
+                                                       <span style="color: #5f5f87;">:body</span> <span style="color: #87005f;">""</span>)))))
+                          (make-endpoint <span style="color: #87005f;">"get_contract_storage"</span> <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"get"</span> <span style="color: #87005f;">"Get storage variables"</span>
+                                         (make-curl-get <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"get_contract_storage"</span>)
+                                         (swgr:parameters
+                                          (list <span style="color: #5f5f87;">:params</span>
+                                                (list
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"hash of contract"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> (format nil <span style="color: #87005f;">"012345DEADBEEF"</span>))))))
+                          (make-endpoint <span style="color: #87005f;">"get_contract_code"</span> <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"get"</span> <span style="color: #87005f;">"Get contract code"</span>
+                                         (make-curl-get <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"get_contract_code"</span>)
+                                         (swgr:parameters
+                                          (list <span style="color: #5f5f87;">:params</span>
+                                                (list
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"hash of contract"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> (format nil <span style="color: #87005f;">"012345DEADBEEF"</span>))))))
+                          (make-endpoint <span style="color: #87005f;">"call_contract"</span> <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"post"</span> <span style="color: #87005f;">"call contract function"</span>
+                                         (make-curl-post <span style="color: #87005f;">"contracts"</span> <span style="color: #87005f;">"call_contract"</span> <span style="color: #87005f;">"call_contract"</span> <span style="color: #87005f;">""</span>)
+                                         (swgr:parameters
+                                          (list <span style="color: #5f5f87;">:params</span>
+                                                (list
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"hash"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"hash of contract"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> <span style="color: #87005f;">""</span>)
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"call_function"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"call_function"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"name of function"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> <span style="color: #87005f;">""</span>)
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"sender_hash"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"sender_hash"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"hash of sender"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> <span style="color: #87005f;">""</span>)
+                                                 (list <span style="color: #5f5f87;">:name</span> <span style="color: #87005f;">"amount"</span> <span style="color: #5f5f87;">:field</span> <span style="color: #87005f;">"amount"</span> <span style="color: #5f5f87;">:descr</span> <span style="color: #87005f;">"amount of money"</span> <span style="color: #5f5f87;">:tag</span> <span style="color: #87005f;">"input"</span>
+                                                       <span style="color: #5f5f87;">:body</span> <span style="color: #87005f;">""</span>)))))))
+                        (make-resource
+                         <span style="color: #87005f;">"transactions"</span>
+                         (list
+                          (make-endpoint <span style="color: #87005f;">"get_transaction"</span> <span style="color: #87005f;">"transactions"</span> <span style="color: #87005f;">"get"</span> <span style="color: #87005f;">"Get transaction"</span>
+                                         (make-curl-get <span style="color: #87005f;">"transactions"</span> <span style="color: #87005f;">"get_transaction"</span>))
+                          ))))))))
+
+(<span style="color: #af00ff;">restas:define-route</span> blocks/new_block/post (<span style="color: #87005f;">"/blocks/new_block"</span> <span style="color: #5f5f87;">:method</span> <span style="color: #5f5f87;">:post</span>)
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format nil "post::&gt;&gt; ~A~%" (bprint (hunchentoot:raw-post-data :force-text t))))</span>
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format nil "post:=&gt;~%~A~%" (bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))</span>
+  (<span style="color: #af00ff;">let*</span> ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data <span style="color: #5f5f87;">:force-text</span> t)))
+         (blk (cdr (assoc <span style="color: #5f5f87;">:newblock</span> req)))
+         (new (cl-json:decode-json-from-string blk)))
+    (format nil <span style="color: #87005f;">"~A~%"</span> (bprint (push new *blocks*)))))
+
+(<span style="color: #af00ff;">restas:define-route</span> blocks/get_height (<span style="color: #87005f;">"/blocks/get_height"</span>)
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">(let ((params (hunchentoot:get-parameters*)))</span>
+  <span style="color: #af0000;">;;   </span><span style="color: #af0000;">(if (= 0 (length params))</span>
+  <span style="color: #af0000;">;;       </span><span style="color: #af0000;">(format nil "get: empty~%")</span>
+  <span style="color: #af0000;">;;       </span><span style="color: #af0000;">(format nil "get: ~A~%" params))))</span>
+  (bprint (length *blocks*)))
+
+(<span style="color: #af00ff;">restas:define-route</span> contracts/new_contract/post (<span style="color: #87005f;">"contracts/new_contract"</span> <span style="color: #5f5f87;">:method</span> <span style="color: #5f5f87;">:post</span>)
+  (<span style="color: #af00ff;">let*</span> ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data <span style="color: #5f5f87;">:force-text</span> t)))
+         (contract-code (cdr (assoc <span style="color: #5f5f87;">:contract--code</span> req))))
+    (setf contract-code (string-trim '(#\Space #\Tab #\Newline) contract-code))
+    (<span style="color: #af00ff;">let</span> ((hash (sha-256 contract-code)))
+      (setf (gethash hash *contracts*) contract-code)
+      (setf (gethash hash *storages*) nil)
+      (format nil <span style="color: #87005f;">"~A~%"</span> (bprint hash)))))
+
+(<span style="color: #af00ff;">restas:define-route</span> contracts/get_contract_storage (<span style="color: #87005f;">"contracts/get_contract_storage"</span>)
+  (<span style="color: #af00ff;">let</span> ((hash (hunchentoot:get-parameter <span style="color: #87005f;">"hash"</span>)))
+    (<span style="color: #af00ff;">if</span> (null hash)
+        (format nil <span style="color: #87005f;">"Error: bad param!~%"</span>)
+        (bprint (get-storage hash)))))
+
+(<span style="color: #af00ff;">restas:define-route</span> contracts/get_contract_code (<span style="color: #87005f;">"contracts/get_contract_code"</span>)
+  (<span style="color: #af00ff;">let</span> ((hash (hunchentoot:get-parameter <span style="color: #87005f;">"hash"</span>)))
+    (<span style="color: #af00ff;">if</span> (null hash)
+        (format nil <span style="color: #87005f;">"Error: bad param!~%"</span>)
+        (<span style="color: #af00ff;">let</span> ((code (gethash hash *contracts* nil)))
+          code))))
+
+(<span style="color: #af00ff;">restas:define-route</span> contracts/call_contract/post (<span style="color: #87005f;">"contracts/call_contract"</span> <span style="color: #5f5f87;">:method</span> <span style="color: #5f5f87;">:post</span>)
+  <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format nil "post:=&gt;~%~A~%" (bprint (cl-json:decode-json-from-string (hunchentoot:raw-post-data :force-text t)))))</span>
+  (<span style="color: #af00ff;">let*</span> ((req (cl-json:decode-json-from-string (hunchentoot:raw-post-data <span style="color: #5f5f87;">:force-text</span> t)))
+         (hash (cdr (assoc <span style="color: #5f5f87;">:hash</span> req)))
+         (call (cdr (assoc <span style="color: #5f5f87;">:call--function</span> req)))
+         (code (gethash hash *contracts*))
+         (sender (cdr (assoc <span style="color: #5f5f87;">:sender--hash</span> req)))
+         (amount (cdr (assoc <span style="color: #5f5f87;">:amount</span> req))))
+    (<span style="color: #af00ff;">if</span> (null code)
+        (format nil <span style="color: #87005f;">"~A~%"</span> <span style="color: #87005f;">"Contract not exists"</span>)
+        <span style="color: #af0000;">;; </span><span style="color: #af0000;">(format nil "~A~%" code))))</span>
+        (run-vfm
+         <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"</span>
+         (read-file-into-string <span style="color: #87005f;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f"</span>)
+         code <span style="color: #af0000;">;; </span><span style="color: #af0000;">": ALFA .\" &#5788;do-beta-gamma&#5787;\" CR ;"</span>
+         '(<span style="color: #87005f;">"asd"</span> <span style="color: #87005f;">"qwe"</span>) (list (format nil <span style="color: #87005f;">"SENDER=~A"</span> (sha-256 <span style="color: #87005f;">"sender"</span>)) (format nil <span style="color: #87005f;">"AMOUNT=~A"</span> 100))
+         <span style="color: #87005f;">"ALFA"</span> hash))))
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">for a7482557631fe6fe4008aa9fabc6b17ac610f28f2e21c28756f303a9caf732e8</span>
+(<span style="color: #af00ff;">defun</span> <span style="color: #0000ff;">cl-user::do-beta-gamma</span> ()
+  <span style="color: #87005f;">"BYE"</span>)
+
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(let* ((hash "6b0264f3ca4bfeca3102927aee1ba98a4941585fa3d9c6519fe6ac032d18b38e")</span>
+<span style="color: #af0000;">;;        </span><span style="color: #af0000;">(code (gethash hash *contracts*)))</span>
+<span style="color: #af0000;">;;   </span><span style="color: #af0000;">(run-vfm</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">(read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">": ALFA .\" &#5788;do-beta&#5787;\" CR ;"</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">'("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))</span>
+<span style="color: #af0000;">;;    </span><span style="color: #af0000;">"ALFA" hash))</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(run-vfm</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">"/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">(read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">(read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">'("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))</span>
+<span style="color: #af0000;">;;  </span><span style="color: #af0000;">"ADD-AMOUNT" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(maphash #'(lambda (k v)</span>
+<span style="color: #af0000;">;;              </span><span style="color: #af0000;">(print (list k  v)))</span>
+<span style="color: #af0000;">;;          </span><span style="color: #af0000;">(get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516"))</span>
+
+<span style="color: #af0000;">;; </span><span style="color: #af0000;">(get-storage "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")</span>
+</pre>
+</div>
 </div>
 </div>
 </div>
