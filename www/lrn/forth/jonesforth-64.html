@@ -54,7 +54,12 @@
 <li><a href="#sec-1-30">Сегмент стека и буффер ввода</a></li>
 </ul>
 </li>
-<li><a href="#sec-2">Tangling</a></li>
+<li><a href="#sec-2">Дополнения</a>
+<ul>
+<li><a href="#sec-2-1"><span class="todo TODO">TODO</span> Хэширование</a></li>
+</ul>
+</li>
+<li><a href="#sec-3">Tangling</a></li>
 </ul>
 </div>
 </div>
@@ -265,18 +270,78 @@ h-файле, чтобы они были видны и ассемблерном�
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;stdlib.h&gt;</span>
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;time.h&gt;</span>
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;SDL2/SDL.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;memory.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;string.h&gt;</span>
 
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"sha256.h"</span>
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"sdlwrap.h"</span>
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"asm.h"</span>
 
-<span style="color: #008700;">SDL_Texture</span>*  <span style="color: #af5f00;">fruit_texture</span> = <span style="color: #008787;">NULL</span>;
-<span style="color: #008700;">SDL_Texture</span>*  <span style="color: #af5f00;">shead_texture</span> = <span style="color: #008787;">NULL</span>;
-<span style="color: #008700;">SDL_Texture</span>*  <span style="color: #af5f00;">snake_texture</span> = <span style="color: #008787;">NULL</span>;
-<span style="color: #008700;">SDL_Texture</span>*  <span style="color: #af5f00;">field_texture</span> = <span style="color: #008787;">NULL</span>;
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">SDL_Texture*  fruit_texture = NULL; </span><span style="color: #af0000;">*/</span>
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">SDL_Texture*  shead_texture = NULL; </span><span style="color: #af0000;">*/</span>
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">SDL_Texture*  snake_texture = NULL; </span><span style="color: #af0000;">*/</span>
+<span style="color: #af0000;">/* </span><span style="color: #af0000;">SDL_Texture*  field_texture = NULL; </span><span style="color: #af0000;">*/</span>
+
+<span style="color: #008700;">int</span> <span style="color: #0000ff;">sha256_test</span>()
+{
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">text1</span>[] = {<span style="color: #87005f;">"abc"</span>};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">text2</span>[] = {<span style="color: #87005f;">"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"</span>};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">text3</span>[] = {<span style="color: #87005f;">"aaaaaaaaaa"</span>};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">hash1</span>[SHA256_BLOCK_SIZE] = {0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
+                                     0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">hash2</span>[SHA256_BLOCK_SIZE] = {0x24,0x8d,0x6a,0x61,0xd2,0x06,0x38,0xb8,0xe5,0xc0,0x26,0x93,0x0c,0x3e,0x60,0x39,
+                                     0xa3,0x3c,0xe4,0x59,0x64,0xff,0x21,0x67,0xf6,0xec,0xed,0xd4,0x19,0xdb,0x06,0xc1};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">hash3</span>[SHA256_BLOCK_SIZE] = {0xcd,0xc7,0x6e,0x5c,0x99,0x14,0xfb,0x92,0x81,0xa1,0xc7,0xe2,0x84,0xd7,0x3e,0x67,
+                                     0xf1,0x80,0x9a,0x48,0xa4,0x97,0x20,0x0e,0x04,0x6d,0x39,0xcc,0xc7,0x11,0x2c,0xd0};
+    <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">buf</span>[SHA256_BLOCK_SIZE];
+    <span style="color: #008700;">SHA256_CTX</span> <span style="color: #af5f00;">ctx</span>;
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">idx</span>;
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">pass</span> = 1;
+
+    sha256_init(&amp;ctx);
+    sha256_update(&amp;ctx, text1, strlen(text1));
+    sha256_final(&amp;ctx, buf);
+
+    <span style="color: #af00ff;">for</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i&lt;32; i++) {
+        printf(<span style="color: #87005f;">"%2d: %p : %2hhX \n"</span>, i, (<span style="color: #008700;">void</span> *)(buf+i), *(<span style="color: #008700;">char</span>* )(<span style="color: #008700;">void</span> *)(buf+i));
+    }
+
+    pass = pass &amp;&amp; !memcmp(hash1, buf, SHA256_BLOCK_SIZE);
+
+    sha256_init(&amp;ctx);
+    sha256_update(&amp;ctx, text2, strlen(text2));
+    sha256_final(&amp;ctx, buf);
+    pass = pass &amp;&amp; !memcmp(hash2, buf, SHA256_BLOCK_SIZE);
+
+    sha256_init(&amp;ctx);
+    <span style="color: #af00ff;">for</span> (idx = 0; idx &lt; 100000; ++idx)
+        sha256_update(&amp;ctx, text3, strlen(text3));
+    sha256_final(&amp;ctx, buf);
+    pass = pass &amp;&amp; !memcmp(hash3, buf, SHA256_BLOCK_SIZE);
+
+    <span style="color: #af00ff;">return</span>(pass);
+}
+
+<span style="color: #008700;">void</span> <span style="color: #0000ff;">sha256</span> (<span style="color: #008700;">char</span> <span style="color: #af5f00;">str</span>[], <span style="color: #008700;">BYTE</span> <span style="color: #af5f00;">buf</span>[SHA256_BLOCK_SIZE])
+{
+    <span style="color: #008700;">SHA256_CTX</span> <span style="color: #af5f00;">ctx</span>;
+    sha256_init(&amp;ctx);
+    sha256_update(&amp;ctx, str, strlen(str));
+    sha256_final(&amp;ctx, buf);
+}
 
 <span style="color: #008700;">int</span> <span style="color: #0000ff;">main</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">argc</span>, <span style="color: #008700;">char</span> * <span style="color: #af5f00;">argv</span>[])
 {
     &lt;&lt;save_cmdline_args&gt;&gt;
+
+        BYTE buf[SHA256_BLOCK_SIZE];
+    sha256(<span style="color: #87005f;">"abc"</span>, buf);
+
+    <span style="color: #af00ff;">for</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i&lt;32; i++) {
+        printf(<span style="color: #87005f;">"%2d: %p : %2hhX \n"</span>, i, (<span style="color: #008700;">void</span> *)(buf+i), *(<span style="color: #008700;">char</span>* )(<span style="color: #008700;">void</span> *)(buf+i));
+    }
+
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("SHA-256 tests: %s\n", sha256_test() ? "SUCCEEDED" : "FAILED"); </span><span style="color: #af0000;">*/</span>
 
     <span style="color: #af0000;">/* </span><span style="color: #af0000;">Disable buffering </span><span style="color: #af0000;">*/</span>
     setbuf(stdout, <span style="color: #008787;">NULL</span>);
@@ -1859,8 +1924,46 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 </div>
 
 <div id="outline-container-sec-2" class="outline-2">
-<h2 id="sec-2">Tangling</h2>
+<h2 id="sec-2">Дополнения</h2>
 <div class="outline-text-2" id="text-2">
+</div><div id="outline-container-sec-2-1" class="outline-3">
+<h3 id="sec-2-1"><span class="todo TODO">TODO</span> Хэширование</h3>
+<div class="outline-text-3" id="text-2-1">
+<p>
+<code>SHA-256</code> - это враппер, который вызывает функцию си <code>sha256</code>. Эта функция принимает
+два параметра:
+</p>
+<ul class="org-ul">
+<li>указатель на нуль-терминантную строку (<code>RDI</code>)
+</li>
+<li>указатель на буфер размером в 32 байта куда будет помещен хэш (<code>RSI</code>)
+</li>
+</ul>
+
+<p>
+Перед вызовом мы хотим выделить под хэш место и сохранить ESI, а после - восстановить его.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="words_for_hash"><span style="color: #0000ff;">defcode</span> <span style="color: #87005f;">"SHA256"</span>,6,,SHA256
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rdi</span>            # pop &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1085;&#1072; &#1089;&#1090;&#1088;&#1086;&#1082;&#1091; &#1089;&#1086; &#1089;&#1090;&#1077;&#1082;&#1072; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093; &#1074; <span style="color: #af5f00;">%rdi</span>
+    <span style="color: #af00ff;">sub</span>     $32, <span style="color: #af5f00;">%rsp</span>       # &#1074;&#1099;&#1076;&#1077;&#1083;&#1103;&#1077;&#1084; &#1084;&#1077;&#1089;&#1090;&#1086; &#1087;&#1086;&#1076; &#1093;&#1101;&#1096;
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rsp</span>, <span style="color: #af5f00;">%rax</span>      # &#1089;&#1086;&#1093;&#1088;&#1103;&#1085;&#1103;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1074; <span style="color: #af5f00;">%rax</span>
+    <span style="color: #af00ff;">push</span>    <span style="color: #af5f00;">%rsi</span>            # &#1089;&#1086;&#1093;&#1088;&#1072;&#1085;&#1103;&#1077;&#1084; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">mov</span>     <span style="color: #af5f00;">%rax</span>, <span style="color: #af5f00;">%rsi</span>      # &#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1091;&#1082;&#1072;&#1079;&#1072;&#1090;&#1077;&#1083;&#1100; &#1074; <span style="color: #af5f00;">%rsi</span>
+    <span style="color: #af00ff;">call</span>    sha256          # &#1074;&#1099;&#1079;&#1099;&#1074;&#1072;&#1077;&#1084; sha256
+    <span style="color: #af00ff;">pop</span>     <span style="color: #af5f00;">%rsi</span>            # &#1074;&#1086;&#1089;&#1089;&#1090;&#1072;&#1085;&#1072;&#1074;&#1083;&#1080;&#1074;&#1072;&#1077;&#1084; <span style="color: #af5f00;">%esi</span>
+    <span style="color: #af00ff;">NEXT</span>                    # &#1085;&#1072; &#1089;&#1090;&#1077;&#1082;&#1077; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093; &#1086;&#1089;&#1090;&#1072;&#1077;&#1090;&#1089;&#1103; &#1093;&#1101;&#1096;
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3" class="outline-2">
+<h2 id="sec-3">Tangling</h2>
+<div class="outline-text-2" id="text-3">
 <p>
 Теперь мы можем переходить к высокоуровневой части. Она лежит в разделе: <a href="jonesforth-2.html">Forth-часть</a>
 </p>
@@ -1966,6 +2069,8 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 <span style="color: #0000ff;">&lt;&lt;word_execute</span>&gt;&gt;
 
 <span style="color: #0000ff;">&lt;&lt;dodoes</span>&gt;&gt;
+
+<span style="color: #0000ff;">&lt;&lt;words_for_hash</span>&gt;&gt;
 
 <span style="color: #0000ff;">&lt;&lt;word_syscalls</span>&gt;&gt;
 
