@@ -158,18 +158,79 @@ h-файле, чтобы они были видны и ассемблерном�
   #include <stdlib.h>
   #include <time.h>
   #include <SDL2/SDL.h>
+  #include <memory.h>
+  #include <string.h>
 
+  #include "sha256.h"
   #include "sdlwrap.h"
   #include "asm.h"
 
-  SDL_Texture*  fruit_texture = NULL;
-  SDL_Texture*  shead_texture = NULL;
-  SDL_Texture*  snake_texture = NULL;
-  SDL_Texture*  field_texture = NULL;
+  /* SDL_Texture*  fruit_texture = NULL; */
+  /* SDL_Texture*  shead_texture = NULL; */
+  /* SDL_Texture*  snake_texture = NULL; */
+  /* SDL_Texture*  field_texture = NULL; */
+
+  int sha256_test()
+  {
+      BYTE text1[] = {"abc"};
+      BYTE text2[] = {"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"};
+      BYTE text3[] = {"aaaaaaaaaa"};
+      BYTE hash1[SHA256_BLOCK_SIZE] = {0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
+                                       0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
+      BYTE hash2[SHA256_BLOCK_SIZE] = {0x24,0x8d,0x6a,0x61,0xd2,0x06,0x38,0xb8,0xe5,0xc0,0x26,0x93,0x0c,0x3e,0x60,0x39,
+                                       0xa3,0x3c,0xe4,0x59,0x64,0xff,0x21,0x67,0xf6,0xec,0xed,0xd4,0x19,0xdb,0x06,0xc1};
+      BYTE hash3[SHA256_BLOCK_SIZE] = {0xcd,0xc7,0x6e,0x5c,0x99,0x14,0xfb,0x92,0x81,0xa1,0xc7,0xe2,0x84,0xd7,0x3e,0x67,
+                                       0xf1,0x80,0x9a,0x48,0xa4,0x97,0x20,0x0e,0x04,0x6d,0x39,0xcc,0xc7,0x11,0x2c,0xd0};
+      BYTE buf[SHA256_BLOCK_SIZE];
+      SHA256_CTX ctx;
+      int idx;
+      int pass = 1;
+
+      sha256_init(&ctx);
+      sha256_update(&ctx, text1, strlen(text1));
+      sha256_final(&ctx, buf);
+
+      for(int i=0; i<32; i++) {
+          printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i));
+      }
+
+      pass = pass && !memcmp(hash1, buf, SHA256_BLOCK_SIZE);
+
+      sha256_init(&ctx);
+      sha256_update(&ctx, text2, strlen(text2));
+      sha256_final(&ctx, buf);
+      pass = pass && !memcmp(hash2, buf, SHA256_BLOCK_SIZE);
+
+      sha256_init(&ctx);
+      for (idx = 0; idx < 100000; ++idx)
+          sha256_update(&ctx, text3, strlen(text3));
+      sha256_final(&ctx, buf);
+      pass = pass && !memcmp(hash3, buf, SHA256_BLOCK_SIZE);
+
+      return(pass);
+  }
+
+  void sha256 (char str[], BYTE buf[SHA256_BLOCK_SIZE])
+  {
+      SHA256_CTX ctx;
+      sha256_init(&ctx);
+      sha256_update(&ctx, str, strlen(str));
+      sha256_final(&ctx, buf);
+  }
 
   int main(int argc, char * argv[])
   {
-      <<save_cmdline_args>>
+      forth_asm_argc = argc;
+      forth_asm_argv = (void*)argv;
+
+      BYTE buf[SHA256_BLOCK_SIZE];
+      sha256("abc", buf);
+
+      for(int i=0; i<32; i++) {
+          printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i));
+      }
+
+      /* printf("SHA-256 tests: %s\n", sha256_test() ? "SUCCEEDED" : "FAILED"); */
 
       /* Disable buffering */
       setbuf(stdout, NULL);
@@ -194,6 +255,7 @@ h-файле, чтобы они были видны и ассемблерном�
       /* } */
       return 0;
   }
+
 #+END_SRC
 
 ** Маски для FLAGS/LENGHT
@@ -1552,6 +1614,29 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
       .space INITIAL_DATA_SEGMENT_SIZE
 #+END_SRC
 
+* Дополнения
+** TODO Хэширование
+
+~SHA-256~ - это враппер, который вызывает функцию си ~sha256~. Эта функция принимает
+два параметра:
+- указатель на нуль-терминантную строку (~RDI~)
+- указатель на буфер размером в 32 байта куда будет помещен хэш (~RSI~)
+
+Перед вызовом мы хотим выделить под хэш место и сохранить ESI, а после - восстановить его.
+
+#+NAME: words_for_hash
+#+BEGIN_SRC asm
+  defcode "SHA256",6,,SHA256
+      pop     %rdi            # pop указатель на строку со стека данных в %rdi
+      sub     $32, %rsp       # выделяем место под хэш
+      mov     %rsp, %rax      # сохряняем указатель в %rax
+      push    %rsi            # сохраняем %rsi
+      mov     %rax, %rsi      # копируем указатель в %rsi
+      call    sha256          # вызываем sha256
+      pop     %rsi            # восстанавливаем %esi
+      NEXT                    # на стеке данных остается хэш
+#+END_SRC
+
 * Tangling
 
 Теперь мы можем переходить к высокоуровневой части. Она лежит в разделе: [[file:jonesforth-2.org][Forth-часть]]
@@ -1654,6 +1739,8 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
   <<word_execute>>
 
   <<dodoes>>
+
+  <<words_for_hash>>
 
   <<word_syscalls>>
 

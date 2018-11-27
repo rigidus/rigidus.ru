@@ -1002,6 +1002,16 @@ DODOES:
 
 defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 
+defcode "SHA256",6,,SHA256
+    pop     %rdi            # pop указатель на строку со стека данных в %rdi
+    sub     $32, %rsp       # выделяем место под хэш
+    mov     %rsp, %rax      # сохряняем указатель в %rax
+    push    %rsi            # сохраняем %rsi
+    mov     %rax, %rsi      # копируем указатель в %rsi
+    call    sha256          # вызываем sha256
+    pop     %rsi            # восстанавливаем %esi
+    NEXT                    # на стеке данных остается хэш
+
 /*
 ;; defcode "SYSCALL3",8,,SYSCALL3
 ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
