@@ -192,19 +192,24 @@ Makefile, а просто держу его рядом с литературны
   SRC = src64
   INC = inc64
 
-  CSRC_MAIN = main64.c
+  CSRC_MAIN    = main64.c
   CSRC_SDLWRAP = sdlwrap64.c
-  CSRCS = $(CSRC_MAIN) $(CSRC_SDLWRAP)
+  CSRC_SHA     = sha256.c
+  CSRC_RUNVFM  = runvfm64.c
 
-  TOASMS = $(CSRCS:.c=.s)
+  CSRCS        = $(CSRC_MAIN) $(CSRC_SDLWRAP) $(CSRC_SHA)
 
-  ASRC_MAIN = jonesforth64.s
+  TOASMS       = $(CSRCS:.c=.s)
 
-  OBJ_MAIN = $(CSRC_MAIN:.c=.o)
-  OBJ_SDLWRAP = $(CSRC_SDLWRAP:.c=.o)
-  OBJ_ASM = $(ASRC_MAIN:.s=.o)
+  ASRC_MAIN    = jonesforth64.s
 
-  OBJS = $(CSRCS:.c=.o) $(OBJ_ASM) $(TOASMS:.s=.o)
+  OBJ_MAIN     = $(CSRC_MAIN:.c=.o)
+  OBJ_SDLWRAP  = $(CSRC_SDLWRAP:.c=.o)
+  OBJ_SHA      = $(CSRC_SHA:.c=.o)
+  OBJ_RUNVFM  = $(CSRC_RUNVFM:.c=.o)
+  OBJ_ASM      = $(ASRC_MAIN:.s=.o)
+
+  OBJS = $(CSRCS:.c=.o) $(OBJ_RUNVFM) $(OBJ_SHA) $(OBJ_ASM) $(TOASMS:.s=.o)
 
   FSRC = jonesforth64.f
   TEST = test.f
@@ -221,20 +226,28 @@ Makefile, а просто держу его рядом с литературны
   LDFLAGS += $(shell pkg-config --libs    sdl2)
 
 
-  all: $(OBJ_SDLWRAP) $(OBJ_ASM) $(OBJ_MAIN)
+  all: $(OBJ_SDLWRAP) $(OBJ_SHA) $(OBJ_RUNVFM) $(OBJ_ASM) $(OBJ_MAIN)
       $(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
 
   $(OBJ_SDLWRAP): $(CSRC_SDLWRAP)
+      $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+  $(OBJ_SHA): $(CSRC_SHA)
+      $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+  $(OBJ_RUNVFM): $(CSRC_RUNVFM)
       $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
   $(OBJ_MAIN): $(CSRC_MAIN)
       $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
   $(OBJ_ASM): $(ASRC_MAIN)
-      $(CC) -c $(CFLAGS) $^ -o $@
+      $(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
 
   toasm: $(CSRC)
-      $(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` -I$(INC)
+      $(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` \
+          -I$(INC) $(SRC)/$(CSRC_MAIN) -o $(CSRC_MAIN:.c=.s)
 
   clean:
       rm -Rf $(TARGET) $(OBJS) $(OBJ_ASM) $(TOASMS)
@@ -244,6 +257,7 @@ Makefile, а просто держу его рядом с литературны
 
   test:
       cat $(SRC)/$(FSRC) $(TEST) | ./$(TARGET)
+
 #+END_SRC
 
 ** Кросс-компиляция из x64

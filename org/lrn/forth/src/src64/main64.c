@@ -10,6 +10,8 @@
 
 #include "sha256.h"
 #include "sdlwrap.h"
+#include "runvfm64.h"
+
 #include "asm.h"
 
 /* SDL_Texture*  fruit_texture = NULL; */
@@ -65,17 +67,37 @@ void sha256 (char str[], BYTE buf[SHA256_BLOCK_SIZE])
     sha256_final(&ctx, buf);
 }
 
+
 int main(int argc, char * argv[])
 {
     forth_asm_argc = argc;
     forth_asm_argv = (void*)argv;
 
-    BYTE buf[SHA256_BLOCK_SIZE];
-    sha256("abc", buf);
-
-    for(int i=0; i<32; i++) {
-        printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i));
+    char * libf = read_file_into_string("./src64/jonesforth64.f");
+    if (NULL == libf)
+    {
+        printf("Aborting: no lib.f file\n");
+        exit(-1);
     }
+    char * args[] = { "forth64", "asd", "qwe", NULL };
+    char * envp[] = { "USER=test", "HOME=/home/test", NULL };
+
+    runvfm("./forth64",
+           libf,
+           ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;",
+           args,
+           envp,
+           "call",
+           "hash"
+           );
+
+
+    /* BYTE buf[SHA256_BLOCK_SIZE]; */
+    /* sha256("abc", buf); */
+
+    /* for(int i=0; i<32; i++) { */
+    /*     printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i)); */
+    /* } */
 
     /* printf("SHA-256 tests: %s\n", sha256_test() ? "SUCCEEDED" : "FAILED"); */
 
