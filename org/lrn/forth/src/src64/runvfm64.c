@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #define SIZE 1024
 
@@ -54,8 +55,8 @@ char * read_file_into_string (char filename[])
 void toPipe (int inPipe[], char outstr[])
 {
     int len = strlen(outstr);
-    printf(":: strlen(outstr) = %d\n", len);
-    fflush(stdout);
+    /* printf(":: strlen(outstr) = %d\n", len); */
+    /* fflush(stdout); */
     int cnt = write(inPipe[1], outstr, len);
     if (-1 == cnt) { perror("write to pipe"); exit(-1); }
 }
@@ -65,14 +66,15 @@ void fromPipe(int outPipe[], int len, char retval[])
     char buf[SIZE]; memset(buf, 0, SIZE);
     int cnt = read(outPipe[0], buf, len);
     if (-1 == cnt) { perror("read from pipe"); exit(-1); }
+    if (0  == cnt) { perror("eof"); exit(-1); }
+    if (1  == cnt) { perror("1"); exit(-1); }
     printf(":: %d [child out]\n%s\n", cnt, buf);
     fflush(stdout);
     if (NULL != retval) {
-        if (SIZE <= len) { printf("out of buf\n"); fflush(stdout); exit(-1); }
+        if (SIZE < len) { printf("out of buf\n"); fflush(stdout); exit(-1); }
         strncpy(retval, buf, len);
     }
 }
-
 
 void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], char run[],
              char hash[])
@@ -91,20 +93,57 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
         close(inPipe[1]);
         close(outPipe[0]);
         dup2(outPipe[1], 1);
-        execvp("/home/rigidus/repo/from-C-to-Forth/interact", params);
+        execve("./forth65", params, env);
     }
     printf(":: pid = %d\n", pid);
     fflush(stdout);
+
+    toPipe(inPipe, base); sleep(1);
+    char vfm_hello[] = "VFM VERSION 47 OK\n";
+    char hello_str[SIZE];
+    fromPipe(outPipe, 30, hello_str);
+    if (0 != strncmp(vfm_hello, hello_str, sizeof(vfm_hello))) {
+        printf(":: vfm hello error:\n");
+        printf("[%s]\n", hello_str);
+        printf("expected: [%s]\n", vfm_hello);
+        exit(-1);
+    }
+
     char result[SIZE];
-    fromPipe(outPipe, 30, NULL);
-    toPipe(inPipe, "5\n");
-    fromPipe(outPipe, 30, NULL);
-    toPipe(inPipe, "7\n");
-    fromPipe(outPipe, 30, result);
-    toPipe(inPipe, "y\n");
-    int pos = strcspn(result, "\n");
-    *(result+pos) = 0;
-    fromPipe(outPipe, 30, NULL);
-    printf("Result is [%s]\n", result);
+    toPipe(inPipe, "1 2 3 + . BYE \n");
+    /* /\* toPipe(inPipe, run); *\/ */
+
+
+    /* fromPipe(outPipe, SIZE, result); */
+    /* printf("Result is [%s]\n", result); */
+    /* fflush(stdout); */
+
+    /* fromPipe(outPipe, SIZE, result); */
+    /* printf("Result is [%s]\n", result); */
+    /* fflush(stdout); */
+
+    /* fromPipe(outPipe, SIZE, result); */
+    /* printf("Result is [%s]\n", result); */
+    /* fflush(stdout); */
+
+    int status;
+    wait(&status);
+
+    printf("Fin: %d\n", status);
     fflush(stdout);
+
+    exit(0);
+
+    /* fromPipe(outPipe, SIZE, result); */
+
+    /* printf("Result is [%s]\n", result); */
+    /* fflush(stdout); */
+
+
+    /* toPipe(inPipe, "y\n"); */
+    /* int pos = strcspn(result, "\n"); */
+    /* *(result+pos) = 0; */
+    /* fromPipe(outPipe, 30, NULL); */
+    /* printf("Result is [%s]\n", result); */
+    /* fflush(stdout); */
 }

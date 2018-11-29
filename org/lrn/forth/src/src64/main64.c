@@ -84,10 +84,10 @@ int main(int argc, char * argv[])
 
     runvfm("./forth64",
            libf,
-           ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;",
+           ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;\n",
            args,
            envp,
-           "call",
+           "ALFA\n",
            "hash"
            );
 
