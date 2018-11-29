@@ -66,10 +66,10 @@ void fromPipe(int outPipe[], int len, char retval[])
     char buf[SIZE]; memset(buf, 0, SIZE);
     int cnt = read(outPipe[0], buf, len);
     if (-1 == cnt) { perror("read from pipe"); exit(-1); }
-    if (0  == cnt) { perror("eof"); exit(-1); }
-    if (1  == cnt) { perror("1"); exit(-1); }
-    printf(":: %d [child out]\n%s\n", cnt, buf);
-    fflush(stdout);
+    /* if (0  == cnt) { perror("eof"); exit(-1); } */
+    /* if (1  == cnt) { perror("1"); exit(-1); } */
+    /* printf(":: %d [child out]\n%s\n", cnt, buf); */
+    /* fflush(stdout); */
     if (NULL != retval) {
         if (SIZE < len) { printf("out of buf\n"); fflush(stdout); exit(-1); }
         strncpy(retval, buf, len);
