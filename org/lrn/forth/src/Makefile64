@@ -5,6 +5,7 @@ CFLAGS  += -m64 -g
 LDFLAGS += -m64 -g
 
 TARGET = forth64
+NODE   = node64
 
 SRC = src64
 INC = inc64
@@ -12,9 +13,11 @@ INC = inc64
 CSRC_MAIN    = main64.c
 CSRC_SDLWRAP = sdlwrap64.c
 CSRC_SHA     = sha256.c
+
+CSRC_NODE    = node64.c
 CSRC_RUNVFM  = runvfm64.c
 
-CSRCS        = $(CSRC_MAIN) $(CSRC_SDLWRAP) $(CSRC_SHA)
+CSRCS        = $(CSRC_MAIN) $(CSRC_SDLWRAP) $(CSRC_SHA) $(CSRC_NODE) $(CSRC_RUNVFM)
 
 TOASMS       = $(CSRCS:.c=.s)
 
@@ -23,10 +26,12 @@ ASRC_MAIN    = jonesforth64.s
 OBJ_MAIN     = $(CSRC_MAIN:.c=.o)
 OBJ_SDLWRAP  = $(CSRC_SDLWRAP:.c=.o)
 OBJ_SHA      = $(CSRC_SHA:.c=.o)
-OBJ_RUNVFM  = $(CSRC_RUNVFM:.c=.o)
 OBJ_ASM      = $(ASRC_MAIN:.s=.o)
 
-OBJS = $(CSRCS:.c=.o) $(OBJ_RUNVFM) $(OBJ_SHA) $(OBJ_ASM) $(TOASMS:.s=.o)
+OBJ_NODE	 = $(CSRC_NODE:.c=.o)
+OBJ_RUNVFM   = $(CSRC_RUNVFM:.c=.o)
+
+OBJS = $(CSRCS:.c=.o) $(OBJ_ASM)
 
 FSRC = jonesforth64.f
 TEST = test.f
@@ -43,16 +48,16 @@ CFLAGS  += $(shell pkg-config --cflags  sdl2)
 LDFLAGS += $(shell pkg-config --libs    sdl2)
 
 
-all: $(OBJ_SDLWRAP) $(OBJ_SHA) $(OBJ_RUNVFM) $(OBJ_ASM) $(OBJ_MAIN)
-	$(CC) $^ $(LDFLAGS) -I$(INC)  -o $(TARGET)
+all: node forth
+
+
+forth: $(OBJ_SDLWRAP) $(OBJ_SHA) $(OBJ_RUNVFM) $(OBJ_ASM) $(OBJ_MAIN)
+	$(CC) $^ $(LDFLAGS) -I$(INC) -o $(TARGET)
 
 $(OBJ_SDLWRAP): $(CSRC_SDLWRAP)
 	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
 $(OBJ_SHA): $(CSRC_SHA)
-	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
-
-$(OBJ_RUNVFM): $(CSRC_RUNVFM)
 	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
 $(OBJ_MAIN): $(CSRC_MAIN)
@@ -62,12 +67,24 @@ $(OBJ_ASM): $(ASRC_MAIN)
 	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
 
 
+
+node: $(OBJ_RUNVFM) $(OBJ_NODE)
+	$(CC) $^ $(LDFLAGS) -I$(INC) -o $(NODE)
+
+$(OBJ_RUNVFM): $(CSRC_RUNVFM)
+	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+$(OBJ_NODE): $(CSRC_NODE)
+	$(CC) -c $(CFLAGS) -I$(INC) $^ -o $@
+
+
+
 toasm: $(CSRC)
 	$(CC) -S $^ $(CFLAGS) `pkg-config --cflags --libs sdl2` \
 		-I$(INC) $(SRC)/$(CSRC_MAIN) -o $(CSRC_MAIN:.c=.s)
 
 clean:
-	rm -Rf $(TARGET) $(OBJS) $(OBJ_ASM) $(TOASMS)
+	rm -Rf $(TARGET) $(NODE) $(OBJS) $(OBJ_ASM) $(TOASMS)
 
 run:
 	cat $(SRC)/$(FSRC) - | ./$(TARGET)

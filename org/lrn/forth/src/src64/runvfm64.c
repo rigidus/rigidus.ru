@@ -93,7 +93,7 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
         close(inPipe[1]);
         close(outPipe[0]);
         dup2(outPipe[1], 1);
-        execve("./forth65", params, env);
+        execve(vfm, params, env);
     }
     printf(":: pid = %d\n", pid);
     fflush(stdout);
