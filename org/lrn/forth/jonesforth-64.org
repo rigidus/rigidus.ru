@@ -1709,19 +1709,22 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
       if (-1 == cnt) { perror("write to pipe"); exit(-1); }
   }
 
-  void fromPipe(int outPipe[], int len, char retval[])
+  char* fromPipe(int outPipe[], int len)
   {
-      char buf[SIZE]; memset(buf, 0, SIZE);
+      char *buf = malloc(len);
+      if(NULL == buf) {
+          perror("malloc");
+          printf("function: fromPipe\n");
+          return NULL;
+      }
+      memset(buf, 0, len);
       int cnt = read(outPipe[0], buf, len);
       if (-1 == cnt) { perror("read from pipe"); exit(-1); }
       /* if (0  == cnt) { perror("eof"); exit(-1); } */
       /* if (1  == cnt) { perror("1"); exit(-1); } */
-      /* printf(":: %d [child out]\n%s\n", cnt, buf); */
-      /* fflush(stdout); */
-      if (NULL != retval) {
-          if (SIZE < len) { printf("out of buf\n"); fflush(stdout); exit(-1); }
-          strncpy(retval, buf, len);
-      }
+      printf(":: %d [child out]\n%s\n", cnt, buf);
+      fflush(stdout);
+      return buf;
   }
 
   void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], char run[],
@@ -1748,31 +1751,28 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 
       toPipe(inPipe, base); sleep(1);
       char vfm_hello[] = "VFM VERSION 47 OK\n";
-      char hello_str[SIZE];
-      fromPipe(outPipe, 30, hello_str);
+      char *hello_str = fromPipe(outPipe, 30);
       if (0 != strncmp(vfm_hello, hello_str, sizeof(vfm_hello))) {
           printf(":: vfm hello error:\n");
           printf("[%s]\n", hello_str);
           printf("expected: [%s]\n", vfm_hello);
           exit(-1);
       }
+      free(hello_str);
 
-      char result[SIZE];
       toPipe(inPipe, "1 2 3 + . BYE \n");
       /* /\* toPipe(inPipe, run); *\/ */
 
+      char *result1 = fromPipe(outPipe, SIZE);
+      printf("Result is [%s]\n", result1);
+      fflush(stdout);
+      free(result1);
 
-      /* fromPipe(outPipe, SIZE, result); */
-      /* printf("Result is [%s]\n", result); */
+      /* char *result2 = fromPipe(outPipe, SIZE); */
+      /* fromPipe(outPipe, 0); */
+      /* printf("Result is [%s]\n", result2); */
       /* fflush(stdout); */
-
-      /* fromPipe(outPipe, SIZE, result); */
-      /* printf("Result is [%s]\n", result); */
-      /* fflush(stdout); */
-
-      /* fromPipe(outPipe, SIZE, result); */
-      /* printf("Result is [%s]\n", result); */
-      /* fflush(stdout); */
+      /* free(result2); */
 
       int status;
       wait(&status);
@@ -1781,19 +1781,6 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
       fflush(stdout);
 
       exit(0);
-
-      /* fromPipe(outPipe, SIZE, result); */
-
-      /* printf("Result is [%s]\n", result); */
-      /* fflush(stdout); */
-
-
-      /* toPipe(inPipe, "y\n"); */
-      /* int pos = strcspn(result, "\n"); */
-      /* *(result+pos) = 0; */
-      /* fromPipe(outPipe, 30, NULL); */
-      /* printf("Result is [%s]\n", result); */
-      /* fflush(stdout); */
   }
 #+END_SRC
 
