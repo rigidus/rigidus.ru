@@ -112,19 +112,19 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     }
     free(hello_str);
 
+    toPipe(inPipe, "4 3 + . \n");
+
+    char *result2 = fromPipe(outPipe, SIZE);
+    printf("Result is [%s]\n", result2);
+    fflush(stdout);
+    free(result2);
+
     toPipe(inPipe, "1 2 3 + . BYE \n");
-    /* /\* toPipe(inPipe, run); *\/ */
 
     char *result1 = fromPipe(outPipe, SIZE);
     printf("Result is [%s]\n", result1);
     fflush(stdout);
     free(result1);
-
-    /* char *result2 = fromPipe(outPipe, SIZE); */
-    /* fromPipe(outPipe, 0); */
-    /* printf("Result is [%s]\n", result2); */
-    /* fflush(stdout); */
-    /* free(result2); */
 
     int status;
     wait(&status);
