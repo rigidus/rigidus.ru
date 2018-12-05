@@ -74,8 +74,8 @@ char* fromPipe(int outPipe[], int len)
     if (-1 == cnt) { perror("read from pipe"); exit(-1); }
     /* if (0  == cnt) { perror("eof"); exit(-1); } */
     /* if (1  == cnt) { perror("1"); exit(-1); } */
-    printf(":: %d [child out]\n%s\n", cnt, buf);
-    fflush(stdout);
+    /* printf(":: %d [child out]\n%s\n", cnt, buf); */
+    /* fflush(stdout); */
     return buf;
 }
 
@@ -112,17 +112,23 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     }
     free(hello_str);
 
-    toPipe(inPipe, "4 3 + . \n");
+    char one[] = "4 3 + . \n";
+    printf(">> [%s]\n", one);
+    fflush(stdout);
+    toPipe(inPipe, one);
 
     char *result2 = fromPipe(outPipe, SIZE);
-    printf("Result is [%s]\n", result2);
+    printf("<< [%s]\n", result2);
     fflush(stdout);
     free(result2);
 
-    toPipe(inPipe, "1 2 3 + . BYE \n");
+    char two[] = "1 2 3 + . BYE \n";
+    printf(">> [%s]\n", two);
+    fflush(stdout);
+    toPipe(inPipe, two);
 
     char *result1 = fromPipe(outPipe, SIZE);
-    printf("Result is [%s]\n", result1);
+    printf("<< [%s]\n", result1);
     fflush(stdout);
     free(result1);
 
