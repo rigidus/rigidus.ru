@@ -52,7 +52,7 @@ char * read_file_into_string (char filename[])
     return str;
 }
 
-void toPipe (int inPipe[], char outstr[])
+void toFVM (int inPipe[], char outstr[])
 {
     int len = strlen(outstr);
     /* printf(":: strlen(outstr) = %d\n", len); */
@@ -61,12 +61,12 @@ void toPipe (int inPipe[], char outstr[])
     if (-1 == cnt) { perror("write to pipe"); exit(-1); }
 }
 
-char* fromPipe(int outPipe[], int len)
+char* fromFVM(int outPipe[], int len)
 {
     char *buf = malloc(len);
     if(NULL == buf) {
         perror("malloc");
-        printf("function: fromPipe\n");
+        printf("function: fromFVM\n");
         return NULL;
     }
     memset(buf, 0, len);
@@ -101,9 +101,9 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     printf(":: pid = %d\n", pid);
     fflush(stdout);
 
-    toPipe(inPipe, base); sleep(1);
+    toFVM(inPipe, base); sleep(1);
     char vfm_hello[] = "VFM VERSION 47 OK\n";
-    char *hello_str = fromPipe(outPipe, 30);
+    char *hello_str = fromFVM(outPipe, 30);
     if (0 != strncmp(vfm_hello, hello_str, sizeof(vfm_hello))) {
         printf(":: vfm hello error:\n");
         printf("[%s]\n", hello_str);
@@ -115,9 +115,9 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     char one[] = "4 3 + . \n";
     printf(">> [%s]\n", one);
     fflush(stdout);
-    toPipe(inPipe, one);
+    toFVM(inPipe, one);
 
-    char *result2 = fromPipe(outPipe, SIZE);
+    char *result2 = fromFVM(outPipe, SIZE);
     printf("<< [%s]\n", result2);
     fflush(stdout);
     free(result2);
@@ -125,9 +125,9 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     char two[] = "1 2 3 + . BYE \n";
     printf(">> [%s]\n", two);
     fflush(stdout);
-    toPipe(inPipe, two);
+    toFVM(inPipe, two);
 
-    char *result1 = fromPipe(outPipe, SIZE);
+    char *result1 = fromFVM(outPipe, SIZE);
     printf("<< [%s]\n", result1);
     fflush(stdout);
     free(result1);
