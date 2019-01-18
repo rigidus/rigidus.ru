@@ -56,7 +56,9 @@
 </li>
 <li><a href="#sec-2">Дополнения</a>
 <ul>
-<li><a href="#sec-2-1"><span class="todo TODO">TODO</span> Хэширование</a></li>
+<li><a href="#sec-2-1">Хэширование</a></li>
+<li><a href="#sec-2-2">Внешнее управление</a></li>
+<li><a href="#sec-2-3">Нода</a></li>
 </ul>
 </li>
 <li><a href="#sec-3">Tangling</a></li>
@@ -275,6 +277,8 @@ h-файле, чтобы они были видны и ассемблерном�
 
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"sha256.h"</span>
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"sdlwrap.h"</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"runvfm64.h"</span>
+
 <span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"asm.h"</span>
 
 <span style="color: #af0000;">/* </span><span style="color: #af0000;">SDL_Texture*  fruit_texture = NULL; </span><span style="color: #af0000;">*/</span>
@@ -330,16 +334,17 @@ h-файле, чтобы они были видны и ассемблерном�
     sha256_final(&amp;ctx, buf);
 }
 
+
 <span style="color: #008700;">int</span> <span style="color: #0000ff;">main</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">argc</span>, <span style="color: #008700;">char</span> * <span style="color: #af5f00;">argv</span>[])
 {
     &lt;&lt;save_cmdline_args&gt;&gt;
 
-        BYTE buf[SHA256_BLOCK_SIZE];
-    sha256(<span style="color: #87005f;">"abc"</span>, buf);
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">BYTE buf[SHA256_BLOCK_SIZE]; </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">sha256("abc", buf); </span><span style="color: #af0000;">*/</span>
 
-    <span style="color: #af00ff;">for</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">i</span>=0; i&lt;32; i++) {
-        printf(<span style="color: #87005f;">"%2d: %p : %2hhX \n"</span>, i, (<span style="color: #008700;">void</span> *)(buf+i), *(<span style="color: #008700;">char</span>* )(<span style="color: #008700;">void</span> *)(buf+i));
-    }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">for(int i=0; i&lt;32; i++) { </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/*     </span><span style="color: #af0000;">printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i)); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">} </span><span style="color: #af0000;">*/</span>
 
     <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("SHA-256 tests: %s\n", sha256_test() ? "SUCCEEDED" : "FAILED"); </span><span style="color: #af0000;">*/</span>
 
@@ -1927,7 +1932,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 <h2 id="sec-2">Дополнения</h2>
 <div class="outline-text-2" id="text-2">
 </div><div id="outline-container-sec-2-1" class="outline-3">
-<h3 id="sec-2-1"><span class="todo TODO">TODO</span> Хэширование</h3>
+<h3 id="sec-2-1">Хэширование</h3>
 <div class="outline-text-3" id="text-2-1">
 <p>
 <code>SHA-256</code> - это враппер, который вызывает функцию си <code>sha256</code>. Эта функция принимает
@@ -1959,8 +1964,197 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 </div>
 </div>
 </div>
+
+<div id="outline-container-sec-2-2" class="outline-3">
+<h3 id="sec-2-2">Внешнее управление</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+Для того чтобы использовать виртуальную машину как дочерний процесс, создадим
+супервизор, который будет запускать ее, передавая окружение и заменяя дескрипторы stdin
+и stdout на pipes, через которые будет отправлять код и считывать результат из repl
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="ext_control"><span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;unistd.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;stdio.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;stdlib.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;fcntl.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;string.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;sys/stat.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;sys/wait.h&gt;</span>
+
+<span style="color: #5f5f87;">#define</span> <span style="color: #af5f00;">SIZE</span> 1024
+
+<span style="color: #008700;">char</span> * <span style="color: #0000ff;">read_file_into_string</span> (<span style="color: #008700;">char</span> <span style="color: #af5f00;">filename</span>[])
+{
+    <span style="color: #af00ff;">struct</span> <span style="color: #008700;">stat</span> <span style="color: #af5f00;">sb</span>;
+    <span style="color: #af00ff;">if</span>(-1 == stat(filename, &amp;sb)) {
+        perror(<span style="color: #87005f;">"stat file"</span>);
+        printf(<span style="color: #87005f;">"function: read_file_into_string\n"</span>);
+        printf(<span style="color: #87005f;">"filename: [%s]\n"</span>, filename);
+        <span style="color: #af00ff;">return</span> <span style="color: #008787;">NULL</span>;
+    }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("filesize: %ld\n", sb.st_size); </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #008700;">FILE</span> *<span style="color: #af5f00;">fp</span>=fopen(filename, <span style="color: #87005f;">"r"</span>);
+    <span style="color: #af00ff;">if</span>(<span style="color: #008787;">NULL</span> == fp) {
+        perror(<span style="color: #87005f;">"fopen file"</span>);
+        printf(<span style="color: #87005f;">"function: read_file_into_string\n"</span>);
+        printf(<span style="color: #87005f;">"filename: [%s]\n"</span>, filename);
+        <span style="color: #af00ff;">return</span> <span style="color: #008787;">NULL</span>;
+    }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("file handle: %p\n", fp); </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #008700;">char</span> *<span style="color: #af5f00;">str</span> = malloc(sb.st_size+1);
+    <span style="color: #af00ff;">if</span>(<span style="color: #008787;">NULL</span> == str) {
+        perror(<span style="color: #87005f;">"malloc"</span>);
+        printf(<span style="color: #87005f;">"function: read_file_into_string\n"</span>);
+        printf(<span style="color: #87005f;">"filename: [%s]\n"</span>, filename);
+        <span style="color: #af00ff;">return</span> <span style="color: #008787;">NULL</span>;
+    }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("malloc pntr: %p\n", str); </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">cnt</span> = fread(str, 1, sb.st_size, fp);
+    <span style="color: #af00ff;">if</span>(sb.st_size != cnt) {
+        perror(<span style="color: #87005f;">"fread"</span>);
+        printf(<span style="color: #87005f;">"function: read_file_into_string\n"</span>);
+        printf(<span style="color: #87005f;">"filename: [%s]\n"</span>, filename);
+        <span style="color: #af00ff;">return</span> <span style="color: #008787;">NULL</span>;
+    }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("read bytes: %d\n", cnt); </span><span style="color: #af0000;">*/</span>
+
+    fclose(fp);
+    str[sb.st_size] = 0;
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("content is:%s\n", str); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af00ff;">return</span> str;
+}
+
+<span style="color: #008700;">void</span> <span style="color: #0000ff;">toPipe</span> (<span style="color: #008700;">int</span> <span style="color: #af5f00;">inPipe</span>[], <span style="color: #008700;">char</span> <span style="color: #af5f00;">outstr</span>[])
+{
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">len</span> = strlen(outstr);
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf(":: strlen(outstr) = %d\n", len); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">fflush(stdout); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">cnt</span> = write(inPipe[1], outstr, len);
+    <span style="color: #af00ff;">if</span> (-1 == cnt) { perror(<span style="color: #87005f;">"write to pipe"</span>); exit(-1); }
+}
+
+<span style="color: #008700;">char</span>* <span style="color: #0000ff;">fromPipe</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">outPipe</span>[], <span style="color: #008700;">int</span> <span style="color: #af5f00;">len</span>)
+{
+    <span style="color: #008700;">char</span> *<span style="color: #af5f00;">buf</span> = malloc(len);
+    <span style="color: #af00ff;">if</span>(<span style="color: #008787;">NULL</span> == buf) {
+        perror(<span style="color: #87005f;">"malloc"</span>);
+        printf(<span style="color: #87005f;">"function: fromPipe\n"</span>);
+        <span style="color: #af00ff;">return</span> <span style="color: #008787;">NULL</span>;
+    }
+    memset(buf, 0, len);
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">cnt</span> = read(outPipe[0], buf, len);
+    <span style="color: #af00ff;">if</span> (-1 == cnt) { perror(<span style="color: #87005f;">"read from pipe"</span>); exit(-1); }
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">if (0  == cnt) { perror("eof"); exit(-1); } </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">if (1  == cnt) { perror("1"); exit(-1); } </span><span style="color: #af0000;">*/</span>
+    printf(<span style="color: #87005f;">":: %d [child out]\n%s\n"</span>, cnt, buf);
+    fflush(stdout);
+    <span style="color: #af00ff;">return</span> buf;
+}
+
+<span style="color: #008700;">void</span> <span style="color: #0000ff;">runvfm</span> (<span style="color: #008700;">char</span> <span style="color: #af5f00;">vfm</span>[], <span style="color: #008700;">char</span> <span style="color: #af5f00;">base</span>[], <span style="color: #008700;">char</span> <span style="color: #af5f00;">code</span>[], <span style="color: #008700;">char</span> *<span style="color: #af5f00;">params</span>[], <span style="color: #008700;">char</span> *<span style="color: #af5f00;">env</span>[], <span style="color: #008700;">char</span> <span style="color: #af5f00;">run</span>[],
+             <span style="color: #008700;">char</span> <span style="color: #af5f00;">hash</span>[])
+{
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">pid</span>, <span style="color: #af5f00;">in</span>, <span style="color: #af5f00;">out</span>, <span style="color: #af5f00;">cnt</span>, <span style="color: #af5f00;">inPipe</span>[2], <span style="color: #af5f00;">outPipe</span>[2];
+    <span style="color: #af00ff;">if</span> (pipe(inPipe)  == -1) { perror(<span style="color: #87005f;">"In Pipe Failed"</span>);  exit(-1); }
+    <span style="color: #af00ff;">if</span> (pipe(outPipe) == -1) { perror(<span style="color: #87005f;">"Out Pipe Failed"</span>); exit(-1); }
+    <span style="color: #af00ff;">switch</span>(pid = fork()) {
+    <span style="color: #af00ff;">case</span> -1:
+        perror(<span style="color: #87005f;">"fork"</span>);
+        exit(-1);
+    <span style="color: #af00ff;">case</span> 0:
+        close(0);
+        close(1);
+        dup2(inPipe[0], 0);
+        close(inPipe[1]);
+        close(outPipe[0]);
+        dup2(outPipe[1], 1);
+        execve(vfm, params, env);
+    }
+    printf(<span style="color: #87005f;">":: pid = %d\n"</span>, pid);
+    fflush(stdout);
+
+    toPipe(inPipe, base); sleep(1);
+    <span style="color: #008700;">char</span> <span style="color: #af5f00;">vfm_hello</span>[] = <span style="color: #87005f;">"VFM VERSION 47 OK\n"</span>;
+    <span style="color: #008700;">char</span> *<span style="color: #af5f00;">hello_str</span> = fromPipe(outPipe, 30);
+    <span style="color: #af00ff;">if</span> (0 != strncmp(vfm_hello, hello_str, <span style="color: #af00ff;">sizeof</span>(vfm_hello))) {
+        printf(<span style="color: #87005f;">":: vfm hello error:\n"</span>);
+        printf(<span style="color: #87005f;">"[%s]\n"</span>, hello_str);
+        printf(<span style="color: #87005f;">"expected: [%s]\n"</span>, vfm_hello);
+        exit(-1);
+    }
+    free(hello_str);
+
+    toPipe(inPipe, <span style="color: #87005f;">"1 2 3 + . BYE \n"</span>);
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">/\* toPipe(inPipe, run); *\/ </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #008700;">char</span> *<span style="color: #af5f00;">result1</span> = fromPipe(outPipe, SIZE);
+    printf(<span style="color: #87005f;">"Result is [%s]\n"</span>, result1);
+    fflush(stdout);
+    free(result1);
+
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">char *result2 = fromPipe(outPipe, SIZE); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">fromPipe(outPipe, 0); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">printf("Result is [%s]\n", result2); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">fflush(stdout); </span><span style="color: #af0000;">*/</span>
+    <span style="color: #af0000;">/* </span><span style="color: #af0000;">free(result2); </span><span style="color: #af0000;">*/</span>
+
+    <span style="color: #008700;">int</span> <span style="color: #af5f00;">status</span>;
+    wait(&amp;status);
+
+    printf(<span style="color: #87005f;">"Fin: %d\n"</span>, status);
+    fflush(stdout);
+
+    exit(0);
+}
+</pre>
+</div>
+</div>
 </div>
 
+<div id="outline-container-sec-2-3" class="outline-3">
+<h3 id="sec-2-3">Нода</h3>
+<div class="outline-text-3" id="text-2-3">
+<div class="org-src-container">
+
+<pre class="src src-c" id="ext_control"><span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;stdio.h&gt;</span>
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">&lt;stdlib.h&gt;</span>
+
+<span style="color: #5f5f87;">#include</span> <span style="color: #87005f;">"runvfm64.h"</span>
+
+
+<span style="color: #008700;">int</span> <span style="color: #0000ff;">main</span>(<span style="color: #008700;">int</span> <span style="color: #af5f00;">argc</span>, <span style="color: #008700;">char</span> * <span style="color: #af5f00;">argv</span>[])
+{
+    <span style="color: #008700;">char</span> * <span style="color: #af5f00;">libf</span> = read_file_into_string(<span style="color: #87005f;">"./src64/jonesforth64.f"</span>);
+    <span style="color: #af00ff;">if</span> (<span style="color: #008787;">NULL</span> == libf)
+    {
+        printf(<span style="color: #87005f;">"Aborting: no lib.f file\n"</span>);
+        exit(-1);
+    }
+    <span style="color: #008700;">char</span> * <span style="color: #af5f00;">args</span>[] = { <span style="color: #87005f;">"forth64"</span>, <span style="color: #87005f;">"asd"</span>, <span style="color: #87005f;">"qwe"</span>, <span style="color: #008787;">NULL</span> };
+    <span style="color: #008700;">char</span> * <span style="color: #af5f00;">envp</span>[] = { <span style="color: #87005f;">"USER=test"</span>, <span style="color: #87005f;">"HOME=/home/test"</span>, <span style="color: #008787;">NULL</span> };
+
+    runvfm(<span style="color: #87005f;">"./forth64"</span>,
+           libf,
+           <span style="color: #87005f;">": ALFA .\" &#5788;do-beta-gamma&#5787;\" CR ;\n"</span>,
+           args,
+           envp,
+           <span style="color: #87005f;">"ALFA\n"</span>,
+           <span style="color: #87005f;">"hash"</span>
+           );
+
+    <span style="color: #af00ff;">return</span> 0;
+}
+</pre>
+</div>
+</div>
+</div>
+</div>
 <div id="outline-container-sec-3" class="outline-2">
 <h2 id="sec-3">Tangling</h2>
 <div class="outline-text-2" id="text-3">
