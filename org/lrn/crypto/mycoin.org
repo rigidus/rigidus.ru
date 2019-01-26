@@ -1,0 +1,1077 @@
+#+STARTUP: showall indent hidestars
+
+#+TITLE: Mycoin
+
+* О проекте
+
+Это рабочий прототип криптовалюты, протокола и кошелька, предназначенный для
+исследовательских целей.
+
+Он написан в [[file:../doc/literate-programming.org][литературном стиле]] на Common Lisp.
+
+* Features
+
+- BlockChain
+- Consensus: PoS, pBFT
+- Transactions
+  - IssueAsset
+  - RemoveAsset
+  - Transfer
+  - MassTransfer
+  - IssueAccount
+  - InvokeAccount
+- SmartAssets
+- SmartAccounts
+
+* Assets
+
+Одна из основных целей разработки - это обмен ценностью, которая выражена в так
+называемых "ассетах" (~assets~). Это эквивалент денежных единиц в традиционной системе
+денежного обращения, но здесь он имеет несколько дополнительных функций
+
+#+CAPTION: Данные ассета
+#+NAME: asset_flds
+  | version  | int               | Версия, от которой зависит способ работы с ассетом   |
+  | asset_id | string            | Уникальный идентификтор ассета                       |
+  | name     | string            | Человекочитаемое имя (не обязательно уникальное)     |
+  | descr    | text              | Описание ассета, заполняется при создании            |
+  | quantity | (or db-null int)  | Количество единиц ассета, может быть неопределено    |
+  | decimals | int               | Количество знаков после запятой для дробления ассета |
+  | owner    | (or db-null text) | Ключ владельца ассета                                |
+  | script   | (or db-null text) | Код, управляющий ассетом (может отсутствовать)       |
+
+Поле ~name~ должно всегда быть сопоставлено ~asset_id~ во избежание фрода, так как ноды
+сети не следят за уникальностью ~name~.
+
+Поле ~owner~ содержит публичный ключ, которым должна быть проверена транзакция
+~asset_reissue~, которая позволяет изменить поля уже выпущенного ассета. Если поле
+~owner~ содержит NULL - это явным образом запрещает обновление полей ассета.
+
+Поле ~script~ если не NULL, то содержит скрипт, который управляет обработкой транзакций
+с этим ассетом. Этот скрипт должен быть выполнен, когда нода обрабатывает любые
+операции над этим ассетом.
+
+Ассет создается транзакцией ~asset_issue~, удаление ассета не предусмотренно, поскольку
+кажется бессмысленным.
+
+#+NAME: asset_entity
+#+BEGIN_SRC lisp :tangle src/asset.lisp :noweb tangle :exports none :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  <<gen_entity("asset", "ассета", asset_flds)>>
+#+END_SRC
+
+Нода хранит ассеты и выполняет содержимое поля ~script~ при каждой транзакции, в
+которой есть этот ассет.
+
+* Accounts
+
+Аккаунты пользователей хранят информацию о принадлежащих им ассетах. Каждый аккаунт
+может владеть любым количеством единиц любого количества ассетов. Нода обновляет эту
+информацию при обработке транзакций.
+
+#+CAPTION: Данные аккаунта
+#+NAME: account_flds
+  | version    | int               | Версия, от которой зависит способ работы с аккаунтом |
+  | account_id | string            | Уникальный идентификтор аккаунта (публичный ключ)    |
+  | name       | string            | Имя владельца (не обязательно уникальное)            |
+  | descr      | text              | Описание, заполняется при создании                   |
+  | script     | (or db-null text) | Код, управляющий ассетом (может отсутствовать)       |
+
+Поле ~script~ если не NULL, то содержит скрипт, который нода исполняет, когда на
+аккаунт приходит транзакция. Выполнение скрипта тратит ~газ~, который должен быть
+приложен к такой транзакции. Выполнение скрипта может привести к возниконовению
+"эффектов", о которых будет сказано позже.
+
+#+NAME: asset_entity
+#+BEGIN_SRC lisp :tangle src/account.lisp :noweb tangle :exports none :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  <<gen_entity("account", "аккаунта", account_flds)>>
+#+END_SRC
+
+* Transactions
+
+Транзакции обеспечивают изменения состояния, которое хранят ноды сети.
+
+#+CAPTION: Данные транзакции
+#+NAME: transaction_flds
+  | version   | int    | Версия, от которой зависит способ работы с транзакцией |
+  | sender_id | string | Публичный ключ отправителя                             |
+  | recipient | string | Публичный ключ получателя                              |
+  | asset_id  | string | Идентификатор ассета                                   |
+  | gas       | int    | Кол-во приложенного газа                               |
+
+#+NAME: asset_entity
+#+BEGIN_SRC lisp :tangle src/transaction.lisp :noweb tangle :exports none :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  <<gen_entity("transaction", "транзакции", transaction_flds)>>
+#+END_SRC
+
+* Use cases
+
+Все нужно проектировать сверху вниз, за исключением фундамента, с которого нужно
+начинать (c) Алан Перлис.
+
+Здесь рассмотрим самые простые сценарии, для которых может быть использована сеть, что
+автоматически приведет нас к тому, кто её использует и каким образом. Сценарии нужны
+чтобы понять взаимосвязи между объектами в системе.
+
+Для демонстрации мы должны выполнить последовательно следующие сценарии:
+- Старт ноды
+- Поиск соседей
+- Создание начального состояния
+- Синхронизация состояния
+- Формирование кворума
+- Создание ассета
+- Подтверждение ассета
+- Отправка перевода
+- Подтверждение перевода
+- Переформирование кворума
+- Создание смарт-контракта
+- Активация смарт-контракта
+- Применение эффектов
+
+** Start of Node
+
+При старте нода должна прочесть свой конфигурационный файл, в котором указан адрес и
+порт, на котором нода будет ждать команды. Для наглядности там будет развернут
+веб-интерфейс.
+
+Нода ожидает найти свой конфиг в каталоге, в котором была запущена.
+
+#+NAME: config
+#+BEGIN_SRC lisp
+  (load
+   (make-pathname :directory (sb-posix:getcwd)
+                  :name "node"
+                  :type "cfg"))
+#+END_SRC
+
+Образец конфига будет таким:
+
+#+NAME: config_example
+#+BEGIN_SRC lisp :tangle node.cfg :noweb tangle :exports code :padline no
+  ;;;; <<copyright>>
+
+  ;;;; Configuration for Node of MyCoin
+
+  (in-package #:mycoin)
+
+  (defparameter *node-addr* "127.0.0.1")
+  (defparameter *node-port* 6660)
+
+  (defparameter *start-neighbors* 6660)
+  (defparameter *end-neighbors*   6669)
+#+END_SRC
+
+** Finding neighbors
+
+Процедура поиска соседей пока будет очень простой и рассчитанной только на локальное
+разветрывание - нода будет обращаться по диапазону портов с запросом ~who-are-you~ и
+если ответ соответствует ожиданиям - заносить адрес в коллекцию ~neighbors~
+
+#+NAME: get_neighbors
+#+BEGIN_SRC lisp
+  (in-package #:mycoin)
+
+  (defun get-neighbors ()
+    (loop :for port
+       :from *start-neighbors* :to *end-neighbors*
+       :when (handler-case
+                 (drakma:http-request
+                  (format nil "http://localhost:~A/who-are-you" port))
+               ((or USOCKET:CONNECTION-REFUSED-ERROR USOCKET:TIMEOUT-ERROR)
+                   (condition)
+                 nil))
+       :collect port))
+
+  ;; (get-neighbors)
+#+END_SRC
+
+Для того чтобы это сработало нужно предусмотреть маршрут для запроса ~who-are-you~:
+
+#+NAME: route_who_are_you
+#+BEGIN_SRC lisp
+  (in-package #:mycoin)
+
+  (restas:define-route who-are-you ("/who-are-you")
+    (format nil "MyCoin Node #~A" *node-port*))
+#+END_SRC
+
+** Genesis
+
+Создание начального состояния - это специальный вид блока данных, содержащий:
+- список известных ассетов
+- список известных аккаунтов
+- список транзакций, которые создают ассеты "из воздуха" и кладут их на аккаунты
+
+** Transfer
+
+~Алиса~ хочет передать ~Бобу~ некоторую сумму ~amount~. Для этого она использует
+программу ~Кошелек~, которая создает ~Транзакцию~.
+
+
+* Установка и настройка
+
+Ключевой элемент проекта - узел распределенной децентрализованной сети, называемый
+~Node~. Каждый из этих узлов имеет свой адрес и порт, при развертывании на локальной
+машине адрес будет одним и тем же: 127.0.0.1, меняется только порт.
+
+Для удобства каждый узел имеет веб интерфейс, размещенный на этом порту. Этот
+веб-интерфейс показывает состояние ноды и имеет JSON-RPC API для работы с нодой. Все
+взаимодействие с нодой происходит через это API.
+
+Node работает внутри образа ~Common Lisp~ под управлением веб-сервера ~hunchentoot~. В
+качестве высокоуровневой библиотеки используется [[https://github.com/archimag/restas][RESTAS]], которую написал Андрей
+Москвитин (archimag).
+
+Веб-сервер, библиотеку RESTAS и все необходимые зависимости лучше всего установить при
+помощи менеджера библиотек [[http://quicklisp.org][Quicklisp]].
+
+Чтобы запустить проект и попробовать его в работе, пройдите раздел "Легкий
+старт". Остальные разделы потребуются вам чтобы обеспечить инструментарий для
+литературного программирования.
+
+** Легкий старт
+
+Установите ~git~ - систему управления версиями, если она еще не
+установлена:
+
+#+BEGIN_SRC sh
+  sudo apt-get install git
+#+END_SRC
+
+Клонируйте репозиторий, который содержит проект:
+
+#+BEGIN_SRC sh
+  mkdir -p ~/repo
+  cd ~/repo
+  git clone git@github.com:rigidus/rigidus.ru.git
+#+END_SRC
+
+Установите ~sbcl~ - реализацию Common Lisp:
+
+#+BEGIN_SRC sh
+  sudo apt-get install sbcl
+#+END_SRC
+
+Установите quicklisp - менеджер библиотек для Common Lisp:
+
+#+BEGIN_SRC sh
+  mkdir -p ~/build
+  cd ~/build
+  wget https://beta.quicklisp.org/quicklisp.lisp
+#+END_SRC
+
+и запустить его с помощью sbcl:
+
+#+BEGIN_SRC sh
+  sbcl --load quicklisp.lisp
+#+END_SRC
+
+Теперь мы внутри ~quicklisp~-а, работающего в образе ~sbcl~. Попросим его добавить себя
+в инициализационный файл, чтобы ~quicklisp~ загружался каждый раз, когда стартует
+~sbcl~:
+
+#+BEGIN_SRC lisp
+  (ql:add-to-init-file)
+#+END_SRC
+
+Выйдите из лиспа:
+
+#+BEGIN_SRC lisp
+  (quit)
+#+END_SRC
+
+Откройте файл ~~/.sbclrc~ и добавьте в конец файла следующие строки,
+чтобы ~quicklisp~ знал, где находится репозиторий с проектом:
+
+#+BEGIN_SRC lisp
+  ,#+quicklisp
+  (mapcar #'(lambda (x)
+              (pushnew x ql:*local-project-directories*))
+          (list #P"~/repo/rigidus.ru/org/lrn/crypto/"))
+#+END_SRC
+
+Снова запустите ~sbcl~
+
+#+BEGIN_SRC sh
+  sbcl
+#+END_SRC
+
+И в нем загрузите проект:
+
+#+BEGIN_SRC lisp
+  (ql:quickload "mycoin")
+#+END_SRC
+
+Наберите в адресной строке броузера ~http://localhost:9994~ и
+загрузите главную страницу.
+
+* Assembly
+** System definition
+
+Файл определения системы представляет собой каркас проекта и содержит
+в себе определение системы:
+- библиотеки, от которых зависит система
+- набор всех файлов, который должны быть загружены в лисп-процесс.
+
+Определение системы экпортируется из литературного исходника в
+корневой каталог проекта.
+
+#+NAME: defsystem
+#+BEGIN_SRC lisp :tangle mycoin.asd :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (asdf:defsystem #:mycoin
+    :version      "0.0.1"
+    :author       "rigidus <i.am.rigidus@gmail.com>"
+    :licence      "AGPLv3"
+    :description  "mycoincurrency for experimental purposes"
+    :depends-on   (#:anaphora
+                   #:closer-mop
+                   #:cl-ppcre
+                   #:cl-base64
+                   #:cl-json
+                   #:cl-html5-parser
+                   #:cl-who
+                   #:cl-fad
+                   #:optima
+                   #:closure-template
+                   #:drakma
+                   #:restas
+                   #:restas-directory-publisher
+                   #:split-sequence
+                   #:postmodern
+                   #:restas
+                   #:optima
+                   #:fare-quasiquote-extras
+                   #:fare-quasiquote-optima
+                   #:ironclad)
+    :serial       t
+    :components   ((:module "src"
+                            :serial t
+                            :pathname "src"
+                            :components ((:static-file "templates.htm")
+                                         (:file "prepare")
+                                         (:file "defmodule")
+                                         (:file "entity")
+                                         (:file "render")
+                                         (:file "routes")
+                                         (:file "init")
+                                         ))))
+#+END_SRC
+
+** Prepare to start
+
+Этот файл (~prepare.lisp~) компилирует шаблоны и создает пакет ~TPL~. Он делает это еще
+до объявления базового пакета. Для того чтобы в процессе загрузки все ссылки на этот
+пакет были правильно разрешены, необходимо, чтобы создание пакета завершилось к моменту
+появления ссылок на него. А для этого нужно помещать компиляцию в отдельный файл.
+
+Однако тогда у нас возникает проблема, заключающаяся в том, что ~base-dir~, путь, от
+которого отсчитываются все пути придется объявлять дважды - вне пакета и внутри
+него. Чтобы не иметь необходимость вносить изменения в два места одновременно, мы
+решаем эту проблему подстановкой средствами литературного программирования:
+
+#+NAME: base_dir
+#+BEGIN_SRC lisp
+  (merge-pathnames
+   (make-pathname :directory '(:relative "repo/rigidus.ru/org/lrn/crypto"))
+   (user-homedir-pathname))
+#+END_SRC
+
+
+#+NAME: prepare
+#+BEGIN_SRC lisp :tangle src/prepare.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+
+  (closure-template:compile-template
+   :common-lisp-backend (merge-pathnames
+                         (make-pathname :name "templates" :type "htm")
+                         (merge-pathnames
+                          (make-pathname :directory '(:relative "src"))
+                          <<base_dir>>)))
+#+END_SRC
+
+** Определение пакетов
+
+Что такое пакет и зачем он нужен лучше всего прочитать [[file:doc/packages-in-lisp.org][тут]]. Обычно определение пакетов
+экспортируется в файл ~src/package.lisp~, но этот проект пока слишком простой, он
+содержит всего один пакет (если не считать html-шаблонов)
+
+Поэтому определение пакета происходит в разделе [[*Определение модуля][Определение модуля]]
+
+А вот текущий пакет, на случай переименования может быть подставлен средствами
+литературного прогрммирования:
+
+#+NAME: package
+#+BEGIN_SRC lisp
+  mycoin
+#+END_SRC
+
+** Утилиты
+
+Несколько маленьких утилитарных функций определены здесь. При экспорте они подключатся
+в тот же файл, где происходит определение модуля. Это функции:
+- отладочного вывода и ошибок
+- получения содержимого директории
+
+#+NAME: utility
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (define-condition pattern-not-found-error (error)
+    ((text :initarg :text :reader text)))
+
+  (defun get-directory-contents (path)
+    "Функция возвращает содержимое каталога"
+    (when (not (equal "/" (coerce (last (coerce path 'list)) 'string)))
+      (setf path (format nil "~A/" path)))
+    (directory (format nil "~A*.*" path)))
+
+  ;; Превращает инициализированные поля объекта в plist
+  (defun get-obj-data (obj)
+    (let ((class (find-class (type-of obj)))
+          (result))
+      (loop :for slot :in (closer-mop:class-direct-slots class) :collect
+         (let ((slot-name (closer-mop:slot-definition-name slot)))
+           (when (slot-boundp obj slot-name)
+             (setf result
+                   (append result (list (intern (symbol-name slot-name) :keyword)
+                                        (funcall slot-name obj)))))))
+      result))
+
+  ;; Assembly WHERE clause
+  (defun make-clause-list (glob-rel rel args)
+    (append (list glob-rel)
+            (loop
+               :for i
+               :in args
+               :when (and (symbolp i)
+                          (getf args i)
+                          (not (symbolp (getf args i))))
+               :collect (list rel i (getf args i)))))
+
+  ;; Макросы для корректного вывода ошибок
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)  (pprint ,var)) 1))
+
+  (defmacro err (var)
+    `(error (format nil "ERR:[~A]" (bprint ,var))))
+
+  ;; Отладочный вывод
+  (defparameter *dbg-enable* t)
+  (defparameter *dbg-indent* 1)
+
+  (defun dbgout (out)
+    (when *dbg-enable*
+      (format t (format nil "~~%~~~AT~~A" *dbg-indent*) out)))
+
+  (defmacro dbg (frmt &rest params)
+    `(dbgout (format nil ,frmt ,@params)))
+
+  ;; (macroexpand-1 '(dbg "~A~A~{~A~^,~}" "zzz" "34234" '(1 2 3 4)))
+
+  (defun anything-to-keyword (item)
+    (intern (string-upcase (format nil "~a" item)) :keyword))
+
+  (defun alist-to-plist (alist)
+    (if (not (equal (type-of alist) 'cons))
+        alist
+        ;;else
+        (loop
+           :for (key . value)
+           :in alist
+           :nconc (list (anything-to-keyword key) value))))
+
+  ;; Чтобы выводить коллекции напишем макрос
+  (defmacro with-collection ((item collection) &body body)
+    `(loop :for ,item :in ,collection :collect
+        ,@body))
+
+  ;; Чтобы выводить элемент коллекции напишем макрос
+  (defmacro with-element ((item elt) &body body)
+    `(let ((,item ,elt))
+       (list
+        ,@body)))
+
+  (defun replace-all (string part replacement &key (test #'char=))
+    "Returns a new string in which all the occurences of the part
+           is replaced with replacement."
+    (with-output-to-string (out)
+      (loop with part-length = (length part)
+         for old-pos = 0 then (+ pos part-length)
+         for pos = (search part string
+                           :start2 old-pos
+                           :test test)
+         do (write-string string out
+                          :start old-pos
+                          :end (or pos (length string)))
+         when pos do (write-string replacement out)
+         while pos)))
+
+  (defun explore-dir (path)
+    (let ((raw (directory path))
+          (dirs)
+          (files))
+      (mapcar #'(lambda (x)
+                  (if (cl-fad:directory-pathname-p x)
+                      (push x dirs)
+                      (push x files)))
+              raw)
+      (values dirs files raw)))
+
+  ;; clear-db
+  (defun drop (tbl-lst)
+    (let ((tables tbl-lst))
+      (flet ((rmtbl (tblname)
+               (when (with-connection *db-spec*
+                       (query (:select 'table_name :from 'information_schema.tables :where
+                                       (:and (:= 'table_schema "public")
+                                             (:= 'table_name tblname)))))
+                 (with-connection *db-spec*
+                   (query (:drop-table (intern (string-upcase tblname))))))))
+        (loop :for tblname :in tables :collect
+           (rmtbl tblname)))))
+
+  ;; contains
+  (defun contains (string pattern)
+    (if (search pattern string)
+        t))
+
+  ;; empty
+  (defun empty (string)
+    (if (or (null string)
+            (equal "" string))
+        t))
+   #+END_SRC
+
+
+** Copyright
+
+Копирайт вставляется в каждый сгенерированный файл для того чтобы соблюсти требования
+лицензии AGPLv3
+
+#+NAME: copyright
+#+BEGIN_SRC lisp
+  Copyright © 2014-2018 Glukhov Mikhail. All rights reserved.
+  Licensed under the GNU AGPLv3
+#+END_SRC
+
+** Main module definition
+
+Файл определения модуля экспортируется в каталог ~src~. Во время экспорта в него
+включаются утилиты.
+
+#+NAME: defmodule
+#+BEGIN_SRC lisp :tangle src/defmodule.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (restas:define-module #:mycoin
+    (:use #:closer-mop #:cl #:iter #:alexandria #:anaphora #:postmodern)
+    (:shadowing-import-from :closer-mop
+                            :defclass
+                            :defmethod
+                            :standard-class
+                            :ensure-generic-function
+                            :defgeneric
+                            :standard-generic-function
+                            :class-name))
+
+  (in-package #:mycoin)
+
+  ;; special syntax for pattern-matching - ON
+  (named-readtables:in-readtable :fare-quasiquote)
+
+  ;; Подключение к базе данных PostgreSQL
+  (defvar *db-name* "mycoin")
+  (defvar *db-user* "crypto")
+  (defvar *db-pass* "9Jb17sqGQtZb927hRp37Hbspba7p34L")
+  (defvar *db-serv* "localhost")
+
+  (defvar *db-spec* (list *db-name* *db-user* *db-pass* *db-serv*))
+
+  ;; Здесь подключаются утилиты
+  <<utility>>
+
+  ;; Механизм трансляции путей
+  <<pathname-translations>>
+
+  ;; Работа с html tree
+  <<html_s_tree>>
+
+  ;; Механизм преобразования страниц
+  <<enobler>>
+
+  ;; Читаем и применяем конфиг
+  <<config>>
+#+END_SRC
+
+** Initialization
+
+Эта часть запускает сервер на порту, который [TODO:gmm] должна брать из конфига
+
+#+NAME: init
+#+BEGIN_SRC lisp :tangle src/init.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  ;; start
+  (restas:start '#:mycoin :port *node-port*)
+  (restas:debug-mode-on)
+  ;; (restas:debug-mode-off)
+  (setf hunchentoot:*catch-errors-p* t)
+#+END_SRC
+
+** Path translation
+
+Трансляция путей производится с помощью встроенного механизма
+~logical-pathname-translations~
+
+По-умолчанию считается, что директория, от которой отсчитываются пути: ~base-dir~. Я не
+стал создавать отдельный конфигурационный файл для этой информации.
+
+#+NAME: pathname-translations
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (defparameter *base-dir*
+    <<base_dir>>)
+
+  (defparameter *base-path* (directory-namestring *base-dir*))
+
+  ;; (setf (logical-pathname-translations "org")
+  ;;       `(("source;*.*"
+  ;;          ,(concatenate 'string *base-path* "org/*.org"))
+  ;;         ("publish;*.*"
+  ;;          ,(concatenate 'string *base-path* "www/*.html"))))
+
+  ;; (translate-logical-pathname "org:source;articles;about.txt")
+  ;; ;; #P"/home/rigidus/repo/rigidus.ru/org/articles/about.org"
+  ;; (translate-logical-pathname "org:source;articles;emacs;about.txt")
+  ;; ;; #P"/home/rigidus/repo/rigidus.ru/org/articles/emacs/about.org"
+  ;; (translate-logical-pathname "org:publish;articles;about.txt")
+  ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/about.org"
+  ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
+  ;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
+#+END_SRC
+
+** Codegeneration
+
+Требуется расширить emacs функциями, которые будет генерировать код из таблиц
+литерурного исходника.
+
+Чтобы emacs не запрашивал подтверждение на каждый вызов таких функций, установим эту
+настройку:
+
+#+NAME: gen_org_confirm
+#+BEGIN_SRC emacs-lisp
+  (setq org-confirm-babel-evaluate nil)
+#+END_SRC
+
+Начнем с генерации кода из таблицы полей:
+
+#+NAME: gen_fields
+#+BEGIN_SRC emacs-lisp
+  (defun gen-fields (rows)
+    (let ((result))
+      (push "\n" result)
+      (push (format "  (%s\n" (butlast (car rows))) result)
+      (mapcar #'(lambda (x)
+                  (push (format "   %s\n" (butlast x)) result))
+              (butlast (cdr rows)))
+      (push (format "   %s)" (butlast (car (last rows)))) result)
+      (mapconcat 'identity (reverse result) "")))
+#+END_SRC
+
+Теперь напишем код, который генерирует код для состояний конечного автомата:
+
+#+NAME: gen_states
+#+BEGIN_SRC emacs-lisp
+  (defun gen-states (rows)
+    (let ((result)
+          (hash (make-hash-table :test #'equal))
+          (states))
+      (dolist (elt rows nil)
+        (puthash (cadr elt) nil hash)
+        (puthash (cadr (cdr elt))  nil hash))
+      (maphash (lambda (k v)
+                 (push k states))
+               hash)
+      (push "\n" result)
+      (push "  (" result)
+      (dolist (elt (butlast states))
+        (push (format ":%s " elt) result))
+      (push (format ":%s)" (car (last states))) result)
+      (mapconcat 'identity (reverse result) "")))
+#+END_SRC
+
+И добавим к этом генератор действий - т.е. переходов между состояниями:
+
+#+NAME: gen_actions
+#+BEGIN_SRC emacs-lisp
+  (defun gen-actions (rows)
+    (let ((result))
+      (push "\n" result)
+      (let ((x (car rows)))
+        (push (format "  ((:%s :%s :%s)" (cadr x) (cadr (cdr x)) (car x)) result))
+      (if (equal 1 (length rows))
+          (push ")" result)
+        (progn
+          (push "\n" result)
+          (mapcar #'(lambda (x)
+                      (push (format "   (:%s :%s :%s)\n" (cadr x) (cadr (cdr x)) (car x)) result))
+                  (cdr (butlast rows)))
+          (let ((x (car (last rows))))
+            (push (format "   (:%s :%s :%s))" (cadr x) (cadr (cdr x)) (car x)) result))))
+      (mapconcat 'identity (reverse result) "")))
+#+END_SRC
+
+Соберем все это в один файл, чтобы загружать перед кодогенерацией проекта:
+
+#+NAME: generators
+#+BEGIN_SRC emacs-lisp :tangle generators.el :noweb tangle :exports code :padline no :comments link
+  ;; <<copyright>>
+
+  <<gen_org_confirm>>
+
+  <<gen_fields>>
+
+  <<gen_states>>
+
+  <<gen_actions>>
+#+END_SRC
+
+И загрузим его:
+
+#+NAME: generators
+#+BEGIN_SRC emacs-lisp
+  (load-file "generators.el")
+#+END_SRC
+
+Теперь у нас есть все необходимое, чтобы написать вызываемые при tangle генераторы
+сущностей и автоматов:
+
+#+NAME: gen_entity
+#+BEGIN_SRC emacs-lisp :var name="" docstring="" flds='() :exports none
+  (let ((result))
+    (push (format "(define-entity %s \"Сущность %s\"" name docstring) result)
+    (push (gen-fields flds) result)
+    (push ")\n" result)
+    (push "\n" result)
+    (push (format "(make-%s-table)\n" name) result)
+    (mapconcat 'identity (reverse result) ""))
+#+END_SRC
+
+#+NAME: gen_automat
+#+BEGIN_SRC emacs-lisp :var name="" docstring="" flds='() states='() :exports none
+  (let ((result))
+    (push (format "(define-automat %s \"Автомат %s\"" name docstring) result)
+    (push (gen-fields flds) result)
+    (push (gen-states states) result)
+    (push (gen-actions states) result)
+    (push ")\n" result)
+    (mapconcat 'identity (reverse result) ""))
+#+END_SRC
+
+* Html-tree
+
+В процессе работы бывает очень полезным представление страницы в виде дерева
+s-выражений. Для того чтобы разбирать html в дерево и собирать его обратно используется
+парсер из библиотеки ~html5-parser~ и простой сборщик, сохраняющий отступы:
+
+#+NAME: html_s_tree
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  <<html_to_tree>>
+  <<tree_to_html>>
+#+END_SRC
+
+** Парсинг html
+
+Разбираем html в дерево s-выражений
+
+#+NAME: html_to_tree
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (defun html-to-tree (html)
+    ;; (html5-parser:node-to-xmls
+    (html5-parser:parse-html5-fragment html :dom :xmls))
+#+END_SRC
+
+** Сборка в html
+
+#+NAME: tree_to_html
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (defun tree-to-html (tree &optional (step 0))
+    (macrolet ((indent ()
+                 `(make-string (* 3 step) :initial-element #\Space)))
+      (labels ((paired (subtree)
+                 (format nil "~A<~A~A>~%~A~4:*~A</~A>~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))
+                         (format nil "~{~A~}"
+                                 (progn
+                                   (incf step)
+                                   (let ((ret (mapcar #'(lambda (x)
+                                                          (subtree-to-html x step))
+                                                      (cddr subtree))))
+                                     (decf step)
+                                     ret)))))
+               (singled (subtree)
+                 (format nil "~A<~A~A />~%"
+                         (indent)
+                         (car subtree)
+                         (format nil "~:[~; ~1:*~{~A~^ ~}~]"
+                                 (mapcar #'(lambda (attr)
+                                             (let ((key (car attr))
+                                                   (val (cadr attr)))
+                                               (format nil "~A=\"~A\"" key val)))
+                                         (cadr subtree)))))
+               (subtree-to-html (subtree &optional (step 0))
+                 (cond ((stringp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((numberp subtree) (format nil "~A~A~%" (indent) subtree))
+                       ((listp   subtree)
+                        (let ((tag (car subtree)))
+                          (cond ((or (equal tag "img")
+                                     (equal tag "link")
+                                     (equal tag "meta"))  (singled subtree))
+                                (t (paired subtree)))))
+                       (t (format nil "[:err:~A]" subtree)))))
+        (reduce #'(lambda (a b) (concatenate 'string a b))
+                (mapcar #'(lambda (x) (subtree-to-html x step))
+                        tree)))))
+#+END_SRC
+
+* Преобразование страниц
+
+Здесь механизм, который разбирает файлы, строит из них дерево s-выражений и
+осуществляет его трансформацию.
+
+Я обнаружил определенную проблему с ним, связанную с выводом листингов внутри тега
+~<pre></pre>~ - из-за отступов, которые формирует ~tree-to-html~ сьезжает
+форматирование исходного кода. Поэтому, до написания своего парсера, учитывающего эти
+аспекты, я закомментировал такую обработку, тем более, что в данный момент
+трансформация заключается просто в присоединении шаблона, содержащего трекеры
+статистики.
+
+#+NAME: enobler
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (defun enobler (pathname &optional dbg)
+    (let* ((file-contents (alexandria:read-file-into-string pathname))
+           (onestring (cl-ppcre:regex-replace-all "(\\n|\\s*$)" file-contents (if dbg "" " ")))
+           ;; (tree (html-to-tree onestring))
+           ;; (inject-css '("link" (("href" "/css/style.css") ("rel" "stylesheet") ("type" "text/css"))))
+           ;; (replace-css #'(lambda (in)
+           ;;                  (optima:match in
+           ;;                    (`("style" (("type" "text/css")) ,_) inject-css))))
+           ;; (remove-css (maptree-transform replace-css tree))
+           ;; (inject-js '("script" (("src" "scripts.js"))))
+           ;; (replace-js  #'(lambda (in)
+           ;;                  (optima:match in
+           ;;                    (`("script" (("type" "text/javascript")) ,_) inject-js))))
+           ;; (remove-js (maptree-transform replace-js remove-css))
+           ;; (result tree)
+      ;; (if dbg
+      ;;     result
+      ;;     (format nil "~A~A~%~A~%~A"
+      ;;             ;; "<!DOCTYPE html>\n"
+      ;;             ""
+      ;;             ;; (tree-to-html result)
+      ;;             file-contents
+      ;;             (tpl:stat)
+      ;;             "  <div id=\"linker\"><a href=\"/\">Home</a></div>"
+                )
+      onestring
+      ))
+#+END_SRC
+
+* Рендеринг
+
+RESTAS использует концепцию ~рендера~ чтобы отделить отображение страницы от ее
+маршрута. Нам надо определить рендер для вывода orgmode-страниц:
+
+#+NAME: render
+#+BEGIN_SRC lisp :tangle src/render.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  (defclass orgmode-handler () ())
+
+  (defmethod restas:render-object ((renderer orgmode-handler) (file pathname))
+    ;; NOTE: Оставлено как пример вызова CGI
+    ;; (cond
+    ;;   ((and (string= (pathname-type file) "cgi"))
+    ;;    (hunchentoot-cgi::handle-cgi-script file))
+    ;;   (t
+    ;;    (call-next-method)))
+    (enobler file))
+#+END_SRC
+
+* Маршрутизация
+
+Маршрутизация осуществляется средствами библиотеки ~RESTAS~, документация по которой
+доступна [[http://github.com/archimag/restas/][здесь]].
+
+#+NAME: routes
+#+BEGIN_SRC lisp :tangle src/routes.lisp :noweb tangle :exports code :padline no :comments link
+  ;;;; <<copyright>>
+  (in-package #:mycoin)
+
+  <<route_static_files>>
+  <<route_404>>
+  <<route_robots>>
+  <<route_orgmode>>
+  <<route_pages>>
+#+END_SRC
+
+** Статические файлы
+
+Для всех файлов, которые должны отдаваться "как есть", таких как картинки, скрипты и
+стили предусмотрены соответствующие маршруты:
+
+#+NAME: route_static_files
+#+BEGIN_SRC lisp
+  (in-package #:mycoin)
+
+  ;; (restas:mount-module -css- (#:restas.directory-publisher)
+  ;;   (:url "/css/")
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "css"))
+  ;;                     *base-dir*)))
+
+  ;; (restas:mount-module -img- (#:restas.directory-publisher)
+  ;;   (:url "/img/")
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "img"))
+  ;;                     *base-dir*)))
+
+  ;; (restas:mount-module -js- (#:restas.directory-publisher)
+  ;;   (:url "/js/")
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "js"))
+  ;;                     *base-dir*)))
+
+  ;; (restas:mount-module -resources- (#:restas.directory-publisher)
+  ;;   (:url "/resources")
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "resources"))
+  ;;                     *base-dir*)))
+#+END_SRC
+
+** 404 страница
+
+Для ненайденных страниц мы определяем страницу с 404 ошибкой.
+
+[TODO:gmm] - Сделать ее более функциональной и красивой
+
+#+NAME: route_404
+#+BEGIN_SRC lisp
+  (in-package #:mycoin)
+
+  (defparameter *log-404* nil)
+
+  (defun page-404 (&optional (title "404 Not Found") (content "Страница не найдена"))
+    "404 Not Found")
+
+  (restas:define-route not-found-route ("*any")
+    (push any *log-404*)
+    (restas:abort-route-handler
+     (page-404)
+     :return-code hunchentoot:+http-not-found+
+     :content-type "text/html"))
+#+END_SRC
+
+** Страница robots.txt
+
+Для указаний поисковым краулерам делаем страницу ~robots.txt~
+
+#+NAME: route_robots
+#+BEGIN_SRC lisp
+  (in-package #:mycoin)
+
+  (restas:define-route robots ("/robots.txt")
+    (format nil "User-agent: *~%Disallow: "))
+#+END_SRC
+
+** Страницы orgmode
+
+Для отображения страниц, экспортированных из orgmode, используется ~render-method~,
+который преобразует код страницы перед выдачей пользователю:
+
+#+NAME: route_orgmode
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  ;; (restas:mount-module -base- (#:restas.directory-publisher)
+  ;;   (:url "/")
+  ;;   (:render-method (make-instance 'orgmode-handler))
+  ;;   (restas.directory-publisher:*directory*
+  ;;    (merge-pathnames (make-pathname :directory '(:relative "www"))
+  ;;                     *base-dir*)))
+
+  (restas:mount-module -doc- (#:restas.directory-publisher)
+    (:url "/doc")
+    (:render-method (make-instance 'orgmode-handler))
+    (restas.directory-publisher:*directory*
+     (merge-pathnames (make-pathname :directory '(:relative "www/doc"))
+                      ,*base-dir*)))
+#+END_SRC
+
+** Маршруты страниц
+
+Для всех остальных страниц маршруты определены напрямую, так, чтобы ведомый слэш не
+приводил к появляению 404-ой ошибки:
+
+#+NAME: route_pages
+#+BEGIN_SRC lisp
+  (in-package :mycoin)
+
+  (restas:define-route index ("/")
+    ;; (enobler (translate-logical-pathname "org:publish;index"))
+    "mainpage"
+    )
+
+  ;; (restas:define-route index.html ("/index.html")
+  ;;   (enobler (translate-logical-pathname "org:publish;index")))
+
+  ;; (defmacro def/route (name param &body body)
+  ;;   `(progn
+  ;;      (restas:define-route ,name ,param
+  ;;        ,@body)
+  ;;      (restas:define-route
+  ;;          ,(intern (concatenate 'string (symbol-name name) "/"))
+  ;;          ,(cons (concatenate 'string (car param) "/") (cdr param))
+  ;;        ,@body)
+  ;;      (restas:define-route
+  ;;          ,(intern (concatenate 'string (symbol-name name) ".html"))
+  ;;          ,(cons (concatenate 'string (car param) ".html") (cdr param))
+  ;;        ,@body)))
+
+  ;; (def/route research ("research")
+  ;;   (enobler (translate-logical-pathname "org:publish;research")))
+
+  ;; (def/route slides ("slides")
+  ;;   (enobler (translate-logical-pathname "org:publish;slides")))
+
+  ;; (def/route projects ("projects")
+  ;;   (enobler (translate-logical-pathname "org:publish;projects")))
+
+  <<route_who_are_you>>
+#+END_SRC
