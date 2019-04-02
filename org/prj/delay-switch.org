@@ -28,7 +28,7 @@
 В ОС Ubuntu 16.04 установим =Arduino IDE 1.8.9= с сайта https://www.arduino.cc запустив
 в терминале =./install.sh=
 
-** COMMENT Blinking for relay
+** Blinking for relay
 
 Чтобы проверить работоспособность платы и модуля расширения загрузим следующий скетч:
 
@@ -81,6 +81,8 @@
   sudo usermod -a -G dialout $USER
 #+END_SRC
 
+** Button
+
 Теперь нам потребуется подключить кнопку на 8 пин. Резистор на 100 Ом подтягивает 8
 пин к земле, когда кнопка не нажата:
 
@@ -88,17 +90,17 @@
 
 #+BEGIN_SRC c
   const int relay_1 = 4;
-  const int button_1 = 8;
+  const int btn_1 = 8;
 
   int State = 0;
 
   void setup()  {
       pinMode(relay_1, OUTPUT);
-      pinMode(button_1, INPUT);
+      pinMode(btn_1, INPUT);
   }
 
   void loop()  {
-      State = digitalRead(button_1);
+      State = digitalRead(btn_1);
 
       if (State) {
           digitalWrite(relay_1,HIGH);
@@ -115,49 +117,66 @@
 Здесь мы добавляем задержку
 
 #+BEGIN_SRC c
-  const int button_1 = 8;
-  const int relay_1 =  4;
-
-  boolean relay_1_state = LOW;
-  boolean previous_button_1_state = HIGH;
-  boolean button_1_state = LOW;
-
-  long duration = 0;
-
-  unsigned long previous_millis = 0;
-  const long interval = 1000;
+  const int btn_1         = 8;
+  const int relay_1       = 4;
+  const long interval     = 1000;
+  const long period       = 4000;
+  long duration           = 0;
+  boolean prev_latch      = LOW;
+  boolean latch           = LOW;
+  unsigned long prev_mils = 0;
+  boolean btn_pressed     = false;
+  boolean state           = LOW;
 
   void setup()
   {
+      Serial.begin(9600);
       pinMode(relay_1, OUTPUT);
-      pinMode(button_1,INPUT);
+      pinMode(btn_1,INPUT);
   }
 
   void loop()
   {
-      unsigned long current_millis = millis();
+      unsigned long cur_mils = millis();
 
-      if ( (current_millis - previous_millis >= interval)  && (button_1_state == HIGH) ) {
-          previous_millis = current_millis;
-          if ( LOW == relay_1_state ) {
-              relay_1_state = HIGH;
+      if (HIGH == digitalRead(btn_1)) {
+          btn_pressed = true;
+          Serial.println("btn_pressed");
+      } else {
+          if (btn_pressed) {
+              btn_pressed = false;
+              if (HIGH == state) {
+                  Serial.println("switch off");
+                  state = LOW;
+                  Serial.println("state = LOW");
+                  duration = 0;
+              } else {
+                  Serial.println("switch on");
+                  state = HIGH;
+                  Serial.println("state = HIGH");
+                  duration = millis() + period;
+                  Serial.print(" duration = "); Serial.println(duration);
+              }
           }
-          if (millis() >= duration) {
-              previous_button_1_state = button_1_state;
-              button_1_state = LOW;
-              relay_1_state = LOW;
+          if (state == HIGH) {
+              if (cur_mils - prev_mils >= interval) {
+                  Serial.print("cur_mils - prev_mils = ");
+                  Serial.println(cur_mils - prev_mils);
+                  prev_mils = cur_mils;
+                  if (cur_mils >= duration) {
+                      state = LOW;
+                      Serial.println("millis() >= duration (is over);\n state = LOW;\n latch = LOW");
+                  } else {
+                      Serial.print("millis() - duration = ");
+                      Serial.println(cur_mils);
+                  }
+              }
           }
-          digitalWrite(relay_1, relay_1_state);
-      }
-
-      if ( digitalRead(button_1) == HIGH ) {
-          if (HIGH == previous_button_1_state) {
-              button_1_state = HIGH;
-          } else {
-              button_1_state = LOW;
+          latch = state;
+          if ( latch != prev_latch ) {
+              prev_latch = latch;
+              digitalWrite(relay_1, latch); Serial.print("=> "); Serial.println(latch);
           }
-          delay(50); // debouncing
-          duration = millis() + 2000;
       }
   }
 #+END_SRC
