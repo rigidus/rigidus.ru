@@ -3,12 +3,12 @@
 
 #+TITLE: Выключатель с задержкой выключения
 
-* Интро
+* Intro
 
 Это учебно-тестовый проект, в котором на примере простой схемы можно пройти все этапы
 проектирования электронного устройства на микроконтроллере.
 
-* Задача
+* Task
 
 Требуется собрать устройство, управляемое кнопкой по следующему алгоритму:
 - В состоянии "выключено" нажатие кнопки приводит к включению нагрузки и переходу в
@@ -21,47 +21,49 @@
 Применение: устройство может служить выключателем света в туалете/ванной комнате,
 предотвращая ситуацию "забыли выключить"
 
-* Прототипирование
+* Prototyping
 
 Для прототипирования воспользуемся =Arduino Uno= и модулем расширения =Relay Shield=.
 
 В ОС Ubuntu 16.04 установим =Arduino IDE 1.8.9= с сайта https://www.arduino.cc запустив
 в терминале =./install.sh=
 
+** COMMENT Blinking for relay
+
 Чтобы проверить работоспособность платы и модуля расширения загрузим следующий скетч:
 
 #+BEGIN_SRC c
-  const int Relay_1 = 4;
-  const int Relay_2 = 5;
-  const int Relay_3 = 6;
-  const int Relay_4 = 7;
+  const int relay_1 = 4;
+  const int relay_2 = 5;
+  const int relay_3 = 6;
+  const int relay_4 = 7;
 
   void setup()  {
-      pinMode(Relay_1, OUTPUT);
-      pinMode(Relay_2, OUTPUT);
-      pinMode(Relay_3, OUTPUT);
-      pinMode(Relay_4, OUTPUT);
+      pinMode(relay_1, OUTPUT);
+      pinMode(relay_2, OUTPUT);
+      pinMode(relay_3, OUTPUT);
+      pinMode(relay_4, OUTPUT);
   }
 
   void loop()  {
-      digitalWrite(Relay_1,HIGH);
+      digitalWrite(relay_1,HIGH);
       delay(500);
-      digitalWrite(Relay_1,LOW);
-      delay(500);
-
-      digitalWrite(Relay_2,HIGH);
-      delay(500);
-      digitalWrite(Relay_2,LOW);
+      digitalWrite(relay_1,LOW);
       delay(500);
 
-      digitalWrite(Relay_3,HIGH);
+      digitalWrite(relay_2,HIGH);
       delay(500);
-      digitalWrite(Relay_3,LOW);
+      digitalWrite(relay_2,LOW);
       delay(500);
 
-      digitalWrite(Relay_4,HIGH);
+      digitalWrite(relay_3,HIGH);
       delay(500);
-      digitalWrite(Relay_4,LOW);
+      digitalWrite(relay_3,LOW);
+      delay(500);
+
+      digitalWrite(relay_4,HIGH);
+      delay(500);
+      digitalWrite(relay_4,LOW);
       delay(500);
   }
 #+END_SRC
@@ -85,27 +87,77 @@
 [pic]
 
 #+BEGIN_SRC c
-  const int Relay_1 = 4;
-  const int Button_1 = 8;
+  const int relay_1 = 4;
+  const int button_1 = 8;
 
   int State = 0;
 
   void setup()  {
-      pinMode(Relay_1, OUTPUT);
-      pinMode(Button_1, INPUT);
+      pinMode(relay_1, OUTPUT);
+      pinMode(button_1, INPUT);
   }
 
   void loop()  {
-      State = digitalRead(Button_1);
+      State = digitalRead(button_1);
 
       if (State) {
-          digitalWrite(Relay_1,HIGH);
+          digitalWrite(relay_1,HIGH);
       } else {
-          digitalWrite(Relay_1,LOW);
+          digitalWrite(relay_1,LOW);
       }
   }
 #+END_SRC
 
-В этом скетче =Relay_1= срабатывает, когда кнопка нажата.
+В этом скетче =relay_1= срабатывает, когда кнопка нажата.
 
 [video]
+
+Здесь мы добавляем задержку
+
+#+BEGIN_SRC c
+  const int button_1 = 8;
+  const int relay_1 =  4;
+
+  boolean relay_1_state = LOW;
+  boolean previous_button_1_state = HIGH;
+  boolean button_1_state = LOW;
+
+  long duration = 0;
+
+  unsigned long previous_millis = 0;
+  const long interval = 1000;
+
+  void setup()
+  {
+      pinMode(relay_1, OUTPUT);
+      pinMode(button_1,INPUT);
+  }
+
+  void loop()
+  {
+      unsigned long current_millis = millis();
+
+      if ( (current_millis - previous_millis >= interval)  && (button_1_state == HIGH) ) {
+          previous_millis = current_millis;
+          if ( LOW == relay_1_state ) {
+              relay_1_state = HIGH;
+          }
+          if (millis() >= duration) {
+              previous_button_1_state = button_1_state;
+              button_1_state = LOW;
+              relay_1_state = LOW;
+          }
+          digitalWrite(relay_1, relay_1_state);
+      }
+
+      if ( digitalRead(button_1) == HIGH ) {
+          if (HIGH == previous_button_1_state) {
+              button_1_state = HIGH;
+          } else {
+              button_1_state = LOW;
+          }
+          delay(50); // debouncing
+          duration = millis() + 2000;
+      }
+  }
+#+END_SRC
