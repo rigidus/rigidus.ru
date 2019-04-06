@@ -353,7 +353,7 @@ Delay на 0.1 секунды здесь нужен чтобы избавить�
       <<btn_handler>>
   }
 #+END_SRC
-* Implementation
+* Upload to Attiny13
 
 После успешной отладке на прототипе можно приступить к программированию
 микроконтроллера. Я выбрал для реализации младший в линейке микроконтроллеров Atmega -
@@ -384,6 +384,7 @@ Programmer) для нашей Attiny13. Для этого нужно загру�
 - Board: Arduino Diecimila or Duemilanove
 
 [TODO:gmm] Подключение Attiny13 к выводам Arduino
+[TODO:gmm] Замыкаем резистором 100 Ом GND и VCC ардуины, чтобы избежать ее сброса
 
 После успешной заливки скетча ArduinoISP идем в ArduinoIDE и меняем тип программатора в
 Tools -> Programmer на =Arduino as ISP=
@@ -470,3 +471,333 @@ Tools -> Programmer на =Arduino as ISP=
 Однако все работает:
 
 [TODO:gmm] - video
+
+** C-level
+
+Наша маленькая программа едва влезла в килобайт памяти Attiny13, что может расстроить,
+потому что у нас остается еще 4 свободных вывода, что могло бы позволить управлять
+тремя выключателями с задержкой, а не одним. Мы можем отказаться от Arduino Core и
+спуститься на уровень ниже, запрограммировав микроконтроллер на языке Си, в который в
+конечном итоге и превращается скетч.
+
+Чтобы посмотреть, что конкретно делает Arduino IDE, когда компилирует и заливает
+программу в микроконтроллер, установим в File -> Preferences галочки "Show verbose
+output during compilation & upload"
+
+Теперь мы можем получить довольно много информации о том, что происходит "под
+капотом". А происходит компиляция и линковка файлов, а потом заливка на
+микроконтроллер. Все это Arduino IDE делает своими силами, но мы будем делать старым
+дедовским способом - через =Makefile=
+
+#+BEGIN_SRC sh
+  ARDUINO_PATH = /home/${USER}/build/arduino-1.8.9
+  PROJECT_PATH = /home/${USER}/repo/rigidus.ru/org/prj/
+  AVRTOOLS_PATH = hardware/tools/avr
+  PROGRAM = delay_switch2
+  MCU = attiny13
+  CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
+  OBJCOPY = avr-objcopy
+  CFLAGS += -Wall -g -Os -mmcu=$(MCU) -I$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/avr/include
+  LDFLAGS +=
+  OBJS = $(PROGRAM).o
+
+  all: $(PROGRAM).hex
+
+  $(PROGRAM).elf: $(PROGRAM).o
+      $(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+  $(PROGRAM).hex: $(PROGRAM).elf
+      $(Q)$(OBJCOPY) -O ihex $< $@
+
+  %.o: %.c
+      $(Q)$(CC) $(CFLAGS) -o $@ -c $<
+
+  flash: $(PROGRAM).hex
+      $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
+      -C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
+      -v               \
+      -pattiny13       \
+      -carduino        \
+      -P/dev/ttyUSB0   \
+      -b19200 -Uflash:w:$(PROJECT_PATH)/$(PROGRAM).hex:i
+
+  clean:
+      $(Q)rm -f $(OBJS)
+      $(Q)rm -f *.elf
+      $(Q)rm -f *.hex
+
+  disasm:
+      avr-objdump -dS $(PROGRAM).elf > $(PROGRAM).asm
+
+#+END_SRC
+
+Теперь будем менять код
+
+#+BEGIN_SRC c :tangle delay_switch2.c :noweb tangle :exports code :padline no
+  // 1.2 MHz (default) built in resonator
+  #define F_CPU 1200000UL
+  #define boolean int
+  #define true 1
+  #define HIGH 1
+  #define false 0
+  #define LOW 0
+  #define btn_1 PB3
+  #define relay_1 PB4
+
+  #include <avr/io.h>
+  #include <util/delay.h>
+  #include <avr/interrupt.h>
+
+  volatile unsigned long ovrf=0;
+  ISR(TIM0_OVF_vect){
+      ovrf++; //Increment counter every 256 clock cycles
+  }
+
+  unsigned long millis(){
+      unsigned long x;
+      asm("cli");
+      /*Scale number of timer overflows to milliseconds*/
+  #if F_CPU < 150000 && F_CPU > 80000
+      x = ovrf * 2;
+  #elif F_CPU == 600000
+      x = ovrf / 2;
+  #elif F_CPU == 1000000
+      x = ovrf / 4;
+  #elif F_CPU == 1200000
+      x = ovrf / 5;
+  #elif F_CPU == 4000000
+      x = ovrf / 16;
+  #elif F_CPU == 4800000
+      x = ovrf / 19;
+  #elif F_CPU == 8000000
+      x = ovrf / 31;
+  #elif F_CPU == 9600000
+      x = ovrf / 37;
+  #elif F_CPU == 10000000
+      x = ovrf / 39;
+  #elif F_CPU == 12000000
+      x = ovrf / 47;
+  #elif F_CPU == 16000000
+      x = ovrf / 63;
+  #else
+  #error This CPU frequency is not defined
+  #endif
+      asm("sei");
+      return x;
+  }
+
+  void delay(unsigned ms) {
+      while(ms--){
+          _delay_ms(1);
+          //Using the libc routine over and over is non-optimal but it works and is close enough
+      } //Note, I may have to reimplement this because the avr-libc delay is too slow *todo*
+  }
+
+
+  int btn_released = true;
+  boolean state = LOW;
+  long duration = 0;
+  const long period = 4000;
+  const long interval = 1000;
+  unsigned long prev_mils = 0;
+  boolean prev_latch = LOW;
+  boolean latch = LOW;
+
+  int main()
+  {
+      //Setup timer interrupt and PWM pins
+      TCCR0B |= _BV(CS00);
+      TCCR0A |= _BV(WGM00)|_BV(WGM01);
+      TIMSK0 |= 2;
+      TCNT0=0;
+      sei();
+      ADMUX=0;
+      //Set up ADC clock depending on F_CPU
+  #if F_CPU <= 200000
+      ADCSRA |= _BV(ADEN);
+  #elif F_CPU <= 1200000 && F_CPU > 200000
+      ADCSRA |= _BV(ADEN) | _BV(ADPS1);
+  #elif F_CPU > 1200000 && F_CPU < 6400001
+      ADCSRA |= _BV(ADEN) | _BV(ADPS2);
+  #else
+      ADCSRA |= _BV(ADEN) | _BV(ADPS1) | _BV(ADPS0) | _BV(ADPS2);
+  #endif
+
+
+      DDRB |=  (1 << relay_1);    // pinMode(relay_1, OUTPUT);
+      DDRB &= ~(1 << btn_1);      // pinMode(btn_1, INPUT);
+
+      while (1)
+      {
+          unsigned long cur_mils = millis();
+
+          // Чтение состояния(лог. 1) на порту ввода - вывода (3 вывод порта B):
+          if(PINB & (1 << PINB3)) // if (digitalRead(3) == HIGH)
+          {
+              if (btn_released) {
+                  btn_released = false;
+                  delay(100);
+                  if (HIGH == state) {
+                      state = LOW;
+                      duration = 0;
+                  } else {
+                      state = HIGH;
+                      duration = period;
+                  }
+              }
+          } else {
+              if (!btn_released) {
+                  delay(100);
+                  btn_released = true;
+              }
+              if (state == HIGH) {
+                  if (cur_mils < prev_mils) {
+                      prev_mils = cur_mils;
+                  } else {
+                      unsigned long last_time = cur_mils - prev_mils;
+                      if ( last_time >= interval ) {
+                          prev_mils = cur_mils;
+                          long decremented = duration - interval;
+                          if ( decremented < 0 ) {
+                              state = LOW;
+                          } else {
+                              duration = decremented;
+                          }
+                      }
+                  }
+              }
+          }
+          latch = state;
+          if ( latch != prev_latch ) {
+              prev_latch = latch;
+              if (latch) {
+                  PORTB |= (1 << relay_1);    // digitalWrite(relay_1, HIGH);
+              } else {
+                  PORTB &= ~(1 << relay_1);   // digitalWrite(relay_1, LOW);
+              }
+          }
+      }
+  }
+
+#+END_SRC
+
+
+
+#+NAME: log
+#+BEGIN_SRC sh
+  /home/rigidus/build/arduino-1.8.9/arduino-builder -dump-prefs -logger=machine -hardware /home/rigidus/build/arduino-1.8.9/hardware -hardware /home/rigidus/Arduino/hardware -tools /home/rigidus/build/arduino-1.8.9/tools-builder -tools /home/rigidus/build/arduino-1.8.9/hardware/tools/avr -built-in-libraries /home/rigidus/build/arduino-1.8.9/libraries -libraries /home/rigidus/Arduino/libraries -fqbn=attiny13:avr:attiny13:freq=f1200000 -vid-pid=0403_6001 -ide-version=10809 -build-path /tmp/arduino_build_255240 -warnings=none -build-cache /tmp/arduino_cache_822171 -prefs=build.warn_data_percentage=75 -verbose /home/rigidus/Arduino/delay_switch/delay_switch.ino
+
+  /home/rigidus/build/arduino-1.8.9/arduino-builder -compile -logger=machine -hardware /home/rigidus/build/arduino-1.8.9/hardware -hardware /home/rigidus/Arduino/hardware -tools /home/rigidus/build/arduino-1.8.9/tools-builder -tools /home/rigidus/build/arduino-1.8.9/hardware/tools/avr -built-in-libraries /home/rigidus/build/arduino-1.8.9/libraries -libraries /home/rigidus/Arduino/libraries -fqbn=attiny13:avr:attiny13:freq=f1200000 -vid-pid=0403_6001 -ide-version=10809 -build-path /tmp/arduino_build_255240 -warnings=none -build-cache /tmp/arduino_cache_822171 -prefs=build.warn_data_percentage=75 -verbose /home/rigidus/Arduino/delay_switch/delay_switch.ino
+
+  Using board 'attiny13' from platform in folder: /home/rigidus/Arduino/hardware/attiny13/avr
+  Using core 'core13' from platform in folder: /home/rigidus/Arduino/hardware/attiny13/avr
+  Detecting libraries used...
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-g++ -c -g -Os -w -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -w -x c++ -E -CC -mmcu=attiny13 -DF_CPU=1200000L -DARDUINO=10809 -DARDUINO_AVR_ATTINY13 -DARDUINO_ARCH_AVR -I/home/rigidus/Arduino/hardware/attiny13/avr/cores/core13 /tmp/arduino_build_255240/sketch/delay_switch.ino.cpp -o /dev/null
+
+  Generating function prototypes...
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-g++ -c -g -Os -w -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -w -x c++ -E -CC -mmcu=attiny13 -DF_CPU=1200000L -DARDUINO=10809 -DARDUINO_AVR_ATTINY13 -DARDUINO_ARCH_AVR -I/home/rigidus/Arduino/hardware/attiny13/avr/cores/core13 /tmp/arduino_build_255240/sketch/delay_switch.ino.cpp -o /tmp/arduino_build_255240/preproc/ctags_target_for_gcc_minus_e.cpp
+
+  /home/rigidus/build/arduino-1.8.9/tools-builder/ctags/5.8-arduino11/ctags -u --language-force=c++ -f - --c++-kinds=svpf --fields=KSTtzns --line-directives /tmp/arduino_build_255240/preproc/ctags_target_for_gcc_minus_e.cpp
+
+  Compiling sketch...
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-g++ -c -g -Os -w -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -MMD -mmcu=attiny13 -DF_CPU=1200000L -DARDUINO=10809 -DARDUINO_AVR_ATTINY13 -DARDUINO_ARCH_AVR -I/home/rigidus/Arduino/hardware/attiny13/avr/cores/core13 /tmp/arduino_build_255240/sketch/delay_switch.ino.cpp -o /tmp/arduino_build_255240/sketch/delay_switch.ino.cpp.o
+
+  Compiling libraries...
+
+  Compiling core...
+
+  Using precompiled core: /tmp/arduino_cache_822171/core/core_attiny13_avr_attiny13_freq_f1200000_c5d2763094ad9de4fb9ce2df1d92eb6e.a
+
+  Linking everything together...
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-gcc -w -Os -Wl,--gc-sections -mmcu=attiny13 -o /tmp/arduino_build_255240/delay_switch.ino.elf /tmp/arduino_build_255240/sketch/delay_switch.ino.cpp.o /tmp/arduino_build_255240/../arduino_cache_822171/core/core_attiny13_avr_attiny13_freq_f1200000_c5d2763094ad9de4fb9ce2df1d92eb6e.a -L/tmp/arduino_build_255240 -lm
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-objcopy -O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 /tmp/arduino_build_255240/delay_switch.ino.elf /tmp/arduino_build_255240/delay_switch.ino.eep
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-objcopy -O ihex -R .eeprom /tmp/arduino_build_255240/delay_switch.ino.elf /tmp/arduino_build_255240/delay_switch.ino.hex
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avr-size -A /tmp/arduino_build_255240/delay_switch.ino.elf
+
+  Sketch uses 794 bytes (77%) of program storage space. Maximum is 1024 bytes.
+  Global variables use 17 bytes of dynamic memory.
+
+  /home/rigidus/build/arduino-1.8.9/hardware/tools/avr/bin/avrdude -C/home/rigidus/build/arduino-1.8.9/hardware/tools/avr/etc/avrdude.conf -v -pattiny13 -carduino -P/dev/ttyUSB0 -b19200 -Uflash:w:/tmp/arduino_build_255240/delay_switch.ino.hex:i
+
+  avrdude: Version 6.3-20171130
+  Copyright (c) 2000-2005 Brian Dean, http://www.bdmicro.com/
+  Copyright (c) 2007-2014 Joerg Wunsch
+
+  System wide configuration file is "/home/rigidus/build/arduino-1.8.9/hardware/tools/avr/etc/avrdude.conf"
+  User configuration file is "/home/rigidus/.avrduderc"
+  User configuration file does not exist or is not a regular file, skipping
+
+  Using Port                    : /dev/ttyUSB0
+  Using Programmer              : arduino
+  Overriding Baud Rate          : 19200
+  AVR Part                      : ATtiny13
+  Chip Erase delay              : 4000 us
+  PAGEL                         : P00
+  BS2                           : P00
+  RESET disposition             : dedicated
+  RETRY pulse                   : SCK
+  serial program mode           : yes
+  parallel program mode         : yes
+  Timeout                       : 200
+  StabDelay                     : 100
+  CmdexeDelay                   : 25
+  SyncLoops                     : 32
+  ByteDelay                     : 0
+  PollIndex                     : 3
+  PollValue                     : 0x53
+  Memory Detail                 :
+
+  Block Poll               Page                       Polled
+  Memory Type Mode Delay Size  Indx Paged  Size   Size #Pages MinW  MaxW   ReadBack
+  ----------- ---- ----- ----- ---- ------ ------ ---- ------ ----- ----- ---------
+  eeprom        65     5     4    0 no         64    4      0  4000  4000 0xff 0xff
+  flash         65     6    32    0 yes      1024   32     32  4500  4500 0xff 0xff
+  signature      0     0     0    0 no          3    0      0     0     0 0x00 0x00
+  lock           0     0     0    0 no          1    0      0  4500  4500 0x00 0x00
+  calibration    0     0     0    0 no          2    0      0     0     0 0x00 0x00
+  lfuse          0     0     0    0 no          1    0      0  4500  4500 0x00 0x00
+  hfuse          0     0     0    0 no          1    0      0  4500  4500 0x00 0x00
+
+  Programmer Type : Arduino
+  Description     : Arduino
+  Hardware Version: 2
+  Firmware Version: 1.18
+  Topcard         : Unknown
+  Vtarget         : 0.0 V
+  Varef           : 0.0 V
+  Oscillator      : Off
+  SCK period      : 0.1 us
+
+  avrdude: AVR device initialized and ready to accept instructions
+
+  Reading | ################################################## | 100% 0.01s
+
+      avrdude: Device signature = 0x1e9007 (probably t13)
+  avrdude: NOTE: "flash" memory has been specified, an erase cycle will be performed
+  To disable this feature, specify the -D option.
+  avrdude: erasing chip
+  avrdude: reading input file "/tmp/arduino_build_255240/delay_switch.ino.hex"
+  avrdude: writing flash (794 bytes):
+
+  Writing | ################################################## | 100% 2.00s
+
+      avrdude: 794 bytes of flash written
+  avrdude: verifying flash memory against /tmp/arduino_build_255240/delay_switch.ino.hex:
+  avrdude: load data flash data from input file /tmp/arduino_build_255240/delay_switch.ino.hex:
+  avrdude: input file /tmp/arduino_build_255240/delay_switch.ino.hex contains 794 bytes
+  avrdude: reading on-chip flash data:
+
+  Reading | ################################################## | 100% 1.20s
+
+      avrdude: verifying ...
+  avrdude: 794 bytes of flash verified
+
+  avrdude done.  Thank you.
+#+END_SRC
