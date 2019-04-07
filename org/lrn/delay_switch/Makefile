@@ -1,7 +1,7 @@
 ARDUINO_PATH = /home/${USER}/build/arduino-1.8.9
-PROJECT_PATH = /home/${USER}/repo/rigidus.ru/org/prj
+PROJECT_PATH = ./
 AVRTOOLS_PATH = hardware/tools/avr
-PROGRAM = delay_switch2
+PROGRAM = delay_switch3
 MCU = attiny13
 CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
 OBJCOPY = avr-objcopy

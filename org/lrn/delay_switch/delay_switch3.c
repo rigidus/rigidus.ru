@@ -6,8 +6,11 @@
 #define false 0
 #define LOW 0
 
-#define btn_1 PB3
-#define relay_1 PB4
+#define btn_1 PB3 // pin2
+#define relay_1 PB4 // pin3
+
+#define btn_2 PB2 // pin7
+#define relay_2 PB1 //pin6
 
 #include <avr/io.h>
 #include <util/delay.h>
@@ -58,14 +61,23 @@ void delay(unsigned ms) {
     } //Note, I may have to reimplement this because the avr-libc delay is too slow *todo*
 }
 
+const long interval = 1000;
+unsigned long prev_mils = 0;
+
 int btn_1_released = true;
 boolean state_1 = LOW;
 long duration_1 = 0;
 const long period_1 = 4000;
-const long interval = 1000;
-unsigned long prev_mils = 0;
 boolean prev_latch_1 = LOW;
 boolean latch_1 = LOW;
+
+int btn_2_released = true;
+boolean state_2 = LOW;
+long duration_2 = 0;
+const long period_2 = 4000;
+boolean prev_latch_2 = LOW;
+boolean latch_2 = LOW;
+
 
 int main()
 {
@@ -87,6 +99,7 @@ int main()
     ADCSRA |= _BV(ADEN) | _BV(ADPS1) | _BV(ADPS0) | _BV(ADPS2);
 #endif
 
+
     DDRB |=  (1 << relay_1);    // pinMode(relay_1, OUTPUT);
     DDRB &= ~(1 << btn_1);      // pinMode(btn_1, INPUT);
 
@@ -94,7 +107,7 @@ int main()
     {
         unsigned long cur_mils = millis();
 
-        if(PINB & (1 << btn_1)) // if (digitalRead(bnt_1) == HIGH)
+        if(PINB & (1 << btn_1))
         {
             if (btn_1_released) {
                 btn_1_released = false;
@@ -138,6 +151,54 @@ int main()
                 PORTB |= (1 << relay_1);    // digitalWrite(relay_1, HIGH);
             } else {
                 PORTB &= ~(1 << relay_1);   // digitalWrite(relay_1, LOW);
+            }
+        }
+
+
+        if(PINB & (1 << btn_2))
+        {
+            if (btn_2_released) {
+                btn_2_released = false;
+                delay(100);
+                if (HIGH == state_2) {
+                    state_2 = LOW;
+                    duration_2 = 0;
+                } else {
+                    state_2 = HIGH;
+                    duration_2 = period_2;
+                }
+            }
+
+        } else {
+            if (!btn_2_released) {
+                delay(100);
+                btn_2_released = true;
+            }
+            if (state_2 == HIGH) {
+                if (cur_mils < prev_mils) {
+                    prev_mils = cur_mils;
+                } else {
+                    unsigned long last_time = cur_mils - prev_mils;
+                    if ( last_time >= interval ) {
+                        prev_mils = cur_mils;
+                        long decremented = duration_2 - interval;
+                        if ( decremented < 0 ) {
+                            state_2 = LOW;
+                        } else {
+                            duration_2 = decremented;
+                        }
+                    }
+                }
+            }
+        }
+
+        latch_2 = state_2;
+        if ( latch_2 != prev_latch_2 ) {
+            prev_latch_2 = latch_2;
+            if (latch_2) {
+                PORTB |= (1 << relay_2);    // digitalWrite(relay_2, HIGH);
+            } else {
+                PORTB &= ~(1 << relay_2);   // digitalWrite(relay_2, LOW);
             }
         }
     }
