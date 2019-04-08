@@ -33,7 +33,10 @@ flash: $(PROGRAM).hex
 clean:
 	rm -f $(OBJS)
 	rm -f *.elf
+	rm -f *.elfS
 	rm -f *.hex
+	rm -f *.hexS
+
 
 objdump:
 	avr-objdump -dS $(PROGRAM).elf > $(PROGRAM).asm
