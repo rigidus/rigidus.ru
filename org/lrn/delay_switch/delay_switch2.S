@@ -49,7 +49,6 @@ bad_interrupt:
     pop r24
     pop r20
 
-    sei
     reti
 
 main:
