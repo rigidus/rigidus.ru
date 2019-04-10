@@ -1030,6 +1030,7 @@ Preferences галочки "Show verbose output during compilation & upload"
 - Изучить ассемблер и архитектуру этого микроконтроллера.
 
 Думаю, выбор очевиден!
+
 ** Asm-level
 
 Итак Attiny13 имеет:
@@ -1077,15 +1078,14 @@ Preferences галочки "Show verbose output during compilation & upload"
 
 #+NAME: udivmodsi4_c
 #+BEGIN_SRC c
-  unsigned long
-  diver (unsigned long num, unsigned long den, int modwanted)
+  unsigned long diver (unsigned long num, unsigned long den, int modwanted)
   {
       unsigned long bit = 1;
 
       while (den < num && bit && !(den & (1L<<31)))
       {
-          den <<=1;
-          bit <<=1;
+          den <<= 1;
+          bit <<= 1;
       }
 
       unsigned long res = 0;
@@ -1097,12 +1097,76 @@ Preferences галочки "Show verbose output during compilation & upload"
               num -= den;
               res |= bit;
           }
-          bit >>=1;
-          den >>=1;
+          bit >>= 1;
+          den >>= 1;
       }
       if (modwanted) return num;
       return res;
   }
+
+
+
+
+
+
+  #include<stdio.h>
+
+  void printBits(size_t const size, void const * const ptr)
+  {
+      unsigned char *b = (unsigned char*) ptr;
+      unsigned char byte;
+      int i, j;
+
+      for (i=size-1;i>=0;i--)
+      {
+          for (j=7;j>=0;j--)
+          {
+              byte = (b[i] >> j) & 1;
+              printf("%u", byte);
+          }
+      }
+  }
+
+  unsigned int diver (unsigned int num, unsigned int den)
+  {
+      unsigned char r1 = 0x21;
+      unsigned int zet = 0;
+
+      goto check;
+  loop:
+      zet <<= 1;
+      printf(" zet=", zet);
+      printBits(sizeof(zet), &zet);
+      printf("\n");
+      printf(" den=", zet);
+      printBits(sizeof(den), &den);
+      printf("\n");
+      if (zet > den)
+      {
+          zet -= den;
+      }
+  check:
+      num <<= 1;
+      printf(" num=");
+      printBits(sizeof(num), &num);
+      printf("\n");
+      r1--;
+      printf(" r1=");
+      printf("%2d\n", r1);
+      if (0 != r1) {
+          printf("\n", r1);
+          goto loop;
+      }
+      printf("----------\n");
+      printf("num = %d\n", num);
+      printf("zet = %d\n", zet);
+      return den;
+  }
+
+  int main() {
+      diver(11,5);
+  }
+
 #+END_SRC
 
 #+NAME: udivmodsi4_asm
@@ -1267,33 +1331,37 @@ Preferences галочки "Show verbose output during compilation & upload"
   #define num3 r24
   #define num4 r25
 
+  #define zet1 r26
+  #define zet2 r27
+  #define zet3 r30
+  #define zet4 r31
 
   00000244 <__udenmodsi4>:
-   244:   ldi r26, 0x21           ; r26 = 33
-   246:   mov r1, r26             ; r1 = 33
-   248:   sub r26, r26            ;
-   24a:   sub r27, r27            ; r26:r27 = 0
-   24c:   movw    r30, r26        ; r30:r31 = 0
-   24e:   rjmp    .+26        ; 0x26a <__udenmodsi4_ep>
-
-  udenmodsi4_loop: ; <--------------------------------------------+
-   250:   adc r26, r26            ; r26:r27<<=1                   |
-   252:   adc r27, r27            ;                               |
-   254:   adc r30, r30            ; r30:r31<<=1                   |
-   256:   adc r31, r31            ;                               |
-   258:   cp  r26, den1           ; r26:r27 cmp den1:den2         |
-   25a:   cpc r27, den2           ;                               |
-   25c:   cpc r30, den3           ; r30:den3 cmp den3:den4        |
-   25e:   cpc r31, den4           ;                               |
-   260:   brcs    udenmodsi4_ep   ; >-------------------------+   |
-   262:   sub r26, den1           ; r26:r27 -= den1:den2      |   |
-   264:   sbc r27, den2           ;                           |   |
-   266:   sbc r30, den3           ; r30:r31 -= den3:den4      |   |
-   268:   sbc r31, den4           ;                           |   |
-  udenmodsi4_ep: ; <------------------------------------------+   |
-   26a:   adc num1, num1          ; num1:num2<<=1                 |
+   244:   ldi zet1, 0x21         ; zet1 = 33
+   246:   mov r1, zet1           ; r1 = 33
+   248:   sub zet1, zet1         ;
+   24a:   sub zet2, zet2         ;
+   24c:   movw  zet3, zet1       ; zet = 0
+   24e:   rjmp  udenmodsi4_ep ; >------------------------------------+
+      ;; ------------------------;                                   |
+  udenmodsi4_loop: ; <--------------------------------------------+  |
+   250:   adc zet1, zet1          ; zet<<=1                       |  |
+   252:   adc zet2, zet2          ;                               |  |
+   254:   adc zet3, zet3          ;                               |  |
+   256:   adc zet4, zet4          ;                               |  |
+   258:   cp  zet1, den1          ; zet cmp den                   |  |
+   25a:   cpc zet2, den2          ;                               |  |
+   25c:   cpc zet3, den3          ;                               |  |
+   25e:   cpc zet4, den4          ; ?                             |  |
+   260:   brcs    udenmodsi4_ep   ; >-------------------------+   |  |
+   262:   sub zet1, den1          ; zet -= den1               |   |  |
+   264:   sbc zet2, den2          ;                           |   |  |
+   266:   sbc zet3, den3          ;                           |   |  |
+   268:   sbc zet4, den4          ;                           |   |  |
+  udenmodsi4_ep: ; <==========================================+------+
+   26a:   adc num1, num1          ; num<<=1                       |
    26c:   adc num2, num2          ;                               |
-   26e:   adc num3, num3          ; num3:num4<<=1                 |
+   26e:   adc num3, num3          ;                               |
    270:   adc num4, num4          ;                               |
    272:   dec r1                  ; r1--                          |
    274:   brne    udenmodsi4_loop ; >-----------------------------+
@@ -1303,7 +1371,7 @@ Preferences галочки "Show verbose output during compilation & upload"
    27c:   com num4
    27e:   movw    den1, num1      ; return
    280:   movw    den3, num3
-   282:   movw    num1, r26
-   284:   movw    num3, r30
+   282:   movw    num1, zet1
+   284:   movw    num3, zet3
    286:   ret
 #+END_SRC
