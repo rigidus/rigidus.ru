@@ -1,4 +1,7 @@
 #define F_CPU 1200000UL
+#define SREG 0x3f
+#define RAMEND 0x9F
+#define SPL 0x3d
 #define PINB 0x16
 #define PB0 0
 #define WRK 0b000001
@@ -13,9 +16,7 @@
 #define PB5 5
 #define RST 0b100000
 
-
-
-    ;; define r16 as temporary register
+;; define r16 as temporary register
 #define tmp r16
 ;; Timer/Counter0 Overflow
 #define OVF0addr 0x0003
@@ -47,8 +48,13 @@
     rjmp badint                  ; WDTaddr - Watchdog Time-out
     rjmp badint                  ; ADCCaddr - ADC Conversion Complete
 
-    ;;  main program
+    ;; main program
 main:
+    ;; stack initialization
+    eor	r1, r1
+    out	SREG, r1
+    ldi	r28, RAMEND
+    out	SPL, r28
 
     ;; _____                        +--v--+
     ;; RESET ADC0 5/A0 PCINT5 PB5  1|o    |8  VCC
