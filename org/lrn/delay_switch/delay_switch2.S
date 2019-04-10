@@ -15,7 +15,7 @@ vectors:
     rjmp	main
     rjmp	bad_interrupt
     rjmp	bad_interrupt
-    rjmp	vector_3
+    rjmp	bad_interrupt ; vector_3
     rjmp	bad_interrupt
     rjmp	bad_interrupt
     rjmp	bad_interrupt
@@ -24,82 +24,39 @@ vectors:
     rjmp	bad_interrupt
 
 bad_interrupt:
-    in  r16, PORTB
-    ori r16, 0b11111111
-    out PORTB, r16
+    push r20
+    push r24
+    push r25
+    in  r20, PORTB
+          ;; 0b00010111
+    ori r20, 0b00010111 ; RED-LED (PB2) - switch on
+    out PORTB, r20
 
-    rjmp bad_interrupt
+    ldi r24, 0xFF
+    ldi r25, 0
+    rcall delay
+
+    in  r20, PORTB
+           ;; 0b00010111
+    andi r20, 0b11101000 ; RED-LED (PB2) - switch off
+    out PORTB, r20
+
+    ldi r24, 0xFF
+    ldi r25, 0
+    rcall delay
+
+    pop r25
+    pop r24
+    pop r20
+
+    sei
+    reti
 
 main:
     eor	r1, r1
     out	SREG, r1
     ldi	r28, RAMEND
     out	SPL, r28
-
-
-    ;;  TCCR0B - Timer/Counter Control Register B
-#define TCCR0B 0x33
-#define CS00    = 0 ; Clock Select:
-#define CS01    = 1 ; Clock Select:
-#define CS02    = 2 ; Clock Select:
-#define WGM02   = 3 ; Waveform Generation Mode
-#define FOC0B   = 6 ; Force Output Compare B
-#define FOC0A   = 7 ; Force Output Compare A
-
-;; ;;  TCCR0B |= _BV(CS00);
-;;     in	r24, TCCR0B ; cc: NonNeeded?
-;;     ori	r24, 0x01   ; ce: Clock Select : 001,
-;;     out	TCCR0B, r24 ; d0:
-
-;;     ;;  TCCR0A - Timer/Counter Control Register A
-;; #define TCCR0A 0x2f
-
-;;     ;; TCCR0A |= _BV(WGM00)|_BV(WGM01);
-;;     in	r24, 0x2f ; d2: NonNeeded?
-;;     ori	r24, 0x03 ; d4: Set WGM01 & WGM02
-;;     out	TCCR0A, r24 ; d6:
-
-;;     ;; TIMSK0 Timer/Counter Interrupt Mask Register
-;;     ;; TIMSK0 |= 2;
-;;     in	r24, 0x39 ; d8:
-;;     ori	r24, 0x02 ; da: Set OCIE1A & TOIE1 (зачем совпадение A?)
-;;     out	0x39, r24 ; dc:
-
-;;     ;; Timer/Counter - Устанавливаем нулевое начальное значение
-;;     ;; TCNT0=0;
-;;     out	0x32, r1 ; de:
-
-
-
-
-    ;; TCCR0B |= _BV(CS00);
-	in	r24, 0x33	; 51
-	ori	r24, 0x01	; 1
-	out	0x33, r24	; 51
-    ;; TCCR0A |= _BV(WGM00)|_BV(WGM01);
-	in	r24, 0x2f	; 47
-	ori	r24, 0x03	; 3
-	out	0x2f, r24	; 47
-    ;; TIMSK0 |= 2;
-	in	r24, 0x39	; 57
-	ori	r24,    2    ; 0x02
-	out	0x39, r24	; 57
-    ;; TCNT0=0;
-	out	0x32, r1	; 50
-    ;; ;; sei();
-	sei
-    ;; ;; ADMUX=0;
-	out	0x07, r1	; 7
-
-	in	r24, 0x06	; 6
-	ori	r24, 0x82	; 130
-	out	0x06, r24	; 6
-
-    ;; ;; DDRB |=  (1 << relay_1);    // pinMode(relay_1, OUTPUT);
-	sbi	0x17, 4	; 23
-    ;; ;; DDRB &= ~(1 << btn_1);      // pinMode(btn_1, INPUT);
-	cbi	0x17, 3	; 23
-
 
     ;; _____                        +--v--+
     ;; RESET ADC0 5/A0 PCINT5 PB5  1|o    |8  VCC
@@ -110,18 +67,47 @@ main:
     ;;           +------- (PB5) [1-pin]
     ;;           |+------ (PB4) [3-pin] RELAY_1 (INPUT)
     ;;           ||+----- (PB3) [2-pin] BTN_1
-    ;;           |||+---- (PB2) [7-pin]
+    ;;           |||+---- (PB2) [7-pin] RED-LED
     ;;           ||||+--- (PB1) [6-pin] WIDE-LED
-    ;;           |||||+-- (PB0) [5-pin] LED
+    ;;           |||||+-- (PB0) [5-pin] LED (status blink)
     ;;           ||||||
-    ldi r16, 0b00010111
-    out DDRB, r16
+    ldi r18, 0b00010111
+    out DDRB, r18
+
+    ;;  TCCR0B - Timer/Counter Control Register B
+#define TCCR0B 0x33
+;;  TCCR0B |= _BV(CS00);
+    ldi	r26, 0b101  ; Clock Select : 100 : CLK/1024 prescale
+    out	TCCR0B, r26 ;
+
+    ;; Output Compare Register A
+#define OCR0A 0x36
+    ldi r26, 116    ; 1200000/(1024*(1+116)) = 10.01 per second
+    out OCR0A, r26
+
+    ;;  TCCR0A - Timer/Counter Control Register A
+#define TCCR0A 0x2f
+    ;; TCCR0A |= _BV(WGM00)|_BV(WGM01);
+    ldi	r26, 0b10   ; 10 - сброс таймера при совпадении (CTC)
+    out	TCCR0A, r26 ;
+
+    ;; TIMSK0 Timer/Counter Interrupt Mask Register
+#define TIMSK0 0x39
+    ;; TIMSK0 |= 2;
+    ldi	r26, 0b100  ; Set OCIE1A прерывание по Совпадению А
+    out	TIMSK0, r26 ;
+
+    ;; Timer/Counter - Устанавливаем нулевое начальное значение
+#define TCNT0 0x32
+    ;; TCNT0=0;
+    out	TCNT0, r1 ; de:
+
+    ;; Разрешаем прерывания
     sei
 
 loop:
     in r16, PORTB
-    ori r16, 0b00010100
-    ;; ori r16, 0b11111111
+    ori r16, 0b00000001
     out PORTB, r16
 
     ldi r24, 0xFF
@@ -129,7 +115,7 @@ loop:
     rcall delay
 
     in  r16, PORTB
-    andi r16, 0b11101011
+    andi r16, 0b11111110
     out PORTB, r16
 
     ldi r24, 0xFF
@@ -157,35 +143,35 @@ delay_return:
 
 
 vector_3:
-    push	r1
-    push	r0
-    in	r0, 0x3f
-    push	r0
-    eor	r1, r1
-    push	r24
-    push	r25
-    push	r26
-    push	r27
+    ;; push	r1
+    ;; push	r0
+    ;; in	r0, 0x3f
+    ;; push	r0
+    ;; eor	r1, r1
+    ;; push	r24
+    ;; push	r25
+    ;; push	r26
+    ;; push	r27
 
-    ;; lds	r24, 0x0078
-    ;; lds	r25, 0x0079
-    ;; lds	r26, 0x007A
-    ;; lds	r27, 0x007B
-    ;; adiw	r24, 0x01
-    ;; adc	r26, r1
-    ;; adc	r27, r1
-    ;; sts	0x0078, r24
-    ;; sts	0x0079, r25
-    ;; sts	0x007A, r26
-    ;; sts	0x007B, r27
+    ;; ;; lds	r24, 0x0078
+    ;; ;; lds	r25, 0x0079
+    ;; ;; lds	r26, 0x007A
+    ;; ;; lds	r27, 0x007B
+    ;; ;; adiw	r24, 0x01
+    ;; ;; adc	r26, r1
+    ;; ;; adc	r27, r1
+    ;; ;; sts	0x0078, r24
+    ;; ;; sts	0x0079, r25
+    ;; ;; sts	0x007A, r26
+    ;; ;; sts	0x007B, r27
 
-    pop	r27
-    pop	r26
-    pop	r25
-    pop	r24
-    pop	r0
-    out	0x3f, r0
-    pop	r0
-    pop	r1
+    ;; pop	r27
+    ;; pop	r26
+    ;; pop	r25
+    ;; pop	r24
+    ;; pop	r0
+    ;; out	0x3f, r0
+    ;; pop	r0
+    ;; pop	r1
 
     reti
