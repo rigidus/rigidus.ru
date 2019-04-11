@@ -1,7 +1,6 @@
 ARDUINO_PATH = /home/${USER}/build/arduino-1.8.9
-PROJECT_PATH = ./
 AVRTOOLS_PATH = hardware/tools/avr
-PROGRAM = delay_switch5
+PROGRAM = delay_switch6
 MCU = attiny13
 CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
 OBJCOPY = avr-objcopy
@@ -11,15 +10,6 @@ OBJS = $(PROGRAM).o
 
 all: $(PROGRAM).hex
 
-$(PROGRAM).hex: $(PROGRAM).elf
-	$(OBJCOPY) -O ihex $< $@
-
-$(PROGRAM).elf: $(PROGRAM).o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
-
-%.o: %.c
-	$(CC) $(CFLAGS) -o $@ -c $<
-
 flash: $(PROGRAM).hex
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
@@ -28,20 +18,32 @@ flash: $(PROGRAM).hex
 	-carduino        \
 	-P/dev/ttyUSB0   \
 	-b19200 \
-    -Uflash:w:$(PROJECT_PATH)/$(PROGRAM).hex:i
+    -Uflash:w:$(PROGRAM).hex:i
 
+$(PROGRAM).hex: $(PROGRAM).elf
+	$(OBJCOPY) -O ihex $< $@
+
+$(PROGRAM).elf: $(PROGRAM).c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+
+# Получение ассемблерного листинга из elf
+objdump: $(PROGRAM).elf
+	avr-objdump -dS $^ > $(PROGRAM).asm
+
+
+# Удаление объектных и целевых файлов
+# Удаляем не все .o файлы, а только те что в списке $(OBJS)
 clean:
 	rm -f $(OBJS)
 	rm -f *.elf
 	rm -f *.elfS
 	rm -f *.hex
 	rm -f *.hexS
+	rm -f *.bin
 
-
-objdump:
-	avr-objdump -dS $(PROGRAM).elf > $(PROGRAM).asm
-
-extract:
+# Ассеблерная компиляция
+asmflash: $(PROGRAM).hexS
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
 	-v               \
@@ -49,10 +51,7 @@ extract:
 	-carduino        \
 	-P/dev/ttyUSB0   \
 	-b19200 \
-	-Uflash:r:$(PROJECT_PATH)/$(PROGRAM).bin:r
-
-disasm:
-	avrdisas -a1 -o1 -s1 $(PROJECT_PATH)/$(PROGRAM).bin
+    -Uflash:w:$(PROGRAM).hexS:i
 
 
 asm: $(PROGRAM).hexS
@@ -63,10 +62,14 @@ $(PROGRAM).hexS: $(PROGRAM).elfS
 $(PROGRAM).elfS: $(PROGRAM).S
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-%.oS: %.S
-	$(CC) -mmcu=$(MCU) -xassembler-with-cpp $(PROGRAM).S -nostdlib -o $@ $^
+# Получение ассемблерного листинга из elfS
+objdumpS: $(PROGRAM).elfS
+	avr-objdump -dS $^ > $(PROGRAM).asmS
 
-asmflash: $(PROGRAM).hexS
+
+
+# Извлечение прошивки в файл HEX
+extract:
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
 	-v               \
@@ -74,22 +77,12 @@ asmflash: $(PROGRAM).hexS
 	-carduino        \
 	-P/dev/ttyUSB0   \
 	-b19200 \
-    -Uflash:w:$(PROJECT_PATH)/$(PROGRAM).hexS:i
+	-Uflash:r:$(PROGRAM).hexbin:i
 
-back:
-	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
-	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v               \
-	-pattiny13       \
-	-carduino        \
-	-P/dev/ttyUSB0   \
-	-b19200 \
-    -Uflash:r:$(PROJECT_PATH)/$(PROGRAM).hexback:i
+# Преобразование файла HEX в BIN
+hex2bin: $(PROGRAM).hexbin
+	objcopy -I ihex $^ -O binary $(PROGRAM).bin
 
-hex2bin:
-	objcopy -I ihex \
-	$(PROJECT_PATH)/$(PROGRAM).hexback \
-	-O binary $(PROJECT_PATH)/$(PROGRAM).bin
-
-bin2asm:
-	avrdisas $(PROJECT_PATH)/$(PROGRAM).bin > $(PROJECT_PATH)/$(PROGRAM).asm
+# Дизассемблирование BIN-файла
+disasm: $(PROGRAM).bin
+	avrdisas -a1 -o1 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
