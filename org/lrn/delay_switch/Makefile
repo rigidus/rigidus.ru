@@ -60,7 +60,7 @@ $(PROGRAM).hexS: $(PROGRAM).elfS
 	$(OBJCOPY) -O ihex $< $@
 
 $(PROGRAM).elfS: $(PROGRAM).S
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -nostartfiles $(LDFLAGS) -o $@ $^
 
 # Получение ассемблерного листинга из elfS
 objdumpS: $(PROGRAM).elfS
