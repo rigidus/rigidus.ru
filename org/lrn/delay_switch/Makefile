@@ -1,6 +1,6 @@
 ARDUINO_PATH = /home/${USER}/build/arduino-1.8.9
 AVRTOOLS_PATH = hardware/tools/avr
-PROGRAM = delay_switch6
+PROGRAM = delay_switch2
 MCU = attiny13
 CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
 OBJCOPY = avr-objcopy
@@ -29,7 +29,7 @@ $(PROGRAM).elf: $(PROGRAM).c
 
 # Получение ассемблерного листинга из elf
 objdump: $(PROGRAM).elf
-	avr-objdump -dS $^ > $(PROGRAM).asm
+	avr-objdump -d $^ > $(PROGRAM).asm
 
 
 # Удаление объектных и целевых файлов
@@ -85,4 +85,4 @@ hex2bin: $(PROGRAM).hexbin
 
 # Дизассемблирование BIN-файла
 disasm: $(PROGRAM).bin
-	avrdisas -a1 -o1 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
+	avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm

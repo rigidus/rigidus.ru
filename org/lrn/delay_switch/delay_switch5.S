@@ -58,19 +58,19 @@ main:
     mov crit, zero
 
     ;; Timer initializtion
-    ldi temp, (1<<WGM01) ; set configuration bits to temprary register
-    out TCCR0A, temp     ; set timer counter mode to CTC
-    ldi temp, (1<<CS02)|(1<<CS00) ; set configuration bits to temprary register
-    out TCCR0B, temp              ; set prescaler (F=1200000Hz/1024/256=4Hz, 0.25s)
-    ldi temp, 255                 ; set value to temporary register
-    out OCR0A, temp               ; set OCR0A value (256 - 1)
-    ldi temp, (1<<OCIE0A)         ; set configuration bits to temprary register
-    out TIMSK0, temp              ; enable Timer Compare Match A Interrupt
-
+    ;; ldi temp, (1<<WGM01) ; set configuration bits to temprary register
+    ;; out TCCR0A, temp     ; set timer counter mode to CTC
     ;; ldi temp, (1<<CS02)|(1<<CS00) ; set configuration bits to temprary register
-    ;; out TCCR0B, temp              ; set prescaler (F=1200000Hz/1024/256=4.58Hz, 0.25s)
-    ;; ldi temp, (1<<TOIE0)          ; set configuration bits to temprary register
-    ;; out TIMSK0, temp              ; enable Timer Overflow Interrupt
+    ;; out TCCR0B, temp              ; set prescaler (F=1200000Hz/1024/256=4Hz, 0.25s)
+    ;; ldi temp, 255                 ; set value to temporary register
+    ;; out OCR0A, temp               ; set OCR0A value (256 - 1)
+    ;; ldi temp, (1<<OCIE0A)         ; set configuration bits to temprary register
+    ;; out TIMSK0, temp              ; enable Timer Compare Match A Interrupt
+
+    ldi temp, (1<<CS02)|(1<<CS00) ; set configuration bits to temprary register
+    out TCCR0B, temp              ; set prescaler (F=1200000Hz/1024/256=4.58Hz, 0.25s)
+    ldi temp, (1<<TOIE0)          ; set configuration bits to temprary register
+    out TIMSK0, temp              ; enable Timer Overflow Interrupt
 
     ; enable global interrupts
     sei
