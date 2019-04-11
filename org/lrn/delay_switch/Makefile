@@ -75,3 +75,21 @@ asmflash: $(PROGRAM).hexS
 	-P/dev/ttyUSB0   \
 	-b19200 \
     -Uflash:w:$(PROJECT_PATH)/$(PROGRAM).hexS:i
+
+back:
+	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
+	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
+	-v               \
+	-pattiny13       \
+	-carduino        \
+	-P/dev/ttyUSB0   \
+	-b19200 \
+    -Uflash:r:$(PROJECT_PATH)/$(PROGRAM).hexback:i
+
+hex2bin:
+	objcopy -I ihex \
+	$(PROJECT_PATH)/$(PROGRAM).hexback \
+	-O binary $(PROJECT_PATH)/$(PROGRAM).bin
+
+bin2asm:
+	avrdisas $(PROJECT_PATH)/$(PROGRAM).bin > $(PROJECT_PATH)/$(PROGRAM).asm
