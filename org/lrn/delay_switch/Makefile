@@ -26,6 +26,9 @@ $(PROGRAM).hex: $(PROGRAM).elf
 $(PROGRAM).elf: $(PROGRAM).c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+obj: $(PROGRAM).c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROGRAM).o $^
+
 
 # Получение ассемблерного листинга из elf
 objdump: $(PROGRAM).elf
