@@ -1,4 +1,7 @@
 
+    .set	TCCR0B	, 0x33
+
+
     .text
     .global main
     .org 0
@@ -119,24 +122,32 @@ _0xca:
     ret
 
 main:
-	in	r24, 0x33	; 51
+	in	r24, TCCR0B	; 51
 	ori	r24, 0x01	; 1
-	out	0x33, r24	; 51
-	in	r24, 0x2f	; 47
+	out	TCCR0B, r24	; 51
+
+	in	r24, TCCR0A	; 47
 	ori	r24, 0x03	; 3
-	out	0x2f, r24	; 47
-	in	r24, 0x39	; 57
+	out	TCCR0A, r24	; 47
+
+    in	r24, TIMSK0	; 57
 	ori	r24, 0x02	; 2
-	out	0x39, r24	; 57
+	out	TIMSK0, r24	; 57
+
+
 	out	0x32, r1	; 50
 	sei
-	out	0x07, r1	; 7
-	in	r24, 0x06	; 6
+
+	out	0x07, r1	; ADMUX
+
+    in	r24, 0x06	; ADCSRA
 	ori	r24, 0x82	; 130
 	out	0x06, r24	; 6
-	sbi	0x17, 4	; 23
+
+	sbi	0x17, 4	; DDRB
 	cbi	0x17, 3	; 23
-	ldi	r28, 0x01	; 1
+
+    ldi	r28, 0x01	; 1
 	ldi	r29, 0x00	; 0
 	ldi	r24, 0xA0	; 160
 	mov	r12, r24

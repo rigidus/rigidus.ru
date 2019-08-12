@@ -9,7 +9,6 @@
     .set REL , 0b010000
     .set RST , 0b100000
 
-    ;; define r16 as temporary register
 #define zero r1
 #define temp r16
 #define ovrf r28

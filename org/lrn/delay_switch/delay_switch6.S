@@ -1,87 +1,118 @@
-; Disassembly of delay_switch6.bin (avr-gcc style)
+#define F_CPU 1200000UL
 
-.equ SPL, 0x3d
-.equ SREG, 0x3f
+    .include "tn13def.inc"
+
     .text
+
     .global main
     .org 0
-main:
+
+    .set    ZERO    , r1
+    .set    TEMP    , r16
+    .set    OVRF    , r28
+    .set    SPL     , 0x3d
+    .set    SREG    , 0x3f
+    .set    RAMEND  , 0x9f
+    .set	DDRB	, 0x17
+    .set	PORTB	, 0x18
+    .set	TCCR0A	, 0x2f
+    .set	TCCR0B	, 0x33
+    .set	TIMSK0	, 0x39
+    .set	TCNT0	, 0x32
+    .set	TOIE0	, 1	; Timer/Counter0 Overflow Interrupt Enable
+    .set	CS00	, 0	; Clock Select
+    .set	CS02	, 2	; Clock Select
 
 ; Referenced from offset 0x20 by rjmp
-Label1:
-rjmp    Label2
-rjmp    Label3
-rjmp    Label3
-rjmp    Label4
-rjmp    Label3
-rjmp    Label3
-rjmp    Label3
-rjmp    Label3
-rjmp    Label3
-rjmp    Label3
+main:
+    rjmp    start               ; INT0addr - External Interrupt 0
+    rjmp    bad_int             ; PCI0addr - External Interrupt Request 0
+    rjmp    bad_int             ; OVF0addr - Timer/Counter0 Overflow
+    rjmp    vector_3            ; ERDYaddr - EEPROM Ready
+    rjmp    bad_int             ; ACIaddr - Analog Comparator
+    rjmp    bad_int             ; OC0Aaddr - Timer/Counter Compare Match A
+    rjmp    bad_int             ; OC0Baddr - Timer/Counter Compare Match B
+    rjmp    bad_int             ; WDTaddr - Watchdog Time-out
+    rjmp    bad_int             ; ADCCaddr - ADC Conversion Complete
+    rjmp    bad_int             ; ?
 
-; Referenced from offset 0x00 by rjmp
-Label2:
-clr     r1
-out     SREG, r1
-ldi     r28, 0x9f       ; 159
-out     SPL, r28
-rcall   Function1
-rjmp    Label6
-
-; Referenced from offset 0x02 by rjmp
-; Referenced from offset 0x04 by rjmp
-; Referenced from offset 0x08 by rjmp
-; Referenced from offset 0x0a by rjmp
-; Referenced from offset 0x0c by rjmp
-; Referenced from offset 0x0e by rjmp
-; Referenced from offset 0x10 by rjmp
-; Referenced from offset 0x12 by rjmp
-Label3:
-rjmp    Label1
+bad_int:
+    rjmp    Label1
 
 ; Referenced from offset 0x06 by rjmp
-Label4:
-push    r1
-push    r0
-in      r0, SREG
-push    r0
-clr     r1
-push    r24
-push    r25
-in      r25, 0x18       ; 24
-ldi     r24, 0x01       ; 1
-eor     r24, r25
-out     0x18, r24       ; 24
-pop     r25
-pop     r24
-pop     r0
-out     SREG, r0
-pop     r0
-pop     r1
-reti
+vector_3:
+    push    r1
+    push    r0
+    in      r0, SREG
+    push    r0
+    clr     r1
+    push    r24
+    push    r25
+
+    in      r25, PORTB
+    ldi     r24, 0x01       ; 1
+    eor     r24, r25
+    out     PORTB, r24      ; 24
+
+    pop     r25
+    pop     r24
+    pop     r0
+    out     SREG, r0
+    pop     r0
+    pop     r1
+    reti
+
+; Referenced from offset 0x00 by rjmp
+start:
+    clr     ZERO
+    out     SREG, ZERO
+    ldi     TEMP, RAMEND
+    out     SPL, TEMP
+    ;; _____                        +--v--+
+    ;; RESET ADC0 5/A0 PCINT5 PB5  1|o    |8  VCC
+    ;; CLKI  ADC3 3/A3 PCINT3 PB3  2|     |7  PB2 PCINT2 2/A1 SCK  ADC1
+    ;;       ADC2 4/A2 PCINT4 PB4  3|     |6  PB1 PCINT1 1    MISO OC0B INT0
+    ;;                        GND  4|     |5  PB0 PCINT0 0    MOSI OC0A
+    ;;                              +-----+
+    ;;            +------- (PB5) [1-pin]
+    ;;            |+------ (PB4) [3-pin] RELAY_1 (INPUT)
+    ;;            ||+----- (PB3) [2-pin] BTN_1
+    ;;            |||+---- (PB2) [7-pin] RED
+    ;;            ||||+--- (PB1) [6-pin] WID
+    ;;            |||||+-- (PB0) [5-pin] WRK (status blink)
+    ;;            ||||||
+    ldi TEMP, 0b00000001
+    out DDRB, temp
+
+    ;; ovrf initialization
+    mov OVRF, ZERO
+
+    ;; in      TEMP, TCCR0B
+    ;; ori     TEMP, 0x05
+    ;; out     TCCR0B, TEMP
+    ;; in      TEMP, TIMSK0
+    ;; ori     TEMP, 0x02
+    ;; out     TIMSK0, TEMP
+
+    ;; ldi temp, (1<<WGM01) ; set configuration bits to temprary register
+    ;; out TCCR0A, temp     ; set timer counter mode to CTC
+
+
+    ldi TEMP, (1<<CS00)         ; (no prescaler)
+    out TCCR0B, TEMP            ; set prescaler
+
+    ldi TEMP, (1<<WGM01)|(1<<WGM00)
+    out TCCR0A, TEMP            ; PWM-mode
+
+    ldi TEMP, 0x02
+    out TIMSK0, TEMP            ; enable Timer Overflow Interrupt
+
+    out TCNT0, ZERO             ; clear Timer Counter
+
+    ;; enable global interrupts
+    sei
+
 
 ; Referenced from offset 0x1c by rcall
-Function1:
-ldi     r24, 0x01       ; 1
-out     0x17, r24       ; 23
-out     0x18, r1        ; 24
-in      r24, 0x33       ; 51
-ori     r24, 0x05       ; 5
-out     0x33, r24       ; 51
-in      r24, 0x39       ; 57
-ori     r24, 0x02       ; 2
-out     0x39, r24       ; 57
-sei
-
-; Referenced from offset 0x5a by rjmp
-Label5:
-rjmp    Label5
-
-; Referenced from offset 0x1e by rjmp
-Label6:
-cli
-
-; Referenced from offset 0x5e by rjmp
-Label7:
-rjmp    Label7
+loop:
+    rjmp loop
