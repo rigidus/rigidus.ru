@@ -141,11 +141,12 @@ get-параметров. Мы передаем его как ~teaser-url~, а �
 каждой полученной вакансии через систему правил:
 - hh_process_around
 - hh_process
+Эти методы будут рассмотрены в разделе [[*%D0%AD%D0%BA%D1%81%D0%BF%D0%B5%D1%80%D1%82%D0%BD%D0%B0%D1%8F%20%D1%81%D0%B8%D1%81%D1%82%D0%B5%D0%BC%D0%B0][Экспертная система]]
 
 При этом сами правила вынесены в специальные переменные ~rules-for-teasers~ и
 ~rules-for-vacs~. Эти переменные определяются (в функции ~run~) уже после создания
 фабрикой генератора вакансий, но до его вызова. В будущем при проверке многопоточной
-работы следует проверить, что это вызывает ошибок.
+работы следует проверить, что это не вызывает ошибок.
 
 #+NAME: hh_factory
 #+BEGIN_SRC lisp
@@ -162,7 +163,6 @@ get-параметров. Мы передаем его как ~teaser-url~, а �
     <<hh_vac_gen>>
     )
 #+END_SRC
-
 
 ** Генератор вакансий для HeadHunter
 
@@ -219,6 +219,7 @@ get-параметров. Мы передаем его как ~teaser-url~, а �
 закончились тизеры вакансий. Она загружает следующую страницу поисковой выдачи и
 применяет к ней функцию ~split-teasers-fn~ чтобы получить список тизеров, который и
 будет сохранен в ~teasers~.
+
 
 #+NAME: hh_load_next_teasers_page
 #+BEGIN_SRC lisp
@@ -822,21 +823,22 @@ html-кода, относящегося к разметке. Из-за этог�
     "Получение списка вакансий из html"
     (dbg ":hh-parse-teaser:")
     (setf *last-parse-teaser* teaser)
+    (let ((aa
     (->> (transform-responder teaser)
-         (transform-rejecter)
-         (transform-inviter)
+         ;; (transform-rejecter)
+         ;; (transform-inviter)
          (transform-vacancy-title)
-         (transform-vacancy-archived)
-         (transform-search-item-name)
+         ;; (transform-vacancy-archived)
+         ;; (transform-search-item-name)
          (transform-schedule)
          (transform-employer)
          (transform-employer-anon)
-         (transform-career)
+         ;; (transform-career)
          (transform-metro)
          (transform-metro-empty)
          (transform-address)
          (transform-meta-info)
-         (transform-insider-teaser)
+         ;; (transform-insider-teaser)
          (transform-responsibility)
          (transform-requirement)
          (transform-serp-item-info)
@@ -848,16 +850,20 @@ html-кода, относящегося к разметке. Из-за этог�
          (transform-serp-item-row)
          (transform-controls-item)
          (transform-date)
-         (transform-controls-last)
+         ;; (transform-controls-last)
          (transform-trigger-container)
          (transform-trigger-button)
          (transform-row-controls)
+         (transform-row-header)
+         (transform-g-user-content)
+         (transform-resume-search-item-name)
          (transform-serp-premium)
          (transform-serp-vacancy)
-         (transform-reform-meta-info)
+         ;; (transform-reform-meta-info)
          (transform-control-gt-xs)
          (linearize-teaser)
-         ))
+         )))
+      (print aa)))
 
   ;; (print (hh-parse-teaser *last-parse-teaser*))
 
@@ -1031,7 +1037,8 @@ html-кода, относящегося к разметке. Из-за этог�
 
   (make-transform (address)
     (`("vacancy-serp__vacancy-address" NIL ,address ,@rest)
-      `((:address ,address) ,@rest)))
+      `((:address ,address) ,@(remove-if #'(lambda (x) (typep x 'string)) rest))))
+
 
   (make-transform (meta-info)
     (`("vacancy-serp-item__meta-info" NIL ,@rest)
@@ -1101,6 +1108,18 @@ html-кода, относящегося к разметке. Из-за этог�
     (`("vacancy-serp-item__row vacancy-serp-item__row_controls" NIL ,@rest)
       `(:row-controls ,@rest)))
 
+  (make-transform (row-header)
+    (`("vacancy-serp-item__row vacancy-serp-item__row_header" NIL ,@rest)
+      `(:row-header ,@rest)))
+
+  (make-transform (g-user-content)
+    (`("g-user-content" NIL ,@rest)
+      `(:g-user-content ,@rest)))
+
+  (make-transform (resume-search-item-name)
+    (`("resume-search-item__name" NIL ,@rest)
+      `(:resume-search-item-name ,@rest)))
+
   (make-transform (serp-premium)
     (`("vacancy-serp__vacancy vacancy-serp__vacancy_premium" NIL ,@rest)
       `(:premium ,@rest)))
@@ -1133,7 +1152,7 @@ html-кода, относящегося к разметке. Из-за этог�
                                               `(:garbage "и еще metro")
                                               x)))
                               (remove-if (lambda (x)
-                                           (equal (car x) :garbage))))))))
+                                          (equal (car x) :garbage))))))))
 #+END_SRC
 
 ** Функция-предикат для plists
@@ -1210,7 +1229,8 @@ plist-деревом.
            vacancy)
           ((member (car vacancy)
                    '(:premium :vacancy :row-controls :row :item-info :item-name :meta-info
-                     :item-sidebar :trigger-container))
+                     :item-sidebar :trigger-container :row-header :resume-search-item-name
+                     :g-user-content))
            (mapcan #'linearize-teaser (remove-if #'(lambda (x)
                                                      (equal (car x) :garbage))
                                                  (cdr vacancy))))
@@ -1456,7 +1476,8 @@ plist-деревом.
 #+END_SRC
 
 Нам также придется передать правила для тизеров и вакансий как динамические переменные
-~rules-for-teasers~ ~rules-for-vacs~:
+~rules-for-teasers~ ~rules-for-vacs~, а также корректно обрабатывать ситуации, когда
+тизеры закончились - в этот момент будет вызываться ~failure~функция
 
 #+NAME: run_replaced
 #+BEGIN_SRC lisp
@@ -1487,8 +1508,17 @@ plist-деревом.
       (loop :for i :from 1 :to 1000 :do
          (dbg "~A" (bprint (funcall gen
                                     (lambda (tag msg data) ;; failure
-                                      (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
-                                      (error tag))
+                                      (cond ((equal 'NO-MORE-TEASERS tag)
+                                             (progn
+                                               (dbg "CONDITION: ~A - ~A~%~A" tag msg (length data))
+                                               (return))) ;; return from loop
+                                            ((equal 'HH-404-ERROR tag)
+                                             (progn
+                                               (dbg "CONDITION: ~A - ~A~%~A" tag msg (length data))
+                                               (return))) ;; return from loop
+                                            (t (progn
+                                                 (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                                                 (error tag)))))
                                     #'hh-process))))))
 #+END_SRC
 
@@ -1822,8 +1852,17 @@ plist-деревом.
         (loop :for i :from 1 :to 1000 :do
            (let* ((vac (funcall gen
                                 (lambda (tag msg data) ;; failure
-                                  (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
-                                  (error tag))
+                                  (cond ((equal 'NO-MORE-TEASERS tag)
+                                         (progn
+                                           (dbg "CONDITION: ~A - ~A~%~A" tag msg (length data))
+                                           (return))) ;; return from loop
+                                        ((equal 'HH-404-ERROR tag)
+                                         (progn
+                                           (dbg "CONDITION: ~A - ~A~%~A" tag msg (length data))
+                                           (return))) ;; return from loop
+                                        (t (progn
+                                             (dbg "ERROR: ~A - ~A~%~A" tag msg (length data))
+                                             (error tag)))))
                                 #'hh-process))
                   (key (getf vac :src-id)))
              (dbg "~A" (bprint vac))
