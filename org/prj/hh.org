@@ -10,6 +10,18 @@
 Я решил пойти дальше и разработал экспертную систему, которая ищет работу за меня в
 автоматическом режиме. Здесь я опишу как она устроена и работает.
 
+Чтобы использовать такую экспертную систему не требуется вникать в механизм ее работы,
+достаточно просто:
+- Определить источник вакансий, откуда они будут собираться
+- Определить правила их обработки
+- Наслаждаться результатом, который может включать автоматическое создание и отправку
+  резюме, если это предусмотрено в правилах, составленных на предыдущем этапе
+
+Все это происходит в функции ~run~. Полученный результат [TODO:gmm] - как посмотреть?
+
+Но если необходимо расширить экспертную систему, например, подключить еще один источник
+вакансий, или изменить парсер, потребуется представлять ход работы хотя бы в общих чертах.
+
 Для ознакомления "без глубокого погружения" стоит читать разделы:
 - Базовые концепции
 - Экспертная система
@@ -17,13 +29,17 @@
 
 ** Базовые Концепции
 
-Для понимания того, что написано ниже, достаточно разобраться с тремя вещами:
+Для понимания того, что написано ниже, достаточно разобраться с несколькими вещами:
 
 *** Источник вакансий
 
 Источник вакансий - это сущность, откуда можно получать вакансии. Например, это может
 быть сайт [[http://hh.ru][HeadHunter.ru]], целевое приглашение HR-а работодателя в LinkedIn, письмо в
 электронной почте или даже автоматически найденный пост в блоге.
+
+Система должна выгребать все доступные вакансии из всех известных ей источников, сразу
+после запуска. В процессе получения вакансий, к ним применяется набор правил, после
+чего они попадают в базу.
 
 *** Генератор вакансий
 
@@ -41,13 +57,20 @@
 Фабрика - это функция, которой надо дать источник вакансий и тогда она вернет
 функцию-генератор. Иногда фабрике может понадобится еще какие-то данные, специфичные
 для каждого источника. Поэтому я оформляю фабрику как обобщенную функцию с
-неопределенным числом аргументов:
+неопределенным числом ключевых аргументов (каждому источнику возможно будут нужны свои
+аргументы):
 
 #+NAME: factory
 #+BEGIN_SRC lisp
   (defgeneric factory (vac-src &optional &key &allow-other-keys)
     (:documentation "Return the function-generator of vacancyes"))
 #+END_SRC
+*** Многопользовательский доступ
+
+Предполагается, что создаваемая экспертная система перестанет быть однопользовательской
+и станет сервисом по поиску работы для неограниченного кол-ва пользователей. Следует
+проверить, что не возникают состояния гонки при обработки вакансий и что все части
+системы могут масштабироваться.
 
 ** Пример использования
 
@@ -77,19 +100,69 @@
 
 ** Фабрика генераторов для HeadHunter
 
+Сайт https://hh.ru представляет собой удобный источник вакансий, в котором вакансии
+публикуются на страницах сайта. Эти страницы формируются на сервере, поэтому мы можем
+получить вакансии разбором html-кода.
+
+На сайте есть поисковая форма с выдачей. Сама выдача представляет собой список
+т.н. "тизеров" вакансий, каждый тизер ведет на страницу вакансии. Поэтому нам нужен
+~url~ страницы тизеров, в котором мы можем менять страницу поисковой выдачи в одном из
+get-параметров. Мы передаем его как ~teaser-url~, а начальную страницу как ~idx~.
+
+Мы также передаем ~ref~ чтобы создать впечатление у сервера, что мы не бот, а
+обычный броузер-клиент и пришли с предыдущей страницы сайта. Вместе с этим мы передаем
+необходимые ~cookies~.
+
+Если мы хотим иметь возможность откликаться на вакансии внутри интерфейса сайта, нам
+также нужно передавать объект ~src-account~, который содержит все необходимое, чтобы
+восстановить сессию: логин, пароль и ФИО пользователя, по которому мы определяем, что
+успешно залогинились - ФИО появляется в html-коде при успешном логине.
+
+Мы также передаем три функции для того, чтобы иметь возможность модифицировать способ
+работы со страницами, способ разбиения поисковой выдачи на тизеры и способ разбора
+тизеров:
+- get-page-fn
+- split-teasers-fn
+- parse-teaser-fn
+
+Опираясь на всю эту информацию, передаваемую в параметрах, фабрика может создать
+множество разных генераторов вакансий для сайта ~https://hh.ru~ с разными внутренними
+сценариями обработки вакансий. Таким образом, каждый из пользователей системы может
+иметь несколько таких генераторов. Например, если сайт будет предоставлять API для
+получения вакансий - можно иметь по одному генератору для каждой версии API и еще один
+для парсинга html (как если бы мы получали информацию используя броузер).
+
+Вне зависимости от того, как именно был параметризован генератор при его создании
+фабрикой, чтобы получить следующую вакансию нужно просто его вызвать. Поэтому сам
+генератор представляет собой именованную лямбда-функцию в замыкании, которую возвращает
+фабрика. Замкнутые переменные являются параметрами factory.
+
+Генератор использует helper-метод (и его around), который обеспечивает процессинг
+каждой полученной вакансии через систему правил:
+- hh_process_around
+- hh_process
+
+При этом сами правила вынесены в специальные переменные ~rules-for-teasers~ и
+~rules-for-vacs~. Эти переменные определяются (в функции ~run~) уже после создания
+фабрикой генератора вакансий, но до его вызова. В будущем при проверке многопоточной
+работы следует проверить, что это вызывает ошибок.
+
 #+NAME: hh_factory
 #+BEGIN_SRC lisp
-  (defmethod factory ((vac-src (eql 'hh)) &optional &key teaser-url      idx  ref
-                                                      cookie-jar         src-account
-                                                      get-page-fn        split-teasers-fn
-                                                      parse-teaser-fn    (teasers nil)
-                                                      &allow-other-keys)
+  (defmethod factory ((vac-src (eql 'hh))
+                      &optional &key
+                                  teaser-url         idx  ref
+                                  cookie-jar         src-account
+                                  get-page-fn        split-teasers-fn
+                                  parse-teaser-fn    (teasers nil)
+                                  &allow-other-keys)
     (dbg ":factory:")
     <<hh_process_around>>
     <<hh_process>>
     <<hh_vac_gen>>
     )
 #+END_SRC
+
 
 ** Генератор вакансий для HeadHunter
 
@@ -332,104 +405,6 @@
         (if (contains html (src_fio src-account))
             (funcall success cookie-jar-2 html)
             (funcall failure 'login-failed "login failed" html)))))
-#+END_SRC
-
-* OCR
-** TODO Управление броузером
-** Распознавание текста
-
-Исправление пути к тессеракт-файлам выполненное так, чтобы не пришлось править их в
-самой библиотеке cl-tesseract. Туда следует положить языковые файлы, взятые отсюда:
-https://github.com/tesseract-ocr/tessdata/tree/3.04.00
-
-#+BEGIN_SRC lisp
-  (handler-bind ((type-error
-                  #'(lambda (c)
-                      (declare (ignore c))
-                      ;; (print (compute-restarts))
-                      (invoke-restart 'ASDF/ACTION:ACCEPT))))
-    (ql:quickload "cl-tesseract"))
-
-  (defparameter cl-tesseract::*tessdata-directory*
-    (namestring
-     (probe-file
-      "/usr/share/tesseract-ocr/tessdata/")))
-
-  ;; (print
-  ;;  (cl-tesseract:image-to-text #P"~/Pictures/333.png" :lang "rus+eng"))
-
-  (ql:quickload 'clx)
-  (ql:quickload 'zpng)
-
-  (defmacro with-default-display ((display &key (force nil)) &body body)
-    `(let ((,display (xlib:open-default-display)))
-       (unwind-protect
-            (unwind-protect
-                 ,@body
-              (when ,force
-                (xlib:display-force-output ,display)))
-         (xlib:close-display ,display))))
-
-  (defmacro with-default-screen ((screen) &body body)
-    (let ((display (gensym)))
-      `(with-default-display (,display)
-         (let ((,screen (xlib:display-default-screen ,display)))
-           ,@body))))
-
-  (defun x-size ()
-    (with-default-screen (s)
-      (values
-       (xlib:screen-width s)
-       (xlib:screen-height s))))
-
-  ;; (x-size)
-
-  (defmacro with-default-window ((window) &body body)
-    (let ((screen (gensym)))
-      `(with-default-screen (,screen)
-         (let ((,window (xlib:screen-root ,screen)))
-           ,@body))))
-
-  (defun raw-image->png (data width height)
-    (let* ((png (make-instance 'zpng:png :width width :height height
-                               :color-type :truecolor-alpha
-                               :image-data data))
-           (data (zpng:data-array png)))
-      (dotimes (y height)
-        (dotimes (x width)
-          ;; BGR -> RGB, ref code: https://goo.gl/slubfW
-          ;; diffs between RGB and BGR: https://goo.gl/si1Ft5
-          (rotatef (aref data y x 0) (aref data y x 2))
-          (setf (aref data y x 3) 255)))
-      png))
-
-  (multiple-value-bind (default-width default-height) (x-size)
-    (defun x-snapshot (&key (x 0) (y 0)
-                         (width default-width) (height default-height)
-                         (delay 0)
-                         path)
-      "Return RGB data array (The dimensions correspond to the height, width,
-  and pixel components, see comments in x-find-color for more details),
-  or write to file (PNG only), depend on if you provide the path keyword"
-      (sleep delay)
-      (with-default-window (w)
-        (let ((image
-               (raw-image->png
-                (xlib:get-raw-image w
-                                    :x x :y y
-                                    :width width :height height
-                                    :format :z-pixmap)
-                width height)))
-          (if path
-              (let* ((ext (pathname-type path))
-                     (path (if ext path (concatenate 'string path ".png")))
-                     (png? (or (null ext) (equal ext "png"))))
-                (cond
-                  (png? (zpng:write-png image path))
-                  (t (error "Only PNG file is supported"))))
-              (zpng:data-array image))))))
-
-  (x-snapshot :x 0 :y 0 :path "~/Pictures/x.png")
 #+END_SRC
 
 * Функции преобразования
@@ -1950,6 +1925,104 @@ plist-деревом.
 Полученный орграф накладывает ограничения на возможные переходы из одного домена в
 другой, поэтому для перехода можно использовать сгенерированную из таблицы функцию
 ~trans~, которая сигнализирует ошибку, при попытке осуществить неразрешенный переход.
+
+* OCR
+** TODO Управление броузером
+** Распознавание текста
+
+Исправление пути к тессеракт-файлам выполненное так, чтобы не пришлось править их в
+самой библиотеке cl-tesseract. Туда следует положить языковые файлы, взятые отсюда:
+https://github.com/tesseract-ocr/tessdata/tree/3.04.00
+
+#+BEGIN_SRC lisp
+  (handler-bind ((type-error
+                  #'(lambda (c)
+                      (declare (ignore c))
+                      ;; (print (compute-restarts))
+                      (invoke-restart 'ASDF/ACTION:ACCEPT))))
+    (ql:quickload "cl-tesseract"))
+
+  (defparameter cl-tesseract::*tessdata-directory*
+    (namestring
+     (probe-file
+      "/usr/share/tesseract-ocr/tessdata/")))
+
+  ;; (print
+  ;;  (cl-tesseract:image-to-text #P"~/Pictures/333.png" :lang "rus+eng"))
+
+  (ql:quickload 'clx)
+  (ql:quickload 'zpng)
+
+  (defmacro with-default-display ((display &key (force nil)) &body body)
+    `(let ((,display (xlib:open-default-display)))
+       (unwind-protect
+            (unwind-protect
+                 ,@body
+              (when ,force
+                (xlib:display-force-output ,display)))
+         (xlib:close-display ,display))))
+
+  (defmacro with-default-screen ((screen) &body body)
+    (let ((display (gensym)))
+      `(with-default-display (,display)
+         (let ((,screen (xlib:display-default-screen ,display)))
+           ,@body))))
+
+  (defun x-size ()
+    (with-default-screen (s)
+      (values
+       (xlib:screen-width s)
+       (xlib:screen-height s))))
+
+  ;; (x-size)
+
+  (defmacro with-default-window ((window) &body body)
+    (let ((screen (gensym)))
+      `(with-default-screen (,screen)
+         (let ((,window (xlib:screen-root ,screen)))
+           ,@body))))
+
+  (defun raw-image->png (data width height)
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type :truecolor-alpha
+                               :image-data data))
+           (data (zpng:data-array png)))
+      (dotimes (y height)
+        (dotimes (x width)
+          ;; BGR -> RGB, ref code: https://goo.gl/slubfW
+          ;; diffs between RGB and BGR: https://goo.gl/si1Ft5
+          (rotatef (aref data y x 0) (aref data y x 2))
+          (setf (aref data y x 3) 255)))
+      png))
+
+  (multiple-value-bind (default-width default-height) (x-size)
+    (defun x-snapshot (&key (x 0) (y 0)
+                         (width default-width) (height default-height)
+                         (delay 0)
+                         path)
+      "Return RGB data array (The dimensions correspond to the height, width,
+  and pixel components, see comments in x-find-color for more details),
+  or write to file (PNG only), depend on if you provide the path keyword"
+      (sleep delay)
+      (with-default-window (w)
+        (let ((image
+               (raw-image->png
+                (xlib:get-raw-image w
+                                    :x x :y y
+                                    :width width :height height
+                                    :format :z-pixmap)
+                width height)))
+          (if path
+              (let* ((ext (pathname-type path))
+                     (path (if ext path (concatenate 'string path ".png")))
+                     (png? (or (null ext) (equal ext "png"))))
+                (cond
+                  (png? (zpng:write-png image path))
+                  (t (error "Only PNG file is supported"))))
+              (zpng:data-array image))))))
+
+  (x-snapshot :x 0 :y 0 :path "~/Pictures/x.png")
+#+END_SRC
 
 * Автоматическое создание резюме
 
