@@ -837,6 +837,7 @@ html-кода, относящегося к разметке. Из-за этог�
          (transform-metro)
          (transform-metro-empty)
          (transform-address)
+         (transform-bloko-link)
          (transform-meta-info)
          ;; (transform-insider-teaser)
          (transform-responsibility)
@@ -859,7 +860,7 @@ html-кода, относящегося к разметке. Из-за этог�
          (transform-resume-search-item-name)
          (transform-serp-premium)
          (transform-serp-vacancy)
-         ;; (transform-reform-meta-info)
+         (transform-reform-meta-info) ;; remove strings
          (transform-control-gt-xs)
          (linearize-teaser)
          )))
@@ -1037,12 +1038,17 @@ html-кода, относящегося к разметке. Из-за этог�
 
   (make-transform (address)
     (`("vacancy-serp__vacancy-address" NIL ,address ,@rest)
-      `((:address ,address) ,@(remove-if #'(lambda (x) (typep x 'string)) rest))))
+      `(:address ,address ,@(remove-if #'(lambda (x) (typep x 'string)) rest))))
 
+  (make-transform (bloko-link)
+    (`("bloko-link" (("href" ,href)) ,@rest)
+      `(:link ,href)))
 
   (make-transform (meta-info)
     (`("vacancy-serp-item__meta-info" NIL ,@rest)
       `(:meta-info ,@rest)))
+
+
 
   (make-transform (compensation)
     (`("vacancy-serp__vacancy-compensation"
@@ -1144,9 +1150,9 @@ html-кода, относящегося к разметке. Из-за этог�
 
   (make-transform (reform-meta-info)
     (`(:META-INFO ,@rest)
-      (if (not (listp (car rest)))
+      (if (not (listp rest))
           `(:garbage "bad-meta-info")
-          `(:meta-info ,@(->> (car rest)
+          `(:meta-info ,@(->> rest
                               (mapcar #'(lambda (x)
                                           (if (not (listp x))
                                               `(:garbage "и еще metro")
@@ -1225,7 +1231,7 @@ plist-деревом.
            (mapcar #'linearize-teaser (cdr vacancy)))
           ((member (car vacancy)
                    '(:status :date :garbage :src-id :href :emp-name :address :metro :currency
-                     :responsibility :requirement :logo :schedule :insider :archived))
+                     :responsibility :requirement :logo :schedule :insider :archived :link))
            vacancy)
           ((member (car vacancy)
                    '(:premium :vacancy :row-controls :row :item-info :item-name :meta-info
@@ -1290,7 +1296,8 @@ plist-деревом.
   (defparameter *hh-teaser-url*
     ;; "https://hh.ru/search/vacancy?clusters=true&items_on_page=100&enable_snippets=true&specialization=1.221&area=2&page=~A"
     ;; "https://hh.ru/search/vacancy?clusters=true                  &enable_snippets=true&items_on_page=100&only_with_salary=true&salary=165000&specialization=1.221&from=cluster_specialization&showClusters=true"
-    "https://hh.ru/search/vacancy?L_is_autosearch=false&area=2&clusters=true&enable_snippets=true&items_on_page=100&only_with_salary=true&salary=165000&specialization=1.221&page=~A")
+    "https://hh.ru/search/vacancy?L_is_autosearch=false&area=2&clusters=true&enable_snippets=true&items_on_page=100&only_with_salary=true&salary=165000&specialization=1.221&page=~A"
+    "https://spb.hh.ru/search/vacancy?L_is_autosearch=false&area=1&clusters=true&enable_snippets=true&items_on_page=100&only_with_salary=true&salary=165000&specialization=1.221&page=~A")
 #+END_SRC
 
 * Экспертная система
@@ -1966,6 +1973,16 @@ plist-деревом.
 ~trans~, которая сигнализирует ошибку, при попытке осуществить неразрешенный переход.
 
 * OCR
+** TODO Скриншоты
+
+...можно получать так:
+
+#+BEGIN_SRC sh
+firefox -P automated -screenshot smbc.png http://www.smbc-comics.com
+#+END_SRC
+
+(требуется создать профиль automated и зайти в него один раз, для первичной настройки
+
 ** TODO Управление броузером
 ** Распознавание текста
 
