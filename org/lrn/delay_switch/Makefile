@@ -1,7 +1,12 @@
 ARDUINO_PATH = /home/${USER}/build/arduino-1.8.9
+PROJECT_PATH = ./
 AVRTOOLS_PATH = hardware/tools/avr
-PROGRAM = delay_switch5
-MCU = attiny13
+PROGRAM = b2313
+MCU = attiny2313
+PORT = /dev/ttyACM0
+BAUDRATE = 19200
+# Пока без фьюзов
+# FUSES = -U lfuse:w:0x64:m -U hfuse:w:0xdd:m -U efuse:w:0xff:m
 CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
 OBJCOPY = avr-objcopy
 CFLAGS += -Wall -g -Os -mmcu=$(MCU) -I$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/avr/include
@@ -13,18 +18,18 @@ all: $(PROGRAM).hex
 flash: $(PROGRAM).hex
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v               \
-	-pattiny13       \
-	-carduino        \
-	-P/dev/ttyUSB0   \
-	-b19200 \
-    -Uflash:w:$(PROGRAM).hex:i
+	-v				 \
+	-p$(MCU)		 \
+	-carduino		 \
+	-P$(PORT)		 \
+	-b$(BAUDRATE)	 \
+	-Uflash:w:$<:i
 
 $(PROGRAM).hex: $(PROGRAM).elf
-	$(OBJCOPY) -O ihex $< $@
+	$(Q)$(OBJCOPY) -O ihex $< $@
 
-$(PROGRAM).elf: $(PROGRAM).c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+$(PROGRAM).elf: $(PROGRAM).o
+	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 obj: $(PROGRAM).c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROGRAM).o $^
@@ -33,7 +38,6 @@ obj: $(PROGRAM).c
 # Получение ассемблерного листинга из elf
 objdump: $(PROGRAM).elf
 	avr-objdump -d $^ > $(PROGRAM).asm
-
 
 # Удаление объектных и целевых файлов
 # Удаляем не все .o файлы, а только те что в списке $(OBJS)
@@ -45,16 +49,17 @@ clean:
 	rm -f *.hexS
 	rm -f *.bin
 
+
 # Ассеблерная компиляция
 asmflash: $(PROGRAM).hexS
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v               \
-	-pattiny13       \
-	-carduino        \
-	-P/dev/ttyUSB0   \
-	-b19200 \
-    -Uflash:w:$(PROGRAM).hexS:i
+	-v				 \
+	-p$(MCU)		 \
+	-carduino		 \
+	-P$(PORT)		 \
+	-b$(BOUDRATE)	 \
+	-Uflash:w:$(PROGRAM).hexS:i
 
 
 asm: $(PROGRAM).hexS
@@ -75,11 +80,11 @@ objdumpS: $(PROGRAM).elfS
 extract:
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v               \
-	-pattiny13       \
-	-carduino        \
-	-P/dev/ttyUSB0   \
-	-b19200 \
+	-v				 \
+	-p$(MCU)		 \
+	-carduino		 \
+	-P$(PORT)		 \
+	-b$(BAUDRATE)	 \
 	-Uflash:r:$(PROGRAM).hexbin:i
 
 # Преобразование файла HEX в BIN
@@ -88,4 +93,8 @@ hex2bin: $(PROGRAM).hexbin
 
 # Дизассемблирование BIN-файла
 disasm: $(PROGRAM).bin
+	# avrdisas -a1 -o1 -s1 $(PROJECT_PATH)/$(PROGRAM).bin
 	avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
+
+%.o: %.c
+	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
