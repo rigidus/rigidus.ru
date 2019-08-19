@@ -26,10 +26,10 @@ flash: $(PROGRAM).hex
 	-Uflash:w:$<:i
 
 $(PROGRAM).hex: $(PROGRAM).elf
-	$(Q)$(OBJCOPY) -O ihex $< $@
+	$(OBJCOPY) -O ihex $< $@
 
 $(PROGRAM).elf: $(PROGRAM).o
-	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 obj: $(PROGRAM).c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROGRAM).o $^
@@ -50,7 +50,6 @@ clean:
 	rm -f *.bin
 
 
-# Ассеблерная компиляция
 asmflash: $(PROGRAM).hexS
 	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
@@ -58,21 +57,31 @@ asmflash: $(PROGRAM).hexS
 	-p$(MCU)		 \
 	-carduino		 \
 	-P$(PORT)		 \
-	-b$(BOUDRATE)	 \
+	-b$(BAUDRATE)	 \
 	-Uflash:w:$(PROGRAM).hexS:i
-
-
-asm: $(PROGRAM).hexS
 
 $(PROGRAM).hexS: $(PROGRAM).elfS
 	$(OBJCOPY) -O ihex $< $@
 
-$(PROGRAM).elfS: $(PROGRAM).S
-	$(CC) $(CFLAGS) -nostartfiles $(LDFLAGS) -o $@ $^
+$(PROGRAM).elfS: $(PROGRAM).oS
+	$(CC) \
+	$(CFLAGS) \
+	$(LDFLAGS) \
+	-nostartfiles \
+	$^ \
+	-o $@
+
+$(PROGRAM).oS: $(PROGRAM).S
+	$(CC) \
+	$(CFLAGS) \
+	$(LDFLAGS) \
+	-nostartfiles \
+	$^ \
+	-o $@
 
 # Получение ассемблерного листинга из elfS
 objdumpS: $(PROGRAM).elfS
-	avr-objdump -dS $^ > $(PROGRAM).asmS
+	avr-objdump -d $^ > $(PROGRAM).asmS
 
 
 
@@ -97,4 +106,4 @@ disasm: $(PROGRAM).bin
 	avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
 
 %.o: %.c
-	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
+	$(CC) $(CFLAGS) -o $@ -c $<

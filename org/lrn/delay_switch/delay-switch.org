@@ -3339,7 +3339,6 @@ arduino-toolchain эти скрипты находятся здесь:
       rjmp    stop_program
 #+END_SRC
 
-
 ** TODO Other
 
 #+NAME: udivmodsi4_c
@@ -3726,13 +3725,13 @@ millis()/micros(): Enabled
       -carduino        \
       -P$(PORT)        \
       -b$(BAUDRATE)    \
-      -Uflash:w:$(PROGRAM).hex:i
+      -Uflash:w:$<:i
 
   $(PROGRAM).hex: $(PROGRAM).elf
-      $(Q)$(OBJCOPY) -O ihex $< $@
+      $(OBJCOPY) -O ihex $< $@
 
   $(PROGRAM).elf: $(PROGRAM).o
-      $(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+      $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
   obj: $(PROGRAM).c
       $(CC) $(CFLAGS) $(LDFLAGS) -o $(PROGRAM).o $^
@@ -3753,7 +3752,6 @@ millis()/micros(): Enabled
       rm -f *.bin
 
 
-  # Ассеблерная компиляция
   asmflash: $(PROGRAM).hexS
       $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
       -C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
@@ -3761,21 +3759,31 @@ millis()/micros(): Enabled
       -p$(MCU)         \
       -carduino        \
       -P$(PORT)        \
-      -b$(BOUDRATE)    \
+      -b$(BAUDRATE)    \
       -Uflash:w:$(PROGRAM).hexS:i
-
-
-  asm: $(PROGRAM).hexS
 
   $(PROGRAM).hexS: $(PROGRAM).elfS
       $(OBJCOPY) -O ihex $< $@
 
-  $(PROGRAM).elfS: $(PROGRAM).S
-      $(CC) $(CFLAGS) -nostartfiles $(LDFLAGS) -o $@ $^
+  $(PROGRAM).elfS: $(PROGRAM).oS
+      $(CC) \
+      $(CFLAGS) \
+      $(LDFLAGS) \
+      -nostartfiles \
+      $^ \
+      -o $@
+
+  $(PROGRAM).oS: $(PROGRAM).S
+      $(CC) \
+      $(CFLAGS) \
+      $(LDFLAGS) \
+      -nostartfiles \
+      $^ \
+      -o $@
 
   # Получение ассемблерного листинга из elfS
   objdumpS: $(PROGRAM).elfS
-      avr-objdump -dS $^ > $(PROGRAM).asmS
+      avr-objdump -d $^ > $(PROGRAM).asmS
 
 
 
@@ -3799,9 +3807,8 @@ millis()/micros(): Enabled
       # avrdisas -a1 -o1 -s1 $(PROJECT_PATH)/$(PROGRAM).bin
       avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
 
-
   %.o: %.c
-      $(Q)$(CC) $(CFLAGS) -o $@ -c $<
+      $(CC) $(CFLAGS) -o $@ -c $<
 
 #+END_SRC
 
@@ -3827,4 +3834,71 @@ millis()/micros(): Enabled
       return 0;
   }
 #+END_SRC
+** Assembler-blink
+
+#+BEGIN_SRC asm
+  .equ SPL, 0x3d
+  .equ SREG, 0x3f
+  .text
+  .global main
+  main:
+
+  _vectors:
+      rjmp    _reset
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+      rjmp    _infloop
+
+  _reset:
+      clr     r1
+      out     SREG, r1
+      ldi     r28, 0xdf       ; 223
+      out     SPL, r28
+      rcall   _setup
+
+  _halt:
+      cli
+
+  _infloop:
+      rjmp    _infloop
+
+  ; Referenced from offset 0x2e by rcall
+  _setup:
+      ser     r24                 ; r24 := 0xFF
+      out     0x17, r24           ; port-0x17 := 0xFF
+
+  ; Referenced from offset 0x50 by rjmp
+  _mainloop:
+      in      r24, 0x18           ; r24 := 0x18
+      com     r24                 ; invert(r24)
+      out     0x18, r24           ; port-0x18 := r24
+
+      ldi     r18, 0x7f           ; r18 := 7F
+      ldi     r24, 0xa9           ; r24 := A9
+      ldi     r25, 0x01           ; r25 := 03
+
+  ; Referenced from offset 0x4a by brne
+  _delay:
+      subi    r18, 0x01       ; 1
+      sbci    r24, 0x00       ; 0
+      sbci    r25, 0x00       ; 0
+      brne    _delay
+      rjmp    _mainloop
+#+END_SRC
+
 * KiCad
