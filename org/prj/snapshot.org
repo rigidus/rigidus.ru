@@ -178,22 +178,17 @@
 
 - Для каждого клеточного автомата на изображении находится первая точка объекта. Это
   первая найденная при сканировании строки пикселей точка черного цвета.
-- Проводится сканирование ближайших соседей. Если среди них есть черные точки - они
-  становятся красными точками фронта волны, а первая точка становится точкой шлейфа
-  волны (в момент, когда появляется новая волна мы записываем все ее точки в список
-  волны). Если же черных соседей нет, первая точка становится обработанной (серой) и
-  волна умирает не успев родиться.
-- Для всех красных точек мы повторяем этот шаг, пока красные они не
-  закончатся. Сканируем ближайший соседей:
+- Для всех красных точек мы повторяем этот шаг, пока красные точки не
+  закончатся. Сканируем ближайших соседей:
   - Если это точка фона - ничего не делаем
-  - Если это черная точка, то делаем ее красной (и записываем)
-  - Если это красная точка - мы видим другую волну, это не наше дело, ничего не делаем
-  - Если это зеленая точка - это наш (или чужой) шлейф, ничего не делаем
-  - Если это серая точка - тоже ничего не делаем, она уже обработана
-  После того как мы обработали ближайших соседей, центральная точка должна стать
-  зеленой (и обновить запись в списке точек волны)
-- Если красных точек больше нет - сохраняем завершенную волну и ищем точку начала новой
-  волны.
+  - Если это черная точка, то делаем ее красной (и записываем в список красных
+    точек. Этот список представляет собой "фронт волны" и нужен чтобы не обрабатывать
+    одну точку дважды.)
+  - Если это красная точка - мы видим обработанную точку, ничего не делаем
+  После того как все ближайшие соседи просканированы, мы переносим текущую точку из
+  списка красных точек (списка "фронта волны") в список обработанных точек
+- Если красных точек больше нет - мы можем вычислить углы прямоугольника в который
+  попали все красные точки
 
 #+BEGIN_SRC lisp
   ;; binarization test
@@ -210,25 +205,11 @@
                    (when (and (equal 0 (aref image dy dx 0))
                               (equal 0 (aref image dy dx 1))
                               (equal 0 (aref image dy dx 2)))
-                     (return-from image-scan (list dx dy)))))))
+                     (return-from image-scan (cons dx dy)))))))
 
   ;; (image-scan 0 0 (load-png "cell1.png"))
 
-  (defun set-red (image)
-    (let* ((first-point (image-scan 0 0 image)))
-        ;; делаем first-point красной
-        (setf (aref image (nth 1 first-point) (nth 0 first-point) 0) 255)
-        (values image first-point)))
-
-  ;; (let ((image (load-png "cell1.png"))_)
-  ;;   (destructuring-bind (dw dh dz)
-  ;;       (array-dimensions image)
-  ;;     (multiple-value-bind (new-image red-point)
-  ;;         (set-red image)
-  ;;       (save-png dw dh "cell2.png" (vectorize-image new-image))
-  ;;       red-point)))
-
-  (defun modify-red-neighbors (px py image)
+  (defun neighbors (px py image)
     (let ((result)
           (neighbors (list (cons (- px 1) (- py 1))
                            (cons px       (- py 1))
@@ -238,7 +219,6 @@
                            (cons (- px 1) (+ py 1))
                            (cons px       (+ py 1))
                            (cons (+ px 1) (+ py 1)))))
-      (print neighbors)
       (loop :for (dx . dy) :in neighbors
        :do (cond ((and (equal (aref image dy dx 0) 0) ;; if black
                        (equal (aref image dy dx 1) 0)
@@ -250,14 +230,9 @@
                             (aref image dy dx 1)
                             (aref image dy dx 2))
                     ;; push new red point
-                    (push (list dx dy) result)
-                    ;; set new red point in image (instead black)
-                    (setf (aref image dy dx 0) 255)
-                    ;; remove basic red point from image
-                    (setf (aref image py px 0) 0)
-                    (setf (aref image py px 1) 255)
-                    (setf (aref image py px 2) 0)
-                    ))
+                    (push (cons dx dy) result)
+                    ;; mark new red point in image (instead black)
+                    (setf (aref image dy dx 0) 255)))
                  (t nil)))
       (values image result)))
 
@@ -272,4 +247,70 @@
   ;;             (modify-red-neighbors px py new-image)
   ;;           (save-png dw dh "cell3.png" (vectorize-image new-image-2))
   ;;           new-red-points)))))
+
+
+  (defun draw-box (image left-up right-down)
+    (loop for dx from (car left-up) to (car right-down) do
+         (loop for dy from (cdr left-up) to (cdr right-down) do
+              (setf (aref image dy dx 0)
+                    (print (logand 127 (aref image dy dx 0)))))))
+
+  (defun cell (image &optional (pic 3))
+    (destructuring-bind (dw dh dz)
+        (array-dimensions image)
+      (destructuring-bind (fx . fy)
+          (image-scan 0 0 image)
+        ;; делаем first-point красной
+        (setf (aref image fy fx 0) 255)
+        ;; списки точек
+        (let ((red-points (list (cons fx fy)))
+              (bucket))
+          (tagbody
+           gramma
+             (let ((curr (pop red-points)))
+               (format t "~%:CURR:~A" curr)
+               (destructuring-bind (cx . cy)
+                   curr
+                 (multiple-value-bind (new-image new-red-points)
+                     (neighbors cx cy image)
+                   ;; set new image
+                   (setf image new-image)
+                   ;; add new red-points
+                   (setf red-points
+                         (append (remove curr red-points) ;; remove current
+                                 new-red-points))
+                   ;; dbg out new red points
+                   (format t "~%:REDS:~A" red-points)
+                   ;; save current point in bucket
+                   (push curr bucket)
+                   ;; mark current point to green
+                   (setf (aref image cy cx 0) 0)
+                   (setf (aref image cy cx 1) 127)
+                   (setf (aref image cy cx 2) 0)
+                   ;; save png file
+                   (save-png
+                    dw dh
+                    (format nil "cell~5,'0d.png" pic)
+                    (vectorize-image image))
+                   (incf pic)
+                   (unless (null red-points)
+                     (go gramma))))))
+          ;; build bounding box
+          (print bucket)
+          (let ((left-up     (cons (reduce #'min (mapcar #'car bucket))
+                                   (reduce #'min (mapcar #'cdr bucket))))
+                (right-down  (cons (reduce #'max (mapcar #'car bucket))
+                                   (reduce #'max (mapcar #'cdr bucket)))))
+            (print (list left-up right-down))
+            (draw-box image left-up right-down)
+            (values image (list left-up right-down)))))))
+
+  ;; (multiple-value-bind (image box)
+  ;;     (cell (load-png "cell4.png"))
+  ;;   (destructuring-bind (dw dh dz)
+  ;;       (array-dimensions image)
+  ;;     (save-png
+  ;;      dw dh
+  ;;      "cell5.png"
+  ;;      (vectorize-image image))))
 #+END_SRC
