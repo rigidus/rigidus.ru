@@ -218,12 +218,58 @@
     (let* ((first-point (image-scan 0 0 image)))
         ;; делаем first-point красной
         (setf (aref image (nth 1 first-point) (nth 0 first-point) 0) 255)
-        image)))
+        (values image first-point)))
 
   ;; (let ((image (load-png "cell1.png"))_)
   ;;   (destructuring-bind (dw dh dz)
   ;;       (array-dimensions image)
-  ;;     (save-png dw dh "cell2.png"
-  ;;               (vectorize-image (set-red image)))))
+  ;;     (multiple-value-bind (new-image red-point)
+  ;;         (set-red image)
+  ;;       (save-png dw dh "cell2.png" (vectorize-image new-image))
+  ;;       red-point)))
 
+  (defun modify-red-neighbors (px py image)
+    (let ((result)
+          (neighbors (list (cons (- px 1) (- py 1))
+                           (cons px       (- py 1))
+                           (cons (+ px 1) (- py 1))
+                           (cons (- px 1) py)
+                           (cons (+ px 1) py)
+                           (cons (- px 1) (+ py 1))
+                           (cons px       (+ py 1))
+                           (cons (+ px 1) (+ py 1)))))
+      (print neighbors)
+      (loop :for (dx . dy) :in neighbors
+       :do (cond ((and (equal (aref image dy dx 0) 0) ;; if black
+                       (equal (aref image dy dx 1) 0)
+                       (equal (aref image dy dx 2) 0))
+                  (progn ; new red point
+                    (format t "~%>:~A|~A = ~A.~A.~A"
+                            dx dy
+                            (aref image dy dx 0)
+                            (aref image dy dx 1)
+                            (aref image dy dx 2))
+                    ;; push new red point
+                    (push (list dx dy) result)
+                    ;; set new red point in image (instead black)
+                    (setf (aref image dy dx 0) 255)
+                    ;; remove basic red point from image
+                    (setf (aref image py px 0) 0)
+                    (setf (aref image py px 1) 255)
+                    (setf (aref image py px 2) 0)
+                    ))
+                 (t nil)))
+      (values image result)))
+
+  ;; (let ((image (load-png "cell1.png"))_)
+  ;;   (destructuring-bind (dw dh dz)
+  ;;       (array-dimensions image)
+  ;;     (multiple-value-bind (new-image red-point)
+  ;;         (set-red image)
+  ;;       (destructuring-bind (px py)
+  ;;           red-point
+  ;;         (multiple-value-bind (new-image-2 new-red-points)
+  ;;             (modify-red-neighbors px py new-image)
+  ;;           (save-png dw dh "cell3.png" (vectorize-image new-image-2))
+  ;;           new-red-points)))))
 #+END_SRC
