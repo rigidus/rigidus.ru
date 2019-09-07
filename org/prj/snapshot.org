@@ -59,8 +59,8 @@
 
   (defparameter *default-x* 0)
   (defparameter *default-y* 0)
+  (defparameter *default-width* 60)
   (defparameter *default-heght* 30)
-  (defparameter *default-width* 30)
 
   (multiple-value-bind (default-width default-height) (x-size)
     (defun x-snapshot (&key (x *default-x*) (y *default-y*)
@@ -87,41 +87,89 @@
                 (cond
                   (png? (zpng:write-png image path))
                   (t (error "Only PNG file is supported"))))
-              (zpng:data-array image)
-              )))))
+              (zpng:data-array image))))))
 
   ;; (defparameter *test-path* "~/Pictures/snap2.png")
   ;; (x-snapshot :path *test-path*)
 
+
   (defun load-png (pathname-str)
+    "Возвращает массив size-X столбцов по size-Y точек,
+     где столбцы идут слева-направо, а точки в них - сверху-вниз"
     (png-read:image-data
      (png-read:read-png-file pathname-str)))
 
   (defparameter *test-image* (load-png *test-path*))
 
+
   (defun vectorize-image (image)
+    "Превращает массив size-X столбцов по size-Y точек в линейный,
+     где сначала идут все X-точки нулевой строки, потом первой, итд"
     (let ((idx 0)
           (result (make-array (reduce #'* (array-dimensions image))
                               :element-type '(unsigned-byte 8))))
-      (loop for dy from 0 to (- (array-dimension image 0) 1) :do
-           (loop for dx from 0 to (- (array-dimension image 1) 1) :do
+      (loop for dx from 0 to (- (array-dimension image 1) 1) :do
+           (loop for dy from 0 to (- (array-dimension image 0) 1) :do
                 (loop for dz from 0 to (- (array-dimension image 2) 1) :do
                      (setf (aref result idx)
-                           (aref image dx dy dz))
+                           (aref image dy dx dz))
                      (incf idx))))
       result))
 
-  ;; (print
-  ;;  (vectorize-image *test-image*))
+  ;; (print (vectorize-image *test-image*))
 
   (defun save-png (width height pathname-str image)
-    (let* ((vectorized (vectorize-image image))
-           (png (make-instance 'zpng:png :width width :height height
-                                 :color-type :truecolor-alpha
-                                 :image-data vectorized)))
-        (zpng:write-png png pathname-str)))
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type :truecolor-alpha
+                               :image-data image)))
+      (zpng:write-png png pathname-str)))
 
-  ;; (save-png 30 30  "~/Pictures/snap3.png" *test-image*)
-  ;; (save-png 30 30 "~/Pictures/snap4.png" (load-png *test-path*))
+  ;; (save-png *default-width* *default-heght*
+  ;;           "~/Pictures/snap3.png"
+  ;;           (vectorize-image *test-image*))
+  ;; (save-png *default-width* *default-heght*
+  ;;           "~/Pictures/snap4.png"
+  ;;           (vectorize-image (load-png *test-path*)))
+#+END_SRC
+
+* Сегментация клеточным автоматом
+
+Все обрабатываемые точки изображения можно разделить на точки фона и точки
+объектов. Наша задача - выделить замкнутые объекты на фоне и определить прямоугольники,
+в которых они лежат (bounding boxes). Для этого будем использовать клеточные автоматы.
+
+Разделим все обрабатываемые точки объекта на классы:
+- точка фона (белая точка)
+- необработанная точка объекта (черная точка)
+- точка фронта волны (красная точка)
+- точка шлейфа (зеленая точка)
+- обработанная точка (серая точка)
+
+Задача алгоритма - распространять фронт волны по всем точкам объекта, до тех пор, пока
+точки объекта не закончатся. За фронтом волны следует шлейф волны, который нужен для
+того, чтобы предотвратить распространение волны в обратную сторону.
+
+Сам алгоритм выглядит так:
+
+- Для каждого клеточного автомата на изображении находится первая точка объекта. Это
+  первая найденная при сканировании строки пикселей точка черного цвета.
+- Проводится сканирование ближайших соседей. Если среди них есть черные точки - они
+  становятся красными точками фронта волны, а первая точка становится точкой шлейфа
+  волны (в момент, когда появляется новая волна мы записываем все ее точки в список
+  волны). Если же черных соседей нет, первая точка становится обработанной (серой) и
+  волна умирает не успев родиться.
+- Для всех красных точек мы повторяем этот шаг, пока красные они не
+  закончатся. Сканируем ближайший соседей:
+  - Если это точка фона - ничего не делаем
+  - Если это черная точка, то делаем ее красной (и записываем)
+  - Если это красная точка - мы видим другую волну, это не наше дело, ничего не делаем
+  - Если это зеленая точка - это наш (или чужой) шлейф, ничего не делаем
+  - Если это серая точка - тоже ничего не делаем, она уже обработана
+  После того как мы обработали ближайших соседей, центральная точка должна стать
+  зеленой (и обновить запись в списке точек волны)
+- Если красных точек больше нет - сохраняем завершенную волну и ищем точку начала новой
+  волны.
+
+#+BEGIN_SRC lisp
 
 #+END_SRC
