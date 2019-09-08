@@ -133,8 +133,7 @@
 
   (defun binarization (image &optional threshold)
     (let ((dims (array-dimensions image)))
-      (setf (nth 2 dims) 4)
-      (let ((result (make-array dims :element-type '(unsigned-byte 8))))
+      (let ((result (make-array (butlast dims) :element-type '(unsigned-byte 8))))
         (loop for dx from 0 to (- (array-dimension image 1) 1) :do
              (loop for dy from 0 to (- (array-dimension image 0) 1) :do
                   (loop for dz from 0 to (- (array-dimension image 2) 1) :do
@@ -146,15 +145,34 @@
                            (if (< threshold avg)
                                (setf avg 255)
                                (setf avg 0)))
-                         (setf (aref result dy dx 1) avg
-                               (aref result dy dx 0) avg
-                               (aref result dy dx 2) avg
-                               (aref result dy dx 3) 255)))))
+                         (setf (aref result dy dx) avg)))))
         result)))
 
-  ;; (save-png *default-width* *default-heght*
-  ;;           "~/Pictures/snap5.png"
-  ;;           (vectorize-image (binarization *test-image* 127)))
+
+  (defun vectorize-image-gray (image)
+    "Превращает массив size-X столбцов по size-Y точек в линейный,
+     где сначала идут все X-точки нулевой строки, потом первой, итд"
+    (let ((idx 0)
+          (result (make-array (reduce #'* (array-dimensions image))
+                              :element-type '(unsigned-byte 8))))
+      (loop for dx from 0 to (- (array-dimension image 1) 1) :do
+           (loop for dy from 0 to (- (array-dimension image 0) 1) :do
+                (setf (aref result idx)
+                      (aref image dy dx))
+                (incf idx)))
+      result))
+
+  (defun save-png-gray (width height pathname-str image)
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type :grayscale
+                               :image-data image)))
+      (zpng:write-png png pathname-str)))
+
+  ;; (save-png-gray *default-width* *default-heght*
+  ;;           "~/Pictures/snap5gray.png"
+  ;;           (vectorize-image-gray (binarization *test-image* 127)))
+
+
 #+END_SRC
 
 * Сегментация клеточным автоматом
