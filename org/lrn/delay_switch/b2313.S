@@ -1,6 +1,5 @@
     #define tmp0 r16
     #define tmp1 r17
-    #define cnt0 r18
     #define par1 r23
     #define par2 r24
     #define par3 r25
@@ -43,18 +42,8 @@ _vectors:
 _timer0_overflow:
     ;; Cбрасываем счетный регистр таймера/счетчика T0
     out     TCNT0, r1
-    ;; Инкрементируем регистр-счетчик
-    inc     cnt0
-    ;; Проверяем на переполнение
-    cpi     cnt0, 30
-    brlo    _over
+    rcall _blink
     reti
-_over:
-	in      tmp0, PORTB
-	com     tmp0                ; invert(r24)
-	out     PORTB, tmp0
-    reti
-
 
 _reset:
 
@@ -71,22 +60,25 @@ _reset:
 	out     DDRB, r24
 
     ;; Настроить Timer
-    ;; ...
+
+    ;; Выставляем частоту предделителя
+    ldi     tmp0, 0b101
+	out     TCCR0, tmp0
+
+    ;;  Обнуляем регистр-счетчки таймера-0
+    out     TCNT0, r1
+
+    ;; Этот регистр нужно сбросить в 0:
+    out     TIFR, r1
+
+    ;; Разрешаем прерывания по таймеру 0
+    ldi     tmp0, 0b10
+    out     TIMSK, tmp0
 
     ;; Разрешить прерывания
     sei
 
 _mainloop:
-    rcall    _blink
-
-	ldi     par1, 0x7f           ; par1 := 7F
-	ldi     par2, 0xA9           ; par2 := A9
-	ldi     par3, 0x03           ; par3 := 03
-_delay:
-	subi    par1, 0x01       ; 1
-	sbci    par2, 0x00       ; 0
-	sbci    par3, 0x00       ; 0
-	brne    _delay
 	rjmp    _mainloop
 
 
