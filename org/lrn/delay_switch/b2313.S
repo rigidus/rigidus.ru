@@ -1,5 +1,6 @@
     #define tmp0 r16
     #define tmp1 r17
+    #define cnt  r18
     #define par1 r23
     #define par2 r24
     #define par3 r25
@@ -19,29 +20,36 @@
 main:
 
 _vectors:
-  	rjmp    _reset              ;; Reset Handler
-	rjmp    _infloop            ;; External Interrupt0 Handler
-	rjmp    _infloop            ;; External Interrupt1 Handler
-	rjmp    _infloop            ;; Timer1 Capture Handler
-	rjmp    _infloop            ;; Timer1 CompareA Handler
-	rjmp    _infloop            ;; Timer1 Overflow Handler
-	rjmp    _timer0_overflow    ;; Timer0 Overflow Handler
-	rjmp    _infloop            ;; USART0 RX Complete Handler
-	rjmp    _infloop            ;; USART0,UDR Empty Handler
-	rjmp    _infloop            ;; USART0 TX Complete Handler
-	rjmp    _infloop            ;; Analog Comparator Handler
-	rjmp    _infloop            ;; Pin Change Interrupt
-	rjmp    _infloop            ;; Timer1 Compare B Handler
-	rjmp    _infloop            ;; Timer0 Compare A Handler
-	rjmp    _infloop            ;; Timer0 Compare B Handler
-	rjmp    _infloop            ;; USI Start Handler
-	rjmp    _infloop            ;; USI Overflow Handler
-	rjmp    _infloop            ;; EEPROM Ready Handler
-	rjmp    _infloop            ;; Watchdog Overflow Handler
+  	rjmp    _reset              ; Reset Handler
+	rjmp    _infloop            ; External Interrupt0 Handler
+	rjmp    _infloop            ; External Interrupt1 Handler
+	rjmp    _infloop            ; Timer1 Capture Handler
+	rjmp    _infloop            ; Timer1 CompareA Handler
+	rjmp    _infloop            ; Timer1 Overflow Handler
+	rjmp    _timer0_overflow    ; Timer0 Overflow Handler
+	rjmp    _infloop            ; USART0 RX Complete Handler
+	rjmp    _infloop            ; USART0,UDR Empty Handler
+	rjmp    _infloop            ; USART0 TX Complete Handler
+	rjmp    _infloop            ; Analog Comparator Handler
+	rjmp    _infloop            ; Pin Change Interrupt
+	rjmp    _infloop            ; Timer1 Compare B Handler
+	rjmp    _infloop            ; Timer0 Compare A Handler
+	rjmp    _infloop            ; Timer0 Compare B Handler
+	rjmp    _infloop            ; USI Start Handler
+	rjmp    _infloop            ; USI Overflow Handler
+	rjmp    _infloop            ; EEPROM Ready Handler
+	rjmp    _infloop            ; Watchdog Overflow Handler
 
 _timer0_overflow:
     ;; Cбрасываем счетный регистр таймера/счетчика T0
     out     TCNT0, r1
+
+    inc     cnt
+    cpi     cnt, 5
+    brsh    _overstep           ; Переход если больше или равно
+    reti
+_overstep:
+    mov     cnt, r1
     rcall _blink
     reti
 
@@ -62,7 +70,7 @@ _reset:
     ;; Настроить Timer
 
     ;; Выставляем частоту предделителя
-    ldi     tmp0, 0b101
+    ldi     tmp0, 0b100
 	out     TCCR0, tmp0
 
     ;;  Обнуляем регистр-счетчки таймера-0
@@ -77,6 +85,8 @@ _reset:
 
     ;; Разрешить прерывания
     sei
+
+    mov     cnt, r1
 
 _mainloop:
 	rjmp    _mainloop
