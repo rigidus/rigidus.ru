@@ -11,7 +11,7 @@ CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
 OBJCOPY = avr-objcopy
 CFLAGS += -Wall -g -Os -mmcu=$(MCU) -I$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/avr/include
 LDFLAGS +=
-OBJS = $(PROGRAM).o
+OBJS = $(PROGRAM).o $(PROGRAM).oS
 
 all: $(PROGRAM).hex
 
