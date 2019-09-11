@@ -10,6 +10,7 @@
     .equ RAMEND, 0xDF
     .equ DDRB, 0x17
     .equ PORTB, 0x18
+    .equ PINB, 0x16
     .equ TCCR0, 0x33
     .equ TCNT0, 0x32
     .equ TIFR, 0x38
@@ -43,14 +44,29 @@ _vectors:
 _timer0_overflow:
     ;; Cбрасываем счетный регистр таймера/счетчика T0
     out     TCNT0, r1
-
+    ;; Увеличиваем и проверяем счетчик переполнений
     inc     cnt
-    cpi     cnt, 5
+    cpi     cnt, 1
     brsh    _overstep           ; Переход если больше или равно
     reti
 _overstep:
-    mov     cnt, r1
+    ;; Читаем выводы PB0-PB3
+    in      tmp0, PINB
+    ldi     tmp1, 0b00000001    ; NB! - Пока только нулевой
+    and     tmp0, tmp1          ;
+    ;; Есть ли нажатие?
+    cpi     tmp0, 0
+    breq    _not_press          ; Перейти если равно
+    ;; Включить светодиод
+    ldi     tmp0, 0b00010000
+	out     PORTB, tmp0
+    rjmp    _timer0_overflow_ret
+_not_press:
+    ;; Пока ничего не нажато - мигаем
     rcall _blink
+_timer0_overflow_ret:
+    ;; Очищаем счетчик переполнений
+    mov     cnt, r1
     reti
 
 _reset:
@@ -60,12 +76,19 @@ _reset:
 	out     SREG, r1
 
     ;; Настроить Stack
-	ldi     r28, RAMEND
-	out     SPL, r28
+	ldi     tmp0, RAMEND
+	out     SPL, tmp0
 
-    ;; Настроить порт на выход
-    ser     r24
-	out     DDRB, r24
+    ;; Настроить для PB4 на выход, остальные на вход
+    ldi     tmp0, 0b00010000
+	out     DDRB, tmp0
+
+    ;; Для пинов PB0-PB3 подключенных на вход (кнопки)
+    ;; установить подтяжку к питанию, чтобы не было hi-z
+    ;; Однако их надо подтянуть к минусу питания (!)
+    ;; Для PB4 подтягиваем к питанию, он на выход
+    ldi     tmp0, 0b00011111
+    out     PORTB, tmp0
 
     ;; Настроить Timer
 
@@ -86,6 +109,7 @@ _reset:
     ;; Разрешить прерывания
     sei
 
+    ;; Начальная инициализация счетчика переполнений
     mov     cnt, r1
 
 _mainloop:
@@ -98,5 +122,7 @@ _infloop:
 _blink:
     in      tmp0, PORTB
 	com     tmp0
+    ldi     tmp1, 0b00010000    ; Мигаем только PB4
+    and     tmp0, tmp1
 	out     PORTB, tmp0
     ret
