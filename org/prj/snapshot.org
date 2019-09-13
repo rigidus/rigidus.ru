@@ -162,6 +162,19 @@
                 (incf idx)))
       result))
 
+  (defun my-vectorize-image-gray (image)
+    "Превращает массив size-X столбцов по size-Y точек в линейный,
+     где сначала идут все X-точки нулевой строки, потом первой, итд"
+    (let ((idx 0)
+          (result (make-array (reduce #'* (array-dimensions image))
+                              :element-type '(unsigned-byte 8))))
+      (loop for dy from 0 to (- (array-dimension image 0) 1) :do
+           (loop for dx from 0 to (- (array-dimension image 1) 1) :do
+                (setf (aref result idx)
+                      (aref image dy dx))
+                (incf idx)))
+      result))
+
   (defun save-png-gray (width height pathname-str image)
     (let* ((png (make-instance 'zpng:png :width width :height height
                                :color-type :grayscale
@@ -299,4 +312,66 @@
   ;;      dw dh
   ;;      "cell3.png"
   ;;      (vectorize-image-gray image))))
+#+END_SRC
+* Склейка
+
+#+BEGIN_SRC lisp
+  (defun append-image (image-up image-down y-point)
+    ;; (format t "~% image-up ~A image-down ~A y-point ~A"
+    ;;         (array-dimensions image-up) (array-dimensions image-down) y-point)
+    (destructuring-bind (height width colors)
+        (array-dimensions image-down)
+      (let* ((append-height (- (* height 2) 1))
+             (append-image-array (make-array `(,append-height ,width ,colors)
+                                             :element-type '(unsigned-byte 8))))
+        (do ((y 0 (+ y 1)))
+            ((= y y-point))
+          (do ((x 0 (+ x 1)))
+              ((= x width))
+            (setf (aref append-image-array y x 0) (aref image-up y x 0))
+            (setf (aref append-image-array y x 1) (aref image-up y x 1))
+            (setf (aref append-image-array y x 2) (aref image-up y x 2))
+            (setf (aref append-image-array y x 3) (aref image-up y x 3))))
+        (do ((y-new y-point (+ y-new 1))
+             (y 0 (+ y 1)))
+            ((= y height) append-image-array)
+          (do ((x 0 (+ x 1)))
+              ((= x width))
+            (setf (aref append-image-array y-new x 0) (aref image-down y x 0))
+            (setf (aref append-image-array y-new x 1) (aref image-down y x 1))
+            (setf (aref append-image-array y-new x 2) (aref image-down y x 2))
+            (setf (aref append-image-array y-new x 3) (aref image-down y x 3)))))))
+
+  (defun my-vectorize-image (image)
+    "Превращает массив size-X столбцов по size-Y точек в линейный,
+       где сначала идут все X-точки нулевой строки, потом первой, итд"
+    (let ((idx 0)
+          (result (make-array (reduce #'* (array-dimensions image))
+                              :element-type '(unsigned-byte 8))))
+      (do ((y 0 (+ 1 y)))
+          ((= y (array-dimension image 0)) result)
+        (do ((x 0 (+ 1 x)))
+            ((= x (array-dimension image 1)))
+          (do ((z 0 (+ 1 z)))
+              ((= z (array-dimension image 2)))
+            (setf (aref result idx)
+                  (aref image y x z))
+            (incf idx))))))
+
+  ;; (let ((snap-width 755)
+  ;;       (snap-height 668))
+  ;;   (let* ((image-array-up (x-snapshot :x 440 :y 100
+  ;;                                     :width snap-width
+  ;;                                     :height snap-height))
+  ;;         (image-array-down (x-snapshot :x 440 :y 100
+  ;;                                       :width snap-width
+  ;;                                       :height snap-height))
+  ;;          (array (append-image image-array-up image-array-down
+  ;;                               (- snap-height 1)))
+  ;;          (width (array-dimension array 1))
+  ;;          (height (array-dimension array 0)))
+  ;;     (save-png-gray width height
+  ;;                    "~/Pictures/result.png"
+  ;;                    (my-vectorize-image-gray
+  ;;                     (binarization array 127)))))
 #+END_SRC
