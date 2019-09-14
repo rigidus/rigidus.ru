@@ -93,11 +93,48 @@
   ;; (x-snapshot :path *test-path*)
 
 
+
+
+  ;; Ошибка, возникающая когда мы пытаемся прочитать png
+  ;; в котором неизвестно сколько байт на точку
+  (define-condition unk-png-color-type (error)
+    ((color :initarg :color :reader color))
+    (:report
+     (lambda (condition stream)
+       (format stream "Error in LOAD-PNG: unknown color type: ~A"
+               (color condition)))))
+
   (defun load-png (pathname-str)
     "Возвращает массив size-X столбцов по size-Y точек,
-     где столбцы идут слева-направо, а точки в них - сверху-вниз"
-    (png-read:image-data
-     (png-read:read-png-file pathname-str)))
+       где столбцы идут слева-направо, а точки в них - сверху-вниз"
+    (let* ((png (png-read:read-png-file pathname-str))
+           (image-data (png-read:image-data png))
+           (color (png-read:colour-type png))
+           (result
+            (make-array ;; меняем размерности X и Y местами
+             `(,(array-dimension image-data 1)
+                ,(array-dimension image-data 0)
+                ,(array-dimension image-data 2))
+             :element-type (cond ((equal color :TRUECOLOR-ALPHA) '(unsigned-byte 8))
+                                 (t (error 'unk-png-color-type :color color))))))
+      ;; (format t "~% new-arr ~A "(array-dimensions result))
+      ;; ширина, высота, цвет => высота, ширина, цвет
+      (macrolet ((cycle (&body body)
+                   `(do ((y 0 (incf y)))
+                        ((= y (array-dimension result 0)))
+                      (do ((x 0 (incf x)))
+                          ((= x (array-dimension result 1)))
+                        (do ((z 0 (incf z)))
+                            ((= z (array-dimension result 2)))
+                          ,@body)))))
+        (cond ((equal color :TRUECOLOR-ALPHA)
+               (cycle (setf (aref result y x z)
+                            (aref image-data x y z))))
+              (t (error 'unk-png-color-type :color color)))
+        result)))
+
+  (assert (equalp (load-png *test-path*)
+                  (x-snapshot)))
 
   ;; (defparameter *test-image* (load-png *test-path*))
 
