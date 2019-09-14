@@ -61,7 +61,6 @@
   (defparameter *default-y* 0)
   (defparameter *default-width* 600)
   (defparameter *default-heght* 300)
-  (defparameter *test-path* "~/Pictures/snap2.png")
 
   (multiple-value-bind (default-width default-height) (x-size)
     (defun x-snapshot (&key (x *default-x*) (y *default-y*)
@@ -89,7 +88,8 @@
                   (t (error "Only PNG file is supported"))))
               (zpng:data-array image))))))
 
-  ;; (x-snapshot :path *test-path*)
+  ;; ;; TEST: save screenshot
+  ;; (x-snapshot :path "~/Pictures/snap1.png")
 
 
   ;; Ошибка, возникающая когда мы пытаемся прочитать png
@@ -151,12 +151,11 @@
               (t (error 'unk-png-color-type :color color)))
         result)))
 
+  ;; ;; TEST: equality screenshot and load-file-data
   ;; (assert (equalp (progn
-  ;;                   (x-snapshot :path *test-path*)
-  ;;                   (load-png *test-path*))
+  ;;                   (x-snapshot :path "~/Pictures/snap2.png")
+  ;;                   (load-png "~/Pictures/snap2.png"))
   ;;                 (x-snapshot)))
-
-  ;; (defparameter *test-image* (load-png *test-path*))
 
 
   (defun save-png (width height pathname-str image
@@ -176,19 +175,20 @@
       (zpng:write-png png pathname-str)))
 
 
-  ;; (let* ((from "~/Pictures/snap3.png")
-  ;;        (to   "~/Pictures/snap4.png")
+  ;; ;; TEST: saving loaded data
+  ;; (let* ((from "~/Pictures/snap2.png")
+  ;;        (to   "~/Pictures/snap3.png")
   ;;        (image-data (load-png from)))
   ;;   (destructuring-bind (height width depth)
   ;;       (array-dimensions image-data)
   ;;     (save-png width height to image-data)))
 
-  ;; (let* ((to   "~/Pictures/snap5.png")
+  ;; ;; TEST: saving screenshot data
+  ;; (let* ((to   "~/Pictures/snap4.png")
   ;;        (image-data (x-snapshot)))
   ;;   (destructuring-bind (height width depth)
   ;;       (array-dimensions image-data)
   ;;     (save-png width height to image-data)))
-
 
 
   (defun binarization (image &optional threshold)
@@ -196,18 +196,18 @@
            (new-dims (cond ((equal 3 (length dims))  (butlast dims))
                            ((equal 2 (length dims))  dims)
                            (t (error 'binarization-error))))
-           (result (make-array dims :element-type '(unsigned-byte 8))))
+           (result (make-array new-dims :element-type '(unsigned-byte 8))))
       (macrolet ((cycle (&body body)
                    `(do ((y 0 (incf y)))
-                        ((= y (array-dimension result 0)))
+                        ((= y (array-dimension image 0)))
                       (do ((x 0 (incf x)))
-                          ((= x (array-dimension result 1)))
+                          ((= x (array-dimension image 1)))
                         ,@body))))
         (cond ((equal 3 (length dims))
                (cycle (do ((z 0 (incf z)))
-                          ((= z (array-dimension result 2)))
-                        (let ((avg (floor (+ (aref image y x 1)
-                                             (aref image y x 0)
+                          ((= z (array-dimension image 2)))
+                        (let ((avg (floor (+ (aref image y x 0)
+                                             (aref image y x 1)
                                              (aref image y x 2))
                                           3)))
                           (when threshold
@@ -225,37 +225,37 @@
               (t (error 'binarization-error))))
       result))
 
+  ;; ;; TEST: load file and translate it to grayscale and save
+  ;; (let* ((from "~/Pictures/snap4.png")
+  ;;        (to   "~/Pictures/snap5.png")
+  ;;        (image-data (binarization (load-png from))))
+  ;;   (destructuring-bind (height width) ;; NB: no depth!
+  ;;       (array-dimensions image-data)
+  ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 
-  (let* ((from "~/Pictures/snap5.png")
-         (to   "~/Pictures/snap6.png")
-         (image-data (binarization (load-png from))))
-    (destructuring-bind (height width) ;; NB: no depth!
-        (array-dimensions image-data)
-      (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 
-  (let* ((to   "~/Pictures/snap7.png")
-         (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
-    (destructuring-bind (height width) ;; NB: no depth!
-        (array-dimensions image-data)
-      (save-png width height to image-data :grayscale))) ;; NB: grayscale!
+  ;; ;; TEST: binarize and save screenshot
+  ;; (let* ((to   "~/Pictures/snap6.png")
+  ;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+  ;;   (destructuring-bind (height width) ;; NB: no depth!
+  ;;       (array-dimensions image-data)
+  ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 
-  ;; test: try to load grayscale image and save it
+  ;; ;; TEST: try to load grayscale image and save it
+  ;; (let* ((from "~/Pictures/snap6.png")
+  ;;        (to   "~/Pictures/snap7.png")
+  ;;        (image-data (load-png from)))
+  ;;   (destructuring-bind (height width)
+  ;;       (array-dimensions image-data)
+  ;;     (save-png width height to image-data :grayscale)))
 
-  (let* ((from "~/Pictures/snap7.png")
-         (to   "~/Pictures/snap8.png")
-         (image-data (load-png from)))
-    (destructuring-bind (height width)
-        (array-dimensions image-data)
-      (save-png width height to image-data :grayscale)))
-
-  ;; test: try to load grayscale image, binarize and save it
-
-  (let* ((from "~/Pictures/snap8.png")
-         (to   "~/Pictures/snap9.png")
-         (image-data (binarization (load-png from) 127)))
-    (destructuring-bind (height width) ;; NB: no depth!
-        (array-dimensions image-data)
-      (save-png width height to image-data :grayscale)))
+  ;; ;; TEST: try to load grayscale image, binarize and save it
+  ;; (let* ((from "~/Pictures/snap7.png")
+  ;;        (to   "~/Pictures/snap8.png")
+  ;;        (image-data (binarization (load-png from) 127)))
+  ;;   (destructuring-bind (height width) ;; NB: no depth!
+  ;;       (array-dimensions image-data)
+  ;;     (save-png width height to image-data :grayscale)))
 #+END_SRC
 
 * Сегментация клеточным автоматом
