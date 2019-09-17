@@ -552,3 +552,55 @@
   ;;         (array-dimensions array)
   ;;       (save-png width height "~/Pictures/result.png" array :grayscale))))
 #+END_SRC
+
+Теперь мы можем сделать анализ на различия:
+
+#+BEGIN_SRC lisp
+  (defun analysis (xored-image y-point)
+    (destructuring-bind (height width &optional colors)
+        (array-dimensions xored-image)
+      (let ((intesect-height (- height y-point)) ;; высота пересечения
+            (black 0))
+        (macrolet ((cycle ((py px height width)
+                           &body body)
+                     `(do ((qy ,py (incf qy)))
+                          ((= qy ,height))
+                        (do ((qx ,px (incf qx)))
+                            ((= qx ,width))
+                          ,@body))))
+          (if colors
+              (cycle (y-point 0 height width)
+                     (when (and (eql (aref xored-image qy qx 0) 0)
+                                (eql (aref xored-image qy qx 1) 0)
+                                (eql (aref xored-image qy qx 2) 0))
+                       (incf black)))
+              ;; else
+              (cycle (y-point 0 height width)
+                     (when (eql (aref xored-image qy qx) 0)
+                       (incf black))))
+        (let* ((pix-amount (* intesect-height width))
+               (result (float (/ black pix-amount))))
+          result)))))
+
+  (defun get-merge-results (image-up image-down)
+    (do ((vy 0 (incf vy)))
+        ((= vy (+ (array-dimension image-up 0)
+                  (array-dimension image-down 0))))
+      (format t "~%: =vy: ~A = ~A"
+              vy
+              (analysis
+               (append-xor image-up image-down vy)
+               vy))))
+
+  ;; (block test-merge-results-fullcolor
+  ;;   (time
+  ;;    (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
+  ;;           (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
+  ;;      (get-merge-results arr1 arr2))))
+
+  ;; (block test-merge-results-grayscale
+  ;;   (time
+  ;;    (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+  ;;           (arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300))))
+  ;;      (get-merge-results arr1 arr2))))
+#+END_SRC
