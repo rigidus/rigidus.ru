@@ -362,8 +362,8 @@
 
 
   ;; TEST: lookup symbols
-  (let* ((from "text.png")
-         (to   "cell1.png")
+  (let* ((from "/home/rigidus/repo/rigidus.ru/org/prj/text.png")
+         (to   "/home/rigidus/repo/rigidus.ru/org/prj/cell1.png")
          (image-data (binarization (load-png from) 127))
          (boxes (gramma-lookup image-data)))
     (loop :for (left-up right-down) :in boxes :do
@@ -389,29 +389,42 @@
      где второе изображение будет наложено на первое.
      Изображения должны быть одинаковой ширины.
      Возвращает склеенный массив"
-    (destructuring-bind (height width colors)
+    (destructuring-bind (height-down width-down &optional colors-down)
         (array-dimensions image-down)
-      (let* ((new-dims  (list (+ height y-point) width colors))
+      (let* ((new-height (+ height-down y-point))
+             (new-dims (if (null colors-down)
+                           (list new-height width-down)
+                           (list new-height width-down colors-down)))
              (image-new (make-array new-dims :element-type '(unsigned-byte 8))))
-        ;; копируем первую картинку в новый массив до точки склейки
-        (do ((qy 0 (incf qy)))
-            ((= qy y-point))
-          (do ((qx 0 (incf qx)))
-              ((= qx width))
-            (do ((qz 0 (incf qz)))
-                ((= qz colors))
-              (setf (aref image-new qy qx qz)
-                    (aref image-up qy qx qz)))))
-        ;; копируем вторую картинку
-        (do ((ny y-point (incf ny))
-             (ry 0 (incf ry)))
-            ((= ry height))
-          (do ((rx 0 (incf rx)))
-              ((= rx width))
-            (do ((rz 0 (incf rz)))
-                ((= rz colors))
-              (setf (aref image-new ny rx rz)
-                    (aref image-up ry rx rz)))))
+        ;; макрос для прохода по блоку точек
+        (macrolet ((cycle ((py px height width &optional &body newline)
+                           &body body)
+                     `(do ((qy ,py (incf qy)))
+                          ((= qy ,height))
+                        (do ((qx ,px (incf qx)))
+                            ((= qx ,width))
+                          ,@body)
+                        ,@newline)))
+          ;; копируем первую картинку в новый массив
+          ;; от ее начала до точки склейки, или до ее конца,
+          ;; смотря что случиться раньше
+          (if (null colors-down)  ;; TODO: тут надо проверять цвета первой картинки
+              (error 'todo)
+              (cycle (0 0 (min height-down y-point) width-down)
+                     (do ((qz 0 (incf qz)))
+                         ((= qz colors-down))
+                       (setf (aref image-new qy qx qz)
+                             (aref image-up qy qx qz)))))
+          ;; копируем вторую картинку в новый массив
+          ;; от ее начала до конца
+          (if (null colors-down)
+              (error 'todo)
+              (let ((new-y y-point))
+                (cycle (0 0 height-down width-down (incf new-y))
+                       (do ((rz 0 (incf rz)))
+                           ((= rz colors-down))
+                         (setf (aref image-new new-y qx rz)
+                               (aref image-up qy qx rz)))))))
         image-new)))
 
   ;; TEST: append (non-grayscale) image
