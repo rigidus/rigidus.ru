@@ -1,0 +1,187 @@
+
+delay_switch5.elfS:     file format elf32-avr
+
+
+Disassembly of section .text:
+
+00000000 <__ctors_end>:
+
+    .global main
+
+    ;;  interrupt vectors
+    .org 0x0000
+    rjmp main                    ; INT0addr - External Interrupt 0
+   0:	08 c0       	rjmp	.+16     	; 0x12 <main>
+    rjmp badint                  ; PCI0addr - External Interrupt Request 0
+   2:	2c c0       	rjmp	.+88     	; 0x5c <badint>
+    rjmp isr_ovf0                ; OVF0addr - Timer/Counter0 Overflow
+   4:	27 c0       	rjmp	.+78     	; 0x54 <isr_ovf0>
+    rjmp badint                  ; ERDYaddr - EEPROM Ready
+   6:	2a c0       	rjmp	.+84     	; 0x5c <badint>
+    rjmp badint                  ; ACIaddr - Analog Comparator
+   8:	29 c0       	rjmp	.+82     	; 0x5c <badint>
+    rjmp isr_oc0a                ; OC0Aaddr - Timer/Counter Compare Match A
+   a:	26 c0       	rjmp	.+76     	; 0x58 <isr_oc0a>
+    rjmp badint                  ; OC0Baddr - Timer/Counter Compare Match B
+   c:	27 c0       	rjmp	.+78     	; 0x5c <badint>
+    rjmp badint                  ; WDTaddr - Watchdog Time-out
+   e:	26 c0       	rjmp	.+76     	; 0x5c <badint>
+    rjmp badint                  ; ADCCaddr - ADC Conversion Complete
+  10:	25 c0       	rjmp	.+74     	; 0x5c <badint>
+
+00000012 <main>:
+
+    ;; main program
+main:
+    ;; stack initialization
+    eor	zero, zero
+  12:	11 24       	eor	r1, r1
+    out	SREG, zero
+  14:	1f be       	out	0x3f, r1	; 63
+    ldi	temp, RAMEND
+  16:	0f e9       	ldi	r16, 0x9F	; 159
+    out	SPL, temp
+  18:	0d bf       	out	0x3d, r16	; 61
+    ;;            ||+----- (PB3) [2-pin] BTN_1
+    ;;            |||+---- (PB2) [7-pin] RED
+    ;;            ||||+--- (PB1) [6-pin] WID
+    ;;            |||||+-- (PB0) [5-pin] WRK (status blink)
+    ;;            ||||||
+    ldi temp, 0b00010111
+  1a:	07 e1       	ldi	r16, 0x17	; 23
+    out DDRB, temp
+  1c:	07 bb       	out	0x17, r16	; 23
+
+    ;; ovrf initialization
+    mov ovrf, zero
+  1e:	c1 2d       	mov	r28, r1
+    mov crit, zero
+  20:	d1 2d       	mov	r29, r1
+    ;; ldi temp, 255                 ; set value to temporary register
+    ;; out OCR0A, temp               ; set OCR0A value (256 - 1)
+    ;; ldi temp, (1<<OCIE0A)         ; set configuration bits to temprary register
+    ;; out TIMSK0, temp              ; enable Timer Compare Match A Interrupt
+
+    ldi temp, (1<<CS02)|(1<<CS00) ; set configuration bits to temprary register
+  22:	05 e0       	ldi	r16, 0x05	; 5
+    out TCCR0B, temp              ; set prescaler (F=1200000Hz/1024/256=4.58Hz, 0.25s)
+  24:	03 bf       	out	0x33, r16	; 51
+    ldi temp, (1<<TOIE0)          ; set configuration bits to temprary register
+  26:	02 e0       	ldi	r16, 0x02	; 2
+    out TIMSK0, temp              ; enable Timer Overflow Interrupt
+  28:	09 bf       	out	0x39, r16	; 57
+
+    ; enable global interrupts
+    sei
+  2a:	78 94       	sei
+
+0000002c <loop>:
+loop:
+    sbic    PINB, PB0       ; if bit of LED pin is clear, skip next line
+  2c:	b0 99       	sbic	0x16, 0	; 22
+    cbi     PORTB, PB0      ; if 1, turn the LED off
+  2e:	c0 98       	cbi	0x18, 0	; 24
+    sbis    PINB, PB0       ; if bit of LED pin is set, skip next line
+  30:	b0 9b       	sbis	0x16, 0	; 22
+    sbi     PORTB, PB0      ; if 0, light the LED up
+  32:	c0 9a       	sbi	0x18, 0	; 24
+
+    sbic    PINB, PB1       ; if bit of LED pin is clear, skip next line
+  34:	b1 99       	sbic	0x16, 1	; 22
+    cbi     PORTB, PB1      ; if 1, turn the LED off
+  36:	c1 98       	cbi	0x18, 1	; 24
+    sbis    PINB, PB1       ; if bit of LED pin is set, skip next line
+  38:	b1 9b       	sbis	0x16, 1	; 22
+    sbi     PORTB, PB1      ; if 0, light the LED up
+  3a:	c1 9a       	sbi	0x18, 1	; 24
+
+    sbrc    ovrf, 0         ; if 7-bit of OVRF is clear, skip next line
+  3c:	c0 fd       	sbrc	r28, 0
+    sbi     PORTB, PB2      ; if 1, light the LED up
+  3e:	c2 9a       	sbi	0x18, 2	; 24
+    sbrs    ovrf, 0         ; if 7-bit of OVRF pin is set, skip next line
+  40:	c0 ff       	sbrs	r28, 0
+    cbi     PORTB, PB2      ; if 0, turn the LED off
+  42:	c2 98       	cbi	0x18, 2	; 24
+
+    sbrc    crit, 0         ; if bit of LED pin is clear, skip next line
+  44:	d0 fd       	sbrc	r29, 0
+    sbi     PORTB, PB4      ; if 1, turn the LED off
+  46:	c4 9a       	sbi	0x18, 4	; 24
+    sbrs    crit, 0         ; if bit of LED pin is set, skip next line
+  48:	d0 ff       	sbrs	r29, 0
+    cbi     PORTB, PB4      ; if 0, light the LED up
+  4a:	c4 98       	cbi	0x18, 4	; 24
+
+    ldi r24, 0xFF
+  4c:	8f ef       	ldi	r24, 0xFF	; 255
+    ldi r25, 0
+  4e:	90 e0       	ldi	r25, 0x00	; 0
+    rcall delay
+  50:	07 d0       	rcall	.+14     	; 0x60 <delay>
+
+    rjmp    loop
+  52:	ec cf       	rjmp	.-40     	; 0x2c <loop>
+
+00000054 <isr_ovf0>:
+
+    ;;  timer overfow interrupt service routine
+isr_ovf0:
+    inc     ovrf
+  54:	c3 95       	inc	r28
+    reti
+  56:	18 95       	reti
+
+00000058 <isr_oc0a>:
+
+    ;; timer compare match A interrupt service routine
+isr_oc0a:
+    inc     ovrf
+  58:	c3 95       	inc	r28
+    reti
+  5a:	18 95       	reti
+
+0000005c <badint>:
+
+    ;; badint
+badint:
+    inc     crit
+  5c:	d3 95       	inc	r29
+    rjmp badint
+  5e:	fe cf       	rjmp	.-4      	; 0x5c <badint>
+
+00000060 <delay>:
+
+;; delay
+delay:
+	sbiw	r24, 0x00
+  60:	00 97       	sbiw	r24, 0x00	; 0
+	breq	delay_ret
+  62:	41 f0       	breq	.+16     	; 0x74 <delay_ret>
+    ldi	r30, 0x2B
+  64:	eb e2       	ldi	r30, 0x2B	; 43
+    ldi	r31, 0x01
+  66:	f1 e0       	ldi	r31, 0x01	; 1
+
+00000068 <delay_a8>:
+delay_a8:
+	sbiw	r30, 0x01
+  68:	31 97       	sbiw	r30, 0x01	; 1
+	brne	delay_a8
+  6a:	f1 f7       	brne	.-4      	; 0x68 <delay_a8>
+	rjmp	delay_ae
+  6c:	00 c0       	rjmp	.+0      	; 0x6e <delay_ae>
+
+0000006e <delay_ae>:
+delay_ae:
+	nop
+  6e:	00 00       	nop
+	sbiw	r24, 0x01
+  70:	01 97       	sbiw	r24, 0x01	; 1
+	rjmp	delay
+  72:	f6 cf       	rjmp	.-20     	; 0x60 <delay>
+
+00000074 <delay_ret>:
+delay_ret:
+	ret
+  74:	08 95       	ret
