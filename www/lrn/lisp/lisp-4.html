@@ -1,0 +1,2855 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">План работ</a></li>
+<li><a href="#unnumbered-2">Semipredicate problem</a></li>
+<li><a href="#unnumbered-3">Lookup в глобальном окружении</a></li>
+<li><a href="#unnumbered-4">Функции для тестирования</a></li>
+<li><a href="#unnumbered-5">Структура замыкания</a></li>
+<li><a href="#unnumbered-6">Преобразование EVLIS</a>
+<ul>
+<li><a href="#unnumbered-7">Преобразование факториала</a></li>
+<li><a href="#unnumbered-8">Преобразование фибоначчи</a></li>
+<li><a href="#unnumbered-9">Преобразование функции обработки списка</a></li>
+<li><a href="#unnumbered-10">Преобразование EVLIS и MYEVAL</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-11">MyApply</a>
+<ul>
+<li><a href="#unnumbered-12">Работа с CONS-ячейками</a></li>
+<li><a href="#unnumbered-13">NULL-предикат</a></li>
+<li><a href="#unnumbered-14">Встроенные функции арифметики</a></li>
+<li><a href="#unnumbered-15">CLOSURE</a></li>
+<li><a href="#unnumbered-16">PRINT</a></li>
+<li><a href="#unnumbered-17">LIST</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-18">MyEval</a>
+<ul>
+<li><a href="#unnumbered-19">Самовычисляемые формы</a></li>
+<li><a href="#unnumbered-20">Вычисление символов</a></li>
+<li><a href="#unnumbered-21">Цитирование</a></li>
+<li><a href="#unnumbered-22">Условное выполнение IF</a></li>
+<li><a href="#unnumbered-23">COND</a></li>
+<li><a href="#unnumbered-24">PROGN</a></li>
+<li><a href="#unnumbered-25"><span class="done nilCANCEL">CANCEL</span> PRINT</a></li>
+<li><a href="#unnumbered-26"><span class="done nilCANCEL">CANCEL</span> LIST</a></li>
+<li><a href="#unnumbered-27">AND</a></li>
+<li><a href="#unnumbered-28">OR</a></li>
+<li><a href="#unnumbered-29">LET</a></li>
+<li><a href="#unnumbered-30">LET*</a></li>
+<li><a href="#unnumbered-31">DEFUN</a></li>
+<li><a href="#unnumbered-32">SETQ</a></li>
+<li><a href="#unnumbered-33">LAMBDA</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-34">REPL</a></li>
+<li><a href="#unnumbered-35">Итоги</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">План работ</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Цель этого этапа: преобразовать наш интерпретатор так, чтобы он был написан в стиле
+передачи продолжений (сontinuation-passing style, CPS).
+</p>
+
+<p>
+Зачем мы это делаем? Сейчас мы имеем рекурсивный интерпретатор, который использует
+рекурсию, когда выполняет оценку (<code>eval</code>) программмы. Нам надо получить нерекурсивный
+(итеративный, циклический) интерпретатор, иначе:
+</p>
+<ul class="org-ul">
+<li>нам придется пользоваться стеком хост-языка, чтобы обрабатывать рекурсивный <code>eval</code>
+</li>
+<li>мы не сможем написать отладчик с точками останова, шагом исполнения и.т.п. потому что
+рекурсивный интерпретатор нельзя остановить в определенный момент.
+</li>
+<li>мы не сможем сделать механизм обработки ошибок, такой как catch/trow и сложные
+структуры управления потоком управления.
+</li>
+</ul>
+
+<p>
+Поэтому нам надо удалить рекурсию из интерпретатора. Есть два способа подойти к этой
+проблеме:
+</p>
+<ul class="org-ul">
+<li>CPS-преобразование
+</li>
+<li>Реализация SECD-машины
+</li>
+</ul>
+
+<p>
+SECD-машину мы будем реализовывать несколько позже, а сейчас сосредоточимся на
+CPS-преобразовании. Оно дает нам бесплатные бонусы, например, решение semipredicate
+problem, проблемы полупредикатов.
+</p>
+
+<p>
+Кроме того, на этом шаге мы переносим <code>print</code> и <code>list</code> из <code>myeval</code> в <code>myapply</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Semipredicate problem</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Полупредикаты - это предикаты, у которых может быть три возможных вида возвращаемых
+значений:
+</p>
+<ul class="org-ul">
+<li>T
+</li>
+<li>NIL
+</li>
+<li>Еще один вид, например "элемент не найден"
+</li>
+</ul>
+
+<p>
+Например, полупредикатом является <code>assoc</code>. Вот его реализация, которая названа
+<code>assoc-1</code>, чтобы не перекрывать встроенную функцию:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">assoc-1</span> (key alist)
+  (<span style="color: #00ffff;">cond</span> ((null alist)              nil)
+        ((equal key (caar alist))  (car alist))
+        (t                         (assoc-1 key (cdr alist)))))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(assoc-1 'alfa '((alfa . 1) (beta . 2)))</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">=&gt; (ALFA . 1)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(assoc-1 'gamma '((alfa . 1) (beta . 2)))</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">=&gt; NIL</span>
+</pre>
+</div>
+
+<p>
+В этой реализации <code>assoc-1</code> вынужден возвращать точечную пару <code>(имя . значение)</code>, ведь
+иначе будет невозможно отличить ситуацию "элемент не найден" от ситуации "элемент имеет
+значение NIL".
+</p>
+
+<p>
+Типичным вариантом использования ~assoc-1 ~является проверка на "элемент не найден"
+возвращаемого значения. Ее отсутствие, как правило является ошибкой. Так как после
+решения funarg-problem мы можем передавать функции, мы могли бы сделать такой вариант
+<code>assoc</code>, который принимал бы функцию, которая будет вызвана в ситуации "элемент не
+найден".
+</p>
+
+<p>
+Такая функция называется "продолжением". Следуя далее этим путем, мы могли бы
+передавать два продолжения: одно будет вызвано, если элемент не найден, а второе - в
+противном случае:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="assoc_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">assoc-2</span> (key alist cont errcont) <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">NB!: inverted order of</span>
+                                        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">continuations (for lookup)</span>
+  (<span style="color: #00ffff;">cond</span> ((null alist)              (funcall errcont key))
+        ((equal key (caar alist))  (funcall cont    (cdar alist)))
+        (t                         (assoc-2 key (cdr alist) cont errcont))))
+</pre>
+</div>
+
+<p>
+Мы можем протестировать это в обоих случаях:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="assoc_4_test">(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"ok:123"</span>
+               (assoc-2 'alfa '((alfa . 123))
+                        (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x))
+                        (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"err:~A"</span> x)))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"err:ALFA"</span>
+               (assoc-2 'alfa '((beta . 123))
+                        (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x))
+                        (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"err:~A"</span> x)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Lookup в глобальном окружении</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Используя такой подход мы можем изменить <code>lookup</code>, который у нас выглядел так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="lookup_3_old">(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*glob-env*</span> nil)
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">lookup</span> (symb env)
+  (<span style="color: #00ffff;">let</span> ((it (assoc symb env)))
+    (<span style="color: #00ffff;">if</span> (not (null it))
+        it
+        (assoc symb *glob-env*))))
+</pre>
+</div>
+
+<p>
+Теперь <code>lookup</code> будет написан в стиле передачи продолжений:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="lookup_4"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">environment</span>
+(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*glob-env*</span> nil)
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">lookup</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">lookup</span> (symb env errcont cont)
+  (assoc-2 symb env cont
+           (<span style="color: #00ffff;">lambda</span> (key)
+             (assoc-2 key *glob-env* cont
+                      (<span style="color: #00ffff;">lambda</span> (key)
+                        (funcall errcont
+                                 (format
+                                  nil
+                                  <span style="color: #ffa07a;">"UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"</span>
+                                  key env *glob-env*)))))))
+</pre>
+</div>
+
+<p>
+Теперь <code>lookup</code> принимает два продолжения:
+</p>
+<ul class="org-ul">
+<li>продолжение <code>errcont</code> вызывается в случае, если элемент не найден, ему передается
+ошибка в качестве параметра
+</li>
+<li>продолжение <code>cont</code> вызывается, когда элемент найден, ему передается найденное
+значение в качестве параметра.
+</li>
+</ul>
+
+<p>
+Мы можем протестировать его:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="lookup_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">test lookup</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"ok:123"</span> (lookup 'aaa '((aaa . 123))
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"err:~A"</span> x))
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x)))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal nil      (lookup 'aaa '((bbb . 123))
+                                (<span style="color: #00ffff;">lambda</span> (x) (<span style="color: #00ffff;">declare</span> (ignore x)) nil)
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x)))))
+</pre>
+</div>
+
+<p>
+Но для того того чтобы в конце концов получить вывод значения на экран нам
+понадобятся&#x2026;
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-2">
+<h2 id="unnumbered-4">Функции для тестирования</h2>
+<div class="outline-text-2" id="text-unnumbered-4">
+<p>
+Чтобы удобнее тестироть функции, написанные в стиле передачи продолжений нам стоит
+иметь две функции-продолжения, которые будут выводить тестируемый результат:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="ok_err_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ok</span> (x)
+  (format t <span style="color: #ffa07a;">"~%ok: ~A"</span> x)
+  x)
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">err</span> (x)
+  (format t <span style="color: #ffa07a;">"~%err: ~A"</span> x)
+  x)
+</pre>
+</div>
+
+<p>
+Мы будем передавать их как <code>cont</code> и <code>errcont</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Структура замыкания</h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+<p>
+Чтобы сделать лексическое окружение, нужно иметь структуру замыкания, тут ничего не
+изменилось, мы все так же создаем структуру для замыкания:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="closure_4">(<span style="color: #00ffff;">defstruct</span> <span style="color: #98fb98;">closure</span>
+  body
+  env
+  args)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">Преобразование EVLIS</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+<p>
+Напомним, что EVLIS - это функция, которая оценивает аргументы перед применением
+(MYAPPLY). Мы хотим преобразовать ее к CPS-виду. Нам потребуется несколько этапов,
+чтобы понять и реализовать это.
+</p>
+<ul class="org-ul">
+<li>Преобразование в CPS на примере факториала (через рекурсию с аккумулятором)
+</li>
+<li>Преобразование на примере фибоначчи
+</li>
+<li>Преобразование функции обработки списка
+</li>
+<li>Преобразование EVLIS
+</li>
+</ul>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-3">
+<h3 id="unnumbered-7">Преобразование факториала</h3>
+<div class="outline-text-3" id="text-unnumbered-7">
+<p>
+В качестве примера возьмем факториал:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fact</span> (n)
+  (<span style="color: #00ffff;">cond</span> ((equal 0 n)  1)
+        (t            (* n (fact (- n 1))))))
+</pre>
+</div>
+
+<p>
+Этот факториал не хвосторекурсивный, потому что последним выполненным вызовом будет
+умножение. Если бы последний вызов было бы <code>fact</code>, то мы могли бы использовать
+оптимизацию хвостовой рекурсии, что само по позволяет сделать более эффективный код.
+</p>
+
+<p>
+Мы можем использовать параметр-аккумулятор, чтобы преобразовать нехвостовую рекурсию в
+хвостовую. Этот аккумулятор будет накапливать результат вычисления, который ранее был в
+возвращаемом значении. Тогда нам уже не нужно использовать возвращаемое значение при
+шаге вычисления и мы можем сделать рекурсию хвостовой.
+</p>
+
+<p>
+Тогда наш факториал будет таким:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fact-tail-call</span> (n <span style="color: #98fb98;">&amp;optional</span> (acc 1))
+  (<span style="color: #00ffff;">cond</span> ((equal 0 n)  acc)
+        (t            (fact-tail-call (- n 1)
+                                      (* n acc)))))
+</pre>
+</div>
+
+<p>
+Таким образом возвращаемое значение не является для нас важным до тех пор, пока мы не
+достигнем базы рекурсии, т.е. пока <code>n</code> не станет равным нулю. Тут мы просто возвратим
+значение аккумулятора.
+</p>
+
+<p>
+Технически, мы можем построить эквивалентный цикл для этого кода:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fact-iter</span> (param)
+  (<span style="color: #00ffff;">let</span> ((acc 1))
+    (<span style="color: #00ffff;">loop</span> <span style="color: #b0c4de;">:for</span> n <span style="color: #b0c4de;">:from</span> param <span style="color: #b0c4de;">:downto</span> 1 <span style="color: #b0c4de;">:do</span>
+       (setf acc (* n acc))
+       (print acc))
+    acc))
+</pre>
+</div>
+
+<p>
+Теперь перепишем хвосторекурсивный факториал в cps-стиле. Чтобы преобразовать
+<code>fact-tail-call</code> в <code>fact-tail-call-cps</code> добавим параметр-продолжение <code>cont</code>, в который
+будем передавать функцию, которая представляет собой остаток вычисления. <code>(- n 1)</code> мы
+можем вычислить сразу, а <code>(* n acc)</code> - нет, так как у нас больше нет параметра
+<code>acc</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fact-tail-call-cps</span> (n cont)
+  (<span style="color: #00ffff;">cond</span> ((equal n 1)  (funcall cont 1))
+        (t            (fact-tail-call-cps (- n 1)
+                                          (<span style="color: #00ffff;">lambda</span> (x)
+                                            (funcall cont (* n x)))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fact-tail-call-cps-start</span> (n)
+  (fact-tail-call-cps n (<span style="color: #00ffff;">lambda</span> (x) x)))
+</pre>
+</div>
+
+<p>
+Здесь вместо аккумулятора мы передаем продолжение. Это продолжение представлят собой
+лямбду, которая вызывает продолжение-параметр. Это продолжение-параметр вызывается с
+аргументом, который представляет собой собственно вычисление (n * x). По-видимому, это
+такой довольно интересный способ отложить вычисления до тех пор пока мы не достигнем
+базы рекурсии.
+</p>
+
+<p>
+В самом деле, при вызове <code>(fact-tail-call-cps 3 #'(lambda (x) x))</code>, когда мы достигнем
+базы рекурсии будет выполнено это:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(funcall (<span style="color: #00ffff;">lambda</span> (x)
+           (funcall (<span style="color: #00ffff;">lambda</span> (x)
+                      (funcall (<span style="color: #00ffff;">lambda</span> (x)
+                                 x)
+                               (* 3 x)))
+                    (* 2 x)))
+         1)
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-3">
+<h3 id="unnumbered-8">Преобразование фибоначчи</h3>
+<div class="outline-text-3" id="text-unnumbered-8">
+<p>
+Второй пример будет чуть сложнее - числа фибоначчи:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fib</span> (n)
+  (<span style="color: #00ffff;">cond</span> ((equal n 1)  1)
+        ((equal n 2)  1)
+        (t            (+ (fib (- n 1))
+                         (fib (- n 2))))))
+</pre>
+</div>
+
+<p>
+Преобразуем вызов в хвосторекурсивный, используя аккумуляторы. С помощью них мы можем
+уменьшить количество вложенных вызовов, если применим такую стратегию вычилений:
+</p>
+
+<p>
+В первом параметре <code>n</code> будем декрементировать шаг вычисления, в последнем параметре на
+каждом шаге будем передавать сумму аккумуляторов, а в предпоследнем - предыдущее
+значение суммы.
+</p>
+
+<p>
+Таким образом в последнем параметре при каждом вызове начнет накапливаться
+последовательность сумм, а в предпоследнем - так же последовательность сумм, но со
+сдвигом на шаг назад.
+</p>
+
+<p>
+Когда счетчик <code>n</code> достаточно уменьшится мы сможем просто возвратить последний
+параметр. Таким образом время вычисления из экспоненциального превращается в линейное.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ftc</span> (n <span style="color: #98fb98;">&amp;optional</span> (acc1 1) (acc2 1))
+  (<span style="color: #00ffff;">cond</span> ((or (equal 1 n)
+             (equal 2 n))  <span style="color: #ffc0cb; font-weight: bold;">acc2)</span>
+        (t                 (ftc (- n 1) acc2 (+ acc1 acc2)))))
+</pre>
+</div>
+
+<p>
+Теперь перепишем в cps-стиле:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ftc-cps</span> (n cont)
+  (<span style="color: #00ffff;">cond</span> ((equal 1 n)  (funcall cont 1 1))
+        ((equal 2 n)  (funcall cont 1 1))
+        (t            (ftc-cps (- n 1)
+                               (<span style="color: #00ffff;">lambda</span> (acc1 acc2)
+                                 (funcall cont acc2 (+ acc1 acc2)))))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ftc-cps-start</span> (n)
+  (ftc-cps n (<span style="color: #00ffff;">lambda</span> (acc1 acc2)
+               acc2)))
+</pre>
+</div>
+
+<p>
+[TODO:gmm] - Здесь надо для тренировки превратить это в CPS.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-3">
+<h3 id="unnumbered-9">Преобразование функции обработки списка</h3>
+<div class="outline-text-3" id="text-unnumbered-9">
+<p>
+Еще один пример, но этот раз для списка - функция, которая проходит по списку удваивая
+каждый элемент:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mul2</span> (lst)
+  (<span style="color: #00ffff;">cond</span> ((null lst)  nil)
+        (t           (cons (* 2 (car lst))
+                           (mul2 (cdr lst))))))
+</pre>
+</div>
+
+<p>
+Воспользовавшись тем же подходом получим ее хвосторекурсивный вариант:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mul2</span> (lst <span style="color: #98fb98;">&amp;optional</span> (acc nil))
+  (<span style="color: #00ffff;">cond</span> ((null lst)  (reverse acc))
+        (t           (mul2 (cdr lst)
+                           (cons (* 2 (car lst)) acc)))))
+</pre>
+</div>
+
+<p>
+Он обладает небольшим отличием, которое заключается в том, что в целях эффективности
+база рекурсии переворачивает аккумулированный список, чтобы шаг рекурсии мог добавлять
+элементы в начало списка-аккумулятора - это более эффективно.
+</p>
+
+<p>
+Можно смотреть на процесс обработки списка как на перемещение головы списка <code>lst</code> в
+голову <code>acc</code>. Мы могли бы переименовать <code>lst</code> в "список еще невычесленных форм"
+<code>unevaled</code>, а <code>acc</code> в "список уже вычисленных форм" <code>evaled</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mul2</span> (unevaled <span style="color: #98fb98;">&amp;optional</span> (evaled nil))
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 (cdr unevaled)
+                                (cons (* 2 (car unevaled))
+                                      evaled)))))
+</pre>
+</div>
+
+<p>
+Следующим шагом можно отделить функцию, которая обрабатывает элементы списка. Зададим
+ее как параметр:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mul2</span> (fn unevaled <span style="color: #98fb98;">&amp;optional</span> (evaled nil))
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 fn
+                                (cdr unevaled)
+                                (cons (funcall fn (car unevaled))
+                                      evaled)))))
+</pre>
+</div>
+
+<p>
+По сути мы получили универсальную функцию-маппер, которая умеет обрабатывать список. Мы
+можем сделать опциональный параметр обязательным и заставить ее рекурсивно обрабатывать
+подсписки.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mul2</span> (fn unevaled evaled)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (mul2 fn
+                                (cdr unevaled)
+                                (cons (funcall fn (car unevaled))
+                                      evaled)))))
+</pre>
+</div>
+
+<p>
+[TODO:gmm] - Для тренировки преобразовать в CPS?
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-3">
+<h3 id="unnumbered-10">Преобразование EVLIS и MYEVAL</h3>
+<div class="outline-text-3" id="text-unnumbered-10">
+<p>
+Возьмем нашу функцию <code>evis</code> (из предыдущего этапа):
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (unevaled evaled env)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env)
+                                       evaled)))))
+</pre>
+</div>
+
+<p>
+Мы помним, что сейчас <code>myeval</code> принимает продолжения. Значит и <code>evlis</code> должен их принимать:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (reverse evaled))
+        (t                (evlis (cdr unevaled)
+                                 (cons (myeval (car unevaled) env errcont cont)
+                                       evaled)
+                                 env errcont cont))))
+</pre>
+</div>
+
+<p>
+Теперь проведем CPS-преобразование. Вызов <code>myeval</code> - первый из вычисляемых и имеющих
+продолжение, поэтому мы можем передать ему все остальное как параметр <code>cont</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (funcall cont (reverse evaled)))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+<p>
+Вспомним, как выглядит наша функция MYAPPLY из предыдущего раздела:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (lst env)
+  (<span style="color: #00ffff;">cond</span>
+    ...
+    (t
+     (myapply (myeval (car lst) env)
+              (evlis (cdr lst) nil env)))))
+</pre>
+</div>
+
+<p>
+Если мы преобразуем ее в CPS-стиль, то у нас получится вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    ...
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #00ffff;">lambda</span> (x) <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">x - &#1101;&#1090;&#1086; &#1088;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1077;&#1085;&#1080;&#1103; &#1092;&#1086;&#1088;&#1084;&#1099; (car list)</span>
+               (evlis (cdr exp) nil env errcont
+                      (<span style="color: #00ffff;">lambda</span> (y) <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">y - &#1101;&#1090;&#1086; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1092;&#1086;&#1088;&#1084;</span>
+                        (myapply x y errcont cont))))))))
+</pre>
+</div>
+
+<p>
+Здесь есть неприятный момент, связанный с тем, что последнее продолжение <code>(y)</code> не
+соответствует шагу вычисления интерпретатора. Если бы у нас был отладчик, позволяющий
+перемещаться по продолжениям вверх и вниз, то мы бы обнаружили, что продолжения, не
+соответствующие шагам вычисления интерпретатора, мешают.
+</p>
+
+<p>
+Пользователь языка мыслит в терминах вычисления форм, а не в терминах внутренних
+продолжений интерпретатора, соответственно продолжения должны повторять это мышение в
+терминах вычисления форм. Следовательно, нужно выделять продолжения так, чтобы каждому
+продолжению соответстовала форма. Например, у Гая Стила в интерпретаторе <code>foo</code>
+<a href="https://gist.github.com/fogus/3698078">https://gist.github.com/fogus/3698078</a> лишние продолжения, но если нет отладчика
+продолжений, то пользователь языка этого, конечно, не заметит.
+</p>
+
+<p>
+Однако, мы можем избавиться от лишнего продолжения и сейчас покажем это.
+</p>
+
+<p>
+Если взять оригинальный, не хвосторекурсивный <code>evlis</code> и преобразовать его CPS то
+получится вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis-orig-cps</span> (lst env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null lst) nil)
+        (t (myeval (car lst) env errcont
+                   (<span style="color: #00ffff;">lambda</span> (x)    <span style="color: #ff7f24;">; &#1088;&#1077;&#1079;&#1091;&#1083;&#1100;&#1090;&#1072;&#1090; &#1092;&#1086;&#1088;&#1084;&#1099; (car lst)</span>
+                     (evlis (cdr lst) env errcont
+                            (<span style="color: #00ffff;">lambda</span> (y)  <span style="color: #ff7f24;">; &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1074;&#1099;&#1095;. &#1092;&#1086;&#1088;&#1084;</span>
+                              (funcall cont (cons x y)))))))))
+</pre>
+</div>
+
+<p>
+А если перед этим сделать его хвосторекурсивным с аккумулятором и только потом
+преобразовать в CPS - то получится так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (funcall cont (reverse evaled)))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+<p>
+Как мы видим из MYEVAL
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    ...
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #00ffff;">lambda</span> (x)
+               (evlis (cdr exp) nil env errcont
+                      (<span style="color: #00ffff;">lambda</span> (y)   <span style="color: #ff7f24;">; y -- &#1089;&#1087;&#1080;&#1089;&#1086;&#1082; &#1092;&#1086;&#1088;&#1084;</span>
+                        (myapply x y errcont cont))))))))
+</pre>
+</div>
+
+<p>
+Нужно преобразовать evlis так, чтобы продожение в myeval где комментарий "y &#x2013; список
+форм" исчезло
+</p>
+
+<p>
+Для этого мы переместим функционал <code>myapply</code> (применение функции к аргументам) прямо в
+<code>evlis</code>, передав ему функцию, которую будем применять. Тогда выйдет вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    ...
+    (myeval (car exp) env errcont
+            (<span style="color: #00ffff;">lambda</span> (x)
+              (evlis x (cdr exp) nil env errcont cont)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+<p>
+Что мы и видим в результате:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="evlis_4"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1077;&#1085;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1085;&#1086; &#1073;&#1086;&#1083;&#1077;&#1077; &#1087;&#1086;&#1085;&#1103;&#1090;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (myapply fn evaled errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (append evaled (list x))
+                                           env errcont cont))))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1073;&#1086;&#1083;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+</pre>
+</div>
+
+<p>
+Роман:
+</p>
+
+<p>
+Потом еще fn добавить надо, чтобы удовлетворить нашиму (ограниченному) пониманию
+cps. Таким образом итоговый evlis сначала вычисляет аргументы, а потом применяет
+функцию. Оригинальный evlis делал только первое.
+</p>
+
+<p>
+Михаил:
+</p>
+
+<p>
+а зачем нам fn?
+</p>
+
+<p>
+Роман:
+</p>
+
+<p>
+Вот тут же:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled) (myapply fn (reverse evaled) errcont cont))
+        ...
+        ))
+</pre>
+</div>
+
+<p>
+Иначе будут континуации, которые не соответствуют шагу вычислений.
+Так не пойдет:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled) (funcall cont evaled))
+        ...
+        ))
+</pre>
+</div>
+
+<p>
+Потому что cont тогда принимает не результат формы, а список результатов, что
+противоречит нашему пониманию cps.
+</p>
+
+<p>
+Роман:
+</p>
+
+<p>
+Одна из причин преобразования в cps — сделать рекурсию хвостовой. Применение cps к
+функции с хвостовой рекурсией вообще ничего не дает. Вот evlis — другое
+дело. Преобразовав ее к хвостовому виду добавив аккумулятор, мы еще не привели к
+хвостовому виду вызов myeval. Вот поэтому мы и делаем cps над evlis с хвостовой
+рекурсией.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-2">
+<h2 id="unnumbered-11">MyApply</h2>
+<div class="outline-text-2" id="text-unnumbered-11">
+<p>
+Теперь <code>myapply</code> принимает два продолжения: <code>errcont</code> и <code>cont</code>.
+</p>
+
+<p>
+Переносим сюда <code>print</code> из <code>myeval</code>, потому что это функция, которая оценивает свои
+аргументы.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="errors_4">(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">unknown-function</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((fn <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:fn</span>  <span style="color: #b0c4de;">:reader</span> fn))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYAPPLY: unknown-function: ~A"</span>
+             (fn condition)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_4">&lt;&lt;evaddmul_4&gt;&gt;
+&lt;&lt;evlis_4&gt;&gt;
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myapply</span> (fn args errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    &lt;&lt;myapply_car_cdr_cons_4&gt;&gt;
+    &lt;&lt;myapply_null_4&gt;&gt;
+    &lt;&lt;myapply_ariph_4&gt;&gt;
+    &lt;&lt;myapply_closure_4&gt;&gt;
+    &lt;&lt;myapply_print_4&gt;&gt;
+    &lt;&lt;myapply_list_4&gt;&gt;
+    (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'unknown-function <span style="color: #b0c4de;">:fn</span> fn))))
+</pre>
+</div>
+
+<p>
+А набор тестов остался без изменений:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_4_test">&lt;&lt;myapply_car_cdr_cons_4_test&gt;&gt;
+&lt;&lt;myapply_null_4_test&gt;&gt;
+&lt;&lt;evaddmul_4_test&gt;&gt;
+&lt;&lt;myapply_ariph_4_test&gt;&gt;
+&lt;&lt;myapply_closure_4_test&gt;&gt;
+&lt;&lt;myapply_print_4_test&gt;&gt;
+&lt;&lt;myapply_evlis_4_test&gt;&gt;
+&lt;&lt;myapply_list_4_test&gt;&gt;
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-3">
+<h3 id="unnumbered-12">Работа с CONS-ячейками</h3>
+<div class="outline-text-3" id="text-unnumbered-12">
+<p>
+Функции, которые работают с cons-ячейками теперь вызывают продолжение <code>cont</code>, передавая
+ему в качестве параметра результат своих вычислений.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_car_cdr_cons_4">((equal fn 'car)             (funcall cont (caar args)))
+((equal fn 'cdr)             (funcall cont (cdar args)))
+((equal fn 'cons)            (funcall cont (cons (car args) (cadr args))))
+</pre>
+</div>
+
+<p>
+Тесты такие-же, но теперь принимают продолжения
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_car_cdr_cons_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; cons, car, cdr</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(car (cons 2 3)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(cdr (cons 2 3)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; cons-&#1103;&#1095;&#1077;&#1077;&#1082;, &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-3">
+<h3 id="unnumbered-13">NULL-предикат</h3>
+<div class="outline-text-3" id="text-unnumbered-13">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="errors_4">(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">invalid-number-of-arguments</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((fn <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:fn</span>  <span style="color: #b0c4de;">:reader</span> fn))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYAPPLY: invalid-number-of-arguments: ~A"</span>
+             (fn condition)))))
+</pre>
+</div>
+
+<p>
+<code>null</code> теперь тоже вызывает продолжение <code>cont</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_null_4">((equal fn 'null)            (<span style="color: #00ffff;">if</span> (null (cdr args))
+                                 (funcall cont (null (car args)))
+                                 (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'invalid-number-of-arguments <span style="color: #b0c4de;">:fn</span> fn)))
+</pre>
+</div>
+
+<p>
+Тесты такие-же, но теперь принимают продолжения
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_null_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; NULL</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null T) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; NULL, &#1089; &#1072;&#1088;&#1075;&#1091;&#1084;&#1077;&#1085;&#1090;&#1086;&#1084;, &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1077; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . T)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)) #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-3">
+<h3 id="unnumbered-14">Встроенные функции арифметики</h3>
+<div class="outline-text-3" id="text-unnumbered-14">
+<p>
+Вспомогательные функции <code>evadd</code> и <code>evmul</code> мы не будем преобразовывать в CPS потому что
+они не являются частью интерпретатора. Поэтому этот раздел остается без изменений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="evaddmul_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evadd</span> (lst acc)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        0)
+        ((null (cdr lst))  (+ acc (car lst)))
+        (t                 (evadd (cdr lst)
+                                  (+ acc (car lst))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evmul</span> (lst acc)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        1)
+        ((null (cdr lst))  (* acc (car lst)))
+        (t                 (evmul (cdr lst)
+                                  (* acc (car lst))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="evaddmul_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0                (evadd '() 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2                (evadd '(2) 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 5                (evadd '(2 3) 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (evadd '(2 3 4) 0)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1                (evmul '() 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2                (evmul '(2) 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 6                (evmul '(2 3) 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3 4)        (evmul '(2 3 4) 1)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_ariph_4">((equal fn '+)               (funcall cont (evadd args 0)))
+((equal fn '*)               (funcall cont (evmul args 1)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_ariph_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0                (myeval '(+) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2)            (myeval '(+ 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3)          (myeval '(+ 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (myeval '(+ 2 3 4) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4))    (myeval '(+ 2 (+ 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4) 5)  (myeval '(+ 2 (+ 3 4) 5) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1091;&#1084;&#1085;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1                (myeval '(*) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2)            (myeval '(* 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3)          (myeval '(* 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3 4)        (myeval '(* 2 3 4) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 (* 3 4))    (myeval '(* 2 (* 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 (* 3 4) 5)  (myeval '(* 2 (* 3 4) 5) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0
+               (myeval '(+) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2))
+                 (+ a))
+               (myeval '(+ a)
+                       '((a . 2))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3))
+                 (+ a b))
+               (myeval '(+ a b)
+                       '((a . 2) (b . 3))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (+ a b c))
+               (myeval '(+ a b c)
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (+ a (+ b c)))
+               (myeval '(+ a (+ b c))
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4) (d 5))
+                 (+ a (+ b c) d))
+               (myeval '(+ a (+ b c) d)
+                       '((a . 2) (b . 3) (c . 4) (d . 5))
+                       #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1091;&#1084;&#1085;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;  &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1
+               (myeval '(*) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2))
+                 (* a))
+               (myeval '(* a)
+                       '((a . 2))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3))
+                 (* a b))
+               (myeval '(* a b)
+                       '((a . 2) (b . 3))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (* a b c))
+               (myeval '(* a b c)
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (* a (* b c)))
+               (myeval '(* a (* b c))
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4) (d 5))
+                 (* a (* b c) d))
+               (myeval '(* a (* b c) d)
+                       '((a . 2) (b . 3) (c . 4) (d . 5))
+                       #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-3">
+<h3 id="unnumbered-15">CLOSURE</h3>
+<div class="outline-text-3" id="text-unnumbered-15">
+<p>
+Добавляем продолжения
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_closure_4">((closure-p fn)              (evprogn (closure-body fn)
+                                      (pairlis (closure-args fn)
+                                               args
+                                               (closure-env fn))
+                                      errcont
+                                      cont))
+</pre>
+</div>
+
+<p>
+Добавляем продолжения в тесты
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_closure_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1087;&#1088;&#1080;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; CLOSURE</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(((<span style="color: #00ffff;">lambda</span> (x)
+                              (<span style="color: #00ffff;">lambda</span> (y) x))
+                            1)
+                           2)
+                         nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-3">
+<h3 id="unnumbered-16">PRINT</h3>
+<div class="outline-text-3" id="text-unnumbered-16">
+<p>
+PRINT - это функция, т.к. она оценивает свои аргументы. Перенесем <code>print</code> из <code>myeval</code> в
+<code>myapply</code> и научим его принимать продолжения:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_print_4">((equal fn 'print)           (funcall cont (print (car args))))
+</pre>
+</div>
+
+<p>
+Тесты такие-же, но теперь принимают продолжения
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_print_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT &#1074; &#1089;&#1088;&#1072;&#1074;&#1085;&#1077;&#1085;&#1080;&#1080; &#1089; host-&#1086;&#1074;&#1099;&#1084; print</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (print 12))
+               (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print 12) nil #'err #'identity))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (print 12)
+               (myeval '(print 12) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (<span style="color: #00ffff;">let</span> ((a 12))
+                   (print a)))
+               (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print a)
+                         '((b . 23) (a . 12))
+                         #'err #'identity))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 12))
+                 (print a))
+               (myeval '(print a)
+                       '((b . 23) (a . 12))
+                       #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-3">
+<h3 id="unnumbered-17">LIST</h3>
+<div class="outline-text-3" id="text-unnumbered-17">
+<p>
+Как мы помним, в разделе <i>Преобразование EVLIS и MYAPPLY</i> мы получили новый <code>evlis</code> в
+CPS-стиле.
+</p>
+
+<p>
+Здесь вызов:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_list_4">((equal fn 'list)            (funcall cont args))
+</pre>
+</div>
+
+<p>
+Теперь здесь мы напишем тесты для него:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_evlis_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVLIS</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 4           (evlis '+     '(1 (+ 1 2))             nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 1 3 5)   (evlis '+     '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 3 5)    (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(0 3 6 42) (evlis 'list  '(0 (+ a b) (* b c) 42)
+                                  nil
+                                  '((a . 1) (b . 2) (c . 3) (d . 4))
+                                  #'err #'ok)))
+</pre>
+</div>
+
+<p>
+И тесты для LIST
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myapply_list_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LIST</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
+                               nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4))
+                       #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-18" class="outline-2">
+<h2 id="unnumbered-18">MyEval</h2>
+<div class="outline-text-2" id="text-unnumbered-18">
+<p>
+Теперь <code>myeval</code> принимает два продолжения: <code>errcont</code> и <code>cont</code> и передает их при
+рекурсивном вызове внутри лямбды. Мы также переименовываем параметр <code>lst</code> в <code>exp</code>.
+</p>
+
+<p>
+Это еще не все изменения. Изменяется хвостовая часть <code>myeval</code>, что подробно описано в
+разделе <a href="#unnumbered-10">Преобразование EVLIS и MYEVAL</a>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_4">&lt;&lt;myeval_evcond_4&gt;&gt;
+&lt;&lt;myeval_evprogn_4&gt;&gt;
+&lt;&lt;myeval_evand_4&gt;&gt;
+&lt;&lt;myeval_evor_4&gt;&gt;
+&lt;&lt;myeval_mypairlis_4&gt;&gt;
+&lt;&lt;myeval_evlet_4&gt;&gt;
+&lt;&lt;myeval_evletstar_4&gt;&gt;
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    &lt;&lt;myeval_number_4&gt;&gt;
+    &lt;&lt;myeval_symb_4&gt;&gt;
+    &lt;&lt;myeval_quote_4&gt;&gt;
+    &lt;&lt;myeval_if_4&gt;&gt;
+    &lt;&lt;myeval_cond_4&gt;&gt;
+    &lt;&lt;myeval_progn_4&gt;&gt;
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; PRINT, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; LIST, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
+    &lt;&lt;myeval_and_4&gt;&gt;
+    &lt;&lt;myeval_or_4&gt;&gt;
+    &lt;&lt;myeval_let_4&gt;&gt;
+    &lt;&lt;myeval_letstar_4&gt;&gt;
+    &lt;&lt;myeval_defun_4&gt;&gt;
+    &lt;&lt;myeval_setq_4&gt;&gt;
+    &lt;&lt;myeval_lambda_4&gt;&gt;
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #00ffff;">lambda</span> (x)
+               (evlis  x  (cdr exp) nil env errcont cont))))))
+</pre>
+</div>
+
+<p>
+Тесты:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_4_test">&lt;&lt;myeval_number_4_test&gt;&gt;
+&lt;&lt;myeval_symb_4_test&gt;&gt;
+&lt;&lt;myeval_quote_4_test&gt;&gt;
+&lt;&lt;myeval_if_4_test&gt;&gt;
+&lt;&lt;myeval_evcond_4_test&gt;&gt;
+&lt;&lt;myeval_cond_4_test&gt;&gt;
+&lt;&lt;myeval_evprogn_4_test&gt;&gt;
+&lt;&lt;myeval_progn_4_test&gt;&gt;
+&lt;&lt;myeval_evand_4_test&gt;&gt;
+&lt;&lt;myeval_and_4_test&gt;&gt;
+&lt;&lt;myeval_evor_4_test&gt;&gt;
+&lt;&lt;myeval_or_4_test&gt;&gt;
+&lt;&lt;myeval_mypairlis_4_test&gt;&gt;
+&lt;&lt;myeval_evlet_4_test&gt;&gt;
+&lt;&lt;myeval_let_4_test&gt;&gt;
+&lt;&lt;myeval_evletstar_4_test&gt;&gt;
+&lt;&lt;myeval_letstar_4_test&gt;&gt;
+&lt;&lt;myeval_defun_4_test&gt;&gt;
+&lt;&lt;myeval_setq_4_test&gt;&gt;
+&lt;&lt;myeval_lambda_4_test&gt;&gt;
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-19" class="outline-3">
+<h3 id="unnumbered-19">Самовычисляемые формы</h3>
+<div class="outline-text-3" id="text-unnumbered-19">
+<p>
+Самовычисляемые формы теперь используют продолжения. Кроме того, мы добавляем <code>print</code> и
+<code>list</code> в самовычисляемые формы, потому что переноси их из <code>myeval</code> в <code>myapply</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_number_4">((null exp)                  (funcall cont 'nil))
+((equal t exp)               (funcall cont 't))
+((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
+((numberp exp)               (funcall cont exp))
+</pre>
+</div>
+
+<p>
+Тесты незначительно изменяются
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_number_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1072;&#1084;&#1086;&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1092;&#1086;&#1088;&#1084;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval 'T nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval 'NIL nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 999 (myeval 999 nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-3">
+<h3 id="unnumbered-20">Вычисление символов</h3>
+<div class="outline-text-3" id="text-unnumbered-20">
+<p>
+&#x2026;стало проще. Теперь вместо сигнализирования ошибки, когда символ не найден, lookup
+просто вызовет (другое) error-продолжение. Поэтому класс ошибки <code>var-not-found-error</code>
+нам больше не требуется.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_symb_4">((symbolp exp)               (lookup exp env errcont cont))
+</pre>
+</div>
+
+<p>
+Соответственно изменился и тест - теперь мы ожидаем, что будет выполнено
+error-продолжение.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_symb_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1077;&#1085;&#1080;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span> (car (myeval 'b nil
+                                    #'(<span style="color: #00ffff;">lambda</span> (x) (cons <span style="color: #ffa07a;">"error"</span> x))
+                                    #'ok))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-3">
+<h3 id="unnumbered-21">Цитирование</h3>
+<div class="outline-text-3" id="text-unnumbered-21">
+<p>
+теперь вызывает продолжение
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_quote_4">((equal (car exp) 'quote)    (funcall cont (cadr exp)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_quote_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; QUOTE</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-22" class="outline-3">
+<h3 id="unnumbered-22">Условное выполнение IF</h3>
+<div class="outline-text-3" id="text-unnumbered-22">
+<p>
+Чтобы сделать IF в CPS-стиле мы вызываем <code>myeval</code>, чтобы вычислить значение
+выражения-условия. При этом мы передаем в параметр <code>cont</code> лямбду, которая в зависимости
+от значения вычисления вызовет ту или иную ветку:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_if_4">((equal (car exp) 'if)       (myeval (cadr exp) env errcont
+                                     (<span style="color: #00ffff;">lambda</span> (x)
+                                       (<span style="color: #00ffff;">if</span> x
+                                           (myeval (caddr exp)  env errcont cont)
+                                           (myeval (cadddr exp) env errcont cont)))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_if_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; IF</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">if</span> () 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">if</span> (null ()) 1 2) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; IF, &#1075;&#1076;&#1077; &#1091;&#1089;&#1083;&#1086;&#1074;&#1080;&#1077; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1090;&#1089;&#1103; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">if</span> a 1 2) '((a . ())) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">if</span> a 1 2) '((a . 1)) #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-23" class="outline-3">
+<h3 id="unnumbered-23">COND</h3>
+<div class="outline-text-3" id="text-unnumbered-23">
+<p>
+Модифицируем <code>evcond</code> в CPS-стиле. Это примерно то же самое, что и IF в CPS-стиле, с
+той особенность, что если вычисление условия не вернуло <code>T</code>, то мы рекурсивно вычисляем
+от остатка переданного списка условий. Мы так делали и раньше в <code>evcond</code>, просто тут
+рекурсия перехала в продолжения.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evcond_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evcond</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null exp)  (funcall cont nil))
+        (t           (myeval (caar exp) env errcont
+                             (<span style="color: #00ffff;">lambda</span> (x)
+                               (<span style="color: #00ffff;">if</span> x
+                                   (myeval (cadar exp) env errcont cont)
+                                   (evcond (cdr exp)   env errcont cont)))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evcond_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2   (evcond '((t 2)   (t 1)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1   (evcond '((nil 2) (t 1)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal nil (evcond '((nil 2) (nil 1)) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND, &#1075;&#1076;&#1077; &#1091;&#1095;&#1072;&#1089;&#1090;&#1074;&#1091;&#1077;&#1090; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evcond '((a 2) (b 1))
+                         '((a . 1) (b . ()))
+                         #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (evcond '((a 2) (b 1))
+                         '((a . nil) (b . T))
+                         #'err #'ok)))
+</pre>
+</div>
+
+<p>
+и адаптируем вызов внутри <code>myeval</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_cond_4">((equal (car exp) 'cond)     (evcond (cdr exp) env errcont cont))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_cond_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; COND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (() 1)
+                           (1 2))
+                         nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . ()) (b . 1))
+                         #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . 1) (b . ()))
+                         #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-24" class="outline-3">
+<h3 id="unnumbered-24">PROGN</h3>
+<div class="outline-text-3" id="text-unnumbered-24">
+<p>
+Аналогичным образом преобразуем <code>evprogn</code> в CPS.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evprogn_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evprogn</span> (lst env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null lst)         (funcall cont nil))
+        ((null (cdr lst))   (myeval (car lst) env errcont cont))
+        (t                  (myeval (car lst) env errcont
+                                    (<span style="color: #00ffff;">lambda</span> (x)
+                                      (evprogn (cdr lst) env errcont cont))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evprogn_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evprogn '(1 2) nil  #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (evprogn '(a b c)
+                          '((a . 1) (b . 2) (c . 3))
+                          #'err #'ok)))
+</pre>
+</div>
+
+<p>
+модифицируем вызов в <code>myeval</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_progn_4">((equal (car exp) 'progn)    (evprogn (cdr exp) env errcont cont))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_progn_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #00ffff;">progn</span> 1 2 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #00ffff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-25" class="outline-3">
+<h3 id="unnumbered-25"><span class="done CANCEL">CANCEL</span> PRINT</h3>
+<div class="outline-text-3" id="text-unnumbered-25">
+<p>
+PRINT - это функция, поэтому она должна обрабатываться в MYAPPLY. Туда мы ее и
+перенесли.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-26" class="outline-3">
+<h3 id="unnumbered-26"><span class="done CANCEL">CANCEL</span> LIST</h3>
+<div class="outline-text-3" id="text-unnumbered-26">
+<p>
+LIST - это функция, т.к. она оценивает свои аргументы. Поэтому мы переносим ее в
+MYAPPLY.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-27" class="outline-3">
+<h3 id="unnumbered-27">AND</h3>
+<div class="outline-text-3" id="text-unnumbered-27">
+<p>
+Выполняем CPS-преобразование (очень похоже на EVCOND)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evand_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evand</span> (args env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null args)        (funcall cont T))
+        ((null (cdr args))  (myeval (car args) env errcont cont))
+        (t                  (myeval (car args) env errcont
+                                    (<span style="color: #00ffff;">lambda</span> (x)
+                                      (<span style="color: #00ffff;">if</span> (null x)
+                                          (funcall cont nil)
+                                          (evand (cdr args) env errcont cont)))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evand_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and)           (evand '() nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1)         (evand '(1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and nil)       (evand '(nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 nil 3) (evand '(1 2 nil 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (and nil))
+               (evand '(a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (and a))
+               (evand '(a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b nil))
+                 (and a b))
+               (evand '(a b) '((a . 1) (b . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil))
+                 (and a b c))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a b c))
+               (evand '(a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) #'err #'ok)))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_and_4">((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
+</pre>
+</div>
+
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_and_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and)                  (myeval '(and) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1)                (myeval '(and 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and nil)              (myeval '(and nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 nil)            (myeval '(and 1 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 nil)          (myeval '(and 1 2 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 3)            (myeval '(and 1 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)    (myeval '(and 1 (and 1 2) 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 (and 1 nil) 3)  (myeval '(and 1 (and 1 nil) 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (and nil))
+               (myeval '(and a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (and a))
+               (myeval '(and a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b nil))
+                 (and a b))
+               (myeval '(and a b) '((a . 1) (b . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil))
+                 (and a b c))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a b c))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil)
+                     (d 3))
+                 (and a b c d))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . nil) (d . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b nil)
+                     (c 3))
+                 (and a (and a b) c))
+               (myeval '(and a (and a b) c) '((a . 1) (b . nil) (c . 3)) #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-28" class="outline-3">
+<h3 id="unnumbered-28">OR</h3>
+<div class="outline-text-3" id="text-unnumbered-28">
+<p>
+Выполняем CPS-преобразование (очень похоже на EVCOND)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evor_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evor</span> (args env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null args)        (funcall cont nil))
+        ((null (cdr args))  (myeval (car args) env errcont cont))
+        (t                  (myeval (car args) env errcont
+                                    (<span style="color: #00ffff;">lambda</span> (x)
+                                      (<span style="color: #00ffff;">if</span> (not (null x))
+                                          (funcall cont x)
+                                          (evor (cdr args) env errcont cont)))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evor_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or)                   (evor '() nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1)             (evor '(nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil nil 1)         (evor '(nil nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1 2)           (evor '(nil 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or 1 2 3)             (evor '(1 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil nil 3 nil)     (evor '(nil nil 3 nil) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (or a))
+               (evor '(a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (or a))
+               (evor '(a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1))
+                 (or a b))
+               (evor '(a b) '((a . nil) (b . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3))
+                 (or a b c))
+               (evor '(a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1)
+                     (c 2))
+                 (or a b c))
+               (evor '(a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3)
+                     (d nil))
+                 (or a b c d))
+               (evor '(a b c d) '((a . nil) (b . nil) (c . 3) (d . nil)) #'err #'ok)))
+</pre>
+</div>
+
+<p>
+Теперь мы можем определить <code>or</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_or_4">((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
+</pre>
+</div>
+
+<p>
+Протестируем <code>or</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_or_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or)                  (myeval '(or) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1)            (myeval '(or nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil nil 1)        (myeval '(or nil nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1 2)          (myeval '(or nil 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (or a))
+               (myeval '(or a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (or a))
+               (myeval '(or a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1))
+                 (or a b))
+               (myeval '(or a b) '((a . nil) (b . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3))
+                 (or a b c))
+               (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1)
+                     (c 2))
+                 (or a b c))
+               (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c nil)
+                     (d 2))
+                 (or a (or b c) d))
+               (myeval '(or  a (or b c) d) '((a . nil) (b . nil) (c . nil) (d . 2))
+                       #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-29" class="outline-3">
+<h3 id="unnumbered-29">LET</h3>
+<div class="outline-text-3" id="text-unnumbered-29">
+<p>
+Ошибка <code>mypairlis-error</code> нам все еще нужна
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="errors_4">(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">mypairlis-error</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:lst1</span>  <span style="color: #b0c4de;">:reader</span> lst1)
+   (lst2 <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:lst2</span>  <span style="color: #b0c4de;">:reader</span> lst2))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+</pre>
+</div>
+
+<p>
+Функция <code>mypairlis</code> остается без изменений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_mypairlis_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #00ffff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #b0c4de;">:lst1</span> lst1 <span style="color: #b0c4de;">:lst2</span> lst2))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+</pre>
+</div>
+
+<p>
+И ее тесты тоже
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_mypairlis_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYPAIRLIS</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+               (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span>
+               (<span style="color: #00ffff;">handler-case</span> (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #ffa07a;">"error"</span>))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span>
+               (<span style="color: #00ffff;">handler-case</span> (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #ffa07a;">"error"</span>))))
+</pre>
+</div>
+
+<p>
+Теперь нам понадобится новая функция <code>evlet</code>. Она рекурсивно вычисляет <code>exps</code>
+перебрасывая вычисленные результаты в <code>evald-exps</code> и по окончании этого процесса
+вызывает <code>evprogn</code> чтобы вычислить тело <code>let</code> в объединенном окружении.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlet_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlet</span> (vars exps evald-exps exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null exps)  (evprogn exp
+                               (pairlis vars (reverse evald-exps) env)
+                               errcont cont))
+        (t            (myeval (car exps) env errcont
+                              (<span style="color: #00ffff;">lambda</span> (x)
+                                (evlet vars (cdr exps) (cons x evald-exps) exp env errcont cont))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evlet_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLET</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil #'err #'ok)))
+</pre>
+</div>
+
+
+<p>
+используем <code>evlet</code> в <code>myeval</code> чтобы вычислить <code>let</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_let_4">((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
+                                    (mapcar #'cadr (cadr exp))
+                                    nil
+                                    (cddr exp)
+                                    env
+                                    errcont
+                                    cont))
+</pre>
+</div>
+
+<p>
+Протестируем <code>let</code> и <code>evlet</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_let_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LET</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(<span style="color: #00ffff;">let</span> ((a 1)
+                                       (b 2))
+                                  (cons a b)) <span style="color: #ffc0cb; font-weight: bold;">nil</span>
+                                  #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-30" class="outline-3">
+<h3 id="unnumbered-30">LET*</h3>
+<div class="outline-text-3" id="text-unnumbered-30">
+<p>
+cps
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evletstar_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evletstar</span> (varpairs exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null varpairs)  (evprogn exp env errcont cont))
+        (t                (myeval (cadar varpairs) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evletstar (cdr varpairs) exp
+                                               (acons (caar varpairs) x env)
+                                               errcont cont))))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_evletstar_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLETSTAR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil  #'err #'ok)))
+</pre>
+</div>
+
+
+<p>
+cps
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_letstar_4">((equal (car exp) 'let*)     (evletstar (cadr exp)
+                                        (cddr exp)
+                                        env
+                                        errcont cont))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_letstar_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LET*</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 1 . 2) (myeval '(<span style="color: #00ffff;">let*</span> ((a 1)
+                                          (b 2)
+                                          (c (+ a b)))
+                                    (cons c (cons a b)))
+                                  nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-31" class="outline-3">
+<h3 id="unnumbered-31">DEFUN</h3>
+<div class="outline-text-3" id="text-unnumbered-31">
+<p>
+При создании функции мы создаем замыкание, в которое кладем тело функции, текущее
+окружение и аргументы функции. Здесь меняется только то, что после этого мы вызываем
+продолжение <code>cont</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_defun_4">((equal (car exp) 'defun)         (<span style="color: #00ffff;">progn</span>
+                                    (push (cons (cadr exp)
+                                                (make-closure <span style="color: #b0c4de;">:body</span> (cdddr exp)
+                                                              <span style="color: #b0c4de;">:env</span> env
+                                                              <span style="color: #b0c4de;">:args</span> (caddr exp)))
+                                          *glob-env*)
+                                    (funcall cont (cadr exp))))
+</pre>
+</div>
+
+<p>
+Добавляем продолжения в тесты
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_defun_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; DEFUN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 64 (<span style="color: #00ffff;">progn</span>
+                    (setf *glob-env* nil)
+                    (myeval '(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">alfa</span> (x) (* x x)) nil #'err #'ok)
+                    (<span style="color: #00ffff;">prog1</span> (myeval '(alfa 8) nil #'err #'ok)
+                      (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; DEFUN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 384 (<span style="color: #00ffff;">progn</span>
+                     (setf *glob-env* nil)
+                     (myeval '(<span style="color: #00ffff;">let</span> ((y 3))
+                               (<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">alfa</span> (x)
+                                 (setq y 6)
+                                 (* x x y)))
+                             nil #'err #'ok)
+                     (<span style="color: #00ffff;">prog1</span> (myeval '(alfa 8) nil #'err #'ok)
+                       (setf *glob-env* nil)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-32" class="outline-3">
+<h3 id="unnumbered-32">SETQ</h3>
+<div class="outline-text-3" id="text-unnumbered-32">
+<p>
+<code>lookup</code> у нас не может вернуть пару <code>(переменная . значение)</code>, а нам эта пара нужна
+чтобы изменить значение переменной. Поэтому здесь мы обходимся без <code>lookup</code>, напрямую
+отрабатывая все его инварианты
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_setq_4">((equal (car exp) 'setq)     (myeval (caddr exp) env errcont
+                                     (<span style="color: #00ffff;">lambda</span> (val)
+                                       (<span style="color: #00ffff;">if</span> (null (assoc (cadr exp) env))
+                                           <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1077; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1084; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                           <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">- &#1087;&#1086;&#1089;&#1084;&#1086;&#1090;&#1088;&#1080;&#1084; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                           (<span style="color: #00ffff;">if</span> (null (assoc (cadr exp) *glob-env*))
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1077; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080; - &#1089;&#1086;&#1079;&#1076;&#1072;&#1076;&#1080;&#1084; &#1077;&#1077; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                               (push (cons (cadr exp) val)
+                                                     *glob-env*)
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080; - &#1080;&#1079;&#1084;&#1077;&#1085;&#1080;&#1084; &#1077;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;</span>
+                                               (rplacd (assoc (cadr exp) *glob-env*) val))
+                                           <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1084; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                           <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">- &#1080;&#1079;&#1084;&#1077;&#1085;&#1080;&#1090;&#1100; &#1077;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;</span>
+                                           (rplacd (assoc (cadr exp) env) val))
+                                       <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1042; &#1083;&#1102;&#1073;&#1086;&#1084; &#1089;&#1083;&#1091;&#1095;&#1072;&#1077; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+                                       (funcall cont val))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_setq_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SETQ</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1072; &#1080;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1083;&#1086;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1085;&#1077; &#1079;&#1072;&#1090;&#1088;&#1072;&#1075;&#1080;&#1074;&#1072;&#1103; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1075;&#1086; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((2 . 2) ((alfa . 0)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((alfa . 0)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons (setq alfa 2)
+                                        alfa)
+                                      '((alfa . 1))
+                                      #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1085;&#1077;&#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; (&#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1080;&#1077; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;)</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons
+                                        (setq alfa 1)
+                                        alfa)
+                                      nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 1) ((BETA . 1)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons
+                                        (setq beta 1)
+                                        beta)
+                                      nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-33" class="outline-3">
+<h3 id="unnumbered-33">LAMBDA</h3>
+<div class="outline-text-3" id="text-unnumbered-33">
+<p>
+При обработке формы, начинающейся с вызова <code>lambda</code> мы все также создаем замыкание,
+чтобы сохранить то окружение, которое было в момент создания лямбды. Но теперь мы
+делаем это в CPS-стиле.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_lambda_4">((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #b0c4de;">:body</span> (cddr exp)
+                                                         <span style="color: #b0c4de;">:env</span> env
+                                                         <span style="color: #b0c4de;">:args</span> (cadr exp))))
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="myeval_lambda_4_test"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '((<span style="color: #00ffff;">lambda</span> (x) (+ 1  x)) 2)
+                         nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 5 (myeval '(<span style="color: #00ffff;">let</span> ((y 3))
+                           ((<span style="color: #00ffff;">lambda</span> (x) (+ y x)) 2))
+                         nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1085;&#1072; IMPLICIT-PROGN &#1074; LAMBDA</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 8 (myeval '(<span style="color: #00ffff;">let</span> ((y 3))
+                           ((<span style="color: #00ffff;">lambda</span> (x)
+                              (setq y 6)
+                              (+ y x)) <span style="color: #ffc0cb; font-weight: bold;">2))</span>
+                         nil #'err #'ok)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-34" class="outline-2">
+<h2 id="unnumbered-34">REPL</h2>
+<div class="outline-text-2" id="text-unnumbered-34">
+<div class="org-src-container">
+
+<pre class="src src-lisp" id="repl_4">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">repl</span> ()
+    (princ <span style="color: #ffa07a;">"microlisp&gt;"</span>)
+    (finish-output)
+    (princ (myeval (read) nil #'identity #'identity))
+    (terpri)
+    (finish-output)
+    (repl))
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-35" class="outline-2">
+<h2 id="unnumbered-35">Итоги</h2>
+<div class="outline-text-2" id="text-unnumbered-35">
+<div class="org-src-container">
+
+<pre class="src src-lisp"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
+&lt;&lt;assoc_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
+&lt;&lt;errors_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; lookup</span>
+&lt;&lt;lookup_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1057;&#1090;&#1088;&#1091;&#1082;&#1090;&#1091;&#1088;&#1072; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1103;</span>
+&lt;&lt;closure_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYAPPLY &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
+&lt;&lt;myapply_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYEVAL &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
+&lt;&lt;myeval_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084; &#1085;&#1086;&#1074;&#1099;&#1081; lookup</span>
+&lt;&lt;lookup_4_test&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1060;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080; &#1076;&#1083;&#1103; &#1090;&#1077;&#1089;&#1090;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; CPS-&#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1081;</span>
+&lt;&lt;ok_err_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYAPPLY</span>
+&lt;&lt;myapply_4_test&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYEVAL</span>
+&lt;&lt;myeval_4_test&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">REPL</span>
+&lt;&lt;repl_4&gt;&gt;
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(repl)</span>
+</pre>
+</div>
+
+<p>
+Получиться должен вот такой результат:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1077;&#1088;&#1089;&#1080;&#1103; ASSOC</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">assoc-2</span> (key alist cont errcont) <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">NB!: inverted order of</span>
+  <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">continuations (for lookup)</span>
+  (<span style="color: #00ffff;">cond</span> ((null alist)              (funcall errcont key))
+        ((equal key (caar alist))  (funcall cont    (cdar alist)))
+        (t                         (assoc-2 key (cdr alist) cont errcont))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1050;&#1083;&#1072;&#1089;&#1089;&#1099; &#1086;&#1096;&#1080;&#1073;&#1086;&#1082;</span>
+(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">unknown-function</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((fn <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:fn</span>  <span style="color: #b0c4de;">:reader</span> fn))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYAPPLY: unknown-function: ~A"</span>
+             (fn condition)))))
+(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">invalid-number-of-arguments</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((fn <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:fn</span>  <span style="color: #b0c4de;">:reader</span> fn))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYAPPLY: invalid-number-of-arguments: ~A"</span>
+             (fn condition)))))
+(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">mypairlis-error</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
+  ((lst1 <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:lst1</span>  <span style="color: #b0c4de;">:reader</span> lst1)
+   (lst2 <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:lst2</span>  <span style="color: #b0c4de;">:reader</span> lst2))
+  (<span style="color: #b0c4de;">:report</span>
+   (<span style="color: #00ffff;">lambda</span> (condition stream)
+     (format stream <span style="color: #ffa07a;">"Error in MYPAIRLIS: wrong params:~%'~A~%'~A"</span>
+             (lst1 condition) (lst2 condition)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1086;&#1074;&#1072;&#1103; &#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1103; lookup</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">environment</span>
+(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*glob-env*</span> nil)
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">lookup</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">lookup</span> (symb env errcont cont)
+  (assoc-2 symb env cont
+           (<span style="color: #00ffff;">lambda</span> (key)
+             (assoc-2 key *glob-env* cont
+                      (<span style="color: #00ffff;">lambda</span> (key)
+                        (funcall errcont
+                                 (format
+                                  nil
+                                  <span style="color: #ffa07a;">"UNBOUD VARIABLE [~A] ~%LOCAL ENV: [~A] ~%GLOBAL ENV: [~A]"</span>
+                                  key env *glob-env*)))))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1057;&#1090;&#1088;&#1091;&#1082;&#1090;&#1091;&#1088;&#1072; &#1079;&#1072;&#1084;&#1099;&#1082;&#1072;&#1085;&#1080;&#1103;</span>
+(<span style="color: #00ffff;">defstruct</span> <span style="color: #98fb98;">closure</span>
+  body
+  env
+  args)
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYAPPLY &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evadd</span> (lst acc)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        0)
+        ((null (cdr lst))  (+ acc (car lst)))
+        (t                 (evadd (cdr lst)
+                                  (+ acc (car lst))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evmul</span> (lst acc)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        1)
+        ((null (cdr lst))  (* acc (car lst)))
+        (t                 (evmul (cdr lst)
+                                  (* acc (car lst))))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1077;&#1085;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1085;&#1086; &#1073;&#1086;&#1083;&#1077;&#1077; &#1087;&#1086;&#1085;&#1103;&#1090;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (myapply fn evaled errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (append evaled (list x))
+                                           env errcont cont))))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1073;&#1086;&#1083;&#1077;&#1077; &#1101;&#1092;&#1092;&#1077;&#1082;&#1090;&#1080;&#1074;&#1085;&#1099;&#1081; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; evlis</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlis</span> (fn unevaled evaled env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null unevaled)  (myapply fn (reverse evaled) errcont cont))
+        (t                (myeval (car unevaled) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evlis fn
+                                           (cdr unevaled)
+                                           (cons x evaled)
+                                           env errcont cont))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myapply</span> (fn args errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    ((equal fn 'car)             (funcall cont (caar args)))
+    ((equal fn 'cdr)             (funcall cont (cdar args)))
+    ((equal fn 'cons)            (funcall cont (cons (car args) (cadr args))))
+    ((equal fn 'null)            (<span style="color: #00ffff;">if</span> (null (cdr args))
+                                     (funcall cont (null (car args)))
+                                     (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'invalid-number-of-arguments <span style="color: #b0c4de;">:fn</span> fn)))
+    ((equal fn '+)               (funcall cont (evadd args 0)))
+    ((equal fn '*)               (funcall cont (evmul args 1)))
+    ((closure-p fn)              (myeval (closure-body fn)
+                                         (pairlis (closure-args fn)
+                                                  args
+                                                  (closure-env fn))
+                                         errcont
+                                         cont))
+    ((equal fn 'print)           (funcall cont (print (car args))))
+    ((equal fn 'list)            (funcall cont args))
+    (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'unknown-function <span style="color: #b0c4de;">:fn</span> fn))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">CPS-&#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090; MYEVAL &#1080; &#1074;&#1089;&#1077; &#1095;&#1090;&#1086; &#1082; &#1085;&#1077;&#1084;&#1091; &#1086;&#1090;&#1085;&#1086;&#1089;&#1080;&#1090;&#1089;&#1103;</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evcond</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null exp)  (funcall cont nil))
+        (t           (myeval (caar exp) env errcont
+                             (<span style="color: #00ffff;">lambda</span> (x)
+                               (<span style="color: #00ffff;">if</span> x
+                                   (myeval (cadar exp) env errcont cont)
+                                   (evcond (cdr exp)   env errcont cont)))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evprogn</span> (lst env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null lst)         (funcall cont nil))
+        ((null (cdr lst))   (myeval (car lst) env errcont cont))
+        (t                  (myeval (car lst) env errcont
+                                    (<span style="color: #00ffff;">lambda</span> (x)
+                                      (evprogn (cdr lst) env errcont cont))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evand</span> (lst env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        (funcall cont (and)))
+        ((null (cdr lst))  (myeval (car lst) env errcont
+                                   (<span style="color: #00ffff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x)))))
+        (t                 (myeval (car lst) env errcont
+                                   (<span style="color: #00ffff;">lambda</span> (x)
+                                     (funcall cont
+                                              (and x
+                                                   (evand (cdr lst) env errcont cont))))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evor</span> (lst env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null lst)        (funcall cont (or)))
+        ((null (cdr lst))  (myeval (car lst) env errcont
+                                   (<span style="color: #00ffff;">lambda</span> (x)
+                                     (funcall cont
+                                              (or x)))))
+        (t                 (myeval (car lst) env errcont
+                                   (<span style="color: #00ffff;">lambda</span> (x)
+                                     (funcall cont
+                                              (or x
+                                                  (evor (cdr lst) env errcont cont))))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">mypairlis</span> (lst1 lst2 alist)
+  (<span style="color: #00ffff;">cond</span> ((and (null lst1) (null lst2))  alist)
+        ((or  (null lst1) (null lst2))  (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'mypairlis-error <span style="color: #b0c4de;">:lst1</span> lst1 <span style="color: #b0c4de;">:lst2</span> lst2))
+        (t                              (cons (cons (car lst1)
+                                                    (car lst2))
+                                              (mypairlis (cdr lst1)
+                                                         (cdr lst2)
+                                                         alist)))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evlet</span> (vars exps evald-exps exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null exps)  (evprogn exp
+                               (pairlis vars (reverse evald-exps) env)
+                               errcont cont))
+        (t            (myeval (car exps) env errcont
+                              (<span style="color: #00ffff;">lambda</span> (x)
+                                (evlet vars (cdr exps) (cons x evald-exps) exp env errcont cont))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">evletstar</span> (varpairs exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span> ((null varpairs)  (evprogn exp env errcont cont))
+        (t                (myeval (cadar varpairs) env errcont
+                                  (<span style="color: #00ffff;">lambda</span> (x)
+                                    (evletstar (cdr varpairs) exp
+                                               (acons (caar varpairs) x env)
+                                               errcont cont))))))
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">myeval</span> (exp env errcont cont)
+  (<span style="color: #00ffff;">cond</span>
+    ((null exp)                  (funcall cont 'nil))
+    ((equal t exp)               (funcall cont 't))
+    ((member exp '(+ * car cdr cons null print list))  (funcall cont exp))
+    ((numberp exp)               (funcall cont exp))
+    ((symbolp exp)               (lookup exp env errcont cont))
+    ((equal (car exp) 'quote)    (funcall cont (cadr exp)))
+    ((equal (car exp) 'if)       (myeval (cadr exp) env errcont
+                                         (<span style="color: #00ffff;">lambda</span> (x)
+                                           (<span style="color: #00ffff;">if</span> x
+                                               (myeval (caddr exp)  env errcont cont)
+                                               (myeval (cadddr exp) env errcont cont)))))
+    ((equal (car exp) 'cond)     (evcond (cdr exp) env errcont cont))
+    ((equal (car exp) 'progn)    (evprogn (cdr exp) env errcont cont))
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; PRINT, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1091;&#1090; &#1073;&#1099;&#1083; LIST, &#1085;&#1086; &#1086;&#1085; &#1087;&#1077;&#1088;&#1077;&#1085;&#1077;&#1089;&#1077;&#1085; &#1074; MYAPPLY</span>
+    ((equal (car exp) 'and)      (evand (cdr exp) env errcont cont))
+    ((equal (car exp) 'or)       (evor  (cdr exp) env errcont cont))
+    ((equal (car exp) 'let)      (evlet (mapcar #'car (cadr exp))
+                                        (mapcar #'cadr (cadr exp))
+                                        nil
+                                        (cddr exp)
+                                        env
+                                        errcont
+                                        cont))
+    ((equal (car exp) 'let*)     (evletstar (cadr exp)
+                                            (cddr exp)
+                                            env
+                                            errcont cont))
+    ((equal (car exp) 'defun)         (<span style="color: #00ffff;">progn</span>
+                                        (push (cons (cadr exp)
+                                                    (make-closure <span style="color: #b0c4de;">:body</span> (cadddr exp)
+                                                                  <span style="color: #b0c4de;">:env</span> env
+                                                                  <span style="color: #b0c4de;">:args</span> (caddr exp)))
+                                              *glob-env*)
+                                        (funcall cont (cadr exp))))
+    ((equal (car exp) 'setq)     (myeval (caddr exp) env errcont
+                                         (<span style="color: #00ffff;">lambda</span> (val)
+                                           (<span style="color: #00ffff;">if</span> (null (assoc (cadr exp) env))
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1077; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1084; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">- &#1087;&#1086;&#1089;&#1084;&#1086;&#1090;&#1088;&#1080;&#1084; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                               (<span style="color: #00ffff;">if</span> (null (assoc (cadr exp) *glob-env*))
+                                                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1077; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080; - &#1089;&#1086;&#1079;&#1076;&#1072;&#1076;&#1080;&#1084; &#1077;&#1077; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                                   (push (cons (cadr exp) val)
+                                                         *glob-env*)
+                                                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1084;</span>
+                                                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080; - &#1080;&#1079;&#1084;&#1077;&#1085;&#1080;&#1084; &#1077;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;</span>
+                                                   (rplacd (assoc (cadr exp) *glob-env*) val))
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1072;&#1103; &#1085;&#1072;&#1081;&#1076;&#1077;&#1085;&#1072; &#1074; &#1090;&#1077;&#1082;&#1091;&#1097;&#1077;&#1084; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+                                               <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">- &#1080;&#1079;&#1084;&#1077;&#1085;&#1080;&#1090;&#1100; &#1077;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077;</span>
+                                               (rplacd (assoc (cadr exp) env) val))
+                                           <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1042; &#1083;&#1102;&#1073;&#1086;&#1084; &#1089;&#1083;&#1091;&#1095;&#1072;&#1077; &#1074;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1084; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1077; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+                                           (funcall cont val))))
+    ((equal (car exp) 'lambda)   (funcall cont (make-closure <span style="color: #b0c4de;">:body</span> (caddr exp)
+                                                             <span style="color: #b0c4de;">:env</span> env
+                                                             <span style="color: #b0c4de;">:args</span> (cadr exp))))
+    (t
+     (myeval (car exp) env errcont
+             (<span style="color: #00ffff;">lambda</span> (x)
+               (evlis  x  (cdr exp) nil env errcont cont))))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084; &#1085;&#1086;&#1074;&#1099;&#1081; lookup</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">test lookup</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"ok:123"</span> (lookup 'aaa '((aaa . 123))
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"err:~A"</span> x))
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x)))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal nil      (lookup 'aaa '((bbb . 123))
+                                (<span style="color: #00ffff;">lambda</span> (x) (<span style="color: #00ffff;">declare</span> (ignore x)) nil)
+                                (<span style="color: #00ffff;">lambda</span> (x) (format nil <span style="color: #ffa07a;">"ok:~A"</span> x)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1060;&#1091;&#1085;&#1082;&#1094;&#1080;&#1080; &#1076;&#1083;&#1103; &#1090;&#1077;&#1089;&#1090;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1080;&#1103; CPS-&#1092;&#1091;&#1085;&#1082;&#1094;&#1080;&#1081;</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ok</span> (x)
+  (format t <span style="color: #ffa07a;">"~%ok: ~A"</span> x)
+  x)
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">err</span> (x)
+  (format t <span style="color: #ffa07a;">"~%err: ~A"</span> x)
+  x)
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYAPPLY</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; cons, car, cdr</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(cons 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 2) 3 . 4) (myeval '(cons (cons 1 2) (cons 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(car (cons 2 3)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(cdr (cons 2 3)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(car (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 . 4) (myeval '(cdr (cons (cons 1 2) (cons 3 4))) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; cons-&#1103;&#1095;&#1077;&#1077;&#1082;, &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(car a) '((a . (1 . 2))) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(cdr a) '((a . (1 . 2))) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(car b) '((a . (1 . 2)) (b . (3 . 4))) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; NULL</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null ()) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null T) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval '(null a) '((a . ())) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; NULL, &#1089; &#1072;&#1088;&#1075;&#1091;&#1084;&#1077;&#1085;&#1090;&#1086;&#1084;, &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1077; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . T)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval '(null a) '((a . 1)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVADD</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0                (evadd '() 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2                (evadd '(2) 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 5                (evadd '(2 3) 0)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (evadd '(2 3 4) 0)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVMUL</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1                (evmul '() 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2                (evmul '(2) 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 6                (evmul '(2 3) 1)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3 4)        (evmul '(2 3 4) 1)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0                (myeval '(+) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2)            (myeval '(+ 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3)          (myeval '(+ 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 3 4)        (myeval '(+ 2 3 4) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4))    (myeval '(+ 2 (+ 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 2 (+ 3 4) 5)  (myeval '(+ 2 (+ 3 4) 5) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1091;&#1084;&#1085;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1                (myeval '(*) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2)            (myeval '(* 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3)          (myeval '(* 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 3 4)        (myeval '(* 2 3 4) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 (* 3 4))    (myeval '(* 2 (* 3 4)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (* 2 (* 3 4) 5)  (myeval '(* 2 (* 3 4) 5) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 0
+               (myeval '(+) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2))
+                 (+ a))
+               (myeval '(+ a)
+                       '((a . 2))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3))
+                 (+ a b))
+               (myeval '(+ a b)
+                       '((a . 2) (b . 3))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (+ a b c))
+               (myeval '(+ a b c)
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (+ a (+ b c)))
+               (myeval '(+ a (+ b c))
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4) (d 5))
+                 (+ a (+ b c) d))
+               (myeval '(+ a (+ b c) d)
+                       '((a . 2) (b . 3) (c . 4) (d . 5))
+                       #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1091;&#1084;&#1085;&#1086;&#1078;&#1077;&#1085;&#1080;&#1103;  &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1
+               (myeval '(*) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2))
+                 (* a))
+               (myeval '(* a)
+                       '((a . 2))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3))
+                 (* a b))
+               (myeval '(* a b)
+                       '((a . 2) (b . 3))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (* a b c))
+               (myeval '(* a b c)
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4))
+                 (* a (* b c)))
+               (myeval '(* a (* b c))
+                       '((a . 2) (b . 3) (c . 4))
+                       #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 2) (b 3) (c 4) (d 5))
+                 (* a (* b c) d))
+               (myeval '(* a (* b c) d)
+                       '((a . 2) (b . 3) (c . 4) (d . 5))
+                       #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1087;&#1088;&#1080;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; CLOSURE</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(((<span style="color: #00ffff;">lambda</span> (x)
+                              (<span style="color: #00ffff;">lambda</span> (y) x))
+                            1)
+                           2)
+                         nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT &#1074; &#1089;&#1088;&#1072;&#1074;&#1085;&#1077;&#1085;&#1080;&#1080; &#1089; host-&#1086;&#1074;&#1099;&#1084; print</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (print 12))
+               (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print 12) nil #'err #'identity))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (print 12)
+               (myeval '(print 12) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; PRINT &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (<span style="color: #00ffff;">let</span> ((a 12))
+                   (print a)))
+               (<span style="color: #00ffff;">with-output-to-string</span> (*standard-output*)
+                 (myeval '(print a)
+                         '((b . 23) (a . 12))
+                         #'err #'identity))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 12))
+                 (print a))
+               (myeval '(print a)
+                       '((b . 23) (a . 12))
+                       #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVLIS</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 4           (evlis '+     '(1 (+ 1 2))             nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (+ 1 3 5)   (evlis '+     '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 3 5)    (evlis 'list  '(1 (+ 1 2) 5)           nil nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(0 3 6 42) (evlis 'list  '(0 (+ a b) (* b c) 42)
+                                  nil
+                                  '((a . 1) (b . 2) (c . 3) (d . 4))
+                                  #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LIST</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 14) (myeval '(list 1 (+ 2 (* 3 4)))
+                               nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ 1 2) (* 2 3) 42) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 6 42)
+               (myeval '(list (+ a b) (* b c) 42)
+                       '((a . 1) (b . 2) (c . 3) (d . 4))
+                       #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYEVAL</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1089;&#1072;&#1084;&#1086;&#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1084;&#1099;&#1093; &#1092;&#1086;&#1088;&#1084;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal T (myeval 'T nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal NIL (myeval 'NIL nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 999 (myeval 999 nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1077;&#1085;&#1080;&#1103; &#1089;&#1080;&#1084;&#1074;&#1086;&#1083;&#1086;&#1074;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 6 (myeval 'b '((a . 3) (b . 6)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span> (car (myeval 'b nil
+                                    #'(<span style="color: #00ffff;">lambda</span> (x) (cons <span style="color: #ffa07a;">"error"</span> x))
+                                    #'ok))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; QUOTE</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(+ 1 2) (myeval '(quote (+ 1 2)) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; IF</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">if</span> () 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">if</span> (null ()) 1 2) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; IF, &#1075;&#1076;&#1077; &#1091;&#1089;&#1083;&#1086;&#1074;&#1080;&#1077; &#1074;&#1099;&#1095;&#1080;&#1089;&#1083;&#1103;&#1077;&#1090;&#1089;&#1103; &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">if</span> a 1 2) '((a . ())) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">if</span> a 1 2) '((a . 1)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2   (evcond '((t 2)   (t 1)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1   (evcond '((nil 2) (t 1)) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal nil (evcond '((nil 2) (nil 1)) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVCOND, &#1075;&#1076;&#1077; &#1091;&#1095;&#1072;&#1089;&#1090;&#1074;&#1091;&#1077;&#1090; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1077;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evcond '((a 2) (b 1))
+                         '((a . 1) (b . ()))
+                         #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (evcond '((a 2) (b 1))
+                         '((a . nil) (b . T))
+                         #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; COND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (() 1)
+                           (1 2))
+                         nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . ()) (b . 1))
+                         #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 1 (myeval '(<span style="color: #00ffff;">cond</span>
+                           (a 1)
+                           (b 2))
+                         '((a . 1) (b . ()))
+                         #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evprogn '(1 2) nil  #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; EVPROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (evprogn '(a b c)
+                          '((a . 1) (b . 2) (c . 3))
+                          #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #00ffff;">progn</span> 1 2 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090; &#1076;&#1083;&#1103; PROGN &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '(<span style="color: #00ffff;">progn</span> a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and)           (evand '() nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1)         (evand '(1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and nil)       (evand '(nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 nil)     (evand '(1 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 nil)   (evand '(1 2 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 3)     (evand '(1 2 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVAND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (and nil))
+               (evand '(a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (and a))
+               (evand '(a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b nil))
+                 (and a b))
+               (evand '(a b) '((a . 1) (b . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil))
+                 (and a b c))
+               (evand '(a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a b c))
+               (evand '(a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and)                (myeval '(and) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1)              (myeval '(and 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and nil)            (myeval '(and nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 nil)          (myeval '(and 1 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 nil)        (myeval '(and 1 2 nil) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 2 3)          (myeval '(and 1 2 3) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (and 1 (and 1 2) 3)  (myeval '(and 1 (and 1 2) 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; AND &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (and nil))
+               (myeval '(and a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (and a))
+               (myeval '(and a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b nil))
+                 (and a b))
+               (myeval '(and a b) '((a . 1) (b . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c nil))
+                 (and a b c))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1)
+                     (b 2)
+                     (c 3))
+                 (and a b c))
+               (myeval '(and a b c) '((a . 1) (b . 2) (c . 3)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or)           (evor '() nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1)     (evor '(nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil nil 1) (evor '(nil nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1 2)   (evor '(nil 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or 1 2 3)     (evor '(1 2 3) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVOR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (or a))
+               (evor '(a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (or a))
+               (evor '(a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1))
+                 (or a b))
+               (evor '(a b) '((a . nil) (b . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3))
+                 (or a b c))
+               (evor '(a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1)
+                     (c 2))
+                 (or a b c))
+               (evor '(a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or)                  (myeval '(or) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1)            (myeval '(or nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil nil 1)        (myeval '(or nil nil 1) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil 1 2)          (myeval '(or nil 1 2) nil #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (or nil (or 3 2) 2)   (myeval '(or nil (or 3 2) 2) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; OR &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil))
+                 (or a))
+               (myeval '(or a) '((a . nil)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a 1))
+                 (or a))
+               (myeval '(or a) '((a . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1))
+                 (or a b))
+               (myeval '(or a b) '((a . nil) (b . 1)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b nil)
+                     (c 3))
+                 (or a b c))
+               (myeval '(or a b c) '((a . nil) (b . nil) (c . 3)) #'err #'ok)))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal (<span style="color: #00ffff;">let</span> ((a nil)
+                     (b 1)
+                     (c 2))
+                 (or a b c))
+               (myeval '(or a b c) '((a . nil) (b . 1) (c . 2)) #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; MYPAIRLIS</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(( a . 1) (b . 2) ( c . 3) (z . 6) (y . 77))
+               (mypairlis '(a b c) '(1 2 3) '((z . 6) (y . 77)))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span>
+               (<span style="color: #00ffff;">handler-case</span> (mypairlis '(a b c) nil '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #ffa07a;">"error"</span>))))
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal <span style="color: #ffa07a;">"error"</span>
+               (<span style="color: #00ffff;">handler-case</span> (mypairlis nil '(1 2 3) '((z . 6) (y . 77)))
+                 (MYPAIRLIS-ERROR (condition) <span style="color: #ffa07a;">"error"</span>))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLET</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (evlet '(a b) '(1 2) nil '(4 (+ a b)) nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LET</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(1 . 2) (myeval '(<span style="color: #00ffff;">let</span> ((a 1)
+                                       (b 2))
+                                  (cons a b)) <span style="color: #ffc0cb; font-weight: bold;">nil</span>
+                                  #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; EVLETSTAR</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 2 (evletstar '((a 1) (b a)) '(4 (+ a b)) nil  #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LET*</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '(3 1 . 2) (myeval '(<span style="color: #00ffff;">let*</span> ((a 1)
+                                          (b 2)
+                                          (c (+ a b)))
+                                    (cons c (cons a b)))
+                                  nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; DEFUN</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 64 (<span style="color: #00ffff;">progn</span>
+                    (setf *glob-env* nil)
+                    (myeval '(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">alfa</span> (x) (* x x)) nil #'err #'ok)
+                    (<span style="color: #00ffff;">prog1</span> (myeval '(alfa 8) nil #'err #'ok)
+                      (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; SETQ</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1055;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1072; &#1080;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1103; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1083;&#1086;&#1082;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;, &#1085;&#1077; &#1079;&#1072;&#1090;&#1088;&#1072;&#1075;&#1080;&#1074;&#1072;&#1103; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1075;&#1086; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1103;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((2 . 2) ((alfa . 0)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((alfa . 0)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons (setq alfa 2)
+                                        alfa)
+                                      '((alfa . 1))
+                                      #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1085;&#1077;&#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081; (&#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1080;&#1077; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;)</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 1) ((ALFA . 1) (BETA . 222)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons
+                                        (setq alfa 1)
+                                        alfa)
+                                      nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1048;&#1079;&#1084;&#1077;&#1085;&#1077;&#1085;&#1080;&#1077; &#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103; &#1089;&#1091;&#1097;&#1077;&#1089;&#1090;&#1074;&#1091;&#1102;&#1097;&#1077;&#1081; &#1075;&#1083;&#1086;&#1073;&#1072;&#1083;&#1100;&#1085;&#1086;&#1081; &#1087;&#1077;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1081;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal '((1 . 1) ((BETA . 1)))
+               (<span style="color: #00ffff;">progn</span>
+                 (setf *glob-env* '((beta . 222)))
+                 (<span style="color: #00ffff;">prog1</span> (list (myeval '(cons
+                                        (setq beta 1)
+                                        beta)
+                                      nil #'err #'ok)
+                              *glob-env*)
+                   (setf *glob-env* nil)))))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 3 (myeval '((<span style="color: #00ffff;">lambda</span> (x) (+ 1  x)) 2)
+                         nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1077;&#1089;&#1090;&#1099; &#1076;&#1083;&#1103; LAMBDA &#1074; &#1086;&#1082;&#1088;&#1091;&#1078;&#1077;&#1085;&#1080;&#1080;</span>
+(<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal 5 (myeval '(<span style="color: #00ffff;">let</span> ((y 3))
+                           ((<span style="color: #00ffff;">lambda</span> (x) (+ y x)) 2))
+                         nil #'err #'ok)))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">REPL</span>
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">repl</span> ()
+  (princ <span style="color: #ffa07a;">"microlisp&gt;"</span>)
+  (finish-output)
+  (princ (myeval (read) nil #'identity #'identity))
+  (terpri)
+  (finish-output)
+  (repl))
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(repl)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

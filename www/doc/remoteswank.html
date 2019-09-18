@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Удаленное использование swank</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">Удаленное использование swank</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Шаг за шагом</a>
+<ul>
+<li><a href="#unnumbered-3">SSH-коннект и запуск lisp</a></li>
+<li><a href="#unnumbered-4">Запуск swank-server</a></li>
+<li><a href="#unnumbered-5">SSH-туннелирование</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-6">Полезные вещи</a>
+<ul>
+<li><a href="#unnumbered-7">Тайм-аут SSH</a></li>
+<li><a href="#unnumbered-8">Конфигурация emacs</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Интро</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Начнем с цитаты:
+</p>
+
+<blockquote><i>
+<p>
+И даже более впечатляющий пример удаленной отладки произошел в миссии NASA «Deep Space 1» в
+1998 году. Через полгода после запуска космического корабля, небольшой код на Lisp должен был
+управлять космическим кораблем в течении двух дней для проведения серии экспериментов. Однако,
+неуловимое состояние гонки (race condition) в коде не было выявлено при тестировании на земле и
+было обнаружено уже в космосе. Когда ошибка была выявлена в космосе (100 миллионов миль от
+Земли) команда смогла произвести диагностику и исправление работающего кода, что позволило
+завершить эксперимент. Один из программистов сказал об этом следующее:
+</p>
+
+<p>
+— Отладка программы, работающей на оборудовании стоимостью 100 миллионов долларов, которая
+находится в 100 миллионах миль от вас, является интересным опытом. REPL, работающий на
+космическом корабле, предоставляет бесценные возможности в нахождении и устранении проблем.
+</p>
+</i></blockquote>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Шаг за шагом</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+</div><div id="outline-container-unnumbered-3" class="outline-3">
+<h3 id="unnumbered-3">SSH-коннект и запуск lisp</h3>
+<div class="outline-text-3" id="text-unnumbered-3">
+<p>
+Я использую <code>screen</code> для того чтобы отвязать процесс от терминальной сессии
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">ssh user@host.ru
+screen
+sbcl
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Запуск swank-server</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Вместо asdf можно использовать quicklisp. Версия swank должна быть той
+же как на удаленной машине, так и на локальной.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">require</span> '<span style="color: #7fffd4;">asdf</span>)
+(asdf:oos 'asdf:load-op 'swank)
+(setq swank:*use-dedicated-output-stream* nil)
+(swank:create-server <span style="color: #b0c4de;">:coding-system</span> <span style="color: #ffa07a;">"utf-8-unix"</span> <span style="color: #b0c4de;">:dont-close</span> t <span style="color: #b0c4de;">:port</span> 4005)
+</pre>
+</div>
+
+<p>
+Этот код запустит swank внутри sbcl и он (swank) начнет слушать 4005
+порт. Но, разумеется, он будет делать это на на удаленной
+машине. Теперь мы можем выйти, оставив сессию <code>screen</code> запущенной, для
+этого нажимаем <code>Ctrl+a d</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-3">
+<h3 id="unnumbered-5">SSH-туннелирование</h3>
+<div class="outline-text-3" id="text-unnumbered-5">
+<p>
+Открываем ssh-туннель со своей машины на удаленную:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-sh">ssh -2 -N -f -L 4005:localhost:4005 user@host.ru
+</pre>
+</div>
+
+<p>
+Теперь все обращения к нашему 4005 порту будут уходить на удаленную
+машину и обращаться там по 4005 порту - а нам это и надо.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">Полезные вещи</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+</div><div id="outline-container-unnumbered-7" class="outline-3">
+<h3 id="unnumbered-7">Тайм-аут SSH</h3>
+<div class="outline-text-3" id="text-unnumbered-7">
+<p>
+Если туннель обрывается по тайм-ауту, можно попробовать прописать в <code>/etc/ssh/ssh_config</code>
+директиву <code>ServerAliveInterval 5</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-3">
+<h3 id="unnumbered-8">Конфигурация emacs</h3>
+<div class="outline-text-3" id="text-unnumbered-8">
+<div class="org-src-container">
+
+<pre class="src src-elisp"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">Lisp (SLIME) interaction</span>
+(<span style="color: #00ffff;">setq</span> inferior-lisp-program <span style="color: #ffa07a;">"sbcl"</span>
+lisp-indent-function 'common-lisp-indent-function
+slime-complete-symbol-function 'slime-fuzzy-complete-symbol
+<span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">common-lisp-hyperspec-root "file:///Users/lisp/HyperSpec"</span>
+slime-startup-animation nil)
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">SLIME</span>
+(add-to-list 'load-path <span style="color: #ffa07a;">"~/.emacs.d/slime"</span>)
+(<span style="color: #00ffff;">require</span> '<span style="color: #7fffd4;">slime</span>)
+<span style="color: #ff7f24;">;</span><span style="color: #ff7f24;">(set-language-environment "utf-8")</span>
+(<span style="color: #00ffff;">setq</span> slime-net-coding-system 'utf-8-unix)
+(slime-setup '(slime-fancy))
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

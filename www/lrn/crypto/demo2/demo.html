@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Demo 2.0 Intro to VFM Step-by-step</a></li>
+<li><a href="#unnumbered-2">Bitcoin Script</a></li>
+<li><a href="#unnumbered-3">Forth-like &amp; stack based</a></li>
+<li><a href="#unnumbered-4">Reverse polish</a></li>
+<li><a href="#unnumbered-5">Concatenative: <code>scriptPubKey</code> &amp; <code>scriptSig</code></a></li>
+<li><a href="#unnumbered-6">Sintetic example</a></li>
+<li><a href="#unnumbered-7">Typical use: Pay to public key hash (P2PKH)</a></li>
+<li><a href="#unnumbered-8">Что еще надо?</a></li>
+<li><a href="#unnumbered-9">И немножко взад!</a></li>
+<li><a href="#unnumbered-10">Considered Harmful</a></li>
+<li><a href="#unnumbered-11">Conditions (1/2)</a></li>
+<li><a href="#unnumbered-12">Conditions (2/2)</a></li>
+<li><a href="#unnumbered-13">Else (1/2)</a></li>
+<li><a href="#unnumbered-14">Else (2/2)</a></li>
+<li><a href="#unnumbered-15">BEGIN - UNTIL (1/2)</a></li>
+<li><a href="#unnumbered-16">BEGIN - UNTIL (2/2)</a></li>
+<li><a href="#unnumbered-17">BEGIN - WHILE - REPEAT (1/2)</a></li>
+<li><a href="#unnumbered-18">BEGIN - WHILE - REPEAT (2/2)</a></li>
+<li><a href="#unnumbered-19">Mission complete!</a></li>
+<li><a href="#unnumbered-20">Inter-Process Communication (IPC)</a></li>
+<li><a href="#unnumbered-21">VFM as process (1/2)</a></li>
+<li><a href="#unnumbered-22">VFM as process (2/2)</a></li>
+<li><a href="#unnumbered-23">VFM isolation</a></li>
+<li><a href="#unnumbered-24">VFM frontend</a></li>
+<li><a href="#unnumbered-25">Node storage</a></li>
+<li><a href="#unnumbered-26">Node context</a></li>
+<li><a href="#unnumbered-27">Контракт G-нод (1/3)</a></li>
+<li><a href="#unnumbered-28">Контракт G-нод (2/3)</a></li>
+<li><a href="#unnumbered-29">Контракт G-нод (3/3)</a></li>
+<li><a href="#unnumbered-30">Планы на будущее</a></li>
+<li><a href="#unnumbered-31">The end</a></li>
+<li><a href="#unnumbered-32">Sources</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Demo 2.0 Intro to VFM Step-by-step</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Доклад будет техническим. Слабонервных просим удалиться :)
+</p>
+
+<ul class="org-ul">
+<li>Как Forth работает в Bitcoin
+</li>
+<li>Чего не хватает
+</li>
+<li>Базовые элементы компиляции
+</li>
+<li>Inter-Process-Communication
+</li>
+<li>Storage
+</li>
+<li>Контракт G-нод
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Bitcoin Script</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<ul class="org-ul">
+<li>Forth-like
+</li>
+<li>Stack-based
+</li>
+<li>Reverce-polish
+</li>
+<li>Concatenative
+</li>
+<li>Turing incomplete
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Forth-like &amp; stack based</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<div class="org-src-container">
+
+<pre class="src src-forth">2 3 OP_ADD <span style="color: #7fffd4;">5 </span>OP_EQUAL
+</pre>
+</div>
+
+<ul class="org-ul">
+<li>☑ Forth-like
+</li>
+<li>☑ Stack-based
+</li>
+<li>? Reverce-polish
+</li>
+<li>Concatenative
+</li>
+<li>Turing incomplete
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-2">
+<h2 id="unnumbered-4">Reverse polish</h2>
+<div class="outline-text-2" id="text-unnumbered-4">
+
+<div class="figure">
+<p><img src="img/developer-forth-was-yoda-just.jpg" alt="developer-forth-was-yoda-just.jpg">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Concatenative: <code>scriptPubKey</code> &amp; <code>scriptSig</code></h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+<ul class="org-ul">
+<li><code>scriptPubKey</code> записывается в предшествующую транзакцию и определяет условия.
+</li>
+<li><code>scriptSig</code> записывается в будущую транзакцию и должен их удовлетворить
+</li>
+</ul>
+
+<p>
+Чтобы проверить транзакцию, выполняется результат конкатенации <code>scriptSig</code> +
+<code>scriptPubKey</code>. Если выполнение завершено успешно, транзакция действительна.
+</p>
+
+
+<div class="figure">
+<p><img src="img/bitcoin_txs.png" alt="bitcoin_txs.png">
+</p>
+</div>
+
+<p>
+Concatenative!
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">Sintetic example</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+<ul class="org-ul">
+<li><code>scriptPubK</code> (в предшествующей транзакции):
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">OP_MUL <span style="color: #7fffd4;">370 </span>OP_EQUAL
+</pre>
+</div>
+
+<ul class="org-ul">
+<li><code>ScriptSig</code> (в в последующей транзакции):
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">10 <span style="color: #7fffd4;">37</span>
+</pre>
+</div>
+
+<p>
+Получившаяся программа:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">10 37 OP_MUL <span style="color: #7fffd4;">370 </span>OP_EQUAL
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-2">
+<h2 id="unnumbered-7">Typical use: Pay to public key hash (P2PKH)</h2>
+<div class="outline-text-2" id="text-unnumbered-7">
+<ul class="org-ul">
+<li>Alice владеет <code>PrivKey</code> -&gt; <code>PubK</code> -&gt; <code>Addr</code> -&gt; и Боб узнает этот <code>Addr</code>
+</li>
+<li>Bob посылает транзакцию на <code>Addr</code> с кодом внутри <code>scriptPubK</code>, таким, чтобы только
+тот, кто владеет приватным ключом для адреса <code>Addr</code>, мог потратить этот выход
+</li>
+</ul>
+
+<p>
+Когда Alice создает следующую транзакцию, она должна записать в <code>scriptSig</code>:
+</p>
+<ul class="org-ul">
+<li>подпись своей транзакции <code>Sig</code> приватным ключом <code>PrivKey</code>.
+</li>
+<li>публичный ключ <code>PubK</code>
+</li>
+</ul>
+
+<p>
+Путем конкатенации программа станет такой:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">&lt;Sig&gt; &lt;PubK&gt; DUP HASH160 &lt;Addr&gt; EQUALVERIFY CHECKSIG
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-2">
+<h2 id="unnumbered-8">Что еще надо?</h2>
+<div class="outline-text-2" id="text-unnumbered-8">
+<ul class="org-ul">
+<li>☑ Forth-like
+</li>
+<li>☑ Stack-based
+</li>
+<li>☑ Reverce-polish
+</li>
+<li>☑ Concatenative
+</li>
+<li>Turing incomplete
+</li>
+</ul>
+
+<p>
+Conditionals on Bitcoin Script:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">2 <span style="color: #7fffd4;">3 </span>OP_ADD
+<span style="color: #7fffd4;">5 </span>OP_EQUAL
+OP_IF OP_RETURN OP_ENDIF
+...
+</pre>
+</div>
+
+<p>
+Только вперед!
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-2">
+<h2 id="unnumbered-9">И немножко взад!</h2>
+<div class="outline-text-2" id="text-unnumbered-9">
+<ul class="org-ul">
+<li>Чтобы ходить назад, нам нужны адреса
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">  <span style="color: #7fffd4;">10</span>
+LOOP:
+  DUP PRINT
+  <span style="color: #7fffd4;">1 </span>-
+  DUP <span style="color: #7fffd4;">0 </span>!=
+  0BRANCH <span style="color: #ffc0cb; font-weight: bold;">LOOP</span>
+  ...
+</pre>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-unnumbered-10" class="outline-2">
+<h2 id="unnumbered-10">Considered Harmful</h2>
+<div class="outline-text-2" id="text-unnumbered-10">
+
+<div class="figure">
+<p><img src="img/goto.png" alt="goto.png">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-2">
+<h2 id="unnumbered-11">Conditions (1/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-11">
+<p>
+Условное выражение вида:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">...
+condition <span style="color: #ffc0cb; font-weight: bold;">IF</span>
+    true-part-1
+    true-part-2
+    ...
+<span style="color: #ffc0cb; font-weight: bold;">THEN</span>
+rest-1
+rest-1
+...
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-2">
+<h2 id="unnumbered-12">Conditions (2/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-12">
+<p>
+компилируется в:
+</p>
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-01.png" alt="forth-interpret-control-01.png">
+</p>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">...
+condition
+0BRANCH OFFSET-REST  true-part-1  true-part-2  ...
+rest-1
+rest-2
+...
+</pre>
+</div>
+
+<p>
+где OFFSET-REST - это смещение до <code>rest</code>
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-2">
+<h2 id="unnumbered-13">Else (1/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-13">
+<p>
+Более сложное условное выражение вида:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">...
+condition <span style="color: #ffc0cb; font-weight: bold;">IF</span>
+    true-part-1
+    true-part-2
+    ...
+<span style="color: #ffc0cb; font-weight: bold;">ELSE</span>
+    false-part-1
+    false-part-2
+    ...
+<span style="color: #ffc0cb; font-weight: bold;">THEN</span>
+rest-1
+rest-2
+...
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-2">
+<h2 id="unnumbered-14">Else (2/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-14">
+<p>
+компилируется в:
+</p>
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-02.png" alt="forth-interpret-control-02.png">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-2">
+<h2 id="unnumbered-15">BEGIN - UNTIL (1/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-15">
+<p>
+Цикл с постусловием
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth"><span style="color: #ffc0cb; font-weight: bold;">BEGIN</span>
+    loop-part-1
+    loop-part-2
+    ...
+condition <span style="color: #ffc0cb; font-weight: bold;">UNTIL</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-16" class="outline-2">
+<h2 id="unnumbered-16">BEGIN - UNTIL (2/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-16">
+<p>
+компилируется в:
+</p>
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-03.png" alt="forth-interpret-control-03.png">
+</p>
+</div>
+
+<p>
+Или, в текстовой нотации:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">loop-part-1
+loop-part-2
+condition 0BRANCH OFFSET
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-17" class="outline-2">
+<h2 id="unnumbered-17">BEGIN - WHILE - REPEAT (1/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-17">
+<p>
+Это цикл с предусловием.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth"><span style="color: #ffc0cb; font-weight: bold;">BEGIN</span>
+    condition
+<span style="color: #ffc0cb; font-weight: bold;">WHILE</span>
+        loop-part-1
+        loop-part-2
+        ...
+<span style="color: #ffc0cb; font-weight: bold;">REPEAT</span>
+rest-1
+rest-1
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-18" class="outline-2">
+<h2 id="unnumbered-18">BEGIN - WHILE - REPEAT (2/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-18">
+<p>
+компилируется в:
+</p>
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-05.png" alt="forth-interpret-control-05.png">
+</p>
+</div>
+
+<p>
+Или в текстовой нотации:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-forth">condition
+0BRANCH OFFSET-REST loop-part-1 loop-part-1
+BRANCH OFFSET-BACK
+rest-1 rest1
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-19" class="outline-2">
+<h2 id="unnumbered-19">Mission complete!</h2>
+<div class="outline-text-2" id="text-unnumbered-19">
+<ul class="org-ul">
+<li>☑ Forth-like
+</li>
+<li>☑ Stack-based
+</li>
+<li>☑ Reverce-polish
+</li>
+<li>☑ Concatenative
+</li>
+<li>☑ Turing (in)complete
+</li>
+</ul>
+
+<p>
+Написано. Работает. Покрыто тестами.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-20" class="outline-2">
+<h2 id="unnumbered-20">Inter-Process Communication (IPC)</h2>
+<div class="outline-text-2" id="text-unnumbered-20">
+
+<div class="figure">
+<p><img src="img/interstate60.jpg" alt="interstate60.jpg">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-2">
+<h2 id="unnumbered-21">VFM as process (1/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-21">
+<p>
+No network. No protocol. No bugs.
+</p>
+
+<ul class="org-ul">
+<li>Base Operation System Platform Communication Stack:
+<ul class="org-ul">
+<li>Standart Input
+</li>
+<li>Standart Output
+</li>
+<li>Environment
+</li>
+</ul>
+</li>
+</ul>
+
+<div class="figure">
+<p><img src="img/vfm-in-os.png" alt="vfm-in-os.png">
+</p>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-22" class="outline-2">
+<h2 id="unnumbered-22">VFM as process (2/2)</h2>
+<div class="outline-text-2" id="text-unnumbered-22">
+<ul class="org-ul">
+<li>Optional:
+<ul class="org-ul">
+<li>FileIO
+</li>
+<li>Signal
+</li>
+<li>Unix Sockets
+</li>
+<li>Berkley Sockets
+</li>
+<li>Message queue
+</li>
+<li>Pipe/Named pipe
+</li>
+<li>Shared memory
+</li>
+<li>Message passing
+</li>
+<li>Memory-mapped files
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-23" class="outline-2">
+<h2 id="unnumbered-23">VFM isolation</h2>
+<div class="outline-text-2" id="text-unnumbered-23">
+
+<div class="figure">
+<p><img src="img/vfm-in-os-in-docker.png" alt="vfm-in-os-in-docker.png">
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-24" class="outline-2">
+<h2 id="unnumbered-24">VFM frontend</h2>
+<div class="outline-text-2" id="text-unnumbered-24">
+<p>
+<img src="img/vfm-in-os-in-docker-with-nginx.png" alt="vfm-in-os-in-docker-with-nginx.png">
+<img src="img/vfm-in-os-in-docker-with-nginx-separate.png" alt="vfm-in-os-in-docker-with-nginx-separate.png">
+</p>
+</div>
+</div>
+<div id="outline-container-unnumbered-25" class="outline-2">
+<h2 id="unnumbered-25">Node storage</h2>
+<div class="outline-text-2" id="text-unnumbered-25">
+
+<div class="figure">
+<p><img src="img/vfm-storage.png" alt="vfm-storage.png">
+</p>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-26" class="outline-2">
+<h2 id="unnumbered-26">Node context</h2>
+<div class="outline-text-2" id="text-unnumbered-26">
+
+<div class="figure">
+<p><img src="img/vfm-context.png" alt="vfm-context.png">
+</p>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-27" class="outline-2">
+<h2 id="unnumbered-27">Контракт G-нод (1/3)</h2>
+<div class="outline-text-2" id="text-unnumbered-27">
+<ul class="org-ul">
+<li>Мы храним список текущих G-нод в storage смарт-контракта
+<ul class="org-ul">
+<li>Если там пусто, значит контракт запущен в первый раз, надо положить туда
+захардкоженный список первых нод.
+</li>
+</ul>
+</li>
+</ul>
+
+<p>
+Мы хотим узнать, если ли данные в хранилище, и если их нет, то сохранить этот
+захардкоженный список. Для этого мы реализуем процедуру, которая:
+</p>
+<ul class="org-ul">
+<li>отправит команду ноде, чтобы узнать, сколько элементов сохранено по ключу
+</li>
+<li>получит ответ
+</li>
+<li>распарсит его
+</li>
+<li>если ответ не является числом - отправит ноде вызов процедуры обработки ошибки
+</li>
+<li>иначе: сравнит его с нулем
+</li>
+<li>если он равен нулю, то отправит команду на запись по ключу.
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-28" class="outline-2">
+<h2 id="unnumbered-28">Контракт G-нод (2/3)</h2>
+<div class="outline-text-2" id="text-unnumbered-28">
+<div class="org-src-container">
+
+<pre class="src src-forth"><span style="color: #00ffff;">: </span><span style="color: #87cefa;">ENSURE-G-NODES
+</span>    <span style="color: #ff7f24;">\ Request count of g-nodes-list from storage
+</span>    <span style="color: #ffa07a;">." &#5788;length &#5788;gethash &#171;g-nodes-list&#187; storage&#5787;&#5787;"</span> CR
+    <span style="color: #ff7f24;">\ Read and parsing response
+</span>    WORD NUMBER
+    0= <span style="color: #00ffff;">IF</span>
+        <span style="color: #ff7f24;">\ Number is ok, parsing success
+</span>        0= <span style="color: #00ffff;">IF</span>
+            <span style="color: #ff7f24;">\ Number is 0, set base-g-nodes as default g-nodes-list
+</span>            <span style="color: #ffa07a;">." &#5788;prog1 1 &#5788;setf &#5788;gethash &#171;g-nodes-list&#187; storage&#5787; "</span> BASE-G-NODES <span style="color: #ffa07a;">." &#5787;&#5787;"</span> CR
+            WORD 2DROP <span style="color: #ff7f24;">\ Read and drop response
+</span>        <span style="color: #00ffff;">THEN </span><span style="color: #ff7f24;">\ GOTO EXIT
+</span>    <span style="color: #00ffff;">ELSE</span>
+        <span style="color: #ff7f24;">\ Wrong number
+</span>        DROP <span style="color: #ff7f24;">\ Drop bad parsing number
+</span>        <span style="color: #ffa07a;">." &#5788;smart-contract-error &#171;wrong-node-result-number&#187;&#5787;"</span> CR
+    <span style="color: #00ffff;">THEN</span>
+<span style="color: #00ffff;">;</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-29" class="outline-2">
+<h2 id="unnumbered-29">Контракт G-нод (3/3)</h2>
+<div class="outline-text-2" id="text-unnumbered-29">
+<p>
+На стороне ноды я реализовал:
+</p>
+<ul class="org-ul">
+<li>запуск VFM
+</li>
+<li>передачу параметров командной строки и параметров, передаваемых в окружении (SENDER,
+AMOUNT)
+</li>
+<li>получение и отправку сообщений
+</li>
+<li>выполнение полученных инжектов внутри контекста
+</li>
+</ul>
+
+<p>
+Осталось не реализованным:
+</p>
+<ul class="org-ul">
+<li>Сохранение контекста в БД (тривиально)
+</li>
+</ul>
+
+<p>
+Таким образом, контракт умеет:
+</p>
+<ul class="org-ul">
+<li>запускаться нодой
+</li>
+<li>получать параметры в окружении и командной строке
+</li>
+<li>получать и исполнять команды от ноды
+</li>
+<li>возвращать ноде значения
+</li>
+<li>инжектировать в контекст ноды команды, которые нода умеет исполнять, изменяя storage
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-30" class="outline-2">
+<h2 id="unnumbered-30">Планы на будущее</h2>
+<div class="outline-text-2" id="text-unnumbered-30">
+<p>
+Ближайшая перспектива:
+</p>
+
+<ul class="org-ul">
+<li>Спроектировать и реализовать полный цикл работы с G-нодами на смарт-контрактах
+</li>
+<li>Реализовать плату за операции
+</li>
+<li>Сделать откат и сохранение контекста в БД
+</li>
+<li>Реализовать другие базовые смарт-контакты
+</li>
+</ul>
+
+<p>
+Отдаленная перспектива:
+</p>
+
+<ul class="org-ul">
+<li>Написать компилятор высокоуровневого языка в Forth-код
+</li>
+<li>Написать полнофункциональную ноду
+</li>
+<li>Написать отладочный монитор
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-31" class="outline-2">
+<h2 id="unnumbered-31">The end</h2>
+</div>
+
+<div id="outline-container-unnumbered-32" class="outline-2">
+<h2 id="unnumbered-32">Sources</h2>
+<div class="outline-text-2" id="text-unnumbered-32">
+
+<div class="figure">
+<p><img src="img/bitcoin_script_adding.png" alt="bitcoin_script_adding.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/bitcoin_script_p2pkh.png" alt="bitcoin_script_p2pkh.png">
+</p>
+</div>
+
+
+
+<div class="figure">
+<p><img src="img/bitcoin_txs.png" alt="bitcoin_txs.png">
+</p>
+</div>
+
+
+
+<div class="figure">
+<p><img src="img/loop.png" alt="loop.png">
+</p>
+</div>
+
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-02.png" alt="forth-interpret-control-02.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-03.png" alt="forth-interpret-control-03.png">
+</p>
+</div>
+
+
+
+<div class="figure">
+<p><img src="img/forth-interpret-control-05.png" alt="forth-interpret-control-05.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-in-os.png" alt="vfm-in-os.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-in-os-in-docker.png" alt="vfm-in-os-in-docker.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-in-os-in-docker-with-nginx.png" alt="vfm-in-os-in-docker-with-nginx.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-in-os-in-docker-with-nginx-separate.png" alt="vfm-in-os-in-docker-with-nginx-separate.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-storage.png" alt="vfm-storage.png">
+</p>
+</div>
+
+
+<div class="figure">
+<p><img src="img/vfm-context.png" alt="vfm-context.png">
+</p>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Цель</a></li>
+<li><a href="#unnumbered-2">Порядок работы</a></li>
+<li><a href="#unnumbered-3">Таймер</a>
+<ul>
+<li><a href="#unnumbered-4">Режимы таймера</a>
+<ul>
+<li><a href="#unnumbered-5">Normal mode</a></li>
+<li><a href="#unnumbered-6">Clear Timer on Compare (CTC)</a></li>
+<li><a href="#unnumbered-7">FastPWM</a></li>
+<li><a href="#unnumbered-8">Phase Correct PWM Mode</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-9">Регистры управления таймером</a>
+<ul>
+<li><a href="#unnumbered-10">TCCR0A – Timer/Counter Control Register A</a></li>
+<li><a href="#unnumbered-15">TCCR0B Timer/Counter Control Register B</a></li>
+<li><a href="#unnumbered-21"><span class="todo nilTODO">TODO</span> OCR0A</a></li>
+<li><a href="#unnumbered-22"><span class="todo nilTODO">TODO</span> OCR0B</a></li>
+<li><a href="#unnumbered-23">TIMSK – Timer/Counter Interrupt Mask Register</a></li>
+<li><a href="#unnumbered-31">TIFR – Timer/Counter Interrupt Flag Register</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-39">Настройка таймера</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-47">Программа</a></li>
+<li><a href="#unnumbered-48">Константы</a></li>
+<li><a href="#unnumbered-49">Символические имена</a></li>
+<li><a href="#unnumbered-50">Вектора прерываний</a></li>
+<li><a href="#unnumbered-51">Прерывание по переполнению</a></li>
+<li><a href="#unnumbered-52">Инициализация</a></li>
+<li><a href="#unnumbered-53">Мигание светодиодом</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Цель</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Мы хотим собрать устройство, которое может служить таймером выключения света,
+предотвращая ситуацию "забыли выключить".
+</p>
+
+<p>
+Это учебно-тестовый проект, в котором на примере простой схемы выключателя с
+задержкой выключения можно пройти все этапы проектирования электронного
+устройства на микроконтроллере.
+</p>
+
+<p>
+Требуется собрать устройство, управляемое кнопкой по следующему алгоритму:
+</p>
+<ul class="org-ul">
+<li>В состоянии "выключено" нажатие кнопки приводит к включению нагрузки и
+переходу в состояние "включено"
+</li>
+<li>В состоянии "включено" нажатие кнопки приводит к выключению нагрузки и
+переходу в состояние "выключено"
+</li>
+<li>В состоянии "включено" через заданное время устройство самостоятельно
+выключает нагрузку и переходит в состояние "выключено"
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Порядок работы</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Устройство должно отсчитывать время, и в этом процессе реагировать на
+нажатия кнопок, поэтому нам потребуется использовать таймер и его
+прерывания.
+</p>
+
+<p>
+Кроме того независимо обрабатывать нажатия нескольких кнопкок, что требует
+решения проблемы "дребезга контактов".
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">Таймер</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Attiny2313 имеет 2 таймера, из которых мы будем использовать
+восьмиразрядный Timer/Counter (TCCR0A).
+</p>
+
+<p>
+У него есть несколько режимов работы.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Режимы таймера</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+</div><div id="outline-container-unnumbered-5" class="outline-4">
+<h4 id="unnumbered-5">Normal mode</h4>
+<div class="outline-text-4" id="text-unnumbered-5">
+<p>
+Простейшим режимом работы является <code>Normal</code>. В этом режиме частота
+тактового генератора проходит через предделитель и каждый тик увеличивает
+восьмиразрядный счетный регистр таймера <code>TCNT0</code>. Когда он переполняется
+возникает прерывание переполнения таймера. Процедура обработки прерывания
+может перезаписать <code>TCNT0</code>, если она хочет сократить время до следующего
+переполнения.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-4">
+<h4 id="unnumbered-6">Clear Timer on Compare (CTC)</h4>
+<div class="outline-text-4" id="text-unnumbered-6">
+<p>
+В более сложном режиме <code>Clear Timer on Compare (CTC)</code> регистр <code>OCR0A</code>
+используется для управления разрешением счетчика. В режиме CTC счетчик
+сбрасывается в ноль, когда значение счетчика <code>TCNT0</code> соответствует
+<code>OCR0A</code>. <code>OCR0A</code> определяет верхнее значение для счетчика и, следовательно,
+его разрешение. Также как и в режиме <code>Normal</code> может генерироваться
+прерывание, когда <code>TCNT0</code> достигает значения записанного в <code>OCR0A</code>.
+</p>
+
+<p>
+Для генерации выходного сигнала в режиме <code>CTC</code> выход <code>OC0A</code> может быть
+настроен на переключение своего логического уровня при каждом
+совпадении. Таким образом можно выводить звук без необходимости программно
+переключать биты в портах. Обработчик прерывания по совпадению (если он
+разрешен) может манипулировать частотой сигнала путем записи в <code>TCNT0</code> и
+<code>OCR0A</code>. Можно использовать оба прерывания - прерывание переполнения и
+прерывание по совпадению.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-4">
+<h4 id="unnumbered-7">FastPWM</h4>
+<div class="outline-text-4" id="text-unnumbered-7">
+<p>
+<code>FastPWM</code> режим обеспечивает генерацию ШИМ-сигнала высокой частоты.
+</p>
+
+<p>
+Счетчик считает от BOTTOM до TOP, затем перезапускается снова с BOTTOM. TOP
+можно определить как 0xFF (установив WGM2:0 = 3) или <code>OCR0A</code> (установив
+WGM2:0 = 3).
+</p>
+
+<p>
+В неинвертирующем <code>Compare-Output-mode</code> выход <code>Output-Compare</code> (<code>OC0x</code>)
+обнуляется при совпадении между <code>TCNT0</code> и <code>OCR0x</code>. И становится единицей
+когда <code>TCNT0</code> проходит BOTTOM. Таким образом, изменяя <code>OCR0x</code> мы можем
+изменять скважность. В инвертируещем соответственно все наоборот.
+</p>
+
+<p>
+Благодаря работе "в одну сторону", рабочая частота в режиме <code>FastPWN</code> может
+быть в два раза выше, чем в режиме <code>Phase correct PWM</code>. Высокая частота
+позволяет получить физически небольшие по размеру внешние компоненты
+(катушки, конденсаторы) и, следовательно, снижает общую стоимость системы.
+</p>
+
+<p>
+Флаг <code>Timer/Counter Overflow Flag</code> (<code>TOV0</code>) устанавливается каждый раз,
+когда счетчик достигает значения TOP. Если прерывание включено,
+подпрограмма обработчика прерывания может использоваться для обновления
+значения сравнения. В режиме <code>FastPWM</code> блок сравнения позволяет
+генерировать сигналы ШИМ на выводах <code>OC0x</code>.
+</p>
+
+<p>
+Установка битов COM0x1:0=2 приведет к получению неинвертированного PWM, а
+инвертированный вывод можно получить установив COM0x1:0=3. Установка битов
+COM0A1:0=1 позволяет пину <code>AC0A</code> переключаться при совпадении, если
+установлен бит WGM02. Эта опция недоступна для пина <code>OC0B</code>. Фактическое
+значение <code>OC0x</code> будет видно только на выводе порта, если направление данных
+для вывода порта установлено в качестве выходного.
+</p>
+
+<p>
+Сигнал ШИМ генерируется путем установки (или очистки) регистра OC0x в
+момент совпадения между <code>OCR0x</code> и <code>TCNT0</code> и очистки (или установки)
+регистра <code>OC0x</code> в тактовом цикле таймера, в котором счетчик очищается
+(изменяется с TOP на BOTTOM).
+</p>
+
+<p>
+Частота ШИМ для выхода может быть рассчитана по следующему уравнению:
+</p>
+
+<p>
+f = f<sub>clk</sub>/scale<sub>factor</sub> * 256
+</p>
+
+<p>
+Экстремальные значения для регистра OCR0A представляют особые случаи при
+генерации выходного сигнала ШИМ в режиме <code>FastPWN</code>. Если значение OCR0A
+установлено равным <code>BOTTOM</code>, выходной сигнал будет иметь узкий пик каждый
+MAX + 1 цикл таймера. Установка OCR0A равной <code>MAX</code> приведет к постоянно
+высокому или низкому выходу (в зависимости от полярности выхода,
+установленной COM0A1:0 битами)
+</p>
+
+<p>
+Частотный (с коэффициентом заполнения 50%) выходной сигнал в режиме FastPWM
+может быть достигнут путем настройки OC0x на переключение своего
+логического уровня при каждом сопоставлении сравнения
+(COM0x1:0=1). Сгенерированная форма сигнала будет иметь максимальную
+частоту f=clk/2, когда OCR0A=0. Эта функция аналогична переключению OC0A в
+режиме CTC, за исключением того, что двойная буферизация
+Output-Compare-unit включена в режиме FastPWM.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-4">
+<h4 id="unnumbered-8">Phase Correct PWM Mode</h4>
+<div class="outline-text-4" id="text-unnumbered-8">
+<p>
+В режиме <code>Phase Correct PWM</code> счетчик увеличивается до тех пор, пока
+значение счетчика не совпадет с TOP.  Когда счетчик достигает TOP, он
+меняет направление счета. Значение TCNT0 будет равно TOP за один тактовый
+цикл таймера. TOP можно определить как 0xFF (WGM2:0=1) или <code>OCR0A</code>
+(WGM2:0=5).
+</p>
+
+<p>
+В неинвертирующем <code>Compare-Output-mode</code> регистр <code>Output Compare</code> (<code>OC0x</code>)
+обнуляется при совпадениии между <code>TCNT0</code> и <code>OCR0x</code> при счете вверх и
+устанавливается в единицу при совпадении при счете вниз. В инвертируещем -
+все наоборот.
+</p>
+
+<p>
+Работа "в обе стороны" имеет более низкую максимальную рабочую частоту, чем
+"в одну". Однако из-за симметрии двухшаговых режимов ШИМ, эти режимы
+предпочтительны для приложений управления двигателями.
+</p>
+
+<p>
+Флаг переполнения таймера / счетчика (TOV0) устанавливается каждый раз,
+когда счетчик достигает BOTTOM. Флаг прерывания может использоваться для
+генерирования прерывания каждый раз, когда это происходит.
+</p>
+
+<p>
+Также как и для режима <code>FastPWM</code> установка битов COM0x1:0=2 приведет к получению неинвертированного PWM, а
+инвертированный вывод можно получить установив COM0x1:0=3. Установка битов
+COM0A1:0=1 позволяет пину <code>AC0A</code> переключаться при совпадении, если
+установлен бит WGM02. Эта опция недоступна для пина <code>OC0B</code>. Фактическое
+значение <code>OC0x</code> будет видно только на выводе порта, если направление данных
+для вывода порта установлено в качестве выходного.
+</p>
+
+<p>
+Частота ШИМ для выхода может быть рассчитана по следующему уравнению:
+</p>
+
+<p>
+f = f<sub>clk</sub>/scale<sub>factor</sub> * 510
+</p>
+
+<p>
+Экстремальные значения для регистра OCR0A представляют собой особые случаи
+при генерации выходного сигнала ШИМ в режиме <code>Phase Correct PWM Mode</code>. Если
+<code>OCR0A</code> установлен равным BOTTOM, выход будет постоянно низким, а если
+установлен равным MAX, выход будет постоянно высоким для неинвертированного
+режима. Для инвертированного выход будет иметь противоположные логические
+значения.
+</p>
+
+<p>
+В самом начале периода OCn имеет переход от высокого к низкому уровню, даже
+если нет сравнения совпадений. Смысл этого перехода состоит в том, чтобы
+гарантировать симметрию вокруг BOTTOM. Есть два случая, которые дают
+переход без сравнения совпадений:
+</p>
+<ul class="org-ul">
+<li><code>OCR0A</code> меняет свое значение с MAX. Когда значение <code>OCR0A</code> равно MAX,
+значение вывода <code>OCn</code> совпадает с результатом сравнения сравнения при
+обратном отсчете. Чтобы обеспечить симметрию вокруг BOTTOM, значение
+<code>OCn</code> в MAX должно соответствовать результату повышающего сравнения
+сравнения.
+</li>
+<li>Таймер начинает отсчет со значения, превышающего значение в <code>OCR0A</code>, и по
+этой причине пропускает сравнения и, следовательно, изменение <code>OCn</code>,
+которое могло бы произойти по пути вверх.
+</li>
+</ul>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-unnumbered-9" class="outline-3">
+<h3 id="unnumbered-9">Регистры управления таймером</h3>
+<div class="outline-text-3" id="text-unnumbered-9">
+</div><div id="outline-container-unnumbered-10" class="outline-4">
+<h4 id="unnumbered-10">TCCR0A – Timer/Counter Control Register A</h4>
+<div class="outline-text-4" id="text-unnumbered-10">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">COM0A1</td>
+<td class="right">COM0A0</td>
+<td class="right">COM0B1</td>
+<td class="right">COM0B0</td>
+<td class="right">–</td>
+<td class="right">–</td>
+<td class="right">WGM01</td>
+<td class="right">WGM00</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-11"></a>Bits 7:6 – COM0A1:0: Compare Match Output A Mode<br ><div class="outline-text-5" id="text-unnumbered-11">
+<p>
+Эти биты управляют поведением вывода сравнения выхода OC0A.  Если хотя бы
+один установлен, выход OC0A переопределяет нормальную функциональность
+порта пина ввода-вывода, к которому он подключен.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-12"></a>Bits 5:4 – COM0B1:0: Compare Match Output B Mode<br ><div class="outline-text-5" id="text-unnumbered-12">
+<p>
+То же самое но для вывода OC0B
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-13"></a>Bits 3, 2 – Res: Reserved Bits<br ></li>
+
+<li><a id="unnumbered-14"></a>Bits 1:0 – WGM01:0: Waveform Generation Mode<br ><div class="outline-text-5" id="text-unnumbered-14">
+<p>
+В сочетании с битом <code>WGM02</code>, из регистра <code>TCCR0B</code>, эти биты управляют:
+</p>
+<ul class="org-ul">
+<li>последовательностью подсчета счетчика,
+</li>
+<li>источником максимального значения (TOP) счетчика и
+</li>
+<li>типом генерируемого сигнала, который будет использоваться
+</li>
+</ul>
+
+<table id="wgm_tbl">
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="left">
+
+<col  class="left">
+
+<col  class="left">
+
+<col  class="left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">WGM2</th>
+<th scope="col" class="right">WGM1</th>
+<th scope="col" class="right">WGM0</th>
+<th scope="col" class="left">Mode</th>
+<th scope="col" class="left">TOP</th>
+<th scope="col" class="left">Update of OCRx</th>
+<th scope="col" class="left">TOV Flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="left">Normal</td>
+<td class="left">0xFF</td>
+<td class="left">Immediate</td>
+<td class="left">MAX</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="left">PWM, PC</td>
+<td class="left">0xFF</td>
+<td class="left">TOP</td>
+<td class="left">BOTTOM</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="left">CTC</td>
+<td class="left">OCR0A</td>
+<td class="left">Immediate</td>
+<td class="left">MAX</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="left">Fast PWM</td>
+<td class="left">0xFF</td>
+<td class="left">TOP</td>
+<td class="left">MAX</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="left">Reserved</td>
+<td class="left">–</td>
+<td class="left">–</td>
+<td class="left">–</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="left">PWM, PC</td>
+<td class="left">OCR0A</td>
+<td class="left">TOP</td>
+<td class="left">BOTTOM</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="left">Reserved</td>
+<td class="left">–</td>
+<td class="left">–</td>
+<td class="left">–</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="left">Fast PWM</td>
+<td class="left">OCR0A</td>
+<td class="left">TOP</td>
+<td class="left">TOP</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+PC = Phase Correct
+MAX = 0xFF
+BOTTOM = 0x00
+</p>
+</div>
+</li></ul>
+</div>
+
+<div id="outline-container-unnumbered-15" class="outline-4">
+<h4 id="unnumbered-15">TCCR0B Timer/Counter Control Register B</h4>
+<div class="outline-text-4" id="text-unnumbered-15">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">FOC0A</td>
+<td class="right">FOC0B</td>
+<td class="right">–</td>
+<td class="right">–</td>
+<td class="right">WGM02</td>
+<td class="right">CS02</td>
+<td class="right">CS01</td>
+<td class="right">CS00</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-16"></a>Bit 7 – FOC0A: Force Output Compare A<br ><div class="outline-text-5" id="text-unnumbered-16">
+<p>
+Когда записывается логическая единица в бит <code>FOC0A</code>, немедленно
+принудительно вызывается сравнение сопоставления на
+<code>Waveform-Generation-Unit</code>.
+</p>
+
+<p>
+Мне пока непонятно назначеиние этого бита, но в примерах он выставляется в
+ноль.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-17"></a>Bit 6 – FOC0B: Force Output Compare B<br ><div class="outline-text-5" id="text-unnumbered-17">
+<p>
+Аналогично предыдущему
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-18"></a>Bits 5:4 – Res: Reserved Bits<br ></li>
+
+<li><a id="unnumbered-19"></a>Bit 3 – WGM02: Waveform Generation Mode<br ><div class="outline-text-5" id="text-unnumbered-19">
+<p>
+Этот бит является частью WGM-битов, которые детально описаны в таблице
+<code>wgm_tbl</code> в разделе <a href="#unnumbered-10">TCCR0A – Timer/Counter Control Register A</a>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-20"></a>Bits 2:0 – CS02:0: Clock Select<br ><div class="outline-text-5" id="text-unnumbered-20">
+<p>
+Эти биты управляют предделителем частоты таймера:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">CS02</th>
+<th scope="col" class="right">CS01</th>
+<th scope="col" class="right">CS00</th>
+<th scope="col" class="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="left">No clock source (Timer/Counter stopped)</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="left">clk I/O /(No prescaling)</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="left">clk I/O /8 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="left">clk I/O /64 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="right">0</td>
+<td class="left">clk I/O /256 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="right">1</td>
+<td class="left">clk I/O /1024 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="right">0</td>
+<td class="left">External clock source on T0 pin. Clock on falling edge.</td>
+</tr>
+
+<tr>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="right">1</td>
+<td class="left">External clock source on T0 pin. Clock on rising edge.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</li></ul>
+</div>
+
+<div id="outline-container-unnumbered-21" class="outline-4">
+<h4 id="unnumbered-21"><span class="todo TODO">TODO</span> OCR0A</h4>
+</div>
+<div id="outline-container-unnumbered-22" class="outline-4">
+<h4 id="unnumbered-22"><span class="todo TODO">TODO</span> OCR0B</h4>
+</div>
+<div id="outline-container-unnumbered-23" class="outline-4">
+<h4 id="unnumbered-23">TIMSK – Timer/Counter Interrupt Mask Register</h4>
+<div class="outline-text-4" id="text-unnumbered-23">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">TOIE1</td>
+<td class="right">OCIE1A</td>
+<td class="right">OCIE1B</td>
+<td class="right">–</td>
+<td class="right">ICIE1</td>
+<td class="right">OCIE0B</td>
+<td class="right">TOIE0</td>
+<td class="right">OCIE0A</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-24"></a>Bit 0 – OCIE0A: Timer/Counter0 Output Compare Match A Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-24">
+<p>
+Когда бит OCIE0A установлен в единицу, и бит <code>I</code> в <code>Status-Register</code>
+установлен, разрешается прерывание Compare Match.
+</p>
+
+<p>
+Оно возникает, если происходит совпадение значения Timer/Counter0,
+т.е. когда бит OCF0A установлен в TIFR. 8-битный компаратор непрерывно
+сравнивает <code>TCNT0</code> с <code>Output-Compare-Register</code> (<code>OCR0A</code> и <code>OCR0B</code>). Всякий
+раз, когда <code>TCNT0</code> равен <code>OCR0A</code> или <code>OCR0B</code>, компаратор сигнализирует о
+совпадении.
+</p>
+
+<p>
+Совпадение установит <code>Output-Compare-Flag</code> (<code>OCF0A</code> или <code>OCF0B</code>) в
+следующем тактовом цикле таймера. Если соответствующее прерывание включено,
+<code>Output-Compare-Flag</code> генерирует прерывание <code>Output-Compare-interrupt</code>.
+<code>Output-Compare-Flag</code> автоматически сбрасывается при выполнении прерывания.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-25"></a>Bit 1 – TOIE0: Timer/Counter0 Overflow Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-25">
+<p>
+Когда бит <code>TOIE0</code> установлен и бит <code>I</code> в <code>Status-Register</code> установлен,
+прерывание <code>Timer/Counter0-Overflow</code> разрешается.
+</p>
+
+<p>
+Соответствующее прерывание выполняется, если происходит переполнение
+<code>Timer/Counter0</code>, то есть когда бит <code>TOV0</code> установлен в
+<code>Timer/Counter-0-Interrupt-Flag-Register</code> – <code>TIFR</code>.  В режиме <code>Normal</code>
+<code>TOV0</code> будет установлен в том же тактовом цикле таймера, когда <code>TCNT0</code>
+становится равным нулю.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-26"></a>Bit 2 – OCIE0B: Timer/Counter0 Output Compare Match B Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-26">
+<p>
+Полностью аналогично биту 0 но для прерывания <code>Timer/Counter-Compare-Match-B</code>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-27"></a>Bit 3 – ICIE1: Timer/Counter1, Input Capture Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-27">
+<p>
+Когда этот бит установлен в единицу и установлен флаг <code>I</code> в
+<code>Status-Register</code> прерывание <code>Timer/Counter1--Input-Capture-interrupt</code>
+разрешено.
+</p>
+
+<p>
+Соответствующий вектор прерывания выполняется, если установлен
+флаг <code>ICF1</code>, расположенный в <code>TIFR</code>.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-28"></a>Bit 4 – Res: Reserved Bit<br ></li>
+
+<li><a id="unnumbered-29"></a>Bit 5 – OCIE1B: Timer/Counter1, Output Compare B Match Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-29">
+<p>
+Аналог <code>OCIE0B</code>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-30"></a>Bit 7 – TOIE1: Timer/Counter1, Overflow Interrupt Enable<br ><div class="outline-text-5" id="text-unnumbered-30">
+<p>
+Аналог <code>TOIE0</code>
+</p>
+</div>
+</li></ul>
+</div>
+
+<div id="outline-container-unnumbered-31" class="outline-4">
+<h4 id="unnumbered-31">TIFR – Timer/Counter Interrupt Flag Register</h4>
+<div class="outline-text-4" id="text-unnumbered-31">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">TOV1</td>
+<td class="right">OCF1A</td>
+<td class="right">OCF1B</td>
+<td class="right">–</td>
+<td class="right">ICF1</td>
+<td class="right">OCF0B</td>
+<td class="right">TOV0</td>
+<td class="right">OCF0A</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-32"></a>Bit 0 – OCF0A: Output Compare Flag 0 A<br ><div class="outline-text-5" id="text-unnumbered-32">
+<p>
+Бит <code>OCF0A</code> устанавливается, когда происходит <code>Compare-Match</code>
+между <code>Timer/Counter0</code> и содержимым <code>OCR0A</code>.
+</p>
+
+<p>
+Он сбрасывается аппаратно при выполнении соответствующего
+вектора обработки прерываний (или можно вручную).
+</p>
+
+<p>
+Когда бит <code>I</code> в <code>Status-Register</code>, <code>OCIE0A</code>
+(<code>Timer/Counter0-Compare-Match-Interrupt-Enable</code>), и <code>OCF0A</code> установлены,
+выполняется прерывание <code>Timer/Counter0-Compare-Match-Interrupt</code>.
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-33"></a>Bit 1 – TOV0: Timer/Counter0 Overflow Flag<br ><div class="outline-text-5" id="text-unnumbered-33">
+<p>
+Бит <code>TOV0</code> устанавливается при переполнении <code>Timer/Counter0</code>. <code>TOV0</code>
+очищается аппаратно при выполнении соответствующего вектора обработки
+прерываний (или вручную). Когда бит <code>I</code> в <code>Status-Register</code>, <code>TOIE0</code>
+(<code>Timer/Counter0-Overflow-Interrupt-Enable</code>) и <code>TOV0</code> установлены,
+выполняется прерывание <code>Timer/Counter0-Overflow-interrupt</code>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-34"></a>Bit 2 – OCF0B: Output Compare Flag 0 B<br ><div class="outline-text-5" id="text-unnumbered-34">
+<p>
+Аналог <code>OCF0A</code>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-35"></a>Bit 3 - Input Capture Flag<br ><div class="outline-text-5" id="text-unnumbered-35">
+<p>
+Когда происходит изменение логического уровня (событие) на выводе
+<code>Input-Capture-pin</code> (<code>ICP1</code>) или на выходе аналогового компаратора
+<code>Analog-Comparator-output</code> (<code>ACO</code>), и это изменение подтверждается
+настройкой детектора фронта, захват будет инициирован.
+</p>
+
+<p>
+Когда происходит захват, 16-битное значение счетчика (<code>TCNT1</code>) записывается
+в регистр ввода ввода (<code>ICR1</code>).
+</p>
+
+<p>
+<code>Input-Capture-Flag</code> (<code>ICF1</code>) устанавливается в том же такте что и значение
+<code>TCNT1</code>, которое копируется в регистр <code>ICR1</code>.
+</p>
+
+<p>
+Если включено (ICIE1=1), <code>Input-Capture-Flag</code> генерирует прерывание
+<code>Input-Capture-interrupt</code>.
+</p>
+
+<p>
+Флаг <code>ICF1</code> автоматически сбрасывается при выполнении прерывания, и может
+быть сброшен программно
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-36"></a>Bit 4 – Res: Reserved Bit<br ></li>
+
+<li><a id="unnumbered-37"></a>Bits 5-6: OCF1A и OCF1B<br ><div class="outline-text-5" id="text-unnumbered-37">
+<p>
+см аналог <code>OCF0A</code>
+</p>
+</div>
+</li>
+
+<li><a id="unnumbered-38"></a>Bit 7: TOV1<br ><div class="outline-text-5" id="text-unnumbered-38">
+<p>
+см аналог <code>TOV0</code>
+</p>
+</div>
+</li></ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-39" class="outline-3">
+<h3 id="unnumbered-39">Настройка таймера</h3>
+<div class="outline-text-3" id="text-unnumbered-39">
+<p>
+Для того, чтобы настроить таймер на работу в <code>Normal Mode</code> нам нужно:
+</p>
+<ul class="org-ul">
+<li>Настроить TCCR0A – Timer/Counter Control Register A
+</li>
+<li>Настроить TCCR0B - Timer/Counter Control Register B
+</li>
+<li>Задать начальное значение TCNT0 – Timer/Counter Register
+</li>
+<li>Настроить OCR0A – Output Compare Register A
+</li>
+<li>Настроить OCR0B – Output Compare Register B
+</li>
+<li>Настроить TIMSK – Timer/Counter Interrupt Mask Register
+</li>
+<li>Обнулить TIFR – Timer/Counter Interrupt Flag Register
+</li>
+</ul>
+</div>
+
+<ul class="org-ul"><li><a id="unnumbered-40"></a>TCCR0A<br ><div class="outline-text-5" id="text-unnumbered-40">
+<p>
+Для режима <code>Normal</code> мы ничего не делаем с регистром <code>TCCR0A</code> оставляя все его
+биты нулевыми:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">COM0A1</td>
+<td class="right">COM0A0</td>
+<td class="right">COM0B1</td>
+<td class="right">COM0B0</td>
+<td class="right">–</td>
+<td class="right">–</td>
+<td class="right">WGM01</td>
+<td class="right">WGM00</td>
+</tr>
+</tbody>
+</table>
+</div>
+</li>
+
+<li><a id="unnumbered-41"></a>TCCR0B<br ><div class="outline-text-5" id="text-unnumbered-41">
+<p>
+В регистре <code>TCCR0B</code> мы хотим настроить частоту пред-делителя (биты CS02-CS00)
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">FOC0A</td>
+<td class="right">FOC0B</td>
+<td class="right">–</td>
+<td class="right">–</td>
+<td class="right">WGM02</td>
+<td class="right">CS02</td>
+<td class="right">CS01</td>
+<td class="right">CS00</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+При тактировании нашего микроконтроллера от внутреннего генератора наша
+тактовая частота = 8.000.000 Герц.
+</p>
+
+<p>
+Если мы поделим ее 1024, то тик таймера будет происходить
+8000000/1024=7812.5 раз в секунду.
+</p>
+
+<p>
+В режиме <code>Normal</code> cчетчик таймера переполняется 7812.5/256=30.517578125 раз
+в секунду.
+</p>
+
+<p>
+Это также достаточное время для устранения "дребезга контактов" = если в
+течении двух переполнений таймера регистрируется нажатое состояние кнопки -
+значит ее действительно нажали (и держат полсекунды). Соответственно
+отпускание можно зарегистрировать, когда подряд два перепонение таймера мы
+наблюдаем отпущенное состояние.
+</p>
+
+<p>
+Если мигать светодиодом, переключая его каждый раз, то длительность
+включения будет <code>0.065536</code>. При необхдимости мы можем уменьшить это время,
+если программа обработки прерывания будет записывать ненулевое начальное
+значение при обнулении счетчика, уменьшая таким образом время до
+переполнения.
+</p>
+
+<p>
+Например, если записывать 240, то мигание светодиода будет почти
+неотличимым от его горения, его частота составит 7812.5/(256-240)=488.28125
+раз в секунду, а двойной период (пока диод горит/не горит) соответственно
+<code>0.004096</code>. Я удивлен, что человеческий глаз может различить мерцание такой
+частоты.
+</p>
+
+<p>
+Но этого все равно недостаточно чтобы генерировать звук, хотя треск,
+который можно использовать как сигнал - уже получается.
+</p>
+
+<p>
+Если же записывать 255, то частота составит 7812.5, что в целом уже дает
+нам звук, достаточный для сигнализации того что время заканчивается.
+</p>
+
+<p>
+Поэтому, в связи с этими дополнительно открывшимися возможностями хочется
+расширить таймер сигнализацией окончания периода.
+</p>
+
+<p>
+Также можно воспользоваться возможностью динамически уменьшать частоту,
+чтобы звук повышался&#x2026; Эта идея требует проработки [TODO:gmm], но для
+начала мы можем просто установить деление частоты на 1024:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="scaler"><span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp0</span>, 0b101
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">TCCR0B</span>, tmp0
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-42"></a>TCNT0<br ><div class="outline-text-5" id="text-unnumbered-42">
+<p>
+Обнуляем регистр-счетчик TCNT0 – Timer/Counter Register
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="clear_tcnt0"><span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">TCNT0</span>, r1
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-43"></a><span class="todo TODO">TODO</span> OCR0A<br ></li>
+<li><a id="unnumbered-44"></a><span class="todo TODO">TODO</span> OCR0B<br ></li>
+<li><a id="unnumbered-45"></a>TIMSK<br ><div class="outline-text-5" id="text-unnumbered-45">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">TOIE1</td>
+<td class="right">OCIE1A</td>
+<td class="right">OCIE1B</td>
+<td class="right">–</td>
+<td class="right">ICIE1</td>
+<td class="right">OCIE0B</td>
+<td class="right">TOIE0</td>
+<td class="right">OCIE0A</td>
+</tr>
+</tbody>
+</table>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="set_timsk"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1056;&#1072;&#1079;&#1088;&#1077;&#1096;&#1072;&#1077;&#1084; &#1087;&#1088;&#1077;&#1088;&#1099;&#1074;&#1072;&#1085;&#1080;&#1103; &#1087;&#1086; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1102; &#1090;&#1072;&#1081;&#1084;&#1077;&#1088;&#1072; 0</span>
+<span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp0</span>, 0b10
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">TIMSK</span>, tmp0
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="unnumbered-46"></a>TIFR<br ><div class="outline-text-5" id="text-unnumbered-46">
+<table>
+
+
+<colgroup>
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+
+<col  class="right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="right">7</th>
+<th scope="col" class="right">6</th>
+<th scope="col" class="right">5</th>
+<th scope="col" class="right">4</th>
+<th scope="col" class="right">3</th>
+<th scope="col" class="right">2</th>
+<th scope="col" class="right">1</th>
+<th scope="col" class="right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="right">TOV1</td>
+<td class="right">OCF1A</td>
+<td class="right">OCF1B</td>
+<td class="right">–</td>
+<td class="right">ICF1</td>
+<td class="right">OCF0B</td>
+<td class="right">TOV0</td>
+<td class="right">OCF0A</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+TIFR-регистр нужно сбросить в 0:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="clear_tifr"><span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">TIFR</span>, r1
+</pre>
+</div>
+</div>
+</li></ul>
+</div>
+</div>
+
+
+
+<div id="outline-container-unnumbered-47" class="outline-2">
+<h2 id="unnumbered-47">Программа</h2>
+<div class="outline-text-2" id="text-unnumbered-47">
+<p>
+Программа для микроконтроллера Attiny2313 на ассемблере AVR
+</p>
+
+<p>
+Порядок блоков важен, т.к. например после инициализации (reset) мы сразу
+"проваливаемся" в <code>mainloop</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm"><span style="color: #ff7f24;">;;; </span><span style="color: #ff7f24;">b2313 delay switch for 4 buttons</span>
+
+    <span style="color: #00ffff;">&lt;&lt;defines&gt;&gt;</span>
+
+    <span style="color: #00ffff;">&lt;&lt;symbols&gt;&gt;</span>
+
+    <span style="color: #00ffff;">.text</span>
+    <span style="color: #00ffff;">.global</span> main
+<span style="color: #87cefa;">main</span>:
+
+<span style="color: #87cefa;">_vectors</span>:
+    <span style="color: #00ffff;">&lt;&lt;vectors&gt;&gt;</span>
+
+<span style="color: #87cefa;">_timer0_overflow</span>:
+    <span style="color: #00ffff;">&lt;&lt;timer_ovfl&gt;&gt;</span>
+
+<span style="color: #87cefa;">_reset</span>:
+    <span style="color: #00ffff;">&lt;&lt;reset&gt;&gt;</span>
+
+<span style="color: #87cefa;">_mainloop</span>:
+    <span style="color: #00ffff;">rjmp</span>    _mainloop
+
+<span style="color: #87cefa;">_infloop</span>:
+    <span style="color: #00ffff;">rjmp</span>    _infloop
+
+<span style="color: #87cefa;">_blink</span>:
+    <span style="color: #00ffff;">&lt;&lt;blink&gt;&gt;</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-48" class="outline-2">
+<h2 id="unnumbered-48">Константы</h2>
+<div class="outline-text-2" id="text-unnumbered-48">
+<p>
+Нам нужны:
+</p>
+<ul class="org-ul">
+<li>минимум два временных регистра
+</li>
+<li>счетчик
+</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="defines"><span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">tmp0</span> r16
+<span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">tmp1</span> r17
+<span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">cnt</span>  r18
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-49" class="outline-2">
+<h2 id="unnumbered-49">Символические имена</h2>
+<div class="outline-text-2" id="text-unnumbered-49">
+<p>
+Необходимые символические имена взяты из даташита
+<a href="attiny2313datasheet.pdf">attiny2313datasheet</a>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="symbols"><span style="color: #00ffff;">.equ</span> SPL, 0x3D
+<span style="color: #00ffff;">.equ</span> SREG, 0x3F
+<span style="color: #00ffff;">.equ</span> RAMEND, 0xDF
+<span style="color: #00ffff;">.equ</span> DDRB, 0x17
+<span style="color: #00ffff;">.equ</span> PORTB, 0x18
+<span style="color: #00ffff;">.equ</span> PINB, 0x16
+<span style="color: #00ffff;">.equ</span> TCCR0A, 0x30
+<span style="color: #00ffff;">.equ</span> TCCR0B, 0x33
+<span style="color: #00ffff;">.equ</span> TCNT0, 0x32
+<span style="color: #00ffff;">.equ</span> TIFR, 0x38
+<span style="color: #00ffff;">.equ</span> TIMSK, 0x39
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-50" class="outline-2">
+<h2 id="unnumbered-50">Вектора прерываний</h2>
+<div class="outline-text-2" id="text-unnumbered-50">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="vectors"><span style="color: #87cefa;">rjmp</span>    _reset              <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Reset Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">External Interrupt0 Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">External Interrupt1 Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer1 Capture Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer1 CompareA Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer1 Overflow Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _timer0_overflow    <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer0 Overflow Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">USART0 RX Complete Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">USART0,UDR Empty Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">USART0 TX Complete Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Analog Comparator Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Pin Change Interrupt</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer1 Compare B Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer0 Compare A Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Timer0 Compare B Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">USI Start Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">USI Overflow Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">EEPROM Ready Handler</span>
+<span style="color: #87cefa;">rjmp</span>    _infloop            <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">Watchdog Overflow Handler</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-51" class="outline-2">
+<h2 id="unnumbered-51">Прерывание по переполнению</h2>
+<div class="outline-text-2" id="text-unnumbered-51">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="timer_ovfl">    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">C&#1073;&#1088;&#1072;&#1089;&#1099;&#1074;&#1072;&#1077;&#1084; &#1089;&#1095;&#1077;&#1090;&#1085;&#1099;&#1081; &#1088;&#1077;&#1075;&#1080;&#1089;&#1090;&#1088; &#1090;&#1072;&#1081;&#1084;&#1077;&#1088;&#1072;/&#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082;&#1072; T0</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">out     TCNT0, r1</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1059;&#1074;&#1077;&#1083;&#1080;&#1095;&#1080;&#1074;&#1072;&#1077;&#1084; &#1080; &#1087;&#1088;&#1086;&#1074;&#1077;&#1088;&#1103;&#1077;&#1084; &#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1081;</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">inc     cnt</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">cpi     cnt, 1</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">brsh    _overstep           ; &#1055;&#1077;&#1088;&#1077;&#1093;&#1086;&#1076; &#1077;&#1089;&#1083;&#1080; &#1073;&#1086;&#1083;&#1100;&#1096;&#1077; &#1080;&#1083;&#1080; &#1088;&#1072;&#1074;&#1085;&#1086;</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">reti</span>
+<span style="color: #87cefa;">_overstep</span>:
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">;; &#1063;&#1080;&#1090;&#1072;&#1077;&#1084; &#1074;&#1099;&#1074;&#1086;&#1076;&#1099; PB0-PB3</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">in      tmp0, PINB</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">ldi     tmp1, 0b00000001    ; NB! - &#1055;&#1086;&#1082;&#1072; &#1090;&#1086;&#1083;&#1100;&#1082;&#1086; &#1085;&#1091;&#1083;&#1077;&#1074;&#1086;&#1081;</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">and     tmp0, tmp1          ;</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">;; &#1045;&#1089;&#1090;&#1100; &#1083;&#1080; &#1085;&#1072;&#1078;&#1072;&#1090;&#1080;&#1077;?</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">cpi     tmp0, 0</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">breq    _not_press          ; &#1055;&#1077;&#1088;&#1077;&#1081;&#1090;&#1080; &#1077;&#1089;&#1083;&#1080; &#1088;&#1072;&#1074;&#1085;&#1086;</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">;; &#1042;&#1082;&#1083;&#1102;&#1095;&#1080;&#1090;&#1100; &#1089;&#1074;&#1077;&#1090;&#1086;&#1076;&#1080;&#1086;&#1076;</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">ldi     tmp0, 0b00010000</span>
+<span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">out     PORTB, tmp0</span>
+<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">rjmp    _timer0_overflow_ret</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">_not_press:</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1055;&#1086;&#1082;&#1072; &#1085;&#1080;&#1095;&#1077;&#1075;&#1086; &#1085;&#1077; &#1085;&#1072;&#1078;&#1072;&#1090;&#1086; - &#1084;&#1080;&#1075;&#1072;&#1077;&#1084;</span>
+    <span style="color: #00ffff;">rcall</span> _blink
+<span style="color: #87cefa;">_timer0_overflow_ret</span>:
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1054;&#1095;&#1080;&#1097;&#1072;&#1077;&#1084; &#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1081;</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">mov     cnt, r1</span>
+
+    <span style="color: #00ffff;">ldi</span> tmp0, 0
+    <span style="color: #00ffff;">out</span> TCNT0, tmp0
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">out TCNT0, cnt</span>
+    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">inc cnt</span>
+
+    <span style="color: #00ffff;">reti</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-52" class="outline-2">
+<h2 id="unnumbered-52">Инициализация</h2>
+<div class="outline-text-2" id="text-unnumbered-52">
+<p>
+До окончания инициализации прерывания должны быть запрещены:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="reset"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1047;&#1072;&#1087;&#1088;&#1077;&#1090;&#1080;&#1090;&#1100; &#1087;&#1088;&#1077;&#1088;&#1099;&#1074;&#1072;&#1085;&#1080;&#1103;</span>
+<span style="color: #87cefa;">clr</span>     <span style="color: #00ffff;">r1</span>
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">SREG</span>, r1
+
+<span style="color: #87cefa;">&lt;&lt;init_stack</span>&gt;&gt;
+<span style="color: #87cefa;">&lt;&lt;init_ports</span>&gt;&gt;
+<span style="color: #87cefa;">&lt;&lt;init_timer</span>&gt;&gt;
+<span style="color: #87cefa;">&lt;&lt;init_cnt</span>&gt;&gt;
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1056;&#1072;&#1079;&#1088;&#1077;&#1096;&#1080;&#1090;&#1100; &#1087;&#1088;&#1077;&#1088;&#1099;&#1074;&#1072;&#1085;&#1080;&#1103;</span>
+<span style="color: #87cefa;">sei</span>
+</pre>
+</div>
+
+<p>
+Первым делом настроим стек:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="init_stack"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1080;&#1090;&#1100; Stack</span>
+<span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp0</span>, RAMEND
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">SPL</span>, tmp0
+</pre>
+</div>
+
+<p>
+Потом настроим порты на вход и выход:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="init_ports"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1080;&#1090;&#1100; &#1076;&#1083;&#1103; PB4 &#1085;&#1072; &#1074;&#1099;&#1093;&#1086;&#1076;, &#1086;&#1089;&#1090;&#1072;&#1083;&#1100;&#1085;&#1099;&#1077; &#1085;&#1072; &#1074;&#1093;&#1086;&#1076;</span>
+<span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp0</span>, 0b00010000
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">DDRB</span>, tmp0
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1044;&#1083;&#1103; &#1087;&#1080;&#1085;&#1086;&#1074; PB0-PB3 &#1087;&#1086;&#1076;&#1082;&#1083;&#1102;&#1095;&#1077;&#1085;&#1085;&#1099;&#1093; &#1085;&#1072; &#1074;&#1093;&#1086;&#1076; (&#1082;&#1085;&#1086;&#1087;&#1082;&#1080;)</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1091;&#1089;&#1090;&#1072;&#1085;&#1086;&#1074;&#1080;&#1090;&#1100; &#1087;&#1086;&#1076;&#1090;&#1103;&#1078;&#1082;&#1091; &#1082; &#1087;&#1080;&#1090;&#1072;&#1085;&#1080;&#1102;, &#1095;&#1090;&#1086;&#1073;&#1099; &#1085;&#1077; &#1073;&#1099;&#1083;&#1086; hi-z</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1054;&#1076;&#1085;&#1072;&#1082;&#1086; &#1080;&#1093; &#1085;&#1072;&#1076;&#1086; &#1087;&#1086;&#1076;&#1090;&#1103;&#1085;&#1091;&#1090;&#1100; &#1082; &#1084;&#1080;&#1085;&#1091;&#1089;&#1091; &#1087;&#1080;&#1090;&#1072;&#1085;&#1080;&#1103; (!)</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">PB4 &#1087;&#1086;&#1076;&#1090;&#1103;&#1075;&#1080;&#1074;&#1072;&#1077;&#1084; &#1082; &#1079;&#1077;&#1084;&#1083;&#1077;, &#1087;&#1086;&#1090;&#1086;&#1084;&#1091; &#1095;&#1090;&#1086; &#1085;&#1072;&#1095;&#1072;&#1083;&#1100;&#1085;&#1086;&#1077;</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1077;&#1075;&#1086; &#1089;&#1086;&#1089;&#1090;&#1086;&#1103;&#1085;&#1080;&#1077; - &#1074;&#1099;&#1082;&#1083;&#1102;&#1095;&#1077;&#1085;</span>
+<span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp0</span>, 0b00001111
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">PORTB</span>, tmp0
+</pre>
+</div>
+
+<p>
+Дальше настраиваем таймер:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="init_timer"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1080;&#1090;&#1100; Timer</span>
+
+<span style="color: #87cefa;">&lt;&lt;scaler</span>&gt;&gt;
+
+<span style="color: #87cefa;">&lt;&lt;clear_tcnt0</span>&gt;&gt;
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">OCR0A &#8211; Output Compare Register A</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">The Output Compare Register A contains an 8-bit value that is continuously compared with the</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">counter value (TCNT0). A match can be used to generate an Output Compare interrupt, or to</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">generate a waveform output on the OC0A pin.</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">[TODO]</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">OCR0B &#8211; Output Compare Register B</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">The Output Compare Register B contains an 8-bit value that is continuously compared with the</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">counter value (TCNT0). A match can be used to generate an Output Compare interrupt, or to</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">generate a waveform output on the OC0B pin.</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">[TODO]</span>
+
+<span style="color: #87cefa;">&lt;&lt;set_timsk</span>&gt;&gt;
+
+<span style="color: #87cefa;">&lt;&lt;clear_tifr</span>&gt;&gt;
+</pre>
+</div>
+
+<p>
+И наконец установим начальное значение счетчика переполнений
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-asm" id="init_cnt"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1053;&#1072;&#1095;&#1072;&#1083;&#1100;&#1085;&#1072;&#1103; &#1080;&#1085;&#1080;&#1094;&#1080;&#1072;&#1083;&#1080;&#1079;&#1072;&#1094;&#1080;&#1103; &#1089;&#1095;&#1077;&#1090;&#1095;&#1080;&#1082;&#1072; &#1087;&#1077;&#1088;&#1077;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1080;&#1081;</span>
+<span style="color: #87cefa;">mov</span>     <span style="color: #00ffff;">cnt</span>, r1
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-53" class="outline-2">
+<h2 id="unnumbered-53">Мигание светодиодом</h2>
+<div class="outline-text-2" id="text-unnumbered-53">
+<div class="org-src-container">
+
+<pre class="src src-asm" id="blink"><span style="color: #87cefa;">in</span>      <span style="color: #00ffff;">tmp0</span>, PORTB
+<span style="color: #87cefa;">com</span>     <span style="color: #00ffff;">tmp0</span>
+<span style="color: #87cefa;">ldi</span>     <span style="color: #00ffff;">tmp1</span>, 0b00010000    <span style="color: #ff7f24;">; </span><span style="color: #ff7f24;">&#1052;&#1080;&#1075;&#1072;&#1077;&#1084; &#1090;&#1086;&#1083;&#1100;&#1082;&#1086; PB4</span>
+<span style="color: #87cefa;">and</span>     <span style="color: #00ffff;">tmp0</span>, tmp1
+<span style="color: #87cefa;">out</span>     <span style="color: #00ffff;">PORTB</span>, tmp0
+<span style="color: #87cefa;">ret</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title"></h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Разбиваемые элементы</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Разбиваемые элементы</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Гонять шарик по пустому экрану не очень интересно, поэтому сейчас мы займемся созданием
+кирпичей, которые он должен разбивать. Выберем или нарисуем картинку кирпича, я
+нарисовал вот такую:
+</p>
+
+<p>
+<div class="figure"><img src="/img/brick.png" alt="nil"/><p></p></div>
+</p>
+
+<p>
+У нас планируется некоторое количество кирпичей, и все они будут обладать одинаковым
+поведением. Так, например, при попадании в них шарика, любой кирпич должен исчезать с
+экрана.
+</p>
+
+<p>
+В то же время каждый из кирпичей имеет свое собственное состояние - например,
+координаты. Удобно было бы чтобы каждый кирпич мог проверить, а не произошло ли у него
+столкновение с шаром. При этом нам важно понимать, произошло ли столкновение с
+горизонтальной или вертикальной стенкой кирпича (или может быть с обоими - тогда шарик
+попал точно в угол) - ведь от этого зависит, какое ускорение нам инвертировать.
+</p>
+
+<p>
+Это значит мы можем создать для кирпичей свой класс, назовем его Brick. Создадим его в
+отдельном файле, рядом с MyGdxGame:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #00ffff;">package</span> com.mygdx.<span style="color: #7fffd4;">game</span>;
+
+<span style="color: #00ffff;">import</span> <span style="color: #7fffd4;">com</span>.<span style="color: #7fffd4;">badlogic</span>.<span style="color: #7fffd4;">gdx</span>.<span style="color: #7fffd4;">graphics</span>.<span style="color: #98fb98;">Texture</span>;
+<span style="color: #00ffff;">import</span> <span style="color: #7fffd4;">com</span>.<span style="color: #7fffd4;">badlogic</span>.<span style="color: #7fffd4;">gdx</span>.<span style="color: #7fffd4;">graphics</span>.<span style="color: #7fffd4;">g2d</span>.<span style="color: #98fb98;">SpriteBatch</span>;
+<span style="color: #00ffff;">import</span> <span style="color: #7fffd4;">com</span>.<span style="color: #7fffd4;">badlogic</span>.<span style="color: #7fffd4;">gdx</span>.<span style="color: #7fffd4;">math</span>.<span style="color: #98fb98;">Vector2</span>;
+
+<span style="color: #00ffff;">public</span> <span style="color: #00ffff;">class</span> <span style="color: #98fb98;">Brick</span> {
+
+    <span style="color: #98fb98;">Texture</span> <span style="color: #eedd82;">img</span>;
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">Vector2</span> <span style="color: #eedd82;">pos</span>;
+
+    <span style="color: #00ffff;">public</span> <span style="color: #87cefa;">Brick</span>(<span style="color: #98fb98;">String</span> <span style="color: #eedd82;">imgFileName</span>, <span style="color: #98fb98;">int</span> <span style="color: #eedd82;">x</span>, <span style="color: #98fb98;">int</span> <span style="color: #eedd82;">y</span>) {
+        img = <span style="color: #00ffff;">new</span> <span style="color: #98fb98;">Texture</span>(imgFileName);
+        pos = Vector2(x, y);
+    }
+
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">void</span> <span style="color: #87cefa;">render</span>(<span style="color: #98fb98;">SpriteBatch</span> <span style="color: #eedd82;">batch</span>) {
+        batch.draw(img, pos.x, pos.y);
+    }
+
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">boolean</span> <span style="color: #87cefa;">isCollision</span>(<span style="color: #98fb98;">Vector2</span> <span style="color: #eedd82;">ballPosition</span>, <span style="color: #98fb98;">Texture</span> <span style="color: #eedd82;">ballImg</span>) {
+        <span style="color: #00ffff;">if</span> (       isCollisionHorizontal (ballPosition, ballImg)
+                &amp;&amp; isCollisionVertical   (ballPosition, ballImg)) {
+            <span style="color: #00ffff;">return</span> <span style="color: #7fffd4;">true</span>;
+        } <span style="color: #00ffff;">else</span> {
+            <span style="color: #00ffff;">return</span> <span style="color: #7fffd4;">false</span>;
+        }
+    }
+
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">boolean</span> <span style="color: #87cefa;">isCollisionHorizontal</span>(<span style="color: #98fb98;">Vector2</span> <span style="color: #eedd82;">ballPosition</span>, <span style="color: #98fb98;">Texture</span> <span style="color: #eedd82;">ballImg</span>) {
+        <span style="color: #00ffff;">if</span> (       (ballPosition.x                       &lt; pos.<span style="color: #98fb98;">x</span> + img.getWidth())
+                &amp;&amp; (ballPosition.x + ballImg.getWidth()  &gt; pos.x)) {
+            <span style="color: #00ffff;">return</span> <span style="color: #7fffd4;">true</span>;
+        } <span style="color: #00ffff;">else</span> {
+            <span style="color: #00ffff;">return</span> <span style="color: #7fffd4;">false</span>;
+        }
+    }
+
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">boolean</span> <span style="color: #87cefa;">isCollisionVertical</span>(<span style="color: #98fb98;">Vector2</span> <span style="color: #eedd82;">ballPosition</span>, <span style="color: #98fb98;">Texture</span> <span style="color: #eedd82;">ballImg</span>) {
+        <span style="color: #00ffff;">if</span> (       (ballPosition.y                       &lt; pos.<span style="color: #98fb98;">y</span> + img.getHeight())
+                &amp;&amp; (ballPosition.y + ballImg.getHeight() &gt; pos.y)) {
+        } <span style="color: #00ffff;">else</span> {
+            <span style="color: #00ffff;">return</span> <span style="color: #7fffd4;">false</span>;
+        }
+    }
+
+    <span style="color: #00ffff;">public</span> <span style="color: #98fb98;">void</span> <span style="color: #87cefa;">dispose</span>() {
+        img.dispose();
+    }
+
+}
+</pre>
+</div>
+
+<p>
+Теперь мы можем определить целый массив кирпичей вот так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #98fb98;">Vector2</span> <span style="color: #eedd82;">old</span> = <span style="color: #00ffff;">new</span> <span style="color: #98fb98;">Vector2</span>(0,0);
+<span style="color: #98fb98;">int</span> <span style="color: #eedd82;">brksCnt</span> = 7;
+<span style="color: #98fb98;">Brick</span>[] <span style="color: #eedd82;">brks</span> = <span style="color: #00ffff;">new</span> <span style="color: #98fb98;">Brick</span>[brksCnt];
+</pre>
+</div>
+
+<p>
+Первой строчкой мы определяем еще одну переменную - <code>old</code>, которая хранит координаты
+предшествующей позиции шарика. Дело в том, что шарик может лететь с такой скоростью,
+что в момент столкновения его координаты уже будет рассчитаны внутри кирпича. В этом
+случае нам нужна предыдущие (до столкновения) координаты, иначе шарик будет биться в
+стенки кирпича изнутри.
+</p>
+
+<p>
+Мы хотим построить кирпичи в два ряда так, чтобы нечетные кирпичи оказались выше
+четных. Для этого при инициализации (в методе <code>create</code>) применим цикл, а внутри него -
+условие, где мы будем проверять четность и в зависимости от нее менять высоту:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">build wall</span>
+<span style="color: #00ffff;">for</span> (<span style="color: #98fb98;">int</span> <span style="color: #eedd82;">i</span>=0; i&lt;<span style="color: #98fb98;">brksCnt</span>; i++) {
+    <span style="color: #98fb98;">int</span> <span style="color: #eedd82;">y</span> = 300;
+    <span style="color: #00ffff;">if</span> ((i &amp; 1) == 0) {
+        y = 435;
+    }
+    brks[i] = <span style="color: #00ffff;">new</span> <span style="color: #98fb98;">Brick</span>(<span style="color: #ffa07a;">"brick.png"</span>, i*80+30,y);
+}
+</pre>
+</div>
+
+<p>
+Перед тем как отрисовывать поле нам нужно проверить каждый кирпич на столкновение с
+шаром. Вот этот код:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">collision detection</span>
+<span style="color: #00ffff;">for</span> (<span style="color: #98fb98;">Brick</span> <span style="color: #eedd82;">brk</span> : brks) {
+    <span style="color: #00ffff;">if</span> (brk.isCollision(pos, img)) {
+        old.set(pos.x - 2 * acc.x, pos.y - 2 * acc.y);
+        <span style="color: #00ffff;">if</span> (brk.isCollisionHorizontal(old, img)) {
+            acc.y = -acc.y;
+        } <span style="color: #00ffff;">else</span> <span style="color: #00ffff;">if</span> (brk.isCollisionVertical(old, img)) {
+            acc.x = -acc.x;
+        } <span style="color: #00ffff;">else</span> {
+            acc.x = -acc.x;
+            acc.y = -acc.y;
+        }
+        pos.x = old.x;
+        pos.y = old.y;
+        <span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">hide brk</span>
+        brk.pos.y = -brk.pos.y;
+    }
+}
+</pre>
+</div>
+
+<p>
+Здесь мы проходим по всему массиву кирпичей, и для каждого кирпича спрашиваем, не
+случилось ли столкновения. Если столкновение произошло - мы определяем, случилось оно с
+вертикальной стенкой кирпича, с горизонатальной или обоими. Для этого мы используем
+<code>old</code> - переменную, хранящую предыдущую позицию шарика. Выяснив, как именно произошло
+столкновение, мы меняем нужные ускорения, что приводит к отскоку шарика от стенок
+кирпичей. В конце обработки мы меняем вертикальную координату кирпича, с которым
+произошло столновение на отрицательное значение - и он исчезает с экрана.
+</p>
+
+<p>
+После этого нам остается только добавить отрисовку кирпичей. Наш рендер теперь будет
+выглядеть так:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">render</span>
+batch.begin();
+<span style="color: #00ffff;">for</span> (<span style="color: #98fb98;">Brick</span> <span style="color: #eedd82;">brk</span> : brks) {
+    brk.render(batch);
+}
+batch.draw(img, pos.x, pos.y);
+batch.end();
+</pre>
+</div>
+
+<p>
+Чтобы избежать утечек памяти мы не забываем добавить освобождение памяти кирпичей в
+функцию <code>dispose</code>:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-java"><span style="color: #00ffff;">public</span> <span style="color: #98fb98;">void</span> <span style="color: #87cefa;">dispose</span> () {
+    batch.dispose();
+    img.dispose();
+    <span style="color: #00ffff;">for</span> (<span style="color: #98fb98;">Brick</span> <span style="color: #eedd82;">brk</span> : brks) {
+        brk.dispose();
+    }
+}
+</pre>
+</div>
+
+<p>
+<div class="figure"><img src="/img/j-bricks.png" alt="nil"/><p></p></div>
+</p>
+</div>
+</div>
+</div>
+</body>
+</html>

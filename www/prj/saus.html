@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Система автоматизации пользовательских сценариев</title>
+<meta  charset="utf-8">
+<meta  name="generator" content="Org-mode">
+<meta  name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<h1 class="title">Система автоматизации пользовательских сценариев</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#unnumbered-1">Интро</a></li>
+<li><a href="#unnumbered-2">Вывод на экран</a></li>
+<li><a href="#unnumbered-3">События</a>
+<ul>
+<li><a href="#unnumbered-4">Exposure</a></li>
+</ul>
+</li>
+<li><a href="#unnumbered-5">Графический контекст</a></li>
+<li><a href="#unnumbered-6">График функции</a></li>
+<li><a href="#unnumbered-7">Understanding exposure</a></li>
+<li><a href="#unnumbered-8">Вывод текста</a></li>
+<li><a href="#unnumbered-9">Шрифты</a></li>
+<li><a href="#unnumbered-10">Цветовые прямоугольники</a></li>
+<li><a href="#unnumbered-11">Дочерние окна и обработка нажатий клавиш</a></li>
+<li><a href="#unnumbered-12">Параграфы</a></li>
+<li><a href="#unnumbered-13">Обработка позиции щелчка мыши</a></li>
+<li><a href="#unnumbered-14"><span class="todo nilTODO">TODO</span> Скриншоты</a></li>
+<li><a href="#unnumbered-15">Ссылки</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-1" class="outline-2">
+<h2 id="unnumbered-1">Интро</h2>
+<div class="outline-text-2" id="text-unnumbered-1">
+<p>
+Первоначально идея этого проекта родилась из разговора о том, что программист всегда
+сможет обойти ограничения, такие как "система учета рабочего времени", иначе это
+неквалифицированный программист и он должен быть уволен за профнепригодность. Этот
+аргумент был приведен в поддержку тезиса о том, что подходы "принуждения к работе" не
+работают в творческих задачах.
+</p>
+
+<p>
+Системы учета рабочего времени представляют собой шпионское ПО, которое некоторые
+компании устанавливают на компьютеры работников, чтобы контролировать их
+работу. Поводом к дискуссии стало сообщение о предприимчивом работнике, который,
+устроившись программистом, отправлял назначенные ему задания аутсорсерам в Индию, и
+довольно долго работал программистом, почти ничего не зная о программировании.
+</p>
+
+<p>
+В порядке мыслительного эксперимента я предложил концепт программы, которая, будучи
+запущена на компьютере разработчика, выполняет все действия, которые обычно выполняет
+программист: пишет и рефакторит код, запускает тесты, настраивает конфиги, использует
+командную строку, отвечает в рабочих чатах, ставит задачи в таск-трекере, поднимает
+упавшие сервера, в то время как программист вообще не присутствует за компьютером, а
+потягивает коктейль на пляже. Все для того, чтобы шпионское ПО было в счастливом
+неведении.
+</p>
+
+<p>
+Обсудив, что программист, способный написать такую систему, никогда не устроится в
+бодишоп со шпионской малварью, мы пришли к мысли о том, что такая система была бы
+полезна не только любителям позагорать в рабочее время, но и ответственным работникам,
+освобождая их от рутины и выполняя работы в дневное время, когда наиболее
+квалифицированные программисты, как известно, спят. Кроме того, ее можно было бы
+творчески использовать для автоматизации поиска уязвимостей, сбора данных с веб-сайтов,
+прокачки персонажей в онлайн-играх, да и вообще любых ручных операций. Такая ценная
+идея должна быть реализована!
+</p>
+
+<p>
+Для управления "от имени пользователя" используется X Window System, что дает нам
+сетевую прозрачность и возможность запускать выполнение сценариев на удаленных машинах.
+</p>
+
+<p>
+Сами сценарии не имеют ограничений на выполняемые действия - они могут делать снимки
+экрана, распознавать на них объекты, перемещать курсор мыши и кликать на объектах,
+выполнять перетаскивания и эмулировать нажатия кнопок на клавиатуре.
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-2" class="outline-2">
+<h2 id="unnumbered-2">Вывод на экран</h2>
+<div class="outline-text-2" id="text-unnumbered-2">
+<p>
+Иногда нам полезно что-то напрямую вывести на экран. Есть базовые концепции, которые
+необходимо знать для этого:
+</p>
+<ul class="org-ul">
+<li>Клавиатура, мышь и монитор находятся на машине, которую мы назовем <code>server</code>
+</li>
+<li>Программа запущена на (вполне вероятно другой) машине, называемой <code>client</code>
+</li>
+<li>Сервер - многопользовательская машина, каждый клиент которой сидит перед некоторой
+воображаемой штукой, называемой <code>display</code>. Каждый дисплей может иметь несколько (но
+минимум один) экранов. Нам обычно нужен тот, что по умолчанию (первый).
+</li>
+<li>Внутри дисплея организовано дерево из окон, <code>window</code>. У каждого из них, кроме
+корневого, есть родительское окно. Мы должны взять корневое окно (<code>root-window</code>) и
+создать свое окно, указав, что родительским для него будет <code>root-window</code>. Создавая
+окно мы можем указать ему координаты. Также есть параметр <code>override-redirect</code>,
+который можно установить в <code>on</code> и тогда диспетчер окон не будет вмешиваться в эти
+координаты и даже не будет рисовать рамку и заголовок окна.
+</li>
+<li>После создания окна мы можем извлечь его идентификатор с помощью <code>xlib:drawable-id</code> и
+отправить его на другую машину, и она сможет подключиться к X-серверу и управлять
+окном.
+</li>
+<li>Чтобы отобразить окно, мы должны сделать <code>xlib:map-window</code>.
+</li>
+<li>Чтобы принимать события, которые происходят в окне мы используем
+<code>xlib:event-case</code>. После появления окна на экране приходит событие <code>:exposure</code>, в
+ответ на которое&#x2026;
+</li>
+<li>&#x2026;мы можем что-нибудь нарисовать в окне, и&#x2026;
+</li>
+<li>Мы должны сделать <code>xlib:display-finish-output</code> чтобы явным образом отправить все
+запросы из очереди и очистить ее, потому что X11 всегда выполняет буферизацию и
+кеширование.
+</li>
+<li>Мы можем повторять последние два шага (отрисовку и отправку буфера), каждый раз когда
+нам нужно вывести что-то еще.
+</li>
+<li>Завершая работу мы должны отмапить окно используя <code>xlib:unmap-window</code>
+</li>
+<li>Удалить окно <code>xlib:destroy-window</code>
+</li>
+<li>Закрыть дисплей <code>xlib:close-display</code>
+</li>
+</ul>
+
+<p>
+На клиент не возлагается обязанность очищать что-то - сервер должен сам заметить когда
+соединение закрывается клиентом и очистить все необходимое самостоятельно. Поэтому
+удаление окна и закрытие дисплея можно опустить.
+</p>
+
+<p>
+Если программа передала свое окно другой программе, она должна сообщить X-серверу до
+того, как она будет убита, установив <code>close-down-mode</code>. Существует команда
+<code>kill-temporary-clients</code>, которую стоит вызвать, когда вы полностью закончите работу с
+окном.
+</p>
+
+<p>
+В нашем примере, получив событие <code>:exposure</code> мы отрисуем некоторую демонстрационную
+картинку с помощью рекурсивной процедуры <code>reccurence</code>. А событие перемещения указателя
+мыши в область окна приведет к закрытию окна:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(ql:quickload 'clx)
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">full-window-state</span> (w)
+  (xlib:with-state (w)
+    (values (xlib:drawable-width w) (xlib:drawable-height w)
+            (xlib:drawable-x w) (xlib:drawable-y w)
+            (xlib:window-map-state w))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">recurrence</span> (display window screen white black <span style="color: #98fb98;">&amp;optional</span> (point-count 100000))
+  (<span style="color: #00ffff;">let</span> ((gc (xlib:create-gcontext <span style="color: #b0c4de;">:drawable</span> window <span style="color: #b0c4de;">:background</span> white <span style="color: #b0c4de;">:foreground</span> black)))
+    (<span style="color: #00ffff;">multiple-value-bind</span> (width height) (full-window-state window)
+      (xlib:clear-area window)
+      (draw-ppict window gc point-count 0.0 0.0 (* width 0.5) (* height 0.5))
+      (xlib:display-force-output display))
+    (xlib:free-gcontext gc)))
+
+<span style="color: #ff7f24;">;;; </span><span style="color: #ff7f24;">Draw points.  X assumes points are in the range of width x height,</span>
+<span style="color: #ff7f24;">;;; </span><span style="color: #ff7f24;">with 0,0 being upper left and 0,H being lower left.</span>
+<span style="color: #ff7f24;">;;; </span><span style="color: #ff7f24;">hw and hh are half-width and half-height of screen</span>
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">draw-ppict</span> (win gc count x y hw hh)
+  <span style="color: #ffa07a;">"Recursively draw pretty picture"</span>
+  (<span style="color: #00ffff;">unless</span> (zerop count)
+    (<span style="color: #00ffff;">let</span> ((xf (floor (* (+ 1.0 x) hw ))) <span style="color: #ff7f24;">;These lines center the picture</span>
+          (yf (floor (* (+ 0.7 y) hh ))))
+      (xlib:draw-point win gc xf yf)
+      (draw-ppict win gc (1- count)
+                  (- (* y (1+ (sin (* 0.7 x)))) (* 1.2 (sqrt (abs x))))
+                  (- 0.21 x)
+                  hw
+                  hh))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">recurrence-demo</span> (x y width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (white (xlib:screen-white-pixel screen))
+         (black (xlib:screen-black-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> x
+                     <span style="color: #b0c4de;">:y</span> y
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> white
+                     <span style="color: #b0c4de;">:override-redirect</span> <span style="color: #b0c4de;">:on</span>
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span> <span style="color: #b0c4de;">:enter-window</span>))))
+    (xlib:map-window my-window)
+    (setf (xlib:window-priority my-window) <span style="color: #b0c4de;">:above</span>)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span>     () (<span style="color: #00ffff;">progn</span>
+                          (recurrence display my-window screen white black)
+                          nil))
+      (<span style="color: #b0c4de;">:enter-notify</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(recurrence-demo 10 10 700 700)</span>
+</pre>
+</div>
+</div>
+</div>
+<div id="outline-container-unnumbered-3" class="outline-2">
+<h2 id="unnumbered-3">События</h2>
+<div class="outline-text-2" id="text-unnumbered-3">
+<p>
+Цикл обработки событий - это ядро программы. Мы установили ключевое слово:
+<code>force-output-p</code> который указывает очищать выходной буфер перед проверкой
+событий. Поэтому теперь нет необходимости писать везде <code>xlib:display-force-output</code>.
+</p>
+
+<p>
+Макрос <code>xlib:event-case</code> анализирует возвращаемое значение каждого кейса и если оно
+истинно, то удаляет событие из очереди. Однако мы указываем всегда удалять событие
+после обработки установивив <code>:discard-p</code> в <code>t</code>.
+</p>
+
+<p>
+Тем не менее, когда обработчик события (в нашем случае - <code>:enter-notify</code>) возвращает
+<code>t</code> - мы выходим из цикла обработки событий и продолжаем дальше: уничтожаем окно и
+закрываем дисплей.
+</p>
+</div>
+
+<div id="outline-container-unnumbered-4" class="outline-3">
+<h3 id="unnumbered-4">Exposure</h3>
+<div class="outline-text-3" id="text-unnumbered-4">
+<p>
+Событие <code>:exposure</code> имеет важное значение. Сервер X не делает заметки о том, что было
+нарисовано окне. Если окно перекрывается другим, содержимое теряется. Когда перекрытие
+исчезает, X-сервер отправляет событие <code>:exposure</code>. X-сервер говорит этим: «Я потерял
+содержимое, напомни мне, что должно было быть в окне.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp"><span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span> <span style="color: #b0c4de;">:enter-window</span>)
+</pre>
+</div>
+
+<p>
+Это код при внутри <code>xlib:create-window</code> устанавливает окно для получения событий
+<code>:exposure</code>. Он также устанавливает окно для получения событий <code>enter-notify</code> о
+событии.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-5" class="outline-2">
+<h2 id="unnumbered-5">Графический контекст</h2>
+<div class="outline-text-2" id="text-unnumbered-5">
+<p>
+X11 протокол предназначен для управления окнами по сети и спроектирован чтобы
+минимизировать трафик. Он предполагает, что когда я хочу рисовать линии, я могу
+рисовать разными цветами линии разной толщины и все эти параметры можно назвать
+"графическим контекстом". Поэтому такие контексты хранятся на сервере и используются
+клиентом для рисования - это минимизирует количество посылаемых команд.
+</p>
+
+<p>
+В следующем примере мы создаем графический контекст для рисования двух прямых линий из
+противостоящих углов окна и выводим в консоль текстовую репрезентацию графического
+контекста:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">graphic-x</span> (width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>))))
+    (describe grackon)
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span> ()
+                 (xlib:draw-line my-window grackon 0 height width 0)
+                 (xlib:draw-line my-window grackon 0 0 width height)
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(graphic-x 700 700)</span>
+</pre>
+</div>
+
+<p>
+Вот как выглядит эта репрезентация:
+</p>
+
+<pre class="example">
+#&lt;XLIB:GCONTEXT :0 60817409&gt;
+  [structure-object]
+
+Slots with :INSTANCE allocation:
+  ID            = 60817409
+  DISPLAY       = #&lt;XLIB:DISPLAY :0 (The X.Org Foundation R11905000)&gt;
+  DRAWABLE      = #&lt;XLIB:WINDOW :0 148&gt;
+  CACHE-P       = T
+  SERVER-STATE  = #(3 4294967295 16777215 0 0 0 1 0 0 0 NIL NIL 0 0 NIL 0 1 0 0 0 0 4 1..
+  LOCAL-STATE   = #(3 4294967295 16777215 0 0 0 1 0 0 0 NIL NIL 0 0 NIL 0 1 0 0 0 0 4 1..
+  PLIST         = NIL
+  NEXT          = NIL
+</pre>
+
+<p>
+Стоит обратить внимание, на то как изменился цикл обработки событий. Теперь заверешение
+происходит когда в окне произойдет клик мышкой, поэтому удобно видеть, как окно
+перерисовывается при изменении размера
+</p>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-6" class="outline-2">
+<h2 id="unnumbered-6">График функции</h2>
+<div class="outline-text-2" id="text-unnumbered-6">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> |x,f(x)| (points x-min x-max f)
+  <span style="color: #ffa07a;">"Call f repeatly to build an array tabulating f from</span>
+<span style="color: #ffa07a;">   x-min to x-max inclusive. Uses CLX representation so</span>
+<span style="color: #ffa07a;">   array is twice as long as the number of points evaluated"</span>
+  (<span style="color: #00ffff;">let</span> ((a (make-array (* 2 points))))
+    (<span style="color: #00ffff;">dotimes</span> (index points)
+      (<span style="color: #00ffff;">let</span> ((x (+ x-min
+                  (/ (* (- x-max x-min) index)
+                     (- points 1)))))
+        (setf (aref a (* 2 index))
+              x
+              (aref a (+ (* 2 index ) 1))
+              (funcall f x))))
+    a))
+
+(<span style="color: #00ffff;">defun</span> |x(t),y(t)| (points t-min t-max x y)
+  (<span style="color: #00ffff;">let</span> ((a (make-array (* 2 points))))
+    (<span style="color: #00ffff;">dotimes</span> (index points)
+      (<span style="color: #00ffff;">let</span> ((tau (+ t-min
+                    (/ (* (- t-max t-min) index)
+                       (- points 1)))))
+        (setf (aref a (* 2 index))
+              (funcall x tau)
+              (aref a (+ (* 2 index ) 1))
+              (funcall y tau))))
+    a))
+
+(<span style="color: #00ffff;">defun</span> |z(t)| (points t-min t-max z)
+  (<span style="color: #00ffff;">let</span> ((a (make-array (* 2 points))))
+    (<span style="color: #00ffff;">dotimes</span> (index points)
+      (<span style="color: #00ffff;">let</span> ((z (funcall z
+                        (+ t-min
+                           (/ (* (- t-max t-min) index)
+                              (- points 1))))))
+        (setf (aref a (* 2 index))
+              (realpart z)
+              (aref a (+ (* 2 index) 1))
+              (imagpart z))))
+    a))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">cycloid</span>(loop1 size1 loop2 size2)
+  #'(<span style="color: #00ffff;">lambda</span>(x)(+ (* size1 (exp (* (complex 0f0 loop1) x)))
+                 (* size2 (exp (* (complex 0f0 loop2) x))))))
+
+
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">bound-xy-vec</span>(xys)
+  (<span style="color: #00ffff;">do</span> ((index 0 (+ index 2))
+       (x-min (aref xys 0)
+              (min x-min (aref xys index)))
+       (x-max (aref xys 0)
+              (max x-max (aref xys index)))
+       (y-min (aref xys 1)
+              (min y-min (aref xys (+ index 1))))
+       (y-max (aref xys 1)
+              (max y-max (aref xys (+ index 1)))))
+      ((&gt;= index (length xys))
+       (values x-min x-max y-min y-max))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">fit-xy-to-window</span> (xy-vec width height)
+  (<span style="color: #00ffff;">let</span> ((a (make-array (length xy-vec))))
+    (<span style="color: #00ffff;">multiple-value-bind</span> (x-min x-max y-min y-max)
+        (bound-xy-vec xy-vec)
+      (<span style="color: #00ffff;">loop</span> for i from 0 below (length xy-vec) do
+           (setf (aref a i)
+                 (<span style="color: #00ffff;">if</span> (evenp i)
+                     (round  (* width (- (aref xy-vec i) x-min))
+                             (- x-max x-min))
+                     (round (* height (- y-max (aref xy-vec i)))
+                            (- y-max y-min)))))
+      a)))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">normalised-graph</span>(points width height)
+  (single-graph (fit-xy-to-window points width height)
+                width
+                height))
+
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">single-graph</span> (points width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>))))
+    (describe grackon)
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span> ()
+                 (xlib:draw-lines my-window
+                                  grackon
+                                  points)
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|x,f(x)| 100 (- pi) (* 3 pi) #'sin)</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 200)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(single-graph #(0 0 100 100 200 300 300 0) 400 400)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|x,f(x)| 100 -3 3</span>
+<span style="color: #ff7f24;">;;                             </span><span style="color: #ff7f24;">#'(lambda(x)(* x x)))</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 400)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|x(t),y(t)| 100 0 (* 2 pi) #'cos #'sin)</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 400)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|x(t),y(t)| 100 0 (* 2 pi)</span>
+<span style="color: #ff7f24;">;;                                </span><span style="color: #ff7f24;">#'(lambda(x)(sin (* 2 x))) #'sin)</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 400)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|z(t)| 100 0 (* 2 pi)</span>
+<span style="color: #ff7f24;">;;                           </span><span style="color: #ff7f24;">#'(lambda(theta)(exp (* #c(0 1) theta))))</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 400)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|z(t)| 100 0 (* 3 pi)</span>
+<span style="color: #ff7f24;">;;                           </span><span style="color: #ff7f24;">#'(lambda(theta)</span>
+<span style="color: #ff7f24;">;;                               </span><span style="color: #ff7f24;">(+ theta</span>
+<span style="color: #ff7f24;">;;                                  </span><span style="color: #ff7f24;">(exp (* #c(0 1)</span>
+<span style="color: #ff7f24;">;;                                          </span><span style="color: #ff7f24;">(- (* 3/2 pi)</span>
+<span style="color: #ff7f24;">;;                                             </span><span style="color: #ff7f24;">theta))))))</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">800 200)</span>
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(normalised-graph (|z(t)| 1000 0 (* 2 pi)</span>
+<span style="color: #ff7f24;">;;                           </span><span style="color: #ff7f24;">(cycloid 3 10 13 5))</span>
+<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">400 400)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-7" class="outline-2">
+<h2 id="unnumbered-7">Understanding exposure</h2>
+<div class="outline-text-2" id="text-unnumbered-7">
+<p>
+Масштабирование окна и перерисовка
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">show-exposure-events</span> (width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>))))
+    (describe grackon)
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span> (count x y width height)
+                 (format t <span style="color: #ffa07a;">"~A [~A,~A] [~A,~A]~%"</span> count x y width height)
+                 (xlib:draw-line my-window
+                                 grackon
+                                 x y
+                                 width height
+                                 t)
+                 (xlib:draw-line my-window
+                                 grackon
+                                 x (+ y height)
+                                 (+ x width) y))
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(show-exposure-events 800 800)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-8" class="outline-2">
+<h2 id="unnumbered-8">Вывод текста</h2>
+<div class="outline-text-2" id="text-unnumbered-8">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">hello-world</span> (width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>))))
+    (describe (xlib:gcontext-font grackon))
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span> (count)
+                 (<span style="color: #00ffff;">when</span> (zerop count)
+                   (xlib:draw-glyphs
+                    my-window
+                    grackon
+                    20 50
+                    <span style="color: #ffa07a;">"Hello World!"</span>))
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(hello-world 700 700)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-9" class="outline-2">
+<h2 id="unnumbered-9">Шрифты</h2>
+<div class="outline-text-2" id="text-unnumbered-9">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">constituent</span>(c)
+  (and (graphic-char-p c)
+       (not (char= c #\space))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">white-space-split</span> (string)
+  (<span style="color: #00ffff;">when</span> (plusp (length string))
+    (<span style="color: #00ffff;">let</span> ((cut-point (position-if
+                      (complement #'constituent)
+                      string)))
+      (<span style="color: #00ffff;">if</span> cut-point
+          (cons (subseq string 0 cut-point)
+                (white-space-split
+                 (subseq string (1+ cut-point))))
+          (list string)))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">ragged-right</span> (words <span style="color: #98fb98;">&amp;optional</span> (requested-width 400)
+                             (requested-height 300)(host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:font</span> <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">"-schumacher-*-*-*-*-*-*-*-*-*-*-*"</span>
+                   <span style="color: #ffa07a;">"-bitstream-bitstream charter-bold-i-normal--0-0-0-0-p-0-adobe-standard"</span>
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> requested-width
+                     <span style="color: #b0c4de;">:height</span> requested-height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>
+                                                       <span style="color: #b0c4de;">:structure-notify</span>)))
+         (actual-height nil)
+         (actual-width nil))
+    (describe (xlib:gcontext-font grackon))
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:configure-notify</span> (width height)
+                         (setf actual-width width actual-height height)
+                         nil)
+      (<span style="color: #b0c4de;">:exposure</span> (count)
+                 (<span style="color: #00ffff;">when</span> (zerop count)
+                   (<span style="color: #00ffff;">let*</span> ((right-margin 5)
+                          (left-margin 10)
+                          (line-spacing (+ 3 (xlib:font-ascent (xlib:gcontext-font grackon))))
+                          (inter-word-space (xlib:text-width grackon <span style="color: #ffa07a;">" "</span>))
+                          (line 1)<span style="color: #ff7f24;">; work down the page in lines of text</span>
+                          (x left-margin))<span style="color: #ff7f24;">;work from left to right in pixels</span>
+                     (<span style="color: #00ffff;">dolist</span> (word words)
+                       (<span style="color: #00ffff;">let</span> ((width (xlib:text-width grackon word)))
+                         (<span style="color: #00ffff;">when</span> (&gt; (+ x width right-margin) actual-width)
+                                        <span style="color: #ff7f24;">; where we've got to, plus the word we are thinking about</span>
+                                        <span style="color: #ff7f24;">; plus the margin, will not fit in the window</span>
+                                        <span style="color: #ff7f24;">; so start a new line</span>
+                           (incf line) <span style="color: #ff7f24;">; line-feed</span>
+                           (setf x left-margin)) <span style="color: #ff7f24;">; carriage return</span>
+                         (xlib:draw-glyphs
+                          my-window
+                          grackon
+                          x
+                          (* line line-spacing)
+                          word)
+                         (incf x (+ width inter-word-space))))))
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(ragged-right (white-space-split "Ragged right setting is easier than</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">justified setting.  This is both a strength and a weakness.  Although</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">the regular word spacing of ragged right setting is easier on the</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">reader's eye, in craft work there is honour and glory in doing things</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">the hard way. The reader of justified text knows of the labour and</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">expense, and is flattered to get something for nothing, even if it is</span>
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">worth what he paid."))</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-10" class="outline-2">
+<h2 id="unnumbered-10">Цветовые прямоугольники</h2>
+<div class="outline-text-2" id="text-unnumbered-10">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defstruct</span> <span style="color: #98fb98;">rect</span> x y w h c)
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">random-choice</span> (item-list)
+  (<span style="color: #00ffff;">let</span> ((options (length item-list)))
+    (elt item-list (random options))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">cons-up-rect-list</span> (n)
+  (cons-up n #'(<span style="color: #00ffff;">lambda</span>()
+                 (make-rect <span style="color: #b0c4de;">:x</span> (random 300)
+                            <span style="color: #b0c4de;">:y</span> (random 300)
+                            <span style="color: #b0c4de;">:w</span> (+ 20 (random 30))
+                            <span style="color: #b0c4de;">:h</span> (+ 20 (random 30))
+                            <span style="color: #b0c4de;">:c</span> (random-choice *colour-list*)))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">cons-up</span> (count constructor)
+  (<span style="color: #00ffff;">let</span> (accumulator)
+    (<span style="color: #00ffff;">dotimes</span> (index count accumulator)
+      (push (funcall constructor) accumulator))))
+
+(<span style="color: #00ffff;">defvar</span> <span style="color: #eedd82;">*colour-list*</span> '(red green blue yellow cyan magenta))
+
+(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*default-rect-list*</span>
+  (cons-up-rect-list 20))
+
+(<span style="color: #00ffff;">defvar</span> <span style="color: #eedd82;">*rect-list*</span> *default-rect-list*)
+                                        <span style="color: #ff7f24;">; The program can be loaded and run, and will display</span>
+                                        <span style="color: #ff7f24;">; some rectangles. If you have already created some</span>
+                                        <span style="color: #ff7f24;">; rectangles, it will not clobber them.</span>
+                                        <span style="color: #ff7f24;">; In particular you can edit the source, reload the</span>
+                                        <span style="color: #ff7f24;">; the file, and you still have your own rectangle list.</span>
+                                        <span style="color: #ff7f24;">; At any time, you can get back to the default with</span>
+                                        <span style="color: #ff7f24;">; (setf *rect-list* *default-rect-list*)</span>
+
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">show-rectangles</span> (width height <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> width
+                     <span style="color: #b0c4de;">:height</span> height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>))))
+    (<span style="color: #00ffff;">dolist</span> (colour-symbol *colour-list*)
+      (setf (get colour-symbol 'grackon)
+            (xlib:create-gcontext
+             <span style="color: #b0c4de;">:drawable</span> root-window
+             <span style="color: #b0c4de;">:foreground</span> (xlib:alloc-color
+                          (xlib:window-colormap root-window)
+                          (symbol-name colour-symbol))
+             <span style="color: #b0c4de;">:background</span> black)))
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:exposure</span> (count)
+                 (<span style="color: #00ffff;">when</span> (zerop count)
+                   (<span style="color: #00ffff;">dolist</span> (rect *rect-list*)
+                     (xlib:draw-rectangle
+                      my-window
+                      (get (rect-c rect) 'grackon)
+                      (rect-x rect)
+                      (rect-y rect)
+                      (rect-w rect)
+                      (rect-h rect)
+                      'fill)))
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(show-rectangles 700 700)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-11" class="outline-2">
+<h2 id="unnumbered-11">Дочерние окна и обработка нажатий клавиш</h2>
+<div class="outline-text-2" id="text-unnumbered-11">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">graphic-x</span> (width height across down <span style="color: #98fb98;">&amp;optional</span> (host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (green (xlib:alloc-color
+                 (xlib:window-colormap root-window)
+                 'green))
+         (blue (xlib:alloc-color
+                (xlib:window-colormap root-window)
+                'blue))
+         (red (xlib:alloc-color
+               (xlib:window-colormap root-window)
+               'red))
+         (top-window (xlib:create-window
+                      <span style="color: #b0c4de;">:parent</span> root-window
+                      <span style="color: #b0c4de;">:x</span> 0
+                      <span style="color: #b0c4de;">:y</span> 0
+                      <span style="color: #b0c4de;">:width</span> width
+                      <span style="color: #b0c4de;">:height</span> height
+                      <span style="color: #b0c4de;">:background</span> black
+                      <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:key-press</span>
+                                                        <span style="color: #b0c4de;">:button-press</span>)))
+         (red-window (xlib:create-window
+                      <span style="color: #b0c4de;">:parent</span> top-window
+                      <span style="color: #b0c4de;">:x</span> across
+                      <span style="color: #b0c4de;">:y</span> 0
+                      <span style="color: #b0c4de;">:width</span> (truncate width 4)
+                      <span style="color: #b0c4de;">:height</span> (truncate height 4)
+                      <span style="color: #b0c4de;">:background</span> red
+                      <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:button-press</span>)))
+         (green-window (xlib:create-window
+                        <span style="color: #b0c4de;">:parent</span> top-window
+                        <span style="color: #b0c4de;">:x</span> 0
+                        <span style="color: #b0c4de;">:y</span> down
+                        <span style="color: #b0c4de;">:width</span> (truncate width 4)
+                        <span style="color: #b0c4de;">:height</span> (truncate height 4)
+                        <span style="color: #b0c4de;">:background</span> green
+                        <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:button-press</span>)))
+         (blue-window (xlib:create-window
+                       <span style="color: #b0c4de;">:parent</span> top-window
+                       <span style="color: #b0c4de;">:x</span> across
+                       <span style="color: #b0c4de;">:y</span> down
+                       <span style="color: #b0c4de;">:width</span> (truncate width 4)
+                       <span style="color: #b0c4de;">:height</span> (truncate height 4)
+                       <span style="color: #b0c4de;">:background</span> blue
+                       <span style="color: #b0c4de;">:border-width</span> 5
+                       <span style="color: #b0c4de;">:border</span> white
+                       <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:button-press</span>))))
+    (xlib:map-window top-window)
+    (xlib:map-window red-window)
+    (xlib:map-window green-window)
+    (xlib:map-window blue-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:button-press</span> (window)
+                     (<span style="color: #00ffff;">cond</span> ((eq window red-window)
+                            (xlib:destroy-window red-window)
+                            nil)
+                           ((eq window green-window)
+                            (xlib:destroy-window blue-window)
+                            nil)
+                           ((eq window blue-window)
+                            (xlib:destroy-window green-window)
+                            nil)
+                           (t t)))
+      (<span style="color: #b0c4de;">:key-press</span> ()
+                  (xlib:circulate-window-down top-window)
+                  nil))
+    (xlib:destroy-window top-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(graphic-x 300 300 50 50)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-12" class="outline-2">
+<h2 id="unnumbered-12">Параграфы</h2>
+<div class="outline-text-2" id="text-unnumbered-12">
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">constituent</span>(c)
+  (and (graphic-char-p c)
+       (not (char= c #\space))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">get-list-of-paragraphs</span>(filename)
+  (<span style="color: #00ffff;">with-open-file</span>
+      (stream filename
+              <span style="color: #b0c4de;">:direction</span> <span style="color: #b0c4de;">:input</span>
+              <span style="color: #b0c4de;">:if-does-not-exist</span> nil)
+    (<span style="color: #00ffff;">if</span> stream (read stream)
+        (list (concatenate 'string <span style="color: #ffa07a;">"Unable to open "</span> filename)))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">white-space-split</span> (string)
+  (<span style="color: #00ffff;">when</span> (plusp (length string))
+    (<span style="color: #00ffff;">let</span> ((cut-point (position-if
+                      (complement #'constituent)
+                      string)))
+      (<span style="color: #00ffff;">if</span> cut-point
+          (<span style="color: #00ffff;">if</span> (zerop cut-point)
+              (white-space-split
+               (subseq string 1))
+              (cons (subseq string 0 cut-point)
+                    (white-space-split
+                     (subseq string (1+ cut-point)))))
+          (list string)))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">render</span> (list-of-paragraphs
+               window
+               window-width
+               window-height
+               font
+               grackon)
+  (<span style="color: #00ffff;">let</span> ((right-margin 5)
+        (left-margin 10)
+        (line-spacing (+ 3 (xlib:font-ascent font)))
+        (inter-word-space (xlib:text-width font <span style="color: #ffa07a;">" "</span>)))
+    (<span style="color: #00ffff;">let</span> ((line 1)
+          (x left-margin))
+      (<span style="color: #00ffff;">dolist</span> (paragraph list-of-paragraphs)
+        (<span style="color: #00ffff;">dolist</span> (word (white-space-split paragraph))
+          (<span style="color: #00ffff;">let</span> ((width (xlib:text-width font word)))
+            (<span style="color: #00ffff;">when</span> (&gt; (+ x width right-margin) window-width)
+              (incf line)
+              (setf x left-margin))
+            (xlib:draw-glyphs
+             window
+             grackon
+             x
+             (* line line-spacing)
+             word)
+            (incf x (+ width inter-word-space))))
+        (incf line (<span style="color: #00ffff;">if</span> (= x left-margin) 1 2))
+        (setf x left-margin)))))
+
+(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">paragraphs</span> (filename <span style="color: #98fb98;">&amp;optional</span> (requested-width 400)
+                              (requested-height 300)(host <span style="color: #ffa07a;">""</span>))
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display host))
+         (font (xlib:open-font
+                display
+                <span style="color: #ffa07a;">"-bitstream-bitstream charter-bold-i-normal--0-0-0-0-p-0-adobe-standard"</span>
+                <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">"-*-lucida-medium-r-*-*-12-*-*-*-*-*-*"</span>
+                ))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (white (xlib:screen-white-pixel screen))
+         (root-window (xlib:screen-root screen))
+         (grackon (xlib:create-gcontext
+                   <span style="color: #b0c4de;">:drawable</span> root-window
+                   <span style="color: #b0c4de;">:font</span> font
+                   <span style="color: #b0c4de;">:foreground</span> white
+                   <span style="color: #b0c4de;">:background</span> black))
+         (my-window (xlib:create-window
+                     <span style="color: #b0c4de;">:parent</span> root-window
+                     <span style="color: #b0c4de;">:x</span> 0
+                     <span style="color: #b0c4de;">:y</span> 0
+                     <span style="color: #b0c4de;">:width</span> requested-width
+                     <span style="color: #b0c4de;">:height</span> requested-height
+                     <span style="color: #b0c4de;">:background</span> black
+                     <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask <span style="color: #b0c4de;">:exposure</span>
+                                                       <span style="color: #b0c4de;">:button-press</span>
+                                                       <span style="color: #b0c4de;">:structure-notify</span>)))
+         (actual-height nil)
+         (actual-width nil)
+         (list-of-paragraphs (get-list-of-paragraphs filename)))
+    (describe (xlib:gcontext-font grackon))
+    (xlib:map-window my-window)
+    (xlib:event-case (display <span style="color: #b0c4de;">:force-output-p</span> t
+                              <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:configure-notify</span> (width height)
+                         (setf actual-width width actual-height height)
+                         nil)
+      (<span style="color: #b0c4de;">:exposure</span> (count)
+                 (<span style="color: #00ffff;">when</span> (zerop count)
+                   (render list-of-paragraphs
+                           my-window
+                           actual-width
+                           actual-height
+                           font
+                           grackon))
+                 nil)
+      (<span style="color: #b0c4de;">:button-press</span> () t))
+    (xlib:destroy-window my-window)
+    (xlib:close-display display)))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(paragraphs "~/tmp/escape.txt")</span>
+</pre>
+</div>
+
+<p>
+~/tmp/escape.txt
+</p>
+
+<pre class="example">
+("One of the attractions of CL is that the strings
+include newline characters, so one can just type in
+unparsed character data into large strings that run
+on for lots of lines of lots of characters"
+
+"TeX is the king of typesetting input languages. If one has
+a lot of plain text to type set, one just types it in."
+
+"Unfortunately that is not the whole story. Various characters are used
+to mark up the input. $ &amp; % # _ { and } are easily produced, with
+\\$ \\&amp; \\% \\# \\_ \\{ \\}"
+
+"However, the first edition of the LaTeX manual explains that
+~ ^ and \\ usually appear only in simulated keyboard input.
+Simulated keyboard input is entered using the \"verbatim\"
+environment, so ~ ^ and \\ are escaped as:"
+
+"\\begin{verbatim}
+~ ^ \\
+\\end{verbatim}"
+
+"At that time, even avante garde thinkers, such as Knuth,
+had no cause to trouble themselves over the law of migration to
+middle-ware. The problem is that eventually TeX input files would
+be written by computers as much as they would be typed in.
+Except that the quoting rules are vexatious. To use TeX as
+middleware one needs to be able write code that quotes strings,
+reliably and automatically." )
+</pre>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-13" class="outline-2">
+<h2 id="unnumbered-13">Обработка позиции щелчка мыши</h2>
+<div class="outline-text-2" id="text-unnumbered-13">
+<p>
+Обратите внимание на изменение заголовка окна с использование <code>xlib:change-property</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">pick2numbers</span> (x-range y-range)
+  (<span style="color: #00ffff;">let*</span> ((display (xlib:open-display <span style="color: #ffa07a;">""</span>))
+         (screen (first (xlib:display-roots display)))
+         (black (xlib:screen-black-pixel screen))
+         (window
+          (xlib:create-window
+           <span style="color: #b0c4de;">:parent</span> (xlib:screen-root screen)
+           <span style="color: #b0c4de;">:class</span> <span style="color: #b0c4de;">:input-output</span>
+           <span style="color: #b0c4de;">:x</span> 0
+           <span style="color: #b0c4de;">:y</span> 0
+           <span style="color: #b0c4de;">:width</span> x-range
+           <span style="color: #b0c4de;">:height</span> y-range
+           <span style="color: #b0c4de;">:background</span> black
+           <span style="color: #b0c4de;">:event-mask</span> (xlib:make-event-mask
+                        <span style="color: #b0c4de;">:button-press</span>))))
+    (xlib:change-property window
+                          <span style="color: #b0c4de;">:wm_name</span> <span style="color: #ffa07a;">"Pick two numbers"</span>
+                          <span style="color: #b0c4de;">:string</span> 8
+                          <span style="color: #b0c4de;">:transform</span> #'char-code)
+    (xlib:map-window window)
+    (xlib:event-case
+        (display <span style="color: #b0c4de;">:force-output-p</span> t
+                 <span style="color: #b0c4de;">:discard-p</span> t)
+      (<span style="color: #b0c4de;">:button-press</span>
+       (x y)
+       (xlib:unmap-window window)
+       (xlib:destroy-window window)
+       (xlib:close-display display)
+       (cons x (- y-range (+ y 1)))))))
+
+<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(pick2numbers 200 400)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-unnumbered-14" class="outline-2">
+<h2 id="unnumbered-14"><span class="todo TODO">TODO</span> Скриншоты</h2>
+</div>
+<div id="outline-container-unnumbered-15" class="outline-2">
+<h2 id="unnumbered-15">Ссылки</h2>
+<div class="outline-text-2" id="text-unnumbered-15">
+<ul class="org-ul">
+<li><a href="http://www.cawtech.demon.co.uk/clx/simple/examples.html">http://www.cawtech.demon.co.uk/clx/simple/examples.html</a>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</body>
+</html>
