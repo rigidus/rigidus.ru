@@ -12,6 +12,8 @@
     .equ PINB, 0x16
     .equ TCCR0A, 0x30
     .equ TCCR0B, 0x33
+    .equ OCR0A, 0x36
+    .equ OCR0B, 0x3C
     .equ TCNT0, 0x32
     .equ TIFR, 0x38
     .equ TIMSK, 0x39
@@ -67,62 +69,66 @@ _timer0_overflow:
     _timer0_overflow_ret:
         ;; Очищаем счетчик переполнений
         ;; mov     cnt, r1
-
-        ldi tmp0, 0
-        out TCNT0, tmp0
+    
+        ;; ldi tmp0, 0
+        ;; out TCNT0, tmp0
         ;; out TCNT0, cnt
         ;; inc cnt
-
+    
         reti
 
 _reset:
     ;; Запретить прерывания
     clr     r1
     out     SREG, r1
-
+    
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-    ;; Настроить PB2 и PB4 на выход, остальные на вход
+    
+    ;; Инициализируем выводы
+    ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
+    ;;                 |          |
+    ;;                 | +--------+
+    ;;                 | |
+    ;;                 v v
     ldi     tmp0, 0b00010100
     out     DDRB, tmp0
-
+    
     ;; Для пинов подключенных на вход (кнопки)
-    ;; установить подтяжку к питанию, записав 1 чтобы не было hi-z
+    ;; установить подтяжку к питанию (записав 1) чтобы не было hi-z
     ;; Однако их надо подтянуть к минусу питания (!)
     ;; PB4 подтягиваем к земле, потому что начальное
     ;; его состояние - выключен
-    ;; [NB] - PB2 - теперь не кнопка а выход так что его тоже к земле
+    ;; PB2(0C0A) - тоже к земле, потому что он выход
     ldi     tmp0, 0b00001011
     out     PORTB, tmp0
+    
+    ;; Инициализация таймера
     ;; TCCR0A
-    ldi tmp0, 0b10000010
+    ldi tmp0, 0b01000010
     out TCCR0A, tmp0
     ;; TCCR0B
     ldi tmp0, 0b101
     out TCCR0B, tmp0
     ;; Clear TCNT0
     out TCNT0, r1
-    ;; TCCR0A & TCCR0B
+    ;; OCR0A & OCR0B
     ldi tmp0, 0xFF
-    out TCCR0A, tmp0
+    out OCR0A, tmp0
     ;; Прерывания таймера
-    ldi tmp0, 0b0
+    ldi tmp0, 0b010
     out TIMSK, tmp0
     ;; Очищаем флаги прерывания таймера
     out TIFR, r1
+    
     ;; Начальная инициализация счетчика переполнений
     mov     cnt, r1
-
+    
     ;; Разрешить прерывания
     sei
 
 _mainloop:
-    ;; mov tmp0, cnt
-    ;; dec tmp0
-    ;; out TCCR0A, tmp0
-    ;; mov cnt, tmp0
-
     rjmp    _mainloop
 
 _infloop:
@@ -131,7 +137,7 @@ _infloop:
 _blink:
     in      tmp0, PORTB
     com     tmp0
-    ldi     tmp1, 0b00010100    ; Мигаем только PB2 и PB4
+    ldi     tmp1, 0b00010000    ; Мигаем только PB4
     and     tmp0, tmp1
     out     PORTB, tmp0
     ret
