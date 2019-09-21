@@ -59,7 +59,7 @@ _timer0_overflow:
     ;;     breq    _not_press          ; Перейти если равно
     ;;     ;; Включить светодиод
     ;;     ldi     tmp0, 0b00010000
-    ;;    out     PORTB, tmp0
+    ;; 	out     PORTB, tmp0
     ;;     rjmp    _timer0_overflow_ret
     ;; _not_press:
         ;; Пока ничего не нажато - мигаем
