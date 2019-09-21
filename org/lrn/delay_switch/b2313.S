@@ -67,66 +67,62 @@ _timer0_overflow:
     _timer0_overflow_ret:
         ;; Очищаем счетчик переполнений
         ;; mov     cnt, r1
-    
+
         ldi tmp0, 0
         out TCNT0, tmp0
         ;; out TCNT0, cnt
         ;; inc cnt
-    
+
         reti
 
 _reset:
     ;; Запретить прерывания
     clr     r1
     out     SREG, r1
-    
+
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-    ;; Настроить PB3-PB4 на выход, остальные на вход
-    ldi     tmp0, 0b00011000
+    ;; Настроить PB2 и PB4 на выход, остальные на вход
+    ldi     tmp0, 0b00010100
     out     DDRB, tmp0
-    
-    ;; Для пинов PB0-PB3 подключенных на вход (кнопки)
-    ;; установить подтяжку к питанию, чтобы не было hi-z
+
+    ;; Для пинов подключенных на вход (кнопки)
+    ;; установить подтяжку к питанию, записав 1 чтобы не было hi-z
     ;; Однако их надо подтянуть к минусу питания (!)
     ;; PB4 подтягиваем к земле, потому что начальное
     ;; его состояние - выключен
-    ;; [NB] - PB3 - теперь не кнопка а выход
-    ldi     tmp0, 0b00000111
+    ;; [NB] - PB2 - теперь не кнопка а выход так что его тоже к земле
+    ldi     tmp0, 0b00001011
     out     PORTB, tmp0
-    
-    ;; Настроить Timer
-    
-    ldi     tmp0, 0b101
-    out     TCCR0B, tmp0
-    
-    out     TCNT0, r1
-    
-    ;; OCR0A – Output Compare Register A
-    ;; The Output Compare Register A contains an 8-bit value that is continuously compared with the
-    ;; counter value (TCNT0). A match can be used to generate an Output Compare interrupt, or to
-    ;; generate a waveform output on the OC0A pin.
-    ;; [TODO]
-    
-    ;; OCR0B – Output Compare Register B
-    ;; The Output Compare Register B contains an 8-bit value that is continuously compared with the
-    ;; counter value (TCNT0). A match can be used to generate an Output Compare interrupt, or to
-    ;; generate a waveform output on the OC0B pin.
-    ;; [TODO]
-    
-    ;; Разрешаем прерывания по переполнению таймера 0
-    ldi     tmp0, 0b10
-    out     TIMSK, tmp0
-    
-    out     TIFR, r1
+    ;; TCCR0A
+    ldi tmp0, 0b10000010
+    out TCCR0A, tmp0
+    ;; TCCR0B
+    ldi tmp0, 0b101
+    out TCCR0B, tmp0
+    ;; Clear TCNT0
+    out TCNT0, r1
+    ;; TCCR0A & TCCR0B
+    ldi tmp0, 0xFF
+    out TCCR0A, tmp0
+    ;; Прерывания таймера
+    ldi tmp0, 0b0
+    out TIMSK, tmp0
+    ;; Очищаем флаги прерывания таймера
+    out TIFR, r1
     ;; Начальная инициализация счетчика переполнений
     mov     cnt, r1
-    
+
     ;; Разрешить прерывания
     sei
 
 _mainloop:
+    ;; mov tmp0, cnt
+    ;; dec tmp0
+    ;; out TCCR0A, tmp0
+    ;; mov cnt, tmp0
+
     rjmp    _mainloop
 
 _infloop:
@@ -135,7 +131,7 @@ _infloop:
 _blink:
     in      tmp0, PORTB
     com     tmp0
-    ldi     tmp1, 0b00011000    ; Мигаем только PB3-PB4
+    ldi     tmp1, 0b00010100    ; Мигаем только PB2 и PB4
     and     tmp0, tmp1
     out     PORTB, tmp0
     ret
