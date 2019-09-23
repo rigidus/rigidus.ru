@@ -57,14 +57,15 @@
 регистрируется нажатое состояние кнопки - значит контакт установился и
 можно считать кнопку нажатой. Если же серия, не закончившись, прерывается
 обратным состоянием - значит мы снова дожны вернуться к отчету измерений
-с нуля и не можем считать кнопку нажатой. Аналогично и с отпусканием.
+с нуля и не можем считать кнопку нажатой.
+
+При размыкании контактов дребезг не наблюдается.
 
 Для того чтобы реализовать такую схему нам достаточно сделать простейший
-конечный автомат из четырех состояний:
-- кнопка отпущена (=:~~=)
-- кнопка нажимается (=:~_=)
-- кнопка нажата (=:__=)
-- кнопка отпускается (=_~=)
+конечный автомат из трех состояний:
+- кнопка отпущена (=Up=)
+- кнопка нажимается (=Middle=)
+- кнопка нажата (=Down=)
 Условные обозначения в скобках достаточно наглядны для того чтобы
 показать переходные процессы, и, к тому же, являются разрешенными
 идентификаторами
@@ -74,6 +75,7 @@
 - новое зарегистрированное состояние (=NEW=)
 - счетчик одинаковых регистраций (=СNT=)
 - максимальное значение счетчика (=MAX= )
+Выходом же является само состояние автомата
 
 Состояния могут принимать значения высокий/низкий уровень (HIGH/LOW), а
 счетчик - число от 0 до 255, помещающееся в байт. Максимальное значение
@@ -84,39 +86,35 @@
 переходе действия.
 
 #+NAME: btn_fsm
-| predicate                            | from | to  | action       |
-|--------------------------------------+------+-----+--------------|
-| (and (= PREV LOW) (= NEXT HIGH))     | :~~  | :~_ | (setf CNT 0) |
-| (and (= PREV NEXT HIGH) (< CNT MAX)) | :~_  | :~_ | (incf CNT)   |
-| (and (= PREV NEXT) (>= CNT MAX))     | :~_  | :__ | (setf CNT 0) |
-| (= PREV NEXT HIGH)                   | :__  | :__ |              |
-| (and (= PREV HIGH) (= NEXT LOW))     | :__  | :_~ | (setf CNT 0) |
-| (and (= PREV NEXT LOW) (< CNT MAX))  | :_~  | :_~ | (incf CNT)   |
-| (and (= PREV NEXT) (>= CNT MAX)      | :_~  | :~~ | (setf CNT 0) |
+| predicate                            | from   | to     | action       |
+|--------------------------------------+--------+--------+--------------|
+| (and (= PREV LOW) (= NEXT HIGH))     | Up     | Middle | (setf CNT 0) |
+| (and (= PREV NEXT HIGH) (< CNT MAX)) | Middle | Middle | (incf CNT)   |
+| (and (= PREV NEXT) (>= CNT MAX))     | Middle | Down   | (setf CNT 0) |
+| (= PREV NEXT HIGH)                   | Down   | Down   |              |
+| (and (= PREV HIGH) (= NEXT LOW))     | Down   | Up     | (setf CNT 0) |
+| (and (= PREV NEXT LOW))              | Up     | Up     |              |
+
+Стоит отметить, что задавать =predicate= и =action= лучше не так как в
+этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
+упрощает отладку, так как синтаксмческая ошибка в строке таблицы вызовет
+ошибку парсинга в генераторе кода, которую будет довольно сложно
+отследить.
 
 Такая таблица представляет все достаточно компактно, но отлаживать ее
 неудобно, особенно когда количество состояний переваливает за
 десяток. Поэтому, чтобы представить конечный автомат более наглядно, я
 могу преобразовать его в graphviz-представление, для последующей
-отрисовки. Однако названия состояний придется заменить на что-то более
-конвенциональное:
+отрисовки.
 
 #+NAME: btn_fsm_graph
 #+BEGIN_SRC emacs-lisp :var table=btn_fsm :results output :hlines no :colnames yes
-  (let ((replacer (lambda (x)
-                    (replace-regexp-in-string
-                     ":" ""
-                     (replace-regexp-in-string
-                      "_" "Down"
-                      (replace-regexp-in-string
-                       "~" "Up" x))))))
-        (mapcar #'(lambda (x)
-                    (princ
-                     (format "%s -> %s [label =\"%s\"];\n"
-                             (funcall replacer (second x))
-                             (funcall replacer (third x))
+  (mapcar #'(lambda (x)
+              (princ (format "%s -> %s [label =\"%s\"];\n"
+                             (second x)
+                             (third x)
                              (first x))))
-                table))
+          table)
 #+END_SRC
 
 #+BEGIN_SRC dot :file ../../../img/btn_fsm_graph.png :var input=btn_fsm_graph :exports results
@@ -126,6 +124,125 @@
 Теперь по полученной картинке можно "поводить пальцем" и убедиться в ее
 правильности. После этого можно попробовать получить код:
 
+#+NAME: grouping
+#+BEGIN_SRC emacs-lisp :var table=btn_fsm :results value scalar pp :hlines no :colnames yes
+  (let ((result))
+    (mapcar #'(lambda (par)
+                (let ((from (second par))
+                      (to   (third par)))
+                  (let ((val (list :to (third par)
+                                   :predicate (first par)
+                                   :action (fourth par))))
+                    (if (null (alist-get from result nil nil #'equal))
+                        (setf (alist-get from result nil nil #'equal)
+                              (list val))
+                      ;; else
+                      (setf (alist-get from result nil nil #'equal)
+                            (append (alist-get from result nil nil #'equal)
+                                    (list val)))))))
+            table)
+    result)
+#+END_SRC
+
+#+results: grouping
+#+begin_example
+"((\"Down\"
+  (:to \"Down\" :predicate \"(= PREV NEXT HIGH)\" :action \"\")
+  (:to \"Up\" :predicate \"(and (= PREV HIGH) (= NEXT LOW))\" :action \"(setf CNT 0)\"))
+ (\"Middle\"
+  (:to \"Middle\" :predicate \"(and (= PREV NEXT HIGH) (< CNT MAX))\" :action \"(incf CNT)\")
+  (:to \"Down\" :predicate \"(and (= PREV NEXT) (>= CNT MAX))\" :action \"(setf CNT 0)\"))
+ (\"Up\"
+  (:to \"Middle\" :predicate \"(and (= PREV LOW) (= NEXT HIGH))\" :action \"(setf CNT 0)\")
+  (:to \"Up\" :predicate \"(and (= PREV NEXT LOW)\" :action \"\")))
+"
+#+end_example
+
+На первом этапе мы получаем список сгруппированный по исходящим
+узлам. Теперь мы можем обработать его, чтобы получить псевдокод
+реализации конечного автомата
+
+#+NAME: pseudocode
+#+BEGIN_SRC emacs-lisp :var lst=grouping :results value scalar pp :hlines no :colnames yes
+  (let* ((lst  (read (read lst)))
+         (cnt  0)
+         (nums (mapcar #'(lambda (par)
+                           (cons (car par) (incf cnt)))
+                       lst)))
+    `(case %STATE
+       ,@(mapcar
+          #'(lambda (par)
+              (let ((num (alist-get (car par) nums nil nil #'equal)))
+                `(,num (progn
+                         ,@(mapcar
+                            #'(lambda (clause)
+                                `(when ,(let ((predicate (getf clause :predicate)))
+                                          (if (equal "" predicate)
+                                              `(TRUE)
+                                            (car (read-from-string predicate))))
+                                   ,(let ((act (getf clause :action)))
+                                      (if (equal "" act)
+                                          `(NOP)
+                                        (car (read-from-string act))))
+                                   (setf %STATE
+                                         ,(alist-get (getf clause :to)
+                                                     nums nil nil #'equal))))
+                            (cdr par))))))
+          lst)))
+#+END_SRC
+
+По какой-то странной причине этот псевдокод получился очень похожим на
+лисп.
+
+#+results: pseudocode
+#+begin_example
+"(case %STATE
+  (1
+   (progn
+     (when
+         (= PREV NEXT HIGH)
+       (NOP)
+       (setf %STATE 1))
+     (when
+         (and
+          (= PREV HIGH)
+          (= NEXT LOW))
+       (setf CNT 0)
+       (setf %STATE 3))))
+  (2
+   (progn
+     (when
+         (and
+          (= PREV NEXT HIGH)
+          (< CNT MAX))
+       (incf CNT)
+       (setf %STATE 2))
+     (when
+         (and
+          (= PREV NEXT)
+          (>= CNT MAX))
+       (setf CNT 0)
+       (setf %STATE 1))))
+  (3
+   (progn
+     (when
+         (and
+          (= PREV LOW)
+          (= NEXT HIGH))
+       (setf CNT 0)
+       (setf %STATE 2))
+     (when
+         (and
+          (= PREV NEXT LOW))
+       (NOP)
+       (setf %STATE 3)))))
+"
+#+end_example
+
+Как бы там не было, остается превратить его в SSA (Static Single
+Assignment) представление.
+
+[TODO:gmm] Продолжение следует
 
 
 ** TODO Обработка временных интервалов
@@ -148,7 +265,7 @@ AVR и содержать типичные блоки инициализации
 
 #+BEGIN_SRC asm :tangle b2313.S :noweb yes :padline no
   ;;; b2313 delay switch for 4 buttons
-
+      <<test()>>
       <<defines>>
 
       <<symbols>>

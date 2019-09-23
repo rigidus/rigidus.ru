@@ -1,5 +1,11 @@
 ;;; b2313 delay switch for 4 buttons
-
+    Up -> Middle [label ="(and (= PREV LOW) (= NEXT HIGH))"];
+    Middle -> Middle [label ="(and (= PREV NEXT HIGH) (< CNT MAX))"];
+    Middle -> Down [label ="(and (= PREV NEXT) (>= CNT MAX))"];
+    Down -> Down [label ="(= PREV NEXT HIGH)"];
+    Down -> Up [label ="(and (= PREV HIGH) (= NEXT LOW))"];
+    Up -> Up [label ="(and (= PREV NEXT LOW)"];
+    
     #define tmp0 r16
     #define tmp1 r17
     #define cnt  r18
