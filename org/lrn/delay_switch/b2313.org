@@ -240,9 +240,180 @@
 #+end_example
 
 Как бы там не было, остается превратить его в SSA (Static Single
-Assignment) представление.
+Assignment) представление. Для этого мы рекурсивно обойдем дерево,
+анализируя каждый узел. В ходе анализа будем сохранять полученный код в
+динамической переменной. Проверим концепцию на простом коде (внизу),
+который выполняет оперцию AND над двумя сравнениями.
 
-[TODO:gmm] Продолжение следует
+#+NAME: ssa
+#+BEGIN_SRC emacs-lisp :var lst=pseudocode :results value scalar pp :hlines no :colnames yes
+  (defun compare-equal-two-variables (var1 var2)
+    (let ((reg1 (gensym "reg"))         (reg2 (gensym "reg"))
+          (not_equal (gensym "_nq_"))   (end (gensym "_end_")))
+      (push `(ldi ,reg1 ,var1) ssa)
+      (push `(ldi ,reg2 ,var2) ssa)
+      (push `(cp ,reg1 ,reg2) ssa)
+      (push `(brne ,not_equal) ssa)
+      (push `(set-result 0) ssa)
+      (push `(rjmp ,end) ssa)
+      (push `(label ,not_equal) ssa)
+      (push `(set-result 1) ssa)
+      (push `(label ,end) ssa)))
+
+  (defun and-multiple-form (forms)
+    (let ((and-false (gensym "_and_false_ret_"))
+          (and-end   (gensym "_and_end_")))
+      (mapcar #'(lambda (clause)
+                  (recur clause)
+                  (push `(if-false ,and-false) ssa))
+              forms)
+      (push `(set-result 1) ssa)
+      (push `(rjmp and-end) ssa)
+      (push `(label ,and-false) ssa)
+      (push `(set-result 0) ssa)
+      (push `(label ,and-end) ssa)))
+
+  (defun recur (lst)
+    (cond ((null lst) ssa)
+          ((atom lst) (error (format "unk atom: %s" lst)))
+          ((eql 'nop  (car lst)) nil)
+          ((eql 'progn (car lst))
+           (progn (push `(block-open) ssa)
+                  (recur (cdr lst))
+                  (push `(block-close) ssa)))
+          ((eql 'setf (car lst))
+           (cond ((and (atom (cadr lst))
+                       (not (numberp (cadr lst)))
+                       (numberp (caddr lst)))
+                  (push `(set-const-to-var ,(cadr lst) ,(caddr lst))
+                        ssa))
+                 (t (error "unk setf"))))
+          ((eql '= (car lst))
+           (cond ((and (eql 3 (length lst)) (atom (cadr lst)) (atom (caddr lst))
+                       (not (numberp (cadr lst))) (not (numberp (caddr lst))))
+                  (compare-equal-two-variables (cadr lst) (caddr lst)))
+                 (t error "unk equal")))
+          ((eql 'and (car lst))
+           (and-multiple-form (cdr lst)))
+          (t (cons (recur (car lst))
+                   (recur (cdr lst))))))
+
+  (let ((ssa))
+    (recur
+     '(and
+       (= PREV HIGH)
+       (= NEXT LOW)))
+    (nreverse ssa))
+#+END_SRC
+
+#+results: ssa
+#+begin_example
+"((ldi reg202 PREV)
+ (ldi reg203 HIGH)
+ (cp reg202 reg203)
+ (brne _nq_204)
+ (set-result 0)
+ (rjmp _end_205)
+ (label _nq_204)
+ (set-result 1)
+ (label _end_205)
+ (if-false _and_false_ret_200)
+ (ldi reg206 NEXT)
+ (ldi reg207 LOW)
+ (cp reg206 reg207)
+ (brne _nq_208)
+ (set-result 0)
+ (rjmp _end_209)
+ (label _nq_208)
+ (set-result 1)
+ (label _end_209)
+ (if-false _and_false_ret_200)
+ (set-result 1)
+ (rjmp and-end)
+ (label _and_false_ret_200)
+ (set-result 0)
+ (label _and_end_201))
+"
+#+end_example
+
+Теперь можно преобразовать это в правильный ассемблерный листинг:
+
+#+NAME: test
+#+BEGIN_SRC emacs-lisp :var lst=pseudocode :var ssa=ssa :results output
+  (mapcar #'(lambda (op)
+              (cond ((eql 'label (car op))
+                     (princ (format "%s:\n" (cadr op))))
+                    ((eql 'set-result (car op))
+                     (princ (format "    SETRESULT %s\n" (cadr op))))
+                    ((eql 'if-false (car op))
+                     (princ (format "    IFFALSE %s\n" (cadr op))))
+                    ((eql 'if-true (car op))
+                     (princ (format "    IFTRUE %s\n" (cadr op))))
+                    (t (cond ((equal 2 (length op))
+                              (princ (format "    %s %s\n"
+                                             (car op) (cadr op))))
+                             ((equal 2 (length op))
+                              (princ (format "    %s %s, %s\n"
+                                             (car op) (cadr op) (caddr op))))))))
+          (read (read ssa)))
+#+END_SRC
+
+#+results: test
+#+begin_example
+    brne _nq_404
+    SETRESULT 0
+    rjmp _end_405
+_nq_404:
+    SETRESULT 1
+_end_405:
+    IFFALSE _and_false_ret_400
+    brne _nq_408
+    SETRESULT 0
+    rjmp _end_409
+_nq_408:
+    SETRESULT 1
+_end_409:
+    IFFALSE _and_false_ret_400
+    SETRESULT 1
+    rjmp and-end
+_and_false_ret_400:
+    SETRESULT 0
+_and_end_401:
+#+end_example
+
+
+Ожидаемый ассемблерный вариант:
+
+#+BEGIN_SRC asm
+      rcall   _case_start
+  _case_start:
+      pop     %r_addr_low
+      pop     %r_addr_high
+      add     %r_addr_low, $size_start
+      brcc    _not_c1
+      inc     %r_addr_high
+  _not_c1:
+      add     %r_addr_low, %T0 ; база отсчетов CASE
+      brcc    _not_c2
+      inc     %r_addr_high
+  _not_c2:
+      push    %r_addr_high
+      push    %r_addr_low
+      ret
+  _cases:
+      rjmp    _case_1
+      rjmp    _case_2
+      ...
+  _case_1:
+      ...
+      rjmp    _end_case
+  _case_2:
+      ...
+      rjmp    _end_case
+      ...
+  _end_case:
+      ...
+#+END_SRC
 
 
 ** TODO Обработка временных интервалов
