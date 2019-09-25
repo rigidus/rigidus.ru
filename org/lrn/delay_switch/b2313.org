@@ -358,7 +358,7 @@
 
 Вот правило для сравнения двух переменных:
 
-#+NAME:
+#+NAME: rule_equal2
 #+BEGIN_SRC elisp
   ;; = VAR1 VAR2
   (add-recur-rule (lambda (lst)
@@ -402,7 +402,7 @@
 первая перменная равна второй и вторая равна третьей, том можно сказать
 что сравнение удалось.
 
-#+NAME:
+#+NAME: rule_equal3
 #+BEGIN_SRC elisp
   ;; = VAR1 VAR2 VAR3
   (add-recur-rule (lambda (lst)
@@ -455,89 +455,103 @@
                                 (nreverse ssa)))))
 #+END_SRC
 
-AND
+Правило для AND:
 
-#+NAME:
+#+NAME: rule_and
 #+BEGIN_SRC elisp
+  ;; AND
+  (add-recur-rule (lambda (lst)
+                    (eql 'and (car lst)))
+                  (lambda (lst)
+                    (let ((and-false (gensym "_and_false_ret_"))
+                          (and-end   (gensym "_and_end_")))
+                      (mapcar #'(lambda (clause)
+                                  (recur clause)
+                                  (push `(if-false ,and-false) ssa))
+                              (cdr lst))
+                      (push `(set-result TRUE) ssa)
+                      (push `(rjmp and-end) ssa)
+                      (push `(label ,and-false) ssa)
+                      (push `(set-result FALSE) ssa)
+                      (push `(label ,and-end) ssa))))
 
-  ;; (add-recur-rule (lambda (lst)
-  ;;                   (eql 'and (car lst)))
-  ;;                 (lambda (lst)
-  ;;                   (let ((and-false (gensym "_and_false_ret_"))
-  ;;                         (and-end   (gensym "_and_end_")))
-  ;;                     (mapcar #'(lambda (clause)
-  ;;                                 (recur clause)
-  ;;                                 (push `(if-false ,and-false) ssa))
-  ;;                             forms)
-  ;;                     (push `(set-result 1) ssa)
-  ;;                     (push `(rjmp and-end) ssa)
-  ;;                     (push `(label ,and-false) ssa)
-  ;;                     (push `(set-result 0) ssa)
-  ;;                     (push `(label ,and-end) ssa))))
-
-  ;; (assert (equal (format "%s" '((ldi reg202 VAR1)
-  ;;                               (ldi reg203 VAR2)
-  ;;                               (cp reg202 reg203)
-  ;;                               (brne _nq_204)
-  ;;                               (set-result 0)
-  ;;                               (rjmp _end_205)
-  ;;                               (label _nq_204)
-  ;;                               (set-result 1)
-  ;;                               (label _end_205)
-  ;;                               (if-false _and_false_ret_200)
-  ;;                               (ldi reg206 VAR3)
-  ;;                               (ldi reg207 VAR4)
-  ;;                               (cp reg206 reg207)
-  ;;                               (brne _nq_208)
-  ;;                               (set-result 0)
-  ;;                               (rjmp _end_209)
-  ;;                               (label _nq_208)
-  ;;                               (set-result 1)
-  ;;                               (label _end_209)
-  ;;                               (if-false _and_false_ret_200)
-  ;;                               (set-result 1)
-  ;;                               (rjmp and-end)
-  ;;                               (label _and_false_ret_200)
-  ;;                               (set-result 0)
-  ;;                               (label _and_end_201)))
-  ;;                (format "%s" (let ((gensym-counter 200))
-  ;;                               (let ((ssa))
-  ;;                                 (recur
-  ;;                                  '(and
-  ;;                                    (= VAR1 VAR2)
-  ;;                                    (= VAR3 VAR4)))
-  ;;                                 (nreverse ssa)))))))
+  (assert (equal (format "%s" '((ldi reg202 VAR1)
+                                (ldi reg203 VAR2)
+                                (cp reg202 reg203)
+                                (brne _nq_204)
+                                (set-result TRUE)
+                                (rjmp _end_205)
+                                (label _nq_204)
+                                (set-result FALSE)
+                                (label _end_205)
+                                (if-false _and_false_ret_200)
+                                (ldi reg206 VAR3)
+                                (ldi reg207 VAR4)
+                                (cp reg206 reg207)
+                                (brne _nq_208)
+                                (set-result TRUE)
+                                (rjmp _end_209)
+                                (label _nq_208)
+                                (set-result FALSE)
+                                (label _end_209)
+                                (if-false _and_false_ret_200)
+                                (set-result TRUE)
+                                (rjmp and-end)
+                                (label _and_false_ret_200)
+                                (set-result FALSE)
+                                (label _and_end_201)))
+                 (format "%s" (let ((gensym-counter 200))
+                                (let ((ssa))
+                                  (recur
+                                   '(and
+                                     (= VAR1 VAR2)
+                                     (= VAR3 VAR4)))
+                                  (nreverse ssa))))))
 #+END_SRC
 
-#+results: ssa
-#+begin_example
-"((ldi reg202 PREV)
- (ldi reg203 HIGH)
- (cp reg202 reg203)
- (brne _nq_204)
- (set-result 0)
- (rjmp _end_205)
- (label _nq_204)
- (set-result 1)
- (label _end_205)
- (if-false _and_false_ret_200)
- (ldi reg206 NEXT)
- (ldi reg207 LOW)
- (cp reg206 reg207)
- (brne _nq_208)
- (set-result 0)
- (rjmp _end_209)
- (label _nq_208)
- (set-result 1)
- (label _end_209)
- (if-false _and_false_ret_200)
- (set-result 1)
- (rjmp and-end)
- (label _and_false_ret_200)
- (set-result 0)
- (label _and_end_201))
-"
-#+end_example
+Правило для WHEN
+
+#+NAME: rule_when
+#+BEGIN_SRC elisp
+  ;; WHEN
+  (add-recur-rule (lambda (lst)
+                    (eql 'when (car lst)))
+                  (lambda (lst)
+                    (let ((when-false (gensym "_when_false_ret_"))
+                          (when-end   (gensym "_when_end_")))
+                      (recur (cadr lst))
+                      (push `(if-false ,when-false) ssa)
+                      (mapcar #'(lambda (clause)
+                                  (recur clause))
+                              (cddr lst))
+                      (push `(rjmp when-end) ssa)
+                      (push `(label ,when-false) ssa)
+                      (push `(set-result FALSE) ssa)
+                      (push `(label ,when-end) ssa))))
+
+  (assert (equal (format "%s" '((ldi reg202 VAR1)
+                                (ldi reg203 VAR2)
+                                (cp reg202 reg203)
+                                (brne _nq_204)
+                                (set-result TRUE)
+                                (rjmp _end_205)
+                                (label _nq_204)
+                                (set-result FALSE)
+                                (label _end_205)
+                                (if-false _when_false_ret_200)
+                                (set-const-to-var VAR3 2222)
+                                (rjmp when-end)
+                                (label _when_false_ret_200)
+                                (set-result FALSE)
+                                (label _when_end_201)))
+                 (format "%s" (let ((gensym-counter 200))
+                                (let ((ssa))
+                                  (recur
+                                   '(when (= VAR1 VAR2)
+                                     (setf VAR3 2222)))
+                                  (nreverse ssa))))))
+#+END_SRC
+
 
 Теперь можно преобразовать это в правильный ассемблерный листинг:
 
