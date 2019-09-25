@@ -273,6 +273,27 @@ Assignment) представление. Для этого мы рекурсив�
       (push `(set-result 0) ssa)
       (push `(label ,and-end) ssa)))
 
+  (defvar *recur-rules* nil
+    "list of pairs: '(antecedent consequent)")
+
+  (defun clear-recur-rules ()
+    (setf *recur-rules*
+          (list (list `(eql 'nop  (car lst))
+                      `nil))))
+
+  (defun add-recur-rule (antecedent consequent)
+    (setq *recur-rules*
+          (append *recur-rules* (list (list antecedent consequent))))
+    (setq *recur-rules*
+          (remove-duplicates *recur-rules*
+                             :test (lambda (a b)
+                                     (equal (car a) (car b))))))
+
+  (defun del-recur-rule (antecedent)
+    (remove-if (lambda (a)
+                 (equal (car a) antecedent))
+               ,*recur-rules*))
+
   (defun recur (lst)
     (cond ((null lst) ssa)
           ((atom lst) (error (format "unk atom: %s" lst)))
@@ -339,7 +360,7 @@ Assignment) представление. Для этого мы рекурсив�
 
 Теперь можно преобразовать это в правильный ассемблерный листинг:
 
-#+NAME: test
+#+NAME: codegen
 #+BEGIN_SRC emacs-lisp :var lst=pseudocode :var ssa=ssa :results output
   (mapcar
    #'(lambda (op)
@@ -362,7 +383,7 @@ Assignment) представление. Для этого мы рекурсив�
           (read (read ssa)))
 #+END_SRC
 
-#+results: test
+#+results: codegen
 #+begin_example
     ldi reg202, PREV
     ldi reg203, HIGH
@@ -391,6 +412,55 @@ _and_false_ret_200:
 _and_end_201:
 #+end_example
 
+Вроде бы работает, расширим на более сложный код.
+
+
+#+NAME: more_complex
+#+BEGIN_SRC emacs-lisp :var lst=pseudocode ssa=ssa :results value scalar pp
+  (let ((gensym-counter 200))
+    (let ((ssa))
+      (recur
+       '(when (and
+               (= PREV HIGH)
+               (= NEXT LOW))
+          (when
+              (and
+               (= PREV HIGH)
+               (= NEXT LOW))
+            (setf CNT 0)
+            (setf %STATE 3))))
+       (nreverse ssa)))
+#+END_SRC
+
+#+results: more_complex
+#+begin_example
+"((ldi reg202 PREV)
+ (ldi reg203 HIGH)
+ (cp reg202 reg203)
+ (brne _nq_204)
+ (set-result 0)
+ (rjmp _end_205)
+ (label _nq_204)
+ (set-result 1)
+ (label _end_205)
+ (if-false _and_false_ret_200)
+ (ldi reg206 NEXT)
+ (ldi reg207 LOW)
+ (cp reg206 reg207)
+ (brne _nq_208)
+ (set-result 0)
+ (rjmp _end_209)
+ (label _nq_208)
+ (set-result 1)
+ (label _end_209)
+ (if-false _and_false_ret_200)
+ (set-result 1)
+ (rjmp and-end)
+ (label _and_false_ret_200)
+ (set-result 0)
+ (label _and_end_201))
+"
+#+end_example
 
 Ожидаемый ассемблерный вариант:
 
