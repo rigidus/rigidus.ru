@@ -239,93 +239,274 @@
 "
 #+end_example
 
-Как бы там не было, остается превратить его в SSA (Static Single
-Assignment) представление. Для этого мы рекурсивно обойдем дерево,
-анализируя каждый узел. В ходе анализа будем сохранять полученный код в
-динамической переменной. Проверим концепцию на простом коде (внизу),
-который выполняет оперцию AND над двумя сравнениями.
+Ассемблер, который мы хотим получить выглядит гораздо менее древовидным и
+куда более линейным. Чтобы приблизиться к такому представлению рекурсивно
+обойдем дерево, анализируя каждый узел. В ходе анализа будем сохранять
+полученный код в динамической переменной.
+
+Нам понадобятся правила анализа, которые будут срабатывать, когда при
+обходе мы будем натыкаться на подходящий узел. Каждое правило состоит из
+двух функций: =antecedent= и =consequent=. Первая часть проверяет,
+подходит ли узел, чтобы выполнить с ним операцию, которую делает вторая
+часть. Эти правила будем хранить в списке =recur-rules=.
+
+Для каждой новой конструкции языка (такой как =when= или =and=) нам
+понадобится новое правило, поэтому чтобы удобно добавлять и удалять
+правила, мы напишем несколько вспомогательных функций. Вместе с
+рекурсивной процедурой обхода дерева это выглядит так:
 
 #+NAME: ssa
-#+BEGIN_SRC emacs-lisp :var lst=pseudocode :results value scalar pp :hlines no :colnames yes
-  (defun compare-equal-two-variables (var1 var2)
-    (let ((reg1 (gensym "reg"))         (reg2 (gensym "reg"))
-          (not_equal (gensym "_nq_"))   (end (gensym "_end_")))
-      (push `(ldi ,reg1 ,var1) ssa)
-      (push `(ldi ,reg2 ,var2) ssa)
-      (push `(cp ,reg1 ,reg2) ssa)
-      (push `(brne ,not_equal) ssa)
-      (push `(set-result 0) ssa)
-      (push `(rjmp ,end) ssa)
-      (push `(label ,not_equal) ssa)
-      (push `(set-result 1) ssa)
-      (push `(label ,end) ssa)))
-
-  (defun and-multiple-form (forms)
-    (let ((and-false (gensym "_and_false_ret_"))
-          (and-end   (gensym "_and_end_")))
-      (mapcar #'(lambda (clause)
-                  (recur clause)
-                  (push `(if-false ,and-false) ssa))
-              forms)
-      (push `(set-result 1) ssa)
-      (push `(rjmp and-end) ssa)
-      (push `(label ,and-false) ssa)
-      (push `(set-result 0) ssa)
-      (push `(label ,and-end) ssa)))
-
+#+BEGIN_SRC emacs-lisp :var lst=pseudocode :results value scalar pp
   (defvar *recur-rules* nil
     "list of pairs: '(antecedent consequent)")
 
   (defun clear-recur-rules ()
-    (setf *recur-rules*
-          (list (list `(eql 'nop  (car lst))
-                      `nil))))
+    (setf *recur-rules* nil))
 
   (defun add-recur-rule (antecedent consequent)
-    (setq *recur-rules*
-          (append *recur-rules* (list (list antecedent consequent))))
+    (push (list antecedent consequent)
+          ,*recur-rules*)
     (setq *recur-rules*
           (remove-duplicates *recur-rules*
                              :test (lambda (a b)
-                                     (equal (car a) (car b))))))
+                                     (equal (car a) (car b)))
+                             :from-end t)))
 
   (defun del-recur-rule (antecedent)
-    (remove-if (lambda (a)
-                 (equal (car a) antecedent))
-               ,*recur-rules*))
+    (setf *recur-rules*
+          (remove-if (lambda (a)
+                       (equal (car a) antecedent))
+                     ,*recur-rules*)))
+
+  (defun print-recur-rules ()
+    (message "\n-----recur-rules-------\n")
+    (mapcar (lambda (rule)
+              (message "ant:\n%s" (pp-to-string (car rule)))
+              (message "con:\n%s" (pp-to-string (cadr rule))))
+            ,*recur-rules*)
+    nil)
 
   (defun recur (lst)
     (cond ((null lst) ssa)
-          ((atom lst) (error (format "unk atom: %s" lst)))
-          ((eql 'nop  (car lst)) nil)
-          ((eql 'progn (car lst))
-           (progn (push `(block-open) ssa)
-                  (recur (cdr lst))
-                  (push `(block-close) ssa)))
-          ((eql 'setf (car lst))
-           (cond ((and (atom (cadr lst))
-                       (not (numberp (cadr lst)))
-                       (numberp (caddr lst)))
-                  (push `(set-const-to-var ,(cadr lst) ,(caddr lst))
-                        ssa))
-                 (t (error "unk setf"))))
-          ((eql '= (car lst))
-           (cond ((and (eql 3 (length lst)) (atom (cadr lst)) (atom (caddr lst))
-                       (not (numberp (cadr lst))) (not (numberp (caddr lst))))
-                  (compare-equal-two-variables (cadr lst) (caddr lst)))
-                 (t error "unk equal")))
-          ((eql 'and (car lst))
-           (and-multiple-form (cdr lst)))
-          (t (cons (recur (car lst))
-                   (recur (cdr lst))))))
+          ((atom lst) (error (format "Eror in recur: unk atom: %s" lst)))
+          (t (catch 'ruler
+               (dolist (rule *recur-rules*)
+                 (when (funcall (car rule) lst)
+                   (throw 'ruler (funcall (cadr rule) lst))))
+               (cons (recur (car lst))
+                     (recur (cdr lst)))))))
+#+END_SRC
 
-  (let ((gensym-counter 200))
-    (let ((ssa))
-      (recur
-       '(and
-         (= PREV HIGH)
-         (= NEXT LOW)))
-      (nreverse ssa)))
+Теперь мы можем добавить несколько правил. Чтобы проверить концепцию я
+начну с простых правил:
+- =nop=, которое представляет собой отсутствие операции,
+- =progn=, помещающего свои аргументы в блок
+- =setf=, которое присваивает переменной константное значение
+
+#+NAME: basic_rules
+#+BEGIN_SRC emacs-lisp :var lst=pseudocode :results value scalar pp
+  (clear-recur-rules)
+
+  ;; NOP
+  (add-recur-rule (lambda (lst)
+                    (eql 'nop  (car lst)))
+                  (lambda (lst)
+                    nil))
+
+  (assert (equal nil (let ((ssa))
+                       (recur
+                        '(nop))
+                       (nreverse ssa))))
+
+  ;; PROGN
+  (add-recur-rule (lambda (lst)
+                    (eql 'progn (car lst)))
+                  (lambda (lst)
+                    (push `(block-open) ssa)
+                    (recur (cdr lst))
+                    (push `(block-close) ssa)))
+
+  (assert (equal '((block-open) (block-close))
+                 (let ((ssa))
+                   (recur
+                    '(progn
+                       (nop)))
+                   (nreverse ssa))))
+
+  ;; SETF VAR1 2222
+  (add-recur-rule (lambda (lst)
+                    (and
+                     (eql 'setf (car lst))
+                     (atom (cadr lst))
+                     (not (numberp (cadr lst)))
+                     (numberp (caddr lst))))
+                  (lambda (lst)
+                    (push `(set-const-to-var ,(cadr lst) ,(caddr lst))
+                          ssa)))
+
+  (assert (equal '((set-const-to-var VAR1 2222))
+                 (let ((ssa))
+                   (recur
+                    '(setf VAR1 2222))
+                   (nreverse ssa))))
+#+END_SRC
+
+Следующее правило сравнивает два значения. Теоретически операция
+сравнения может сравнивать несколько значений, и эти значения могут быть
+не только переменными, но и константами или даже формами. Но в нашей
+задаче встречается только сравнение двух и трех переменных.
+
+Вот правило для сравнения двух переменных:
+
+#+NAME:
+#+BEGIN_SRC elisp
+  ;; = VAR1 VAR2
+  (add-recur-rule (lambda (lst)
+                    (and  (eql '= (car lst))
+                          (eql 3 (length lst))
+                          (atom (cadr lst))
+                          (atom (caddr lst))
+                          (not (numberp (cadr lst)))
+                          (not (numberp (caddr lst)))))
+                  (lambda (lst)
+                    (let ((var1 (cadr lst))           (var2 (caddr lst))
+                          (reg1 (gensym "reg"))       (reg2 (gensym "reg"))
+                          (not_equal (gensym "_nq_")) (end  (gensym "_end_")))
+                      (push `(ldi ,reg1 ,var1) ssa)
+                      (push `(ldi ,reg2 ,var2) ssa)
+                      (push `(cp ,reg1 ,reg2) ssa)
+                      (push `(brne ,not_equal) ssa)
+                      (push `(set-result TRUE) ssa)
+                      (push `(rjmp ,end) ssa)
+                      (push `(label ,not_equal) ssa)
+                      (push `(set-result FALSE) ssa)
+                      (push `(label ,end) ssa))))
+
+  (assert (equal (format "%s" '((ldi reg200 VAR1)
+                                (ldi reg201 VAR2)
+                                (cp reg200 reg201)
+                                (brne _nq_202)
+                                (set-result TRUE)
+                                (rjmp _end_203)
+                                (label _nq_202)
+                                (set-result FALSE)
+                                (label _end_203)))
+                 (format "%s" (let ((gensym-counter 200)
+                                    (ssa))
+                                (recur
+                                 '(= VAR1 VAR2))
+                                (nreverse ssa)))))
+#+END_SRC
+
+Следующее правило сравнивает три переменные, исходя из того, что если
+первая перменная равна второй и вторая равна третьей, том можно сказать
+что сравнение удалось.
+
+#+NAME:
+#+BEGIN_SRC elisp
+  ;; = VAR1 VAR2 VAR3
+  (add-recur-rule (lambda (lst)
+                    (and (eql '= (car lst))
+                         (eql 4 (length lst))
+                         (atom (cadr lst))
+                         (atom (caddr lst))
+                         (atom (cadddr lst))
+                         (not (numberp (cadr lst)))
+                         (not (numberp (caddr lst)))
+                         (not (numberp (cadddr lst)))))
+                  (lambda (lst)
+                    (let ((var1 (cadr lst))
+                          (var2 (caddr lst))
+                          (var3 (caddr lst))
+                          (reg1 (gensym "reg"))
+                          (reg2 (gensym "reg"))
+                          (reg3 (gensym "reg"))
+                          (not_equal (gensym "_nq_"))
+                          (end (gensym "_end_")))
+                      (push `(ldi ,reg1 ,var1) ssa)
+                      (push `(ldi ,reg2 ,var2) ssa)
+                      (push `(ldi ,reg3 ,var3) ssa)
+                      (push `(cp ,reg1 ,reg2) ssa)
+                      (push `(brne ,not_equal) ssa)
+                      (push `(cp ,reg2 ,reg3) ssa)
+                      (push `(brne ,not_equal) ssa)
+                      (push `(set-result TRUE) ssa)
+                      (push `(rjmp ,end) ssa)
+                      (push `(label ,not_equal) ssa)
+                      (push `(set-result FALSE) ssa)
+                      (push `(label ,end) ssa))))
+
+  (assert (equal (format "%s" '((ldi reg200 VAR1)
+                                (ldi reg201 VAR2)
+                                (ldi reg202 VAR2)
+                                (cp reg200 reg201)
+                                (brne _nq_203)
+                                (cp reg201 reg202)
+                                (brne _nq_203)
+                                (set-result TRUE)
+                                (rjmp _end_204)
+                                (label _nq_203)
+                                (set-result FALSE)
+                                (label _end_204)))
+                 (format "%s" (let ((gensym-counter 200)
+                                    (ssa))
+                                (recur
+                                 '(= VAR1 VAR2 VAR3))
+                                (nreverse ssa)))))
+#+END_SRC
+
+AND
+
+#+NAME:
+#+BEGIN_SRC elisp
+
+  ;; (add-recur-rule (lambda (lst)
+  ;;                   (eql 'and (car lst)))
+  ;;                 (lambda (lst)
+  ;;                   (let ((and-false (gensym "_and_false_ret_"))
+  ;;                         (and-end   (gensym "_and_end_")))
+  ;;                     (mapcar #'(lambda (clause)
+  ;;                                 (recur clause)
+  ;;                                 (push `(if-false ,and-false) ssa))
+  ;;                             forms)
+  ;;                     (push `(set-result 1) ssa)
+  ;;                     (push `(rjmp and-end) ssa)
+  ;;                     (push `(label ,and-false) ssa)
+  ;;                     (push `(set-result 0) ssa)
+  ;;                     (push `(label ,and-end) ssa))))
+
+  ;; (assert (equal (format "%s" '((ldi reg202 VAR1)
+  ;;                               (ldi reg203 VAR2)
+  ;;                               (cp reg202 reg203)
+  ;;                               (brne _nq_204)
+  ;;                               (set-result 0)
+  ;;                               (rjmp _end_205)
+  ;;                               (label _nq_204)
+  ;;                               (set-result 1)
+  ;;                               (label _end_205)
+  ;;                               (if-false _and_false_ret_200)
+  ;;                               (ldi reg206 VAR3)
+  ;;                               (ldi reg207 VAR4)
+  ;;                               (cp reg206 reg207)
+  ;;                               (brne _nq_208)
+  ;;                               (set-result 0)
+  ;;                               (rjmp _end_209)
+  ;;                               (label _nq_208)
+  ;;                               (set-result 1)
+  ;;                               (label _end_209)
+  ;;                               (if-false _and_false_ret_200)
+  ;;                               (set-result 1)
+  ;;                               (rjmp and-end)
+  ;;                               (label _and_false_ret_200)
+  ;;                               (set-result 0)
+  ;;                               (label _and_end_201)))
+  ;;                (format "%s" (let ((gensym-counter 200))
+  ;;                               (let ((ssa))
+  ;;                                 (recur
+  ;;                                  '(and
+  ;;                                    (= VAR1 VAR2)
+  ;;                                    (= VAR3 VAR4)))
+  ;;                                 (nreverse ssa)))))))
 #+END_SRC
 
 #+results: ssa
