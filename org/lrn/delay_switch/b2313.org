@@ -595,7 +595,7 @@
                       (mapcar #'(lambda (clause)
                                   (recur clause))
                               (cddr lst))
-                      (push `(rjmp when-end) ssa)
+                      (push `(rjmp ,when-end) ssa)
                       (push `(label ,when-false) ssa)
                       (push `(set-result FALSE) ssa)
                       (push `(label ,when-end) ssa))))
@@ -618,7 +618,7 @@
                                 (ldi reg_setf_206 2222)
                                 (sts 2222 reg_setf_206)
                                 (rfree reg_setf_206)
-                                (rjmp when-end)
+                                (rjmp _when_end_201)
                                 (label _when_false_ret_200)
                                 (set-result FALSE)
                                 (label _when_end_201)))
@@ -887,7 +887,7 @@
  (ldi reg_setf_211 1)
  (sts 1 reg_setf_211)
  (rfree reg_setf_211)
- (rjmp when-end)
+ (rjmp _when_end_205)
  (label _when_false_ret_204)
  (set-result FALSE)
  (label _when_end_205)
@@ -933,7 +933,7 @@
  (ldi reg_setf_225 3)
  (sts 3 reg_setf_225)
  (rfree reg_setf_225)
- (rjmp when-end)
+ (rjmp _when_end_213)
  (label _when_false_ret_212)
  (set-result FALSE)
  (label _when_end_213)
@@ -994,7 +994,7 @@
  (ldi reg_setf_241 2)
  (sts 2 reg_setf_241)
  (rfree reg_setf_241)
- (rjmp when-end)
+ (rjmp _when_end_228)
  (label _when_false_ret_227)
  (set-result FALSE)
  (label _when_end_228)
@@ -1040,7 +1040,7 @@
  (ldi reg_setf_255 1)
  (sts 1 reg_setf_255)
  (rfree reg_setf_255)
- (rjmp when-end)
+ (rjmp _when_end_243)
  (label _when_false_ret_242)
  (set-result FALSE)
  (label _when_end_243)
@@ -1095,7 +1095,7 @@
  (ldi reg_setf_270 2)
  (sts 2 reg_setf_270)
  (rfree reg_setf_270)
- (rjmp when-end)
+ (rjmp _when_end_258)
  (label _when_false_ret_257)
  (set-result FALSE)
  (label _when_end_258)
@@ -1128,7 +1128,7 @@
  (ldi reg_setf_280 3)
  (sts 3 reg_setf_280)
  (rfree reg_setf_280)
- (rjmp when-end)
+ (rjmp _when_end_272)
  (label _when_false_ret_271)
  (set-result FALSE)
  (label _when_end_272)
@@ -1139,143 +1139,343 @@
  (rfree reg_case_base_200))
 #+end_example
 
-Теперь можно преобразовать это в правильный ассемблерный листинг:
+Теперь можно преобразовать это в правильный ассемблерный листинг,
+отслеживая выделение и освобождение регистров.
+
+Лучше будет заранее составить список регистров, доступных для
+аллокации. Мы будем использовать вторую половину регистрового файла за
+вычетом индекстных регистров X, Y и Z.
+
+Из этих регистров мы также забираем =r16=, чтобы хранить там =result=
+последней выполненной операции.
+
+#+NAME: regs
+#+BEGIN_SRC elisp
+  (defvar *registers* nil)
+
+  (setf *registers*
+        (do ((rr 16 (1+ rr))
+             (rs))
+            ((equal 26 rr) rs)
+          (push `(,(intern (format "r%s" rr)) nil) rs)))
+
+  (defun ralloc (var)
+    (catch 'ret
+      (dolist (reg *registers*)
+        (when (null (cadr reg))
+          (setq *registers*
+                (append (delq reg *registers*)
+                        (list (list (car reg) var))))
+          (throw 'ret (car reg))))
+      (message "Error in ralloc: not enough registers")
+      nil))
+
+  (defun rfree (reg)
+    (catch 'ret
+      (dolist (cur *registers*)
+        (when (equal reg (car cur))
+          (setq *registers*
+                (delq cur *registers*))
+          (push (list reg nil)
+                ,*registers*)
+          (throw 'ret t)))
+      (message "Error in rfree: register not found")
+      nil))
+#+END_SRC
+
+
+[TODO:gmm]
 
 #+NAME: codegen
-#+BEGIN_SRC elisp var a=recur :results output
-  (mapcar
-   #'(lambda (op)
-       (cond
-        ((eql 'label (car op))
-         (princ (format "%s:\n" (cadr op))))
-        ((eql 'set-result (car op))
-         (princ (format "    SETRESULT %s\n" (cadr op))))
-        ((eql 'if-false (car op))
-         (princ (format "    IFFALSE %s\n" (cadr op))))
-        ((eql 'if-true (car op))
-         (princ (format "    IFTRUE %s\n" (cadr op))))
-        (t
-         (cond ((equal 2 (length op))
+#+BEGIN_SRC elisp :var all=all r=regs :results output org :wrap "SRC asm"
+  (let ((allocs)
+        (*registers*
+         (do ((rr 16 (1+ rr))
+              (rs))
+             ((equal 26 rr) rs)
+           (push `(,(intern (format "r%s" rr)) nil) rs)))
+        (var-to-reg (lambda (var)
+                      (let ((pair (cl-member var allocs
+                                             :test (lambda (a b)
+                                                     (equal a (car b))))))
+                        (if (null pair) ;; error if empty result
+                            (progn
+                              (message "Error: not such variable %s" var)
+                              (error "Error: not such variable"))
+                          (cadar pair))))))
+    (mapcar
+     #'(lambda (op)
+         (cond ((eql 'ralloc (car op))
+                (let ((reg (ralloc (cadr op))))
+                  (message "ralloc: %s = %s (%s of %s)"
+                           reg
+                           (cadr op)
+                           (length (remove-if (lambda (x) (null (cadr x)))
+                                              ,*registers*))
+                           (length *registers*))
+                  (if reg
+                      (push `(,(cadr op) ,reg) allocs)
+                    (error (format "register allocation error: %s" reg)))))
+               ((eql 'rfree (car op))
+                (let ((pair (cl-member (cadr op) allocs
+                                       :test (lambda (a b) (equal a (car b))))))
+                  (if (null pair) ;; error if empty result
+                      (error "Error in free handler: not such variable")
+                    (let ((reg (cadar pair)))
+                      (rfree reg)
+                      (setf allocs
+                            (delete (car pair) allocs))
+                      (message "rfree: %s (%s of %s)"
+                               (cadr op)
+                               (length (remove-if (lambda (x) (null (cadr x)))
+                                                  ,*registers*))
+                               (length *registers*))
+                      ))))
+               ((eql 'label (car op))
+                (princ (format "%s:\n" (cadr op))))
+               ((eql 'set-result (car op))
+                (princ (format "    ldi result %s\n" (cadr op))))
+               ((eql 'if-false (car op))
+                (princ (format "    IFFALSE %s\n" (cadr op))))
+               ((eql 'if-true (car op))
+                (princ (format "    IFTRUE %s\n" (cadr op))))
+               ((eql 'ldi (car op))
+                (princ (format "    ldi %s, %s\n"
+                               (funcall var-to-reg (cadr op))
+                               (caddr op))))
+               ((eql 'cp (car op))
+                (princ (format "    cp %s, %s\n"
+                               (funcall var-to-reg (cadr op))
+                               (funcall var-to-reg (caddr op)))))
+               ((eql 'progn-open (car op))
+                (princ (format "    ;; progn-open\n")))
+               ((eql 'progn-close (car op))
+                (princ (format "    ;; progn-close\n")))
+               ((eql 'sts (car op))
+                (princ (format "    sts %s, %s\n"
+                               (cadr op)
+                               (funcall var-to-reg (caddr op)))))
+               ((or (eql 'brne (car op))
+                    (eql 'brsh (car op))
+                    (eql 'brlt (car op))
+                    (eql 'rjmp (car op)))
                 (princ (format "    %s %s\n"
-                               (car op) (cadr op))))
-               ((equal 3 (length op))
-                (princ (format "    %s %s, %s\n"
-                               (car op) (cadr op) (caddr op))))))))
-          (read (read ssa)))
+                               (car op)
+                               (cadr op))))
+               (t (princ (format "::=-> %s : %s\n" (car op) op)))))
+     (read all)))
 #+END_SRC
 
 #+results: codegen
-#+begin_example
-    ldi reg202, PREV
-    ldi reg203, HIGH
-    cp reg202, reg203
-    brne _nq_204
-    SETRESULT 0
-    rjmp _end_205
-_nq_204:
-    SETRESULT 1
-_end_205:
-    IFFALSE _and_false_ret_200
-    ldi reg206, NEXT
-    ldi reg207, LOW
-    cp reg206, reg207
-    brne _nq_208
-    SETRESULT 0
-    rjmp _end_209
-_nq_208:
-    SETRESULT 1
-_end_209:
-    IFFALSE _and_false_ret_200
-    SETRESULT 1
-    rjmp and-end
-_and_false_ret_200:
-    SETRESULT 0
-_and_end_201:
-#+end_example
-
-Вроде бы работает, расширим на более сложный код.
-
-
-#+NAME: more_complex
-#+BEGIN_SRC elisp :var lst=pseudocode ssa=ssa :results value scalar pp
-  (let ((gensym-counter 200))
-    (let ((ssa))
-      (recur
-       '(when (and
-               (= PREV HIGH)
-               (= NEXT LOW))
-          (when
-              (and
-               (= PREV HIGH)
-               (= NEXT LOW))
-            (setf CNT 0)
-            (setf %STATE 3))))
-       (nreverse ssa)))
-#+END_SRC
-
-#+results: more_complex
-#+begin_example
-"((ldi reg202 PREV)
- (ldi reg203 HIGH)
- (cp reg202 reg203)
- (brne _nq_204)
- (set-result 0)
- (rjmp _end_205)
- (label _nq_204)
- (set-result 1)
- (label _end_205)
- (if-false _and_false_ret_200)
- (ldi reg206 NEXT)
- (ldi reg207 LOW)
- (cp reg206 reg207)
- (brne _nq_208)
- (set-result 0)
- (rjmp _end_209)
- (label _nq_208)
- (set-result 1)
- (label _end_209)
- (if-false _and_false_ret_200)
- (set-result 1)
- (rjmp and-end)
- (label _and_false_ret_200)
- (set-result 0)
- (label _and_end_201))
-"
-#+end_example
-
-Ожидаемый ассемблерный вариант:
-
-#+BEGIN_SRC asm
-      rcall   _case_start
-  _case_start:
-      pop     %r_addr_low
-      pop     %r_addr_high
-      add     %r_addr_low, $size_start
-      brcc    _not_c1
-      inc     %r_addr_high
-  _not_c1:
-      add     %r_addr_low, %T0 ; база отсчетов CASE
-      brcc    _not_c2
-      inc     %r_addr_high
-  _not_c2:
-      push    %r_addr_high
-      push    %r_addr_low
-      ret
-  _cases:
-      rjmp    _case_1
-      rjmp    _case_2
-      ...
-  _case_1:
-      ...
-      rjmp    _end_case
-  _case_2:
-      ...
-      rjmp    _end_case
-      ...
-  _end_case:
-      ...
-#+END_SRC
-
+#+begin_SRC asm
+    ldi r25, %STATE
+    ldi r24, %STATE
+    cp r25, r24
+    brne _case_not_equal_203
+    ;; progn-open
+    ldi r24, PREV
+    ldi r23, NEXT
+    ldi r22, NEXT
+    cp r24, r23
+    brne _not_equal_eq3_209
+    cp r23, r22
+    brne _not_equal_eq3_209
+    ldi result TRUE
+    rjmp _end_eq3_210
+_not_equal_eq3_209:
+    ldi result FALSE
+_end_eq3_210:
+    IFFALSE _when_false_ret_204
+    ldi r22, 1
+    sts 1, r22
+    rjmp _when_end_205
+_when_false_ret_204:
+    ldi result FALSE
+_when_end_205:
+    ldi r22, PREV
+    ldi r23, HIGH
+    cp r22, r23
+    brne _not_equal_eq2_218
+    ldi result TRUE
+    rjmp _end_eq2_219
+_not_equal_eq2_218:
+    ldi result FALSE
+_end_eq2_219:
+    IFFALSE _and_false_ret_214
+    ldi r23, NEXT
+    ldi r22, LOW
+    cp r23, r22
+    brne _not_equal_eq2_222
+    ldi result TRUE
+    rjmp _end_eq2_223
+_not_equal_eq2_222:
+    ldi result FALSE
+_end_eq2_223:
+    IFFALSE _and_false_ret_214
+    ldi result TRUE
+    rjmp _and_end_215
+_and_false_ret_214:
+    ldi result FALSE
+_and_end_215:
+    IFFALSE _when_false_ret_212
+    ldi r22, 0
+    sts 0, r22
+    ldi r22, 3
+    sts 3, r22
+    rjmp _when_end_213
+_when_false_ret_212:
+    ldi result FALSE
+_when_end_213:
+    ;; progn-close
+    rjmp _case_end_202
+_case_not_equal_203:
+    ldi r22, %STATE
+    cp r25, r22
+    brne _case_not_equal_226
+    ;; progn-open
+    ldi r22, PREV
+    ldi r23, NEXT
+    ldi r24, NEXT
+    cp r22, r23
+    brne _not_equal_eq3_234
+    cp r23, r24
+    brne _not_equal_eq3_234
+    ldi result TRUE
+    rjmp _end_eq3_235
+_not_equal_eq3_234:
+    ldi result FALSE
+_end_eq3_235:
+    IFFALSE _and_false_ret_229
+    ldi r24, CNT
+    ldi r23, MAX
+    cp r24, r23
+    brsh _not_lt_eq2_238
+    ldi result TRUE
+    rjmp _end_lt2_239
+_not_lt_eq2_238:
+    ldi result FALSE
+_end_lt2_239:
+    IFFALSE _and_false_ret_229
+    ldi result TRUE
+    rjmp _and_end_230
+_and_false_ret_229:
+    ldi result FALSE
+_and_end_230:
+    IFFALSE _when_false_ret_227
+    ldi r23, nil
+::=-> inc : (inc reg_incf_240 nil)
+    sts nil, r23
+    ldi r23, 2
+    sts 2, r23
+    rjmp _when_end_228
+_when_false_ret_227:
+    ldi result FALSE
+_when_end_228:
+    ldi r23, PREV
+    ldi r24, NEXT
+    cp r23, r24
+    brne _not_equal_eq2_248
+    ldi result TRUE
+    rjmp _end_eq2_249
+_not_equal_eq2_248:
+    ldi result FALSE
+_end_eq2_249:
+    IFFALSE _and_false_ret_244
+    ldi r24, CNT
+    ldi r23, MAX
+    cp r24, r23
+    brlt _not_ge_eq2_252
+    ldi result TRUE
+    rjmp _end_ge2_253
+_not_ge_eq2_252:
+    ldi result FALSE
+_end_ge2_253:
+    IFFALSE _and_false_ret_244
+    ldi result TRUE
+    rjmp _and_end_245
+_and_false_ret_244:
+    ldi result FALSE
+_and_end_245:
+    IFFALSE _when_false_ret_242
+    ldi r23, 0
+    sts 0, r23
+    ldi r23, 1
+    sts 1, r23
+    rjmp _when_end_243
+_when_false_ret_242:
+    ldi result FALSE
+_when_end_243:
+    ;; progn-close
+    rjmp _case_end_202
+_case_not_equal_226:
+    ldi r23, %STATE
+    cp r25, r23
+    brne _case_not_equal_256
+    ;; progn-open
+    ldi r23, PREV
+    ldi r24, LOW
+    cp r23, r24
+    brne _not_equal_eq2_263
+    ldi result TRUE
+    rjmp _end_eq2_264
+_not_equal_eq2_263:
+    ldi result FALSE
+_end_eq2_264:
+    IFFALSE _and_false_ret_259
+    ldi r24, NEXT
+    ldi r23, HIGH
+    cp r24, r23
+    brne _not_equal_eq2_267
+    ldi result TRUE
+    rjmp _end_eq2_268
+_not_equal_eq2_267:
+    ldi result FALSE
+_end_eq2_268:
+    IFFALSE _and_false_ret_259
+    ldi result TRUE
+    rjmp _and_end_260
+_and_false_ret_259:
+    ldi result FALSE
+_and_end_260:
+    IFFALSE _when_false_ret_257
+    ldi r23, 0
+    sts 0, r23
+    ldi r23, 2
+    sts 2, r23
+    rjmp _when_end_258
+_when_false_ret_257:
+    ldi result FALSE
+_when_end_258:
+    ldi r23, PREV
+    ldi r24, NEXT
+    ldi r22, NEXT
+    cp r23, r24
+    brne _not_equal_eq3_278
+    cp r24, r22
+    brne _not_equal_eq3_278
+    ldi result TRUE
+    rjmp _end_eq3_279
+_not_equal_eq3_278:
+    ldi result FALSE
+_end_eq3_279:
+    IFFALSE _and_false_ret_273
+    ldi result TRUE
+    rjmp _and_end_274
+_and_false_ret_273:
+    ldi result FALSE
+_and_end_274:
+    IFFALSE _when_false_ret_271
+    ldi r22, 3
+    sts 3, r22
+    rjmp _when_end_272
+_when_false_ret_271:
+    ldi result FALSE
+_when_end_272:
+    ;; progn-close
+    rjmp _case_end_202
+_case_not_equal_256:
+_case_end_202:
+#+end_SRC
 
 ** TODO Обработка временных интервалов
 
