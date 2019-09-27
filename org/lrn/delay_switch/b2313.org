@@ -491,11 +491,10 @@
 и не требуется их проверять.
 
 Чтобы сразу перейти к нужному варианту мы положим в стек текущий адрес
-Instruction Pointer командой CALL, потом вынем его в регистр. Если теперь
-взять адрес начала таблицы и вычесть из него полученный на предыдущем
-шаге адрес Instruction Pointer - то мы получим смещение до таблицы от
-точки, где мы получили IP.
-
+Instruction Pointer командой CALL, потом вынем его в регистр. Прибавив к
+нему расстояние от цели команды CALL до начала таблицы и аргумент CASE мы
+получим нужный нам безусловный переход. Чтобы прыгнуть на него - положим
+вычисленное значение в стек и сделаем RET.
 
 #+NAME: rcase
 #+BEGIN_SRC elisp :var a=recur
@@ -508,7 +507,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                           (low        (gensym "reg_case_low_"))
                           (offset     (gensym "reg_case_offset_"))
                           (zero       (gensym "reg_case_zero_"))
-                          (next       (gensym "_next_")))
+                          (next       (gensym "_next_"))
+                          (end-case   (gensym "_end_case_")))
                       ;; call next
                       (push `(rcall ,next) ssa)
                       (push `(label ,next) ssa)
@@ -523,24 +523,24 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(clr ,zero) ssa)              ; 3
                       ;; + offset
                       (push `(ralloc ,offset) ssa)
-                      (push `(ldi ,offset 13) ssa)         ; 4 CONST=13
+                      (push `(ldi ,offset 12) ssa)         ; 4 CONST=13-1
                       (push `(add ,low ,offset) ssa)       ; 5
                       (push `(adc ,high ,zero) ssa)        ; 6
                       (push `(rfree ,offset) ssa)
                       ;; + base
                       (push `(ralloc ,base) ssa)
-                      (push `(lds ,base ,(cadr lst)) ssa)  ; 7
-                      (push `(add ,low ,base) ssa)         ; 8
-                      (push `(adc ,high ,zero) ssa)        ; 9
+                      (push `(lds ,base ,(cadr lst)) ssa)  ; 7,8
+                      (push `(add ,low ,base) ssa)         ; 9
+                      (push `(adc ,high ,zero) ssa)        ; 10
                       (push `(rfree ,base) ssa)
                       ;; zero -off
                       (push `(rfree ,zero) ssa)
                       ;; indirect jump
-                      (push `(push ,low) ssa)             ; 10
+                      (push `(push ,low) ssa)             ; 11
                       (push `(rfree ,low) ssa)
-                      (push `(push ,high) ssa)            ; 11
+                      (push `(push ,high) ssa)            ; 12
                       (push `(rfree ,high) ssa)
-                      (push `(ret) ssa)                   ; 12
+                      (push `(ret) ssa)                   ; 13
                       ;; jump table
                       (mapcar #'(lambda (x)
                                   (mapcar #'(lambda (y)
@@ -555,8 +555,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                                             (let ((ssa))
                                               (push `(label ,label) ssa)
                                               (recur (cdr clause))
+                                              (push `(rjmp ,end-case) ssa)
                                               ssa)))
-                                      (cddr lst))))))
+                                      (cddr lst)))
+                      ;; end case
+                      (push `(label ,end-case) ssa))))
 #+END_SRC
 
 Осталось добавить еще немного операций, которые есть в исходной
@@ -820,7 +823,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                                (cadr op))))
                ;; однооперандные команды из пяти букв - операнд не регистр
                ((or (eql 'rcall (car op)))
-                (princ (format "    %s   %s\n"
+                (princ (format "    %s  %s\n"
                                (car op)
                                (cadr op))))
                ;; безоперандные команды из трех букв
@@ -877,6 +880,9 @@ AVR и содержать типичные блоки инициализации
       ;; Временно остановим таймер-0 чтобы не щелкал
       ldi tmp0, 0
       out TCCR0B, tmp0
+
+      ldi     tmp0, 1
+      sts     STATE, tmp0
 
   _mainloop:
 

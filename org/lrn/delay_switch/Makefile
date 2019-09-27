@@ -68,6 +68,7 @@ $(PROGRAM).elfS: $(PROGRAM).oS
 	$(CFLAGS) \
 	$(LDFLAGS) \
 	-nostartfiles \
+	-g \
 	$^ \
 	-o $@
 
@@ -76,12 +77,13 @@ $(PROGRAM).oS: $(PROGRAM).S
 	$(CFLAGS) \
 	$(LDFLAGS) \
 	-nostartfiles \
+	-g \
 	$^ \
 	-o $@
 
 # Получение ассемблерного листинга из elfS
 objdumpS: $(PROGRAM).elfS
-	avr-objdump -d $^ > $(PROGRAM).asmS
+	avr-objdump -D $^ > $(PROGRAM).asmS
 
 
 
