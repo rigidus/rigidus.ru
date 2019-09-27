@@ -485,7 +485,17 @@
                       (push `(label ,when-end) ssa))))
 #+END_SRC
 
-Наконец, мы можем сделать правило для CASE
+Наконец, мы можем сделать правило для CASE. Здесь мы применим хак,
+который частично основан на том, что поскольку код CASE мы генерировали
+из таблицы, то значений выходящих за диапазон быть не может. Поэтому нам
+и не требуется их проверять.
+
+Чтобы сразу перейти к нужному варианту мы положим в стек текущий адрес
+Instruction Pointer командой CALL, потом вынем его в регистр. Если теперь
+взять адрес начала таблицы и вычесть из него полученный на предыдущем
+шаге адрес Instruction Pointer - то мы получим смещение до таблицы от
+точки, где мы получили IP.
+
 
 #+NAME: rcase
 #+BEGIN_SRC elisp :var a=recur
@@ -494,24 +504,59 @@
                     (eql 'case (car lst)))
                   (lambda (lst)
                     (let ((base       (gensym "reg_case_base_"))
-                          (cmp        (gensym "reg_case_cmp_"))
-                          (case-end   (gensym "_case_end_")))
+                          (high       (gensym "reg_case_high_"))
+                          (low        (gensym "reg_case_low_"))
+                          (offset     (gensym "reg_case_offset_"))
+                          (zero       (gensym "reg_case_zero_"))
+                          (next       (gensym "_next_")))
+                      ;; call next
+                      (push `(rcall ,next) ssa)
+                      (push `(label ,next) ssa)
+                      ;; pop high
+                      (push `(ralloc ,high) ssa)
+                      (push `(pop ,high) ssa)              ; 1
+                      ;; pop low
+                      (push `(ralloc ,low) ssa)
+                      (push `(pop ,low) ssa)               ; 2
+                      ;; zero -on
+                      (push `(ralloc ,zero) ssa)
+                      (push `(clr ,zero) ssa)              ; 3
+                      ;; + offset
+                      (push `(ralloc ,offset) ssa)
+                      (push `(ldi ,offset 13) ssa)         ; 4 CONST=13
+                      (push `(add ,low ,offset) ssa)       ; 5
+                      (push `(adc ,high ,zero) ssa)        ; 6
+                      (push `(rfree ,offset) ssa)
+                      ;; + base
                       (push `(ralloc ,base) ssa)
-                      (push `(lds ,base ,(cadr lst)) ssa)
-                      (mapcar #'(lambda (clause)
-                                  (let ((not-equal (gensym "_case_not_equal_")))
-                                    (push `(ralloc ,cmp) ssa)
-                                    (push `(ldi ,cmp ,(car clause)) ssa)
-                                    (push `(cp ,base ,cmp) ssa)
-                                    (push `(rfree ,cmp) ssa)
-                                    (push `(brne ,not-equal) ssa)
-                                    (recur (cdr clause))
-                                    (push `(rjmp ,case-end) ssa)
-                                    (push `(label ,not-equal) ssa)
-                                  ))
-                              (cddr lst))
-                      (push `(label ,case-end) ssa)
-                      (push `(rfree ,base) ssa))))
+                      (push `(lds ,base ,(cadr lst)) ssa)  ; 7
+                      (push `(add ,low ,base) ssa)         ; 8
+                      (push `(adc ,high ,zero) ssa)        ; 9
+                      (push `(rfree ,base) ssa)
+                      ;; zero -off
+                      (push `(rfree ,zero) ssa)
+                      ;; indirect jump
+                      (push `(push ,low) ssa)             ; 10
+                      (push `(rfree ,low) ssa)
+                      (push `(push ,high) ssa)            ; 11
+                      (push `(rfree ,high) ssa)
+                      (push `(ret) ssa)                   ; 12
+                      ;; jump table
+                      (mapcar #'(lambda (x)
+                                  (mapcar #'(lambda (y)
+                                              (push y ssa))
+                                          (nreverse x)))
+                              (mapcar #'(lambda (clause)
+                                          (let ((label
+                                                 (gensym
+                                                  (format "_label_case_%s"
+                                                          (car clause)))))
+                                            (push `(rjmp ,label) ssa)
+                                            (let ((ssa))
+                                              (push `(label ,label) ssa)
+                                              (recur (cdr clause))
+                                              ssa)))
+                                      (cddr lst))))))
 #+END_SRC
 
 Осталось добавить еще немного операций, которые есть в исходной
@@ -562,8 +607,8 @@
                   (lambda (lst)
                     (let ((reg1 (gensym "reg_incf_")))
                       (push `(ralloc ,reg1) ssa)
-                      (push `(ldi ,reg1 ,(caddr lst)) ssa)
-                      (push `(inc ,reg1 ,(caddr lst)) ssa)
+                      (push `(ldi ,reg1 ,(cadr lst)) ssa)
+                      (push `(inc ,reg1) ssa)
                       (push `(sts ,(cadr lst) ,reg1) ssa)
                       (push `(rfree ,reg1) ssa))))
 #+END_SRC
@@ -718,19 +763,11 @@
                ((eql 'label (car op))
                 (princ (format "%s:\n" (cadr op))))
                ((eql 'set-result (car op))
-                (princ (format "    ldi     result %s\n" (cadr op))))
+                (princ (format "    ldi     result, %s\n" (cadr op))))
                ((eql 'if-false (car op))
                 (princ (format "    IFFALSE %s\n" (cadr op))))
                ((eql 'if-true (car op))
                 (princ (format "    IFTRUE %s\n" (cadr op))))
-               ((eql 'ldi (car op))
-                (princ (format "    ldi     %s, %s\n"
-                               (funcall var-to-reg (cadr op))
-                               (caddr op))))
-               ((eql 'lds (car op))
-                (princ (format "    lds     %s, %s\n"
-                               (funcall var-to-reg (cadr op))
-                               (caddr op))))
                ((eql 'cp (car op))
                 (princ (format "    cp      %s, %s\n"
                                (funcall var-to-reg (cadr op))
@@ -739,20 +776,56 @@
                 (princ (format "    ;; progn-open\n")))
                ((eql 'progn-close (car op))
                 (princ (format "    ;; progn-close\n")))
+               ;; двухоперандные команды из трехбукв, оба операнда - регистры
+               ((or (eql 'add (car op))
+                    (eql 'adc (car op)))
+                (princ (format "    %s     %s, %s\n"
+                               (car op)
+                               (funcall var-to-reg (cadr op))
+                               (funcall var-to-reg (caddr op)))))
+               ;; двухоперандные команды из трехбукв, первый операнд - регистр
+               ((or (eql 'cpi (car op))
+                    (eql 'lds (car op))
+                    (eql 'ldi (car op)))
+                (princ (format "    %s     %s, %s\n"
+                               (car op)
+                               (funcall var-to-reg (cadr op))
+                               (caddr op))))
+               ;; двухоперандные команды из трех букв, второй операнд - регистр
                ((eql 'sts (car op))
-                (princ (format "    sts     %s, %s\n"
+                (princ (format "    %s      %s, %s\n"
+                               (car op)
                                (cadr op)
                                (funcall var-to-reg (caddr op)))))
-               ((eql 'inc (car op))
-                (princ (format "    inc     %s\n"
+               ;; однооперандные команды из трех букв, операнд - регистр
+               ((or (eql 'inc (car op))
+                    (eql 'pop (car op))
+                    (eql 'clr (car op)))
+                (princ (format "    %s     %s\n"
+                               (car op)
                                (funcall var-to-reg (cadr op)))))
+               ;; однооперандные команды из четырех букв - операнд регистр
+               ((or (eql 'push (car op)))
+                (princ (format "    %s    %s\n"
+                               (car op)
+                               (funcall var-to-reg (cadr op)))))
+               ;; однооперандные команды из четырех букв - операнд не регистр
                ((or (eql 'brne (car op))
                     (eql 'brsh (car op))
                     (eql 'brlt (car op))
-                    (eql 'rjmp (car op)))
+                    (eql 'rjmp (car op))
+                    (eql 'rcall (car op)))
                 (princ (format "    %s    %s\n"
                                (car op)
                                (cadr op))))
+               ;; однооперандные команды из пяти букв - операнд не регистр
+               ((or (eql 'rcall (car op)))
+                (princ (format "    %s   %s\n"
+                               (car op)
+                               (cadr op))))
+               ;; безоперандные команды из трех букв
+               ((or (eql 'ret (car op)))
+                (princ (format "    %s\n" (car op))))
                (t (princ (format "::=-> %s : %s\n" (car op) op)))))
      (read all)))
 #+END_SRC
@@ -782,6 +855,8 @@ AVR и содержать типичные блоки инициализации
 
       <<symbols>>
 
+      <<asmmacro>>
+
       .text
       .global main
   main:
@@ -805,15 +880,34 @@ AVR и содержать типичные блоки инициализации
 
   _mainloop:
 
-  <<gencode_fsmbtn()>>
+      rcall   _fsmbtn
 
       rjmp    _mainloop
+
+  _fsmbtn:
+  <<gencode_fsmbtn()>>
+      ret
 
   _infloop:
       rjmp    _infloop
 
   _blink:
       <<blink>>
+
+      .data
+
+  STATE:
+      .byte 0x1
+  PREV:
+      .byte 0x0
+  NEXT:
+      .byte 0x0
+  NEW:
+      .byte 0x0
+  CNT:
+      .byte 0x0
+  MAX:
+      .byte 0x0
 #+END_SRC
 
 * Таймеры
@@ -1655,10 +1749,16 @@ TIFR-регистр нужно сбросить в 0:
 
 #+NAME: defines
 #+BEGIN_SRC asm
+  #define TRUE 1
+  #define FALSE 0
+  #define HIGH 1
+  #define LOW 0
   #define tmp0 r16
   #define tmp1 r17
   #define cnt  r18
+  #define result r16
 #+END_SRC
+
 * Символические имена
 
 Необходимые символические имена взяты из даташита
@@ -1680,4 +1780,14 @@ TIFR-регистр нужно сбросить в 0:
   .equ TCNT0, 0x32
   .equ TIFR, 0x38
   .equ TIMSK, 0x39
+#+END_SRC
+
+* Макросы
+
+#+NAME: asmmacro
+#+BEGIN_SRC asm
+  .macro  IFFALSE to
+      cpi     result, FALSE
+      breq    \to
+  .endm
 #+END_SRC
