@@ -74,10 +74,14 @@
 - предыдущее зарегистрированное состояние (=PREV=)
 - новое зарегистрированное состояние (=NEW=)
 - счетчик одинаковых регистраций (=СNT=)
-- максимальное значение счетчика (=MAX= )
+- максимальное значение счетчика (=$MAX= )
 Выходом же является само состояние автомата
 
-Состояния могут принимать значения высокий/низкий уровень (HIGH/LOW), а
+Чтобы отличать константы от ссылок на переменные мы добавляем =$= в
+начало имен констант. Нам нужно это, потому что загрузка константы в
+регистр производится другой командой чем получение значения переменной.
+
+Состояния могут принимать значения высокий/низкий уровень ($HIGH/$LOW), а
 счетчик - число от 0 до 255, помещающееся в байт. Максимальное значение
 счетчика - константа такого же типа.
 
@@ -86,14 +90,14 @@
 переходе действия.
 
 #+NAME: btn_fsm
-| predicate                            | from   | to     | action       |
-|--------------------------------------+--------+--------+--------------|
-| (and (= PREV LOW) (= NEXT HIGH))     | Up     | Middle | (setf CNT 0) |
-| (and (= PREV NEXT HIGH) (< CNT MAX)) | Middle | Middle | (incf CNT)   |
-| (and (= PREV NEXT) (>= CNT MAX))     | Middle | Down   | (setf CNT 0) |
-| (= PREV NEXT HIGH)                   | Down   | Down   |              |
-| (and (= PREV HIGH) (= NEXT LOW))     | Down   | Up     | (setf CNT 0) |
-| (and (= PREV NEXT LOW))              | Up     | Up     |              |
+| predicate                             | from   | to     | action       |
+|---------------------------------------+--------+--------+--------------|
+| (and (= PREV $LOW) (= NEW $HIGH))     | Up     | Middle | (setf CNT 0) |
+| (and (= PREV NEW $HIGH) (< CNT $MAX)) | Middle | Middle | (incf CNT)   |
+| (and (= PREV NEW) (>= CNT $MAX))      | Middle | Down   | (setf CNT 0) |
+| (= PREV NEW $HIGH)                    | Down   | Down   |              |
+| (and (= PREV $HIGH) (= NEW $LOW))     | Down   | Up     | (setf CNT 0) |
+| (and (= PREV NEW $LOW))               | Up     | Up     |              |
 
 Стоит отметить, что задавать =predicate= и =action= лучше не так как в
 этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
@@ -121,6 +125,9 @@
   digraph G { viewport = "865,150,0.7,617,70"; rankdir = LR; $input }
 #+END_SRC
 
+#+results:
+[[file:../../../img/btn_fsm_graph.png]]
+
 Теперь по полученной картинке можно "поводить пальцем" и убедиться в ее
 правильности. После этого можно попробовать получить код:
 
@@ -141,19 +148,19 @@
                             (append (alist-get from result nil nil #'equal)
                                     (list val)))))))
             table)
-    result)
+    (nreverse result))
 #+END_SRC
 
 #+results: grouping
-: (("Down"
-:   (:to "Down" :predicate "(= PREV NEXT HIGH)" :action "")
-:   (:to "Up" :predicate "(and (= PREV HIGH) (= NEXT LOW))" :action "(setf CNT 0)"))
+: (("Up"
+:   (:to "Middle" :predicate "(and (= PREV $LOW) (= NEW $HIGH))" :action "(setf CNT 0)")
+:   (:to "Up" :predicate "(and (= PREV NEW $LOW))" :action ""))
 :  ("Middle"
-:   (:to "Middle" :predicate "(and (= PREV NEXT HIGH) (< CNT MAX))" :action "(incf CNT)")
-:   (:to "Down" :predicate "(and (= PREV NEXT) (>= CNT MAX))" :action "(setf CNT 0)"))
-:  ("Up"
-:   (:to "Middle" :predicate "(and (= PREV LOW) (= NEXT HIGH))" :action "(setf CNT 0)")
-:   (:to "Up" :predicate "(and (= PREV NEXT LOW))" :action "")))
+:   (:to "Middle" :predicate "(and (= PREV NEW $HIGH) (< CNT $MAX))" :action "(incf CNT)")
+:   (:to "Down" :predicate "(and (= PREV NEW) (>= CNT $MAX))" :action "(setf CNT 0)"))
+:  ("Down"
+:   (:to "Down" :predicate "(= PREV NEW $HIGH)" :action "")
+:   (:to "Up" :predicate "(and (= PREV $HIGH) (= NEW $LOW))" :action "(setf CNT 0)")))
 
 На первом этапе мы получаем список сгруппированный по исходящим
 узлам. Теперь мы можем обработать его, чтобы получить псевдокод
@@ -197,42 +204,42 @@
   (1
    (progn
      (when
-         (= PREV NEXT HIGH)
-       (nop)
-       (setf STATE 1))
+         (and
+          (= PREV $LOW)
+          (= NEW $HIGH))
+       (setf CNT 0)
+       (setf STATE 2))
      (when
          (and
-          (= PREV HIGH)
-          (= NEXT LOW))
-       (setf CNT 0)
-       (setf STATE 3))))
+          (= PREV NEW $LOW))
+       (nop)
+       (setf STATE 1))))
   (2
    (progn
      (when
          (and
-          (= PREV NEXT HIGH)
-          (< CNT MAX))
+          (= PREV NEW $HIGH)
+          (< CNT $MAX))
        (incf CNT)
        (setf STATE 2))
      (when
          (and
-          (= PREV NEXT)
-          (>= CNT MAX))
+          (= PREV NEW)
+          (>= CNT $MAX))
        (setf CNT 0)
-       (setf STATE 1))))
+       (setf STATE 3))))
   (3
    (progn
      (when
-         (and
-          (= PREV LOW)
-          (= NEXT HIGH))
-       (setf CNT 0)
-       (setf STATE 2))
+         (= PREV NEW $HIGH)
+       (nop)
+       (setf STATE 3))
      (when
          (and
-          (= PREV NEXT LOW))
-       (nop)
-       (setf STATE 3)))))
+          (= PREV $HIGH)
+          (= NEW $LOW))
+       (setf CNT 0)
+       (setf STATE 1)))))
 #+end_example
 
 Ассемблер, который мы хотим получить выглядит гораздо менее древовидным и
@@ -291,7 +298,20 @@
                    (throw 'ruler (funcall (cadr rule) lst))))
                (cons (recur (car lst))
                      (recur (cdr lst)))))))
+
+  (defun rload (reg par)
+    (let ((par (format "%s" par)))
+      (if (equal "$" (subseq par 0 1))
+          (let ((par (subseq par 1)))
+            ;; ldi (const)
+            (push `(ldi ,reg ,par) ssa))
+        ;; else lds (var)
+        (push `(lds ,reg ,par) ssa))))
 #+END_SRC
+
+Последняя функция нам нужна чтобы по разному загружать в регистр
+константу и переменную. Она в дальшнейшем будет использоваться во многих
+правилах, поэтому я поместил ее сюда.
 
 Теперь мы можем добавить несколько правил. Чтобы проверить концепцию я
 начну с простых правил:
@@ -377,16 +397,16 @@
                           (not (numberp (cadr lst)))
                           (not (numberp (caddr lst)))))
                   (lambda (lst)
-                    (let ((var1 (cadr lst))
-                          (var2 (caddr lst))
+                    (let ((var_or_const_1 (cadr lst))
+                          (var_or_const_2 (caddr lst))
                           (reg1 (gensym "reg_eq2_"))
                           (reg2 (gensym "reg_eq2_"))
                           (not_equal (gensym "_not_equal_eq2_"))
                           (end  (gensym "_end_eq2_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
-                      (push `(lds ,reg1 ,var1) ssa)
-                      (push `(lds ,reg2 ,var2) ssa)
+                      (rload reg1 var_or_const_1)
+                      (rload reg2 var_or_const_2)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
@@ -415,9 +435,9 @@
                          (not (numberp (caddr lst)))
                          (not (numberp (cadddr lst)))))
                   (lambda (lst)
-                    (let ((var1 (cadr lst))
-                          (var2 (caddr lst))
-                          (var3 (cadddr lst))
+                    (let ((var_or_const_1 (cadr lst))
+                          (var_or_const_2 (caddr lst))
+                          (var_or_const_3 (cadddr lst))
                           (reg1 (gensym "reg_eq3_"))
                           (reg2 (gensym "reg_eq3_"))
                           (reg3 (gensym "reg_eq3_"))
@@ -426,9 +446,9 @@
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
                       (push `(ralloc ,reg3) ssa)
-                      (push `(lds ,reg1 ,var1) ssa)
-                      (push `(lds ,reg2 ,var2) ssa)
-                      (push `(lds ,reg3 ,var3) ssa)
+                      (rload reg1 var_or_const_1)
+                      (rload reg2 var_or_const_2)
+                      (rload reg3 var_or_const_3)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(brne ,not_equal) ssa)
@@ -576,16 +596,16 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                           (not (numberp (cadr lst)))
                           (not (numberp (caddr lst)))))
                   (lambda (lst)
-                    (let ((var1 (cadr lst))
-                          (var2 (caddr lst))
+                    (let ((var_or_const_1 (cadr lst))
+                          (var_or_const_2 (caddr lst))
                           (reg1 (gensym "reg_lt2_"))
                           (reg2 (gensym "reg_lt2_"))
                           (not_less (gensym "_not_lt_eq2_"))
                           (end  (gensym "_end_lt2_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
-                      (push `(lds ,reg1 ,var1) ssa)
-                      (push `(lds ,reg2 ,var2) ssa)
+                      (rload reg1 var_or_const_1)
+                      (rload reg2 var_or_const_2)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
@@ -628,16 +648,16 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                           (not (numberp (cadr lst)))
                           (not (numberp (caddr lst)))))
                   (lambda (lst)
-                    (let ((var1 (cadr lst))
-                          (var2 (caddr lst))
+                    (let ((var_or_const_1 (cadr lst))
+                          (var_or_const_2 (caddr lst))
                           (reg1 (gensym "reg_lt2_"))
                           (reg2 (gensym "reg_lt2_"))
                           (not_greater_or_equal (gensym "_not_ge_eq2_"))
                           (end  (gensym "_end_ge2_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
-                      (push `(ldi ,reg1 ,var1) ssa)
-                      (push `(ldi ,reg2 ,var2) ssa)
+                      (rload reg1 var_or_const_1)
+                      (rload reg2 var_or_const_2)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
@@ -670,7 +690,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 вычетом индекстных регистров X, Y и Z.
 
 Из этих регистров мы также забираем =r16=, чтобы хранить там =result=
-последней выполненной операции.
+последней выполненной операции, =tmp0=, =tmp1= и =cnt=. Все они
+определены у нас в дефайнах
 
 #+NAME: regs
 #+BEGIN_SRC elisp
@@ -684,7 +705,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
         ((equal to rr) rs)
       (push `(,(intern (format "r%s" rr)) nil) rs)))
 
-  (setf *registers* (get-reg-list 17 26))
+  (setf *registers* (get-reg-list 20 26))
 
   (defun ralloc (var)
     "Занимает регистр для переменой
@@ -723,7 +744,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 #+NAME: gencode_fsmbtn
 #+BEGIN_SRC elisp :var all=all r=regs :results output org :wrap "SRC asm"
   (let* ((allocs)
-         (*registers* (get-reg-list 17 26))
+         (*registers* (get-reg-list 20 26))
          (var-to-reg (lambda (var)
                        (let ((pair (cl-member var *registers*
                                               :test (lambda (a b)
@@ -833,7 +854,6 @@ Instruction Pointer командой CALL, потом вынем его в ре�
      (read all)))
 #+END_SRC
 
-
 ** TODO Обработка временных интервалов
 
 Конечный автомат обработки временных интервалов
@@ -881,13 +901,29 @@ AVR и содержать типичные блоки инициализации
       ldi tmp0, 0
       out TCCR0B, tmp0
 
-      ldi     tmp0, 1
+      ;; Устанавливаем начальные значения
+      ldi     tmp0, 2
       sts     STATE, tmp0
 
+      ldi     tmp0, 1
+      sts     PREV, tmp0
+
+      ldi     tmp0, 1
+      sts     NEW, tmp0
+
+      ldi     tmp0, 0
+      sts     CNT, tmp0
+
   _mainloop:
-
-      rcall   _fsmbtn
-
+      lds     tmp0, STATE
+      ldi     tmp1, 2             ; Проверяем на состояние 2
+      cp      tmp0, tmp1
+      brne    _not_one            ;--+
+      rcall   _red_on             ;--|-+
+      rjmp    _end_no_one         ;  | |
+  _not_one:                       ;<-+ |
+      rcall   _red_off            ;    |
+  _end_no_one:                    ;<---+
       rjmp    _mainloop
 
   _fsmbtn:
@@ -900,19 +936,17 @@ AVR и содержать типичные блоки инициализации
   _blink:
       <<blink>>
 
+  <<red>>
+
       .data
 
   STATE:
       .byte 0x1
   PREV:
       .byte 0x0
-  NEXT:
-      .byte 0x0
   NEW:
       .byte 0x0
   CNT:
-      .byte 0x0
-  MAX:
       .byte 0x0
 #+END_SRC
 
@@ -1667,13 +1701,17 @@ TIFR-регистр нужно сбросить в 0:
       ;; Пока ничего не нажато - мигаем
       dec     cnt
       rcall   _blink
-  _timer_0_overflow_ret:
+
+  timer_0_overflow_ret:
       ;; Очищаем счетчик переполнений
       ;; mov     cnt, r1
       ;; ldi tmp0, 0
       ;; out TCNT0, tmp0
       ;; out TCNT0, cnt
       ;; inc cnt
+
+      rcall   _fsmbtn
+
       reti
 #+END_SRC
 
@@ -1783,10 +1821,26 @@ TIFR-регистр нужно сбросить в 0:
 #+BEGIN_SRC asm
   in      tmp0, PORTB
   com     tmp0
-  ldi     tmp1, 0b00011000    ; Мигаем только PB4 и PB3
+  ldi     tmp1, 0b00010000    ; Мигаем только PB4
   and     tmp0, tmp1
   out     PORTB, tmp0
   ret
+#+END_SRC
+
+#+NAME: red
+#+BEGIN_SRC asm
+  _red_on:
+      in      tmp0, PORTB
+      ldi     tmp1, 0b00001000    ; Устанавливаем только PB3
+      or      tmp0, tmp1
+      out     PORTB, tmp0
+      ret
+  _red_off:
+      in      tmp0, PORTB
+      ldi     tmp1, 0b11110111    ; Сбрасываем только PB3
+      and     tmp0, tmp1
+      out     PORTB, tmp0
+      ret
 #+END_SRC
 * Константы
 
@@ -1800,10 +1854,11 @@ TIFR-регистр нужно сбросить в 0:
   #define FALSE 0
   #define HIGH 1
   #define LOW 0
-  #define tmp0 r16
-  #define tmp1 r17
-  #define cnt  r18
+  #define MAX 250
   #define result r16
+  #define tmp0 r17
+  #define tmp1 r18
+  #define cnt  r19
 #+END_SRC
 
 * Символические имена
