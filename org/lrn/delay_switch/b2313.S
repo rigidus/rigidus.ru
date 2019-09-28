@@ -180,6 +180,7 @@ _next_205:
     rjmp    _label_case_3260
 _label_case_1207:
     ;; progn-open
+    rcall   _blink
     lds     r25, PREV
     lds     r24, NEXT
     lds     r23, HIGH
@@ -199,17 +200,6 @@ _end_eq3_214:                       ;<-+true
 _when_false_ret_208:                ;<-+ |
     ldi     result, FALSE           ;    |      f:
 _when_end_209:                      ;<---+
-
-
-
-
-
-
-
-
-
-
-
 
     lds     r23, PREV               ;
     lds     r24, HIGH               ;
@@ -249,17 +239,6 @@ _when_false_ret_216:                ;<-+ |
 _when_end_217:                      ;<---+
     ;; progn-close
     rjmp    _end_case_206           ; to end of case
-
-
-
-
-
-
-
-
-
-
-
 
 _label_case_2230:
     ;; progn-open
