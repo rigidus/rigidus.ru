@@ -284,14 +284,14 @@ _not_equal_eq3_240:
 _end_eq3_241:
     IFFALSE _and_false_ret_235
     lds     r25, CNT
-    ldi     r24, MAX
-    cp      r25, r24
+    ldi     r24, 250
+    cp      r25, r24  CNT>=MAX
     brsh    _not_lt_eq2_244
 
 
-    ;; ldi     r24, 3
-    ;; sts     STATE, r24
-    ;; rjmp    _when_end_249
+    ldi     r24, 3
+    sts     STATE, r24
+    rjmp    _when_end_249
 
 
 ;;     ldi     result, TRUE
