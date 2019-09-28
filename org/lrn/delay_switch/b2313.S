@@ -95,34 +95,37 @@ _reset:
     ;; Запретить прерывания
     clr     r1
     out     SREG, r1
-
+    
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-
+    
     ;; Инициализируем выводы
     ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
     ;;                 |          |
     ;;                 | +--------+
     ;;                 | |
     ;;                 v v
-    ldi     tmp0, 0b00010100
+    ldi     tmp0, 0b00011100
+    ;;                  ^
+    ;;                  |
+    ;;                  +PB3
     out     DDRB, tmp0
-
+    
     ;; Для пинов подключенных на вход (кнопки)
     ;; установить подтяжку к питанию (записав 1) чтобы не было hi-z
     ;; Однако их надо подтянуть к минусу питания (!)
-    ;; PB4 подтягиваем к земле, потому что начальное
+    ;; PB4 и PB3 подтягиваем к земле, потому что начальное
     ;; его состояние - выключен
     ;; PB2(0C0A) - тоже к земле, потому что он выход
-    ldi     tmp0, 0b00001011
+    ldi     tmp0, 0b00000011
     out     PORTB, tmp0
-
+    
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
     ldi     tmp0, 0b0010
     out     TCCR1B, tmp0
-
+    
     ;; Инициализация таймера-0
     ;; TCCR0A
     ldi tmp0, 0b01000010
@@ -137,12 +140,12 @@ _reset:
     out OCR0A, tmp0
     ;; Очищаем флаги прерывания таймера
     out TIFR, r1
-
+    
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
     ldi     tmp0, 0b10000001
     out     TIMSK, tmp0
-
+    
     ;; Разрешить прерывания
     sei
 
@@ -180,66 +183,61 @@ _next_205:
     rjmp    _label_case_3260
 _label_case_1207:
     ;; progn-open
-    rcall   _blink
     lds     r25, PREV
     lds     r24, NEXT
     lds     r23, HIGH
     cp      r25, r24
-    brne    _not_equal_eq3_213      ;----+ne(prev,next)
-    cp      r24, r23                ;    |
-    brne    _not_equal_eq3_213      ;----+ne(next,high)
-    ldi     result, TRUE            ;    |
-    rjmp    _end_eq3_214            ;--+ |
-_not_equal_eq3_213:                 ;<-|-+
-    ldi     result, FALSE           ;  |
-_end_eq3_214:                       ;<-+true
-    IFFALSE _when_false_ret_208     ;--+false
-    ldi     r23, 1                  ;  |        t:
-    sts     STATE, r23              ;  |        t: (setf state 1)
-    rjmp    _when_end_209           ;--|-+
-_when_false_ret_208:                ;<-+ |
-    ldi     result, FALSE           ;    |      f:
-_when_end_209:                      ;<---+
-
-    lds     r23, PREV               ;
-    lds     r24, HIGH               ;
-    cp      r23, r24                ; (?) (prev==high)
-    brne    _not_equal_eq2_222      ;----+ not!
-    ldi     result, TRUE            ;    |      t:
-    rjmp    _end_eq2_223            ;--+ |
-_not_equal_eq2_222:                 ;<-|-+
-    ldi     result, FALSE           ;  |        ^
-_end_eq2_223:                       ;<-+true    |
-    ;; =============================( prev == high )==end==
-    IFFALSE _and_false_ret_218      ;--+false? and failed!
-    lds     r24, NEXT               ;  |        t:
-    lds     r23, LOW                ;  |        t:
-    cp      r24, r23                ;  |        t:
-    brne    _not_equal_eq2_226      ;--|-+      t:
-    ldi     result, TRUE            ;  | |
-    rjmp    _end_eq2_227            ;--|-|-+
-_not_equal_eq2_226:                 ;<-|-+ |
-    ldi     result, FALSE           ;  |   |
-_end_eq2_227:                       ;<-|---+
-    IFFALSE _and_false_ret_218      ;--+false? and failed!
-    ldi     result, TRUE            ;  |        t:
-    rjmp    _and_end_219            ;--|-+
-_and_false_ret_218:                 ;<-+ |
-    ldi     result, FALSE           ;    |
-_and_end_219:                       ;<---+
-    ;; =============================and-end===============
-    IFFALSE _when_false_ret_216     ;--+false? when failed
-    ldi     r23, 0                  ;  |        t:
-    sts     CNT, r23                ;  |        t: (setf cnt 0)
-    ldi     r23, 3                  ;  |        t:
-    sts     STATE, r23              ;  |        t: (set state 3)
-    rjmp    _when_end_217           ;--|-+
-_when_false_ret_216:                ;<-+ |
-    ldi     result, FALSE           ;    |
-_when_end_217:                      ;<---+
+    brne    _not_equal_eq3_213
+    cp      r24, r23
+    brne    _not_equal_eq3_213
+    ldi     result, TRUE
+    rjmp    _end_eq3_214
+_not_equal_eq3_213:
+    ldi     result, FALSE
+_end_eq3_214:
+    IFFALSE _when_false_ret_208
+    ldi     r23, 1
+    sts     STATE, r23
+    rjmp    _when_end_209
+_when_false_ret_208:
+    ldi     result, FALSE
+_when_end_209:
+    lds     r23, PREV
+    lds     r24, HIGH
+    cp      r23, r24
+    brne    _not_equal_eq2_222
+    ldi     result, TRUE
+    rjmp    _end_eq2_223
+_not_equal_eq2_222:
+    ldi     result, FALSE
+_end_eq2_223:
+    IFFALSE _and_false_ret_218
+    lds     r24, NEXT
+    lds     r23, LOW
+    cp      r24, r23
+    brne    _not_equal_eq2_226
+    ldi     result, TRUE
+    rjmp    _end_eq2_227
+_not_equal_eq2_226:
+    ldi     result, FALSE
+_end_eq2_227:
+    IFFALSE _and_false_ret_218
+    ldi     result, TRUE
+    rjmp    _and_end_219
+_and_false_ret_218:
+    ldi     result, FALSE
+_and_end_219:
+    IFFALSE _when_false_ret_216
+    ldi     r23, 0
+    sts     CNT, r23
+    ldi     r23, 3
+    sts     STATE, r23
+    rjmp    _when_end_217
+_when_false_ret_216:
+    ldi     result, FALSE
+_when_end_217:
     ;; progn-close
-    rjmp    _end_case_206           ; to end of case
-
+    rjmp    _end_case_206
 _label_case_2230:
     ;; progn-open
     lds     r23, PREV
@@ -389,7 +387,7 @@ _infloop:
 _blink:
     in      tmp0, PORTB
     com     tmp0
-    ldi     tmp1, 0b00010000    ; Мигаем только PB4
+    ldi     tmp1, 0b00011000    ; Мигаем только PB4
     and     tmp0, tmp1
     out     PORTB, tmp0
     ret
