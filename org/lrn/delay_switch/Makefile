@@ -85,7 +85,8 @@ $(PROGRAM).oS: $(PROGRAM).S
 objdumpS: $(PROGRAM).elfS
 	avr-objdump -D $^ > $(PROGRAM).asmS
 
-
+asmsize: $(PROGRAM).elfS
+	avr-size --mcu=attiny2313 --format=avr $^
 
 # Извлечение прошивки в файл HEX
 extract:

@@ -151,8 +151,8 @@ _reset:
     ldi tmp0, 0
     out TCCR0B, tmp0
 
-    ;; ldi     tmp0, 2
-    ;; sts     STATE, tmp0
+    ldi     tmp0, 1
+    sts     STATE, tmp0
 
 _mainloop:
 
@@ -180,199 +180,224 @@ _next_205:
     rjmp    _label_case_3260
 _label_case_1207:
     ;; progn-open
-;;     lds     r25, PREV
-;;     lds     r24, NEXT
-;;     lds     r23, HIGH
-;;     cp      r25, r24
-;;     brne    _not_equal_eq3_213
-;;     cp      r24, r23
-;;     brne    _not_equal_eq3_213
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq3_214
-;; _not_equal_eq3_213:
-;;     ldi     result, FALSE
-;; _end_eq3_214:
-;;     IFFALSE _when_false_ret_208
-;;     ldi     r23, 1
-;;     sts      STATE, r23
-;;     rjmp    _when_end_209
-;; _when_false_ret_208:
-;;     ldi     result, FALSE
-;; _when_end_209:
-;;     lds     r23, PREV
-;;     lds     r24, HIGH
-;;     cp      r23, r24
-;;     brne    _not_equal_eq2_222
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq2_223
-;; _not_equal_eq2_222:
-;;     ldi     result, FALSE
-;; _end_eq2_223:
-;;     IFFALSE _and_false_ret_218
-;;     lds     r24, NEXT
-;;     lds     r23, LOW
-;;     cp      r24, r23
-;;     brne    _not_equal_eq2_226
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq2_227
-;; _not_equal_eq2_226:
-;;     ldi     result, FALSE
-;; _end_eq2_227:
-;;     IFFALSE _and_false_ret_218
-;;     ldi     result, TRUE
-;;     rjmp    _and_end_219
-;; _and_false_ret_218:
-;;     ldi     result, FALSE
-;; _and_end_219:
-;;     IFFALSE _when_false_ret_216
-;;     ldi     r23, 0
-;;     sts      CNT, r23
-;;     ldi     r23, 3
-;;     sts      STATE, r23
-;;     rjmp    _when_end_217
-;; _when_false_ret_216:
-;;     ldi     result, FALSE
-;; _when_end_217:
+    lds     r25, PREV
+    lds     r24, NEXT
+    lds     r23, HIGH
+    cp      r25, r24
+    brne    _not_equal_eq3_213      ;----+ne(prev,next)
+    cp      r24, r23                ;    |
+    brne    _not_equal_eq3_213      ;----+ne(next,high)
+    ldi     result, TRUE            ;    |
+    rjmp    _end_eq3_214            ;--+ |
+_not_equal_eq3_213:                 ;<-|-+
+    ldi     result, FALSE           ;  |
+_end_eq3_214:                       ;<-+true
+    IFFALSE _when_false_ret_208     ;--+false
+    ldi     r23, 1                  ;  |        t:
+    sts     STATE, r23              ;  |        t: (setf state 1)
+    rjmp    _when_end_209           ;--|-+
+_when_false_ret_208:                ;<-+ |
+    ldi     result, FALSE           ;    |      f:
+_when_end_209:                      ;<---+
+
+
+
+
+
+
+
+
+
+
+
+
+    lds     r23, PREV               ;
+    lds     r24, HIGH               ;
+    cp      r23, r24                ; (?) (prev==high)
+    brne    _not_equal_eq2_222      ;----+ not!
+    ldi     result, TRUE            ;    |      t:
+    rjmp    _end_eq2_223            ;--+ |
+_not_equal_eq2_222:                 ;<-|-+
+    ldi     result, FALSE           ;  |        ^
+_end_eq2_223:                       ;<-+true    |
+    ;; =============================( prev == high )==end==
+    IFFALSE _and_false_ret_218      ;--+false? and failed!
+    lds     r24, NEXT               ;  |        t:
+    lds     r23, LOW                ;  |        t:
+    cp      r24, r23                ;  |        t:
+    brne    _not_equal_eq2_226      ;--|-+      t:
+    ldi     result, TRUE            ;  | |
+    rjmp    _end_eq2_227            ;--|-|-+
+_not_equal_eq2_226:                 ;<-|-+ |
+    ldi     result, FALSE           ;  |   |
+_end_eq2_227:                       ;<-|---+
+    IFFALSE _and_false_ret_218      ;--+false? and failed!
+    ldi     result, TRUE            ;  |        t:
+    rjmp    _and_end_219            ;--|-+
+_and_false_ret_218:                 ;<-+ |
+    ldi     result, FALSE           ;    |
+_and_end_219:                       ;<---+
+    ;; =============================and-end===============
+    IFFALSE _when_false_ret_216     ;--+false? when failed
+    ldi     r23, 0                  ;  |        t:
+    sts     CNT, r23                ;  |        t: (setf cnt 0)
+    ldi     r23, 3                  ;  |        t:
+    sts     STATE, r23              ;  |        t: (set state 3)
+    rjmp    _when_end_217           ;--|-+
+_when_false_ret_216:                ;<-+ |
+    ldi     result, FALSE           ;    |
+_when_end_217:                      ;<---+
     ;; progn-close
-    rjmp    _end_case_206
+    rjmp    _end_case_206           ; to end of case
+
+
+
+
+
+
+
+
+
+
+
+
 _label_case_2230:
     ;; progn-open
-        rcall _blink
-;;     lds     r23, PREV
-;;     lds     r24, NEXT
-;;     lds     r25, HIGH
-;;     cp      r23, r24
-;;     brne    _not_equal_eq3_238
-;;     cp      r24, r25
-;;     brne    _not_equal_eq3_238
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq3_239
-;; _not_equal_eq3_238:
-;;     ldi     result, FALSE
-;; _end_eq3_239:
-;;     IFFALSE _and_false_ret_233
-;;     lds     r25, CNT
-;;     lds     r24, MAX
-;;     cp      r25, r24
-;;     brsh    _not_lt_eq2_242
-;;     ldi     result, TRUE
-;;     rjmp    _end_lt2_243
-;; _not_lt_eq2_242:
-;;     ldi     result, FALSE
-;; _end_lt2_243:
-;;     IFFALSE _and_false_ret_233
-;;     ldi     result, TRUE
-;;     rjmp    _and_end_234
-;; _and_false_ret_233:
-;;     ldi     result, FALSE
-;; _and_end_234:
-;;     IFFALSE _when_false_ret_231
-;;     ldi     r24, CNT
-;;     inc     r24
-;;     sts      CNT, r24
-;;     ldi     r24, 2
-;;     sts      STATE, r24
-;;     rjmp    _when_end_232
-;; _when_false_ret_231:
-;;     ldi     result, FALSE
-;; _when_end_232:
-;;     lds     r24, PREV
-;;     lds     r25, NEXT
-;;     cp      r24, r25
-;;     brne    _not_equal_eq2_252
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq2_253
-;; _not_equal_eq2_252:
-;;     ldi     result, FALSE
-;; _end_eq2_253:
-;;     IFFALSE _and_false_ret_248
-;;     ldi     r25, CNT
-;;     ldi     r24, MAX
-;;     cp      r25, r24
-;;     brlt    _not_ge_eq2_256
-;;     ldi     result, TRUE
-;;     rjmp    _end_ge2_257
-;; _not_ge_eq2_256:
-;;     ldi     result, FALSE
-;; _end_ge2_257:
-;;     IFFALSE _and_false_ret_248
-;;     ldi     result, TRUE
-;;     rjmp    _and_end_249
-;; _and_false_ret_248:
-;;     ldi     result, FALSE
-;; _and_end_249:
-;;     IFFALSE _when_false_ret_246
-;;     ldi     r24, 0
-;;     sts      CNT, r24
-;;     ldi     r24, 1
-;;     sts      STATE, r24
-;;     rjmp    _when_end_247
-;; _when_false_ret_246:
-;;     ldi     result, FALSE
-;; _when_end_247:
+    lds     r23, PREV
+    lds     r24, NEXT
+    lds     r25, HIGH
+    cp      r23, r24
+    brne    _not_equal_eq3_238
+    cp      r24, r25
+    brne    _not_equal_eq3_238
+    ldi     result, TRUE
+    rjmp    _end_eq3_239
+_not_equal_eq3_238:
+    ldi     result, FALSE
+_end_eq3_239:
+    IFFALSE _and_false_ret_233
+    lds     r25, CNT
+    lds     r24, MAX
+    cp      r25, r24
+    brsh    _not_lt_eq2_242
+    ldi     result, TRUE
+    rjmp    _end_lt2_243
+_not_lt_eq2_242:
+    ldi     result, FALSE
+_end_lt2_243:
+    IFFALSE _and_false_ret_233
+    ldi     result, TRUE
+    rjmp    _and_end_234
+_and_false_ret_233:
+    ldi     result, FALSE
+_and_end_234:
+    IFFALSE _when_false_ret_231
+    ldi     r24, CNT
+    inc     r24
+    sts     CNT, r24
+    ldi     r24, 2
+    sts     STATE, r24
+    rjmp    _when_end_232
+_when_false_ret_231:
+    ldi     result, FALSE
+_when_end_232:
+    lds     r24, PREV
+    lds     r25, NEXT
+    cp      r24, r25
+    brne    _not_equal_eq2_252
+    ldi     result, TRUE
+    rjmp    _end_eq2_253
+_not_equal_eq2_252:
+    ldi     result, FALSE
+_end_eq2_253:
+    IFFALSE _and_false_ret_248
+    ldi     r25, CNT
+    ldi     r24, MAX
+    cp      r25, r24
+    brlt    _not_ge_eq2_256
+    ldi     result, TRUE
+    rjmp    _end_ge2_257
+_not_ge_eq2_256:
+    ldi     result, FALSE
+_end_ge2_257:
+    IFFALSE _and_false_ret_248
+    ldi     result, TRUE
+    rjmp    _and_end_249
+_and_false_ret_248:
+    ldi     result, FALSE
+_and_end_249:
+    IFFALSE _when_false_ret_246
+    ldi     r24, 0
+    sts     CNT, r24
+    ldi     r24, 1
+    sts     STATE, r24
+    rjmp    _when_end_247
+_when_false_ret_246:
+    ldi     result, FALSE
+_when_end_247:
     ;; progn-close
     rjmp    _end_case_206
 _label_case_3260:
     ;; progn-open
-;;     lds     r24, PREV
-;;     lds     r25, LOW
-;;     cp      r24, r25
-;;     brne    _not_equal_eq2_267
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq2_268
-;; _not_equal_eq2_267:
-;;     ldi     result, FALSE
-;; _end_eq2_268:
-;;     IFFALSE _and_false_ret_263
-;;     lds     r25, NEXT
-;;     lds     r24, HIGH
-;;     cp      r25, r24
-;;     brne    _not_equal_eq2_271
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq2_272
-;; _not_equal_eq2_271:
-;;     ldi     result, FALSE
-;; _end_eq2_272:
-;;     IFFALSE _and_false_ret_263
-;;     ldi     result, TRUE
-;;     rjmp    _and_end_264
-;; _and_false_ret_263:
-;;     ldi     result, FALSE
-;; _and_end_264:
-;;     IFFALSE _when_false_ret_261
-;;     ldi     r24, 0
-;;     sts      CNT, r24
-;;     ldi     r24, 2
-;;     sts      STATE, r24
-;;     rjmp    _when_end_262
-;; _when_false_ret_261:
-;;     ldi     result, FALSE
-;; _when_end_262:
-;;     lds     r24, PREV
-;;     lds     r25, NEXT
-;;     lds     r23, LOW
-;;     cp      r24, r25
-;;     brne    _not_equal_eq3_282
-;;     cp      r25, r23
-;;     brne    _not_equal_eq3_282
-;;     ldi     result, TRUE
-;;     rjmp    _end_eq3_283
-;; _not_equal_eq3_282:
-;;     ldi     result, FALSE
-;; _end_eq3_283:
-;;     IFFALSE _and_false_ret_277
-;;     ldi     result, TRUE
-;;     rjmp    _and_end_278
-;; _and_false_ret_277:
-;;     ldi     result, FALSE
-;; _and_end_278:
-;;     IFFALSE _when_false_ret_275
-;;     ldi     r23, 3
-;;     sts      STATE, r23
-;;     rjmp    _when_end_276
-;; _when_false_ret_275:
-;;     ldi     result, FALSE
-;; _when_end_276:
+    lds     r24, PREV
+    lds     r25, LOW
+    cp      r24, r25
+    brne    _not_equal_eq2_267
+    ldi     result, TRUE
+    rjmp    _end_eq2_268
+_not_equal_eq2_267:
+    ldi     result, FALSE
+_end_eq2_268:
+    IFFALSE _and_false_ret_263
+    lds     r25, NEXT
+    lds     r24, HIGH
+    cp      r25, r24
+    brne    _not_equal_eq2_271
+    ldi     result, TRUE
+    rjmp    _end_eq2_272
+_not_equal_eq2_271:
+    ldi     result, FALSE
+_end_eq2_272:
+    IFFALSE _and_false_ret_263
+    ldi     result, TRUE
+    rjmp    _and_end_264
+_and_false_ret_263:
+    ldi     result, FALSE
+_and_end_264:
+    IFFALSE _when_false_ret_261
+    ldi     r24, 0
+    sts     CNT, r24
+    ldi     r24, 2
+    sts     STATE, r24
+    rjmp    _when_end_262
+_when_false_ret_261:
+    ldi     result, FALSE
+_when_end_262:
+    lds     r24, PREV
+    lds     r25, NEXT
+    lds     r23, LOW
+    cp      r24, r25
+    brne    _not_equal_eq3_282
+    cp      r25, r23
+    brne    _not_equal_eq3_282
+    ldi     result, TRUE
+    rjmp    _end_eq3_283
+_not_equal_eq3_282:
+    ldi     result, FALSE
+_end_eq3_283:
+    IFFALSE _and_false_ret_277
+    ldi     result, TRUE
+    rjmp    _and_end_278
+_and_false_ret_277:
+    ldi     result, FALSE
+_and_end_278:
+    IFFALSE _when_false_ret_275
+    ldi     r23, 3
+    sts     STATE, r23
+    rjmp    _when_end_276
+_when_false_ret_275:
+    ldi     result, FALSE
+_when_end_276:
     ;; progn-close
     rjmp    _end_case_206
 _end_case_206:
@@ -393,7 +418,7 @@ _blink:
     .data
 
 STATE:
-    .byte 0x2
+    .byte 0x1
 PREV:
     .byte 0x0
 NEXT:
