@@ -71,10 +71,9 @@
 идентификаторами
 
 На входе у этого автомата переменные:
-- предыдущее зарегистрированное состояние (=PREV=)
-- новое зарегистрированное состояние (=NEW=)
+- новое зарегистрированное состояние кнопки (=NEW=)
 - счетчик одинаковых регистраций (=СNT=)
-- максимальное значение счетчика (=$MAX= )
+- максимальное значение счетчика (=$MAX=)
 Выходом же является само состояние автомата
 
 Чтобы отличать константы от ссылок на переменные мы добавляем =$= в
@@ -90,14 +89,16 @@
 переходе действия.
 
 #+NAME: btn_fsm
-| predicate                             | from   | to     | action       |
-|---------------------------------------+--------+--------+--------------|
-| (and (= PREV $LOW) (= NEW $HIGH))     | Up     | Middle | (setf CNT 0) |
-| (and (= PREV NEW $HIGH) (< CNT $MAX)) | Middle | Middle | (incf CNT)   |
-| (and (= PREV NEW) (>= CNT $MAX))      | Middle | Down   | (setf CNT 0) |
-| (= PREV NEW $HIGH)                    | Down   | Down   |              |
-| (and (= PREV $HIGH) (= NEW $LOW))     | Down   | Up     | (setf CNT 0) |
-| (and (= PREV NEW $LOW))               | Up     | Up     |              |
+| predicate                         | from   | to     | action       |
+|-----------------------------------+--------+--------+--------------|
+| (= NEW $LOW)                      | Up     | Up     |              |
+| (= NEW $HIGH)                     | Up     | Middle | (setf CNT 0) |
+| (= NEW $LOW)                      | Middle | Up     |              |
+| (and (= NEW $HIGH) (< CNT $MAX))  | Middle | Middle | (incf CNT)   |
+| (and (= NEW $HIGH) (>= CNT $MAX)) | Middle | Down   |              |
+| (= NEW $HIGH)                     | Down   | Down   |              |
+| (= NEW $LOW)                      | Down   | Up     |              |
+
 
 Стоит отметить, что задавать =predicate= и =action= лучше не так как в
 этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
@@ -152,15 +153,18 @@
 #+END_SRC
 
 #+results: grouping
-: (("Up"
-:   (:to "Middle" :predicate "(and (= PREV $LOW) (= NEW $HIGH))" :action "(setf CNT 0)")
-:   (:to "Up" :predicate "(and (= PREV NEW $LOW))" :action ""))
-:  ("Middle"
-:   (:to "Middle" :predicate "(and (= PREV NEW $HIGH) (< CNT $MAX))" :action "(incf CNT)")
-:   (:to "Down" :predicate "(and (= PREV NEW) (>= CNT $MAX))" :action "(setf CNT 0)"))
-:  ("Down"
-:   (:to "Down" :predicate "(= PREV NEW $HIGH)" :action "")
-:   (:to "Up" :predicate "(and (= PREV $HIGH) (= NEW $LOW))" :action "(setf CNT 0)")))
+#+begin_example
+(("Up"
+  (:to "Up" :predicate "(= NEW $LOW)" :action "")
+  (:to "Middle" :predicate "(= NEW $HIGH)" :action "(setf CNT 0)"))
+ ("Middle"
+  (:to "Up" :predicate "(= NEW $LOW)" :action "")
+  (:to "Middle" :predicate "(and (= NEW $HIGH) (< CNT $MAX))" :action "(incf CNT)")
+  (:to "Down" :predicate "(and (= NEW $HIGH) (>= CNT $MAX))" :action ""))
+ ("Down"
+  (:to "Down" :predicate "(= NEW $HIGH)" :action "")
+  (:to "Up" :predicate "(= NEW $LOW)" :action "")))
+#+end_example
 
 На первом этапе мы получаем список сгруппированный по исходящим
 узлам. Теперь мы можем обработать его, чтобы получить псевдокод
@@ -204,41 +208,40 @@
   (1
    (progn
      (when
-         (and
-          (= PREV $LOW)
-          (= NEW $HIGH))
-       (setf CNT 0)
-       (setf STATE 2))
-     (when
-         (and
-          (= PREV NEW $LOW))
+         (= NEW $LOW)
        (nop)
-       (setf STATE 1))))
+       (setf STATE 1))
+     (when
+         (= NEW $HIGH)
+       (setf CNT 0)
+       (setf STATE 2))))
   (2
    (progn
      (when
+         (= NEW $LOW)
+       (nop)
+       (setf STATE 1))
+     (when
          (and
-          (= PREV NEW $HIGH)
+          (= NEW $HIGH)
           (< CNT $MAX))
        (incf CNT)
        (setf STATE 2))
      (when
          (and
-          (= PREV NEW)
+          (= NEW $HIGH)
           (>= CNT $MAX))
-       (setf CNT 0)
+       (nop)
        (setf STATE 3))))
   (3
    (progn
      (when
-         (= PREV NEW $HIGH)
+         (= NEW $HIGH)
        (nop)
        (setf STATE 3))
      (when
-         (and
-          (= PREV $HIGH)
-          (= NEW $LOW))
-       (setf CNT 0)
+         (= NEW $LOW)
+       (nop)
        (setf STATE 1)))))
 #+end_example
 
@@ -628,9 +631,15 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                      (not (numberp (cadr lst)))
                      (null (caddr lst))))
                   (lambda (lst)
-                    (let ((reg1 (gensym "reg_incf_")))
+                    (let ((reg1 (gensym "reg_incf_"))
+                          (var1 (let ((par (format "%s" (cadr  lst))))
+                                  ;; тут не может быть константы
+                                  (if (equal "$" (subseq par 0 1))
+                                      (error (format "incfement of constant %s"
+                                                     par)))
+                                  par)))
                       (push `(ralloc ,reg1) ssa)
-                      (push `(ldi ,reg1 ,(cadr lst)) ssa)
+                      (push `(lds ,reg1 ,var1) ssa)
                       (push `(inc ,reg1) ssa)
                       (push `(sts ,(cadr lst) ,reg1) ssa)
                       (push `(rfree ,reg1) ssa))))
@@ -661,7 +670,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
-                      (push `(brlt ,not_greater_or_equal) ssa)
+                      (push `(brlo ,not_greater_or_equal) ssa)
                       (push `(set-result TRUE) ssa)
                       (push `(rjmp ,end) ssa)
                       (push `(label ,not_greater_or_equal) ssa)
@@ -836,7 +845,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                ;; однооперандные команды из четырех букв - операнд не регистр
                ((or (eql 'brne (car op))
                     (eql 'brsh (car op))
-                    (eql 'brlt (car op))
+                    (eql 'brlo (car op))
                     (eql 'rjmp (car op))
                     (eql 'rcall (car op)))
                 (princ (format "    %s    %s\n"
@@ -905,10 +914,7 @@ AVR и содержать типичные блоки инициализации
       ldi     tmp0, 2
       sts     STATE, tmp0
 
-      ldi     tmp0, 1
-      sts     PREV, tmp0
-
-      ldi     tmp0, 1
+      ldi     tmp0, HIGH
       sts     NEW, tmp0
 
       ldi     tmp0, 0
@@ -916,7 +922,7 @@ AVR и содержать типичные блоки инициализации
 
   _mainloop:
       lds     tmp0, STATE
-      ldi     tmp1, 2             ; Проверяем на состояние 2
+      ldi     tmp1, 2             ; Проверяем на состояние
       cp      tmp0, tmp1
       brne    _not_one            ;--+
       rcall   _red_on             ;--|-+
@@ -942,8 +948,6 @@ AVR и содержать типичные блоки инициализации
 
   STATE:
       .byte 0x1
-  PREV:
-      .byte 0x0
   NEW:
       .byte 0x0
   CNT:
@@ -1854,7 +1858,7 @@ TIFR-регистр нужно сбросить в 0:
   #define FALSE 0
   #define HIGH 1
   #define LOW 0
-  #define MAX 250
+  #define MAX 5
   #define result r16
   #define tmp0 r17
   #define tmp1 r18
