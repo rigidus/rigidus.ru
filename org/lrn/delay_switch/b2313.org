@@ -911,7 +911,7 @@ AVR и содержать типичные блоки инициализации
       out TCCR0B, tmp0
 
       ;; Устанавливаем начальные значения
-      ldi     tmp0, 2
+      ldi     tmp0, 1
       sts     STATE, tmp0
 
       ldi     tmp0, HIGH
@@ -920,27 +920,43 @@ AVR и содержать типичные блоки инициализации
       ldi     tmp0, 0
       sts     CNT, tmp0
 
+      rcall   _red_off
+      rcall   _yellow_off
+
   _mainloop:
       lds     tmp0, STATE
-      ldi     tmp1, 2             ; Проверяем на состояние
+      ldi     tmp1, 1             ; Проверяем на состояние
       cp      tmp0, tmp1
       brne    _not_one            ;--+
-      rcall   _red_on             ;--|-+
-      rjmp    _end_no_one         ;  | |
+      rcall   _red_on             ;  |
+      rcall   _yellow_off         ;  |
+      rjmp    _end                ;--|-+
   _not_one:                       ;<-+ |
-      rcall   _red_off            ;    |
-  _end_no_one:                    ;<---+
+      ldi     tmp1, 2             ;    |
+      cp      tmp0, tmp1          ;    |
+      brne    _not_two            ;--+ |
+      rcall   _red_off            ;  | |
+      rcall   _yellow_on          ;  | |
+      rjmp    _end                ;--|-+
+  _not_two:                       ;<-+ |
+      rcall   _red_on             ;    |
+      rcall   _yellow_on          ;    |
+  _end:                           ;<---+
       rjmp    _mainloop
 
   _fsmbtn:
+      push    tmp0
+      push    tmp1
   <<gencode_fsmbtn()>>
+      pop     tmp1
+      pop     tmp0
       ret
 
   _infloop:
       rjmp    _infloop
 
-  _blink:
-      <<blink>>
+
+  <<blink_green>>
 
   <<red>>
 
@@ -1704,7 +1720,7 @@ TIFR-регистр нужно сбросить в 0:
   ;; _not_press:
       ;; Пока ничего не нажато - мигаем
       dec     cnt
-      rcall   _blink
+      rcall   _blink_green
 
   timer_0_overflow_ret:
       ;; Очищаем счетчик переполнений
@@ -1765,9 +1781,10 @@ TIFR-регистр нужно сбросить в 0:
   ;;                 | +--------+
   ;;                 | |
   ;;                 v v
-  ldi     tmp0, 0b00011100
-  ;;                  ^
-  ;;                  |
+  ldi     tmp0, 0b00011110
+  ;;                  ^ ^
+  ;;                  | |
+  ;;                  | +PB1
   ;;                  +PB3
   out     DDRB, tmp0
 
@@ -1777,24 +1794,24 @@ TIFR-регистр нужно сбросить в 0:
   ;; PB4 и PB3 подтягиваем к земле, потому что начальное
   ;; его состояние - выключен
   ;; PB2(0C0A) - тоже к земле, потому что он выход
-  ldi     tmp0, 0b00000011
+  ldi     tmp0, 0b00000001
   out     PORTB, tmp0
 #+END_SRC
 
 * Схема
 
 #+BEGIN_EXAMPLE
+
                                             +-[LED-GREEN]-[R100]-+
-                                            | +[LED-RED]--[R100]-+
-                +-------------------------+ | | +-[BUZZER]-------+
-                |                         | | | |                |
-              +-------------------------+ | | | |                |
-              | |                       | | | | |   o~o--[R100]--+
-            +-------------------------+ | | | | |   |            |
-            | | | +------+            | | | | | |   |            |
-            v v v v      |  +--vcc--+ | | | | | |   |            |
-  /=+=+=+=+=+=+=+=+=+=   |  |       | | | | | | |   |            |
-  |     ^ ^ ^ ^ ^ ^  /   |  |       v v v v v v v   v            |
+                +-------------------------+ | +-[LED-RED]-[R100]-+
+                |                         | | | +-[BUZZER]-------+
+              +-------------------------+ | | | | +-[LED-YELLOW]-+
+              | |                       | | | | | | o~o--[R100]--+
+            +-------------------------+ | | | | | | |            |
+            | | | +------+            | | | | | | | |            |
+            v v v v      |  +--vcc--+ | | | | | | | |            |
+  /=+=+=+=+=+=+=+=+=+=   |  |       | | | | | | | | |            |
+  |     ^ ^ ^ ^ ^ ^  /   |  |       v v v v v v v v v            |
   |     | | | | | |  \   |  |   /===+=+=+=+=+=+=+=+=+=+===\      |
   | aref+ | | | | |  /   |  |   |   ^ ^ ^ ^ ^ ^ ^ ^ ^ ^   |      |
   |    gnd+ | | | |  \   |  |   |   | | | | | | | | | |   |      |
@@ -1805,7 +1822,7 @@ TIFR-регистр нужно сбросить в 0:
   |                  /   |  |   |  (OC1B)pb4+ | | | | |   |      |
   |        (gnd)+    \   |  |   |          pb3+ | | | |   |      |
   |      (gnd)+ |    /   |  |   |      (OC0A)pb2+ | | |   |      |
-  |     (5v)+ | |    \   |  |   |                   | |   |      |
+  |     (5v)+ | |    \   |  |   |              pb1+ | |   |      |
   | (3.3v)+ | | |    /   |  |   |                pb0+ |   |      |
   |reset+ | | | |    \   |  |   |                         |      |
   |     | | | | |    /   |  |   |   +reset            +gnd|      |
@@ -1821,29 +1838,72 @@ TIFR-регистр нужно сбросить в 0:
 
 * Мигание светодиодом
 
-#+NAME: blink
+#+NAME: blink_green
 #+BEGIN_SRC asm
-  in      tmp0, PORTB
-  com     tmp0
-  ldi     tmp1, 0b00010000    ; Мигаем только PB4
-  and     tmp0, tmp1
-  out     PORTB, tmp0
-  ret
+  _blink_green:
+      push    tmp0
+      push    tmp1
+      ;; load PB3
+      in      tmp0, PORTB
+      ldi     tmp1, 0b00010000
+      and     tmp1, tmp0
+      breq    _green_off
+      ldi     tmp1, 0b11101111
+      and     tmp1, tmp0
+      out     PORTB, tmp1
+      rjmp    _ret_blink_green
+  _green_off:
+      ldi     tmp1, 0b00010000
+      or      tmp1, tmp0
+      out     PORTB, tmp1
+      rjmp    _ret_blink_green
+  _ret_blink_green:
+      pop     tmp1
+      pop     tmp0
+      ret
 #+END_SRC
 
 #+NAME: red
 #+BEGIN_SRC asm
   _red_on:
+      push    tmp0
+      push    tmp1
       in      tmp0, PORTB
       ldi     tmp1, 0b00001000    ; Устанавливаем только PB3
       or      tmp0, tmp1
       out     PORTB, tmp0
+      pop     tmp1
+      pop     tmp0
       ret
   _red_off:
+      push    tmp0
+      push    tmp1
       in      tmp0, PORTB
       ldi     tmp1, 0b11110111    ; Сбрасываем только PB3
       and     tmp0, tmp1
       out     PORTB, tmp0
+      pop     tmp1
+      pop     tmp0
+      ret
+  _yellow_on:
+      push    tmp0
+      push    tmp1
+      in      tmp0, PORTB
+      ldi     tmp1, 0b00000010    ; Устанавливаем только PB1
+      or      tmp0, tmp1
+      out     PORTB, tmp0
+      pop     tmp1
+      pop     tmp0
+      ret
+  _yellow_off:
+      push    tmp0
+      push    tmp1
+      in      tmp0, PORTB
+      ldi     tmp1, 0b11111101    ; Сбрасываем только PB1
+      and     tmp0, tmp1
+      out     PORTB, tmp0
+      pop     tmp1
+      pop     tmp0
       ret
 #+END_SRC
 * Константы
