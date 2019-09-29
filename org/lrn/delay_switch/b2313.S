@@ -55,41 +55,51 @@ _vectors:
     rjmp    _infloop            ; Watchdog Overflow Handler
 
 _timer_1_overflow:
-        ;; Cбрасываем счетный регистр таймера/счетчика T0
-        ;; out     TCNT0, r1
-        ;; Увеличиваем и проверяем счетчик переполнений
-        ;; inc     cnt
-        ;; cpi     cnt, 1
-        ;; brsh    _overstep           ; Переход если больше или равно
-        ;; reti
-    _overstep:
-    ;;     ;; Читаем выводы PB0-PB3
-    ;;     in      tmp0, PINB
-    ;;     ldi     tmp1, 0b00000001    ; NB! - Пока только нулевой
-    ;;     and     tmp0, tmp1          ;
-    ;;     ;; Есть ли нажатие?
-    ;;     cpi     tmp0, 0
-    ;;     breq    _not_press          ; Перейти если равно
-    ;;     ;; Включить светодиод
-    ;;     ldi     tmp0, 0b00010000
-    ;; 	out     PORTB, tmp0
-    ;;     rjmp    _timer_0_overflow_ret
-    ;; _not_press:
-        ;; Пока ничего не нажато - мигаем
-        dec     cnt
-        rcall   _blink_green
-    
-    timer_0_overflow_ret:
-        ;; Очищаем счетчик переполнений
-        ;; mov     cnt, r1
-        ;; ldi tmp0, 0
-        ;; out TCNT0, tmp0
-        ;; out TCNT0, cnt
-        ;; inc cnt
-    
-        rcall   _fsmbtn
-    
-        reti
+    ;; Сохраняем регистры
+    push    tmp0
+    push    tmp1
+
+    ;; Уменьшаем cnt для частоты buzzer-а
+    dec     cnt
+
+    ;; Переключим состояние зеленого светодиода
+    rcall   _blink_green
+
+    ;; Сохраняем индексный регистр X
+    push    xl
+    push    xh
+    ;; Заготовка чтобы передавать адрес
+    ldi     xl, lo8(STATE)
+    ldi     xh, hi8(STATE)
+    ;; Вызываем конечный автомат подавления дребезга
+    rcall   _fsmbtn
+    ;; Восстанавливаем индексный регистр X
+    pop     xh
+    pop     xl
+
+    ;; Читаем вывод PB0
+    in      tmp0, PINB
+    ldi     tmp1, 0b00000001
+    and     tmp0, tmp1
+    ;; Есть ли нажатие?
+    breq    _not_press ; Перейти если ноль
+    ;; Если нажатие зарегистрировано
+    ;; rcall   _yellow_on
+    ldi     tmp0, HIGH
+    sts     NEW, tmp0
+
+    rjmp    _timer_0_overflow_ret
+_not_press:
+    ;; В противном случае
+    ;; rcall   _yellow_off
+    ldi     tmp0, LOW
+    sts     NEW, tmp0
+_timer_0_overflow_ret:
+    ;; Восстанавливем регистры
+    pop     tmp1
+    pop     tmp0
+    ;; Выходим
+    reti
 
 _timer_0_compare_A:
     ;;; Записываем cnt в интервал сравнения
@@ -111,7 +121,7 @@ _reset:
     ;;                 | +--------+
     ;;                 | |
     ;;                 v v
-    ldi     tmp0, 0b00011110
+    ldi     tmp0, 0b00011110;;<--pb0 - вход
     ;;                  ^ ^
     ;;                  | |
     ;;                  | +PB1
@@ -164,7 +174,7 @@ _reset:
     ldi     tmp0, 1
     sts     STATE, tmp0
 
-    ldi     tmp0, HIGH
+    ldi     tmp0, LOW
     sts     NEW, tmp0
 
     ldi     tmp0, 0
