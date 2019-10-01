@@ -421,51 +421,6 @@
                       (push `(label ,end) ssa))))
 #+END_SRC
 
-Следующее правило сравнивает три переменные, исходя из того, что если
-первая перменная равна второй и вторая равна третьей, том можно сказать
-что сравнение удалось.
-
-#+NAME: req3
-#+BEGIN_SRC elisp :var a=recur :results value scalar pp
-  ;; = VAR1 VAR2 VAR3
-  (add-recur-rule (lambda (lst)
-                    (and (eql '= (car lst))
-                         (eql 4 (length lst))
-                         (atom (cadr lst))
-                         (atom (caddr lst))
-                         (atom (cadddr lst))
-                         (not (numberp (cadr lst)))
-                         (not (numberp (caddr lst)))
-                         (not (numberp (cadddr lst)))))
-                  (lambda (lst)
-                    (let ((var_or_const_1 (cadr lst))
-                          (var_or_const_2 (caddr lst))
-                          (var_or_const_3 (cadddr lst))
-                          (reg1 (gensym "reg_eq3_"))
-                          (reg2 (gensym "reg_eq3_"))
-                          (reg3 (gensym "reg_eq3_"))
-                          (not_equal (gensym "_not_equal_eq3_"))
-                          (end (gensym "_end_eq3_")))
-                      (push `(ralloc ,reg1) ssa)
-                      (push `(ralloc ,reg2) ssa)
-                      (push `(ralloc ,reg3) ssa)
-                      (rload reg1 var_or_const_1)
-                      (rload reg2 var_or_const_2)
-                      (rload reg3 var_or_const_3)
-                      (push `(cp ,reg1 ,reg2) ssa)
-                      (push `(rfree ,reg1) ssa)
-                      (push `(brne ,not_equal) ssa)
-                      (push `(cp ,reg2 ,reg3) ssa)
-                      (push `(rfree ,reg2) ssa)
-                      (push `(rfree ,reg3) ssa)
-                      (push `(brne ,not_equal) ssa)
-                      (push `(set-result TRUE) ssa)
-                      (push `(rjmp ,end) ssa)
-                      (push `(label ,not_equal) ssa)
-                      (push `(set-result FALSE) ssa)
-                      (push `(label ,end) ssa))))
-#+END_SRC
-
 Правило для AND:
 
 #+NAME: rand
@@ -681,7 +636,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Теперь, когда все операции определены, мы можем получить весь код
 
 #+NAME: all
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rsetf d=req2 e=req3 f=rand g=rwhen h=rless i=rincf j=rge k=rcase
+#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rsetf d=req2 f=rand g=rwhen h=rless i=rincf j=rge k=rcase
   (format
    "%s"
    (pp
