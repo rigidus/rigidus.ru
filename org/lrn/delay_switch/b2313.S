@@ -58,13 +58,20 @@ _timer_1_overflow:
     ;; Сохраняем регистры
     push    tmp0
     push    tmp1
+    ;; Сохраняем регистр флагов
+    in      tmp1, SREG
+    push    tmp1
 
+    ;; [[[=== Высота звука ===]]]
     ;; Уменьшаем cnt для частоты buzzer-а
     dec     cnt
 
+    ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
 
+    ;; [[[=== Защита от дребезга ===]]]
+    ;; Перед вызовом конечного автомата
     ;; Сохраняем индексный регистр X
     push    xl
     push    xh
@@ -73,10 +80,12 @@ _timer_1_overflow:
     ldi     xh, hi8(STATE)
     ;; Вызываем конечный автомат подавления дребезга
     rcall   _fsmbtn
+    ;; После вызова конечного автомата
     ;; Восстанавливаем индексный регистр X
     pop     xh
     pop     xl
 
+    ;; [[[=== Обработка нажатий клавиш ===]]]
     ;; Читаем вывод PB0
     in      tmp0, PINB
     ldi     tmp1, 0b00000001
@@ -87,14 +96,17 @@ _timer_1_overflow:
     ;; rcall   _yellow_on
     ldi     tmp0, HIGH
     sts     NEW, tmp0
-
     rjmp    _timer_0_overflow_ret
 _not_press:
     ;; В противном случае
     ;; rcall   _yellow_off
     ldi     tmp0, LOW
     sts     NEW, tmp0
+
 _timer_0_overflow_ret:
+    ;; Восстанавливаем регистр флагов
+    pop     tmp1
+    out     SREG, tmp1
     ;; Восстанавливем регистры
     pop     tmp1
     pop     tmp0
@@ -207,7 +219,7 @@ _end:                           ;<---+
 _fsmbtn:
     push    tmp0
     push    tmp1
-    rcall    _next_205
+    rcall   _next_205
 _next_205:
     pop     r25
     pop     r24
@@ -215,12 +227,12 @@ _next_205:
     ldi     r22, 12
     add     r24, r22
     adc     r25, r23
-    lds     r22, STATE
+    ld      r22, X
     add     r24, r22
     adc     r25, r23
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_1207
     rjmp    _label_case_2223
     rjmp    _label_case_3258
@@ -236,8 +248,8 @@ _not_equal_eq2_212:
     ldi     result, FALSE
 _end_eq2_213:
     IFFALSE _when_false_ret_208
-    ldi     r24, 1
-    sts     STATE, r24
+    lds     r24, 1
+    st      X, r24
     rjmp    _when_end_209
 _when_false_ret_208:
     ldi     result, FALSE
@@ -254,8 +266,8 @@ _end_eq2_220:
     IFFALSE _when_false_ret_215
     ldi     r25, 0
     sts     CNT, r25
-    ldi     r25, 2
-    sts     STATE, r25
+    lds     r25, 2
+    st      X, r25
     rjmp    _when_end_216
 _when_false_ret_215:
     ldi     result, FALSE
@@ -274,8 +286,8 @@ _not_equal_eq2_228:
     ldi     result, FALSE
 _end_eq2_229:
     IFFALSE _when_false_ret_224
-    ldi     r24, 1
-    sts     STATE, r24
+    lds     r24, 1
+    st      X, r24
     rjmp    _when_end_225
 _when_false_ret_224:
     ldi     result, FALSE
@@ -309,8 +321,8 @@ _and_end_234:
     lds     r24, CNT
     inc     r24
     sts     CNT, r24
-    ldi     r24, 2
-    sts     STATE, r24
+    lds     r24, 2
+    st      X, r24
     rjmp    _when_end_232
 _when_false_ret_231:
     ldi     result, FALSE
@@ -341,8 +353,8 @@ _and_false_ret_247:
     ldi     result, FALSE
 _and_end_248:
     IFFALSE _when_false_ret_245
-    ldi     r24, 3
-    sts     STATE, r24
+    lds     r24, 3
+    st      X, r24
     rjmp    _when_end_246
 _when_false_ret_245:
     ldi     result, FALSE
@@ -361,8 +373,8 @@ _not_equal_eq2_263:
     ldi     result, FALSE
 _end_eq2_264:
     IFFALSE _when_false_ret_259
-    ldi     r25, 3
-    sts     STATE, r25
+    lds     r25, 3
+    st      X, r25
     rjmp    _when_end_260
 _when_false_ret_259:
     ldi     result, FALSE
@@ -377,8 +389,8 @@ _not_equal_eq2_270:
     ldi     result, FALSE
 _end_eq2_271:
     IFFALSE _when_false_ret_266
-    ldi     r24, 1
-    sts     STATE, r24
+    lds     r24, 1
+    st      X, r24
     rjmp    _when_end_267
 _when_false_ret_266:
     ldi     result, FALSE

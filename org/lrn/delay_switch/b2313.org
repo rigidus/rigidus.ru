@@ -99,7 +99,6 @@
 | (= NEW $HIGH)                     | Down   | Down   |              |
 | (= NEW $LOW)                      | Down   | Up     |              |
 
-
 Стоит отметить, что задавать =predicate= и =action= лучше не так как в
 этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
 упрощает отладку, так как синтаксмческая ошибка в строке таблицы вызовет
@@ -177,7 +176,7 @@
          (nums (mapcar #'(lambda (par)
                            (cons (car par) (incf cnt)))
                        lst)))
-    `(case STATE
+    `(case X
        ,@(mapcar
           #'(lambda (par)
               (let ((num (alist-get (car par) nums nil nil #'equal)))
@@ -192,7 +191,7 @@
                                       (if (equal "" act)
                                           `(nop)
                                         (car (read-from-string act))))
-                                   (setf STATE
+                                   (set-state X
                                          ,(alist-get (getf clause :to)
                                                      nums nil nil #'equal))))
                             (cdr par))))))
@@ -204,45 +203,45 @@
 
 #+results: pseudocode
 #+begin_example
-(case STATE
+(case X
   (1
    (progn
      (when
          (= NEW $LOW)
        (nop)
-       (setf STATE 1))
+       (set-state X 1))
      (when
          (= NEW $HIGH)
        (setf CNT 0)
-       (setf STATE 2))))
+       (set-state X 2))))
   (2
    (progn
      (when
          (= NEW $LOW)
        (nop)
-       (setf STATE 1))
+       (set-state X 1))
      (when
          (and
           (= NEW $HIGH)
           (< CNT $MAX))
        (incf CNT)
-       (setf STATE 2))
+       (set-state X 2))
      (when
          (and
           (= NEW $HIGH)
           (>= CNT $MAX))
        (nop)
-       (setf STATE 3))))
+       (set-state X 3))))
   (3
    (progn
      (when
          (= NEW $HIGH)
        (nop)
-       (setf STATE 3))
+       (set-state X 3))
      (when
          (= NEW $LOW)
        (nop)
-       (setf STATE 1)))))
+       (set-state X 1)))))
 #+end_example
 
 Ассемблер, который мы хотим получить выглядит гораздо менее древовидным и
@@ -375,7 +374,7 @@
                      (not (numberp (cadr lst)))
                      (numberp (caddr lst))))
                   (lambda (lst)
-                    (let ((reg1 (gensym "reg_setf_")))
+                    (let ((reg1 (gensym "reg=setf_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ldi ,reg1 ,(caddr lst)) ssa)
                       (push `(sts ,(cadr lst) ,reg1) ssa)
@@ -402,8 +401,8 @@
                   (lambda (lst)
                     (let ((var_or_const_1 (cadr lst))
                           (var_or_const_2 (caddr lst))
-                          (reg1 (gensym "reg_eq2_"))
-                          (reg2 (gensym "reg_eq2_"))
+                          (reg1 (gensym "reg=eq2_"))
+                          (reg2 (gensym "reg=eq2_"))
                           (not_equal (gensym "_not_equal_eq2_"))
                           (end  (gensym "_end_eq2_")))
                       (push `(ralloc ,reg1) ssa)
@@ -480,11 +479,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
   (add-recur-rule (lambda (lst)
                     (eql 'case (car lst)))
                   (lambda (lst)
-                    (let ((base       (gensym "reg_case_base_"))
-                          (high       (gensym "reg_case_high_"))
-                          (low        (gensym "reg_case_low_"))
-                          (offset     (gensym "reg_case_offset_"))
-                          (zero       (gensym "reg_case_zero_"))
+                    (let ((base       (gensym "reg=case_base_"))
+                          (high       (gensym "reg=case_high_"))
+                          (low        (gensym "reg=case_low_"))
+                          (offset     (gensym "reg=case_offset_"))
+                          (zero       (gensym "reg=case_zero_"))
                           (next       (gensym "_next_"))
                           (end-case   (gensym "_end_case_")))
                       ;; call next
@@ -501,13 +500,14 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(clr ,zero) ssa)              ; 3
                       ;; + offset
                       (push `(ralloc ,offset) ssa)
-                      (push `(ldi ,offset 12) ssa)         ; 4 CONST=13-1
+                      (push `(ldi ,offset 12) ssa)         ; 4 CONST=12-1
                       (push `(add ,low ,offset) ssa)       ; 5
                       (push `(adc ,high ,zero) ssa)        ; 6
                       (push `(rfree ,offset) ssa)
                       ;; + base
                       (push `(ralloc ,base) ssa)
-                      (push `(lds ,base ,(cadr lst)) ssa)  ; 7,8
+                      (push `(ld  ,base ,(cadr lst)) ssa)
+                      ;; (push `(lds ,base ,(cadr lst)) ssa)  ; 7,8
                       (push `(add ,low ,base) ssa)         ; 9
                       (push `(adc ,high ,zero) ssa)        ; 10
                       (push `(rfree ,base) ssa)
@@ -540,6 +540,25 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(label ,end-case) ssa))))
 #+END_SRC
 
+#+NAME: rsetstate
+#+BEGIN_SRC elisp :var a=recur
+  (add-recur-rule (lambda (lst)
+                    (and  (eql 'set-state (car lst))
+                          (eql 3 (length lst))
+                          (atom (cadr lst))
+                          (atom (caddr lst))
+                          (not (numberp (cadr lst)))
+                          (numberp (caddr lst))))
+                  (lambda (lst)
+                    (let ((idx-reg (cadr lst))
+                          (const (caddr lst))
+                          (reg (gensym "reg=setstate")))
+                      (push `(ralloc ,reg) ssa)
+                      (rload reg const)
+                      (push `(st ,idx-reg ,reg) ssa)
+                      (push `(rfree ,reg) ssa))))
+#+END_SRC
+
 Осталось добавить еще немного операций, которые есть в исходной
 программе. Первая из них - "меньше"
 
@@ -556,8 +575,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                   (lambda (lst)
                     (let ((var_or_const_1 (cadr lst))
                           (var_or_const_2 (caddr lst))
-                          (reg1 (gensym "reg_lt2_"))
-                          (reg2 (gensym "reg_lt2_"))
+                          (reg1 (gensym "reg=lt2_"))
+                          (reg2 (gensym "reg=lt2_"))
                           (not_less (gensym "_not_lt_eq2_"))
                           (end  (gensym "_end_lt2_")))
                       (push `(ralloc ,reg1) ssa)
@@ -586,7 +605,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                      (not (numberp (cadr lst)))
                      (null (caddr lst))))
                   (lambda (lst)
-                    (let ((reg1 (gensym "reg_incf_"))
+                    (let ((reg1 (gensym "reg=incf_"))
                           (var1 (let ((par (format "%s" (cadr  lst))))
                                   ;; тут не может быть константы
                                   (if (equal "$" (subseq par 0 1))
@@ -614,8 +633,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                   (lambda (lst)
                     (let ((var_or_const_1 (cadr lst))
                           (var_or_const_2 (caddr lst))
-                          (reg1 (gensym "reg_lt2_"))
-                          (reg2 (gensym "reg_lt2_"))
+                          (reg1 (gensym "reg=lt2_"))
+                          (reg2 (gensym "reg=lt2_"))
                           (not_greater_or_equal (gensym "_not_ge_eq2_"))
                           (end  (gensym "_end_ge2_")))
                       (push `(ralloc ,reg1) ssa)
@@ -636,7 +655,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Теперь, когда все операции определены, мы можем получить весь код
 
 #+NAME: all
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rsetf d=req2 f=rand g=rwhen h=rless i=rincf j=rge k=rcase
+#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rsetf d=req2 e=rsetstate f=rand g=rwhen h=rless i=rincf j=rge k=rcase
   (format
    "%s"
    (pp
@@ -719,7 +738,25 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                                (message "%s" err)
                                (message "opcode %s" op)
                                (error err))
-                           (car (car pair)))))))
+                           (car (car pair))))))
+         (make-arg (lambda (arg)
+                     (if (equal "reg=" (subseq (format "%s       " arg) 0 4))
+                           (format "%s"
+                                   (funcall var-to-reg arg))
+                       (format "%s" arg))))
+         (make-cmd (lambda (op &optional arg1 arg2)
+                     (let ((len (- 7 (length (format "%s" op)))))
+                       (princ
+                        (format "    %s %s%s\n"
+                                op
+                                (if (not arg1)
+                                    ""
+                                  (concat (make-string len ? )
+                                          (funcall make-arg arg1)))
+                                (if (not arg2)
+                                    ""
+                                  (format ", %s"
+                                          (funcall make-arg arg2)))))))))
     (mapcar
      #'(lambda (op)
          (cond ((eql 'ralloc (car op))
@@ -742,11 +779,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                            (var (rfree reg)))
                       (setf allocs
                             (delete (car pair) allocs))
-                      ;; (message "rfree: %s (%s of %s)"
-                      ;;          (cadr op)
-                      ;;          (length (remove-if (lambda (x) (null (cadr x)))
-                      ;;                             *registers*))
-                      ;;          (length *registers*))
+                      (message "rfree: %s (%s of %s)"
+                               (cadr op)
+                               (length (remove-if (lambda (x) (null (cadr x)))
+                                                  ,*registers*))
+                               (length *registers*))
                       ))))
                ((eql 'label (car op))
                 (princ (format "%s:\n" (cadr op))))
@@ -764,56 +801,24 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                 (princ (format "    ;; progn-open\n")))
                ((eql 'progn-close (car op))
                 (princ (format "    ;; progn-close\n")))
-               ;; двухоперандные команды из трехбукв, оба операнда - регистры
-               ((or (eql 'add (car op))
-                    (eql 'adc (car op)))
-                (princ (format "    %s     %s, %s\n"
-                               (car op)
-                               (funcall var-to-reg (cadr op))
-                               (funcall var-to-reg (caddr op)))))
-               ;; двухоперандные команды из трехбукв, первый операнд - регистр
-               ((or (eql 'cpi (car op))
+               ((or (eql 'ld (car op))
+                    (eql 'add (car op))
+                    (eql 'adc (car op))
                     (eql 'lds (car op))
-                    (eql 'ldi (car op)))
-                (princ (format "    %s     %s, %s\n"
-                               (car op)
-                               (funcall var-to-reg (cadr op))
-                               (caddr op))))
-               ;; двухоперандные команды из трех букв, второй операнд - регистр
-               ((eql 'sts (car op))
-                (princ (format "    %s     %s, %s\n"
-                               (car op)
-                               (cadr op)
-                               (funcall var-to-reg (caddr op)))))
-               ;; однооперандные команды из трех букв, операнд - регистр
-               ((or (eql 'inc (car op))
+                    (eql 'ldi (car op))
+                    (eql 'inc (car op))
                     (eql 'pop (car op))
-                    (eql 'clr (car op)))
-                (princ (format "    %s     %s\n"
-                               (car op)
-                               (funcall var-to-reg (cadr op)))))
-               ;; однооперандные команды из четырех букв - операнд регистр
-               ((or (eql 'push (car op)))
-                (princ (format "    %s    %s\n"
-                               (car op)
-                               (funcall var-to-reg (cadr op)))))
-               ;; однооперандные команды из четырех букв - операнд не регистр
-               ((or (eql 'brne (car op))
+                    (eql 'clr (car op))
+                    (eql 'push (car op))
+                    (eql 'brne (car op))
                     (eql 'brsh (car op))
                     (eql 'brlo (car op))
                     (eql 'rjmp (car op))
-                    (eql 'rcall (car op)))
-                (princ (format "    %s    %s\n"
-                               (car op)
-                               (cadr op))))
-               ;; однооперандные команды из пяти букв - операнд не регистр
-               ((or (eql 'rcall (car op)))
-                (princ (format "    %s  %s\n"
-                               (car op)
-                               (cadr op))))
-               ;; безоперандные команды из трех букв
-               ((or (eql 'ret (car op)))
-                (princ (format "    %s\n" (car op))))
+                    (eql 'rcall (car op))
+                    (eql 'ret (car op))
+                    (eql 'sts (car op))
+                    (eql 'st (car op)))
+                (funcall make-cmd (car op) (cadr op) (caddr op)))
                (t (princ (format "::=-> %s : %s\n" (car op) op)))))
      (read all)))
 #+END_SRC
@@ -1648,7 +1653,7 @@ TIFR-регистр нужно сбросить в 0:
       reti
 #+END_SRC
 
-* Прерывание по переполнению таймера-0
+* Прерывание по переполнению таймера-1
 
 #+NAME: timer_1_ovfl
 #+BEGIN_SRC asm
@@ -1658,7 +1663,7 @@ TIFR-регистр нужно сбросить в 0:
       push    tmp1
       ;; Сохраняем регистр флагов
       in      tmp1, SREG
-      push    tmo1
+      push    tmp1
 
       ;; [[[=== Высота звука ===]]]
       ;; Уменьшаем cnt для частоты buzzer-а
