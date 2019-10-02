@@ -224,7 +224,7 @@ _next_205:
     pop     r25
     pop     r24
     clr     r23
-    ldi     r22, 12
+    ldi     r22, 11
     add     r24, r22
     adc     r25, r23
     ld      r22, X
@@ -248,7 +248,7 @@ _not_equal_eq2_212:
     ldi     result, FALSE
 _end_eq2_213:
     IFFALSE _when_false_ret_208
-    lds     r24, 1
+    ldi     r24, 1
     st      X, r24
     rjmp    _when_end_209
 _when_false_ret_208:
@@ -266,7 +266,7 @@ _end_eq2_220:
     IFFALSE _when_false_ret_215
     ldi     r25, 0
     sts     CNT, r25
-    lds     r25, 2
+    ldi     r25, 2
     st      X, r25
     rjmp    _when_end_216
 _when_false_ret_215:
@@ -286,7 +286,7 @@ _not_equal_eq2_228:
     ldi     result, FALSE
 _end_eq2_229:
     IFFALSE _when_false_ret_224
-    lds     r24, 1
+    ldi     r24, 1
     st      X, r24
     rjmp    _when_end_225
 _when_false_ret_224:
@@ -321,7 +321,7 @@ _and_end_234:
     lds     r24, CNT
     inc     r24
     sts     CNT, r24
-    lds     r24, 2
+    ldi     r24, 2
     st      X, r24
     rjmp    _when_end_232
 _when_false_ret_231:
@@ -353,7 +353,7 @@ _and_false_ret_247:
     ldi     result, FALSE
 _and_end_248:
     IFFALSE _when_false_ret_245
-    lds     r24, 3
+    ldi     r24, 3
     st      X, r24
     rjmp    _when_end_246
 _when_false_ret_245:
@@ -373,7 +373,7 @@ _not_equal_eq2_263:
     ldi     result, FALSE
 _end_eq2_264:
     IFFALSE _when_false_ret_259
-    lds     r25, 3
+    ldi     r25, 3
     st      X, r25
     rjmp    _when_end_260
 _when_false_ret_259:
@@ -389,7 +389,7 @@ _not_equal_eq2_270:
     ldi     result, FALSE
 _end_eq2_271:
     IFFALSE _when_false_ret_266
-    lds     r24, 1
+    ldi     r24, 1
     st      X, r24
     rjmp    _when_end_267
 _when_false_ret_266:
