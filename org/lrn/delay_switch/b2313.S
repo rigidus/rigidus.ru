@@ -7,7 +7,7 @@
     #define result r16
     #define tmp0 r17
     #define tmp1 r18
-    #define cnt  r19
+    #define freq r19
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
@@ -63,8 +63,8 @@ _timer_1_overflow:
     push    tmp1
 
     ;; [[[=== Высота звука ===]]]
-    ;; Уменьшаем cnt для частоты buzzer-а
-    dec     cnt
+    ;; Уменьшаем freq для частоты buzzer-а
+    dec     freq
 
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
@@ -114,9 +114,9 @@ _timer_0_overflow_ret:
     reti
 
 _timer_0_compare_A:
-    ;;; Записываем cnt в интервал сравнения
-        out     OCR0A, cnt
-        reti
+    ;; Записываем freq в регистр сравнения
+    out     OCR0A, freq
+    reti
 
 _reset:
     ;; Запретить прерывания
