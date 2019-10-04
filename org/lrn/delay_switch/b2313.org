@@ -66,15 +66,29 @@
 Напишем генератор, принимающий на вход необходимые данные и создающий
 код
 
-#+NAME: gen_btn
-#+BEGIN_SRC elisp :var id="N/A" port="N/A" bit="N/A" :results output org :wrap "SRC asm" :noweb yes
+#+NAME: gen_init_btn
+#+BEGIN_SRC elisp :var id="@" port="@" bit="@" :results output org :wrap "SRC asm" :noweb yes
   (princ (format ".data\n\n"))
   (princ (format "STATE_%s:\n    .byte 0x1\n" id))
   (princ (format "NEW_%s:\n    .byte 0x0\n" id))
   (princ (format "CNT_%s:\n    .byte 0x0\n" id))
   (princ (format "\n.text\n\n_init_%s:\n" id))
   (princ (format "   cbi    DDR%s, %s\n" port bit))
-  (princ (format "   sts    STATE_%s, 1\n" id))
+  (princ (format "   sts    STATE_%s, r2\n" id))
+#+END_SRC
+
+В дополнение к этому нам нужен код, который проверяет есть ли на кнопке
+сигнал и в зависимости от этого выставляет =NEW=
+
+#+NAME: gen_get_btn
+#+BEGIN_SRC elisp :var id="@" port="@" bit="@" :results output org :wrap "SRC asm" :noweb yes
+  (princ (format "    sbis    PIN%s, 0\n" port))
+  (princ (format "    rjmp    _not_press_%s\n" id))
+  (princ (format "    sts     NEW_%s, r2\n" id))
+  (princ (format "    rjmp    _end_press_handler_%s\n" id))
+  (princ (format "_not_press_%s:\n" id))
+  (princ (format "    sts     NEW_%s, r1\n" id))
+  (princ (format "_end_press_handler_%s:\n" id))
 #+END_SRC
 
 ** Обработка нажатий кнопок
@@ -123,15 +137,15 @@
 переходе действия.
 
 #+NAME: btn_fsm
-| predicate                         | from   | to     | action       |
-|-----------------------------------+--------+--------+--------------|
-| (= NEW $LOW)                      | Up     | Up     |              |
-| (= NEW $HIGH)                     | Up     | Middle | (setf CNT 0) |
-| (= NEW $LOW)                      | Middle | Up     |              |
-| (and (= NEW $HIGH) (< CNT $MAX))  | Middle | Middle | (incf CNT)   |
-| (and (= NEW $HIGH) (>= CNT $MAX)) | Middle | Down   |              |
-| (= NEW $HIGH)                     | Down   | Down   |              |
-| (= NEW $LOW)                      | Down   | Up     |              |
+| predicate                               | from   | to     | action          |
+|-----------------------------------------+--------+--------+-----------------|
+| (= NEW_IP $LOW)                         | Up     | Up     |                 |
+| (= NEW_IP $HIGH)                        | Up     | Middle | (setf CNT_IP 0) |
+| (= NEW_IP $LOW)                         | Middle | Up     |                 |
+| (and (= NEW_IP $HIGH) (< CNT_IP $MAX))  | Middle | Middle | (incf CNT_IP)   |
+| (and (= NEW_IP $HIGH) (>= CNT_IP $MAX)) | Middle | Down   |                 |
+| (= NEW_IP $HIGH)                        | Down   | Down   |                 |
+| (= NEW_IP $LOW)                         | Down   | Up     |                 |
 
 Стоит отметить, что задавать =predicate= и =action= лучше не так как в
 этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
@@ -160,7 +174,9 @@
 #+END_SRC
 
 #+results:
-[[file:../../../img/btn_fsm_graph.png]]
+#+begin_SRC asm
+sbis    PINN/A, 0rjmp    _not_press_N/Asts     NEW_N/A, r2rjmp    _end_press_handler_N/A_not_press_N/A:sts     NEW, r1_end_press_handler_N/A:
+#+end_SRC
 
 Теперь по полученной картинке можно "поводить пальцем" и убедиться в ее
 правильности. После этого можно попробовать получить код:
@@ -900,24 +916,13 @@ AVR и содержать типичные блоки инициализации
 
       ;; DISABLE TIMER-0
       ;; Временно остановим таймер-0 чтобы не щелкал
-      ldi tmp0, 0
-      out TCCR0B, tmp0
-
-      ;; Устанавливаем начальные значения
-      ldi     tmp0, 1
-      sts     STATE, tmp0
-
-      ldi     tmp0, LOW
-      sts     NEW, tmp0
-
-      ldi     tmp0, 0
-      sts     CNT, tmp0
+      out TCCR0B, r1
 
       rcall   _red_off
       rcall   _yellow_off
 
   _mainloop:
-      lds     tmp0, STATE
+      lds     tmp0, STATE_IP
       ldi     tmp1, 1             ; Проверяем на состояние
       cp      tmp0, tmp1
       brne    _not_one            ;--+
@@ -952,15 +957,6 @@ AVR и содержать типичные блоки инициализации
   <<blink_green>>
 
   <<red>>
-
-      .data
-
-  STATE:
-      .byte 0x1
-  NEW:
-      .byte 0x0
-  CNT:
-      .byte 0x0
 #+END_SRC
 
 * Таймеры
@@ -1690,7 +1686,7 @@ TIFR-регистр нужно сбросить в 0:
 * Прерывание по переполнению таймера-1
 
 #+NAME: timer_1_ovfl
-#+BEGIN_SRC asm
+#+BEGIN_SRC asm :noweb yes
   _timer_1_overflow:
       ;; Сохраняем регистры
       push    tmp0
@@ -1709,23 +1705,18 @@ TIFR-регистр нужно сбросить в 0:
       ;; Переключим состояние зеленого светодиода
       rcall   _blink_green
 
+  <<gen_get_btn("IP", "B", 0)>>
 
-      ;; [[[=== Обработка нажатий клавиш ===]]]
-      ;; Читаем вывод PB0
-      in      tmp0, PINB
-      ldi     tmp1, 0b00000001
-      and     tmp0, tmp1
-      ;; Есть ли нажатие?
-      breq    _not_press ; Перейти если ноль
-      ;; Если нажатие зарегистрировано
-      ldi     tmp0, HIGH
-      sts     NEW, tmp0
-      rjmp    _end_press_handler
-  _not_press:
-      ;; В противном случае
-      ldi     tmp0, LOW
-      sts     NEW, tmp0
-  _end_press_handler:
+  ;;     ;; [[[=== Обработка нажатий клавиш ===]]]
+  ;;     sbis    PINB, 0
+  ;;     rjmp    _not_press
+  ;;     ;; Если нажатие зарегистрировано
+  ;;     sts     NEW, r2
+  ;;     rjmp    _end_press_handler
+  ;; _not_press:
+  ;;     ;; В противном случае
+  ;;     sts     NEW, r1
+  ;; _end_press_handler:
 
 
       ;; [[[=== Защита от дребезга ===]]]
@@ -1734,8 +1725,8 @@ TIFR-регистр нужно сбросить в 0:
       push    xl
       push    xh
       ;; Заготовка чтобы передавать адрес
-      ldi     xl, lo8(STATE)
-      ldi     xh, hi8(STATE)
+      ldi     xl, lo8(STATE_IP)
+      ldi     xh, hi8(STATE_IP)
       ;; Вызываем конечный автомат подавления дребезга
       rcall   _fsmbtn
       ;; После вызова конечного автомата
@@ -1762,8 +1753,12 @@ TIFR-регистр нужно сбросить в 0:
 
 #+NAME: initialization
 #+BEGIN_SRC asm :tangle :yes :noweb yes :padline no
-  ;; Запретить прерывания
+  ;; Выделяем регистр r1 под значение нуля и r2 под значение единицы
   clr     r1
+  mov     r2, r1
+  inc     r2
+
+  ;; Запретить прерывания
   out     SREG, r1
 
   ;; Настроить Stack
@@ -1809,7 +1804,7 @@ TIFR-регистр нужно сбросить в 0:
   ;;                  +PB3
   out     DDRB, tmp0
 
-  <<gen_btn("IP", "B", 0)>>
+  <<gen_init_btn("IP", "B", 0)>>
 
 #+END_SRC
 

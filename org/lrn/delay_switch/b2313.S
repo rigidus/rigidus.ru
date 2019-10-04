@@ -72,25 +72,25 @@ _timer_1_overflow:
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
 
+    sbis    PINB, 0
+    rjmp    _not_press_IP
+    sts     NEW_IP, r2
+    rjmp    _end_press_handler_IP
+_not_press_IP:
+    sts     NEW_IP, r1
+_end_press_handler_IP:
 
 
-
-    ;; [[[=== Обработка нажатий клавиш ===]]]
-    ;; Читаем вывод PB0
-    in      tmp0, PINB
-    ldi     tmp1, 0b00000001
-    and     tmp0, tmp1
-    ;; Есть ли нажатие?
-    breq    _not_press ; Перейти если ноль
-    ;; Если нажатие зарегистрировано
-    ldi     tmp0, HIGH
-    sts     NEW, tmp0
-    rjmp    _end_press_handler
-_not_press:
-    ;; В противном случае
-    ldi     tmp0, LOW
-    sts     NEW, tmp0
-_end_press_handler:
+;;     ;; [[[=== Обработка нажатий клавиш ===]]]
+;;     sbis    PINB, 0
+;;     rjmp    _not_press
+;;     ;; Если нажатие зарегистрировано
+;;     sts     NEW, r2
+;;     rjmp    _end_press_handler
+;; _not_press:
+;;     ;; В противном случае
+;;     sts     NEW, r1
+;; _end_press_handler:
 
 
     ;; [[[=== Защита от дребезга ===]]]
@@ -99,8 +99,8 @@ _end_press_handler:
     push    xl
     push    xh
     ;; Заготовка чтобы передавать адрес
-    ldi     xl, lo8(STATE)
-    ldi     xh, hi8(STATE)
+    ldi     xl, lo8(STATE_IP)
+    ldi     xh, hi8(STATE_IP)
     ;; Вызываем конечный автомат подавления дребезга
     rcall   _fsmbtn
     ;; После вызова конечного автомата
@@ -126,8 +126,12 @@ _timer_0_compare_A:
     reti
 
 _reset:
-    ;; Запретить прерывания
+    ;; Выделяем регистр r1 под значение нуля и r2 под значение единицы
     clr     r1
+    mov     r2, r1
+    inc     r2
+    
+    ;; Запретить прерывания
     out     SREG, r1
     
     ;; Настроить Stack
@@ -160,7 +164,7 @@ _reset:
     
     _init_IP:
        cbi    DDRB, 0
-       sts    STATE_IP, 1
+       sts    STATE_IP, r2
     
     
     
@@ -194,24 +198,13 @@ _reset:
 
     ;; DISABLE TIMER-0
     ;; Временно остановим таймер-0 чтобы не щелкал
-    ldi tmp0, 0
-    out TCCR0B, tmp0
-
-    ;; Устанавливаем начальные значения
-    ldi     tmp0, 1
-    sts     STATE, tmp0
-
-    ldi     tmp0, LOW
-    sts     NEW, tmp0
-
-    ldi     tmp0, 0
-    sts     CNT, tmp0
+    out TCCR0B, r1
 
     rcall   _red_off
     rcall   _yellow_off
 
 _mainloop:
-    lds     tmp0, STATE
+    lds     tmp0, STATE_IP
     ldi     tmp1, 1             ; Проверяем на состояние
     cp      tmp0, tmp1
     brne    _not_one            ;--+
@@ -253,7 +246,7 @@ _next_205:
     rjmp    _label_case_3258
 _label_case_1207:
     ;; progn-open
-    lds     r25, NEW
+    lds     r25, NEW_IP
     ldi     r24, LOW
     cp      r25, r24
     brne    _not_equal_eq2_212
@@ -269,7 +262,7 @@ _end_eq2_213:
 _when_false_ret_208:
     ldi     result, FALSE
 _when_end_209:
-    lds     r24, NEW
+    lds     r24, NEW_IP
     ldi     r25, HIGH
     cp      r24, r25
     brne    _not_equal_eq2_219
@@ -280,7 +273,7 @@ _not_equal_eq2_219:
 _end_eq2_220:
     IFFALSE _when_false_ret_215
     ldi     r25, 0
-    sts     CNT, r25
+    sts     CNT_IP, r25
     ldi     r25, 2
     st      X, r25
     rjmp    _when_end_216
@@ -291,7 +284,7 @@ _when_end_216:
     rjmp    _end_case_206
 _label_case_2223:
     ;; progn-open
-    lds     r25, NEW
+    lds     r25, NEW_IP
     ldi     r24, LOW
     cp      r25, r24
     brne    _not_equal_eq2_228
@@ -307,7 +300,7 @@ _end_eq2_229:
 _when_false_ret_224:
     ldi     result, FALSE
 _when_end_225:
-    lds     r24, NEW
+    lds     r24, NEW_IP
     ldi     r25, HIGH
     cp      r24, r25
     brne    _not_equal_eq2_237
@@ -317,7 +310,7 @@ _not_equal_eq2_237:
     ldi     result, FALSE
 _end_eq2_238:
     IFFALSE _and_false_ret_233
-    lds     r25, CNT
+    lds     r25, CNT_IP
     ldi     r24, MAX
     cp      r25, r24
     brsh    _not_lt_eq2_241
@@ -333,16 +326,16 @@ _and_false_ret_233:
     ldi     result, FALSE
 _and_end_234:
     IFFALSE _when_false_ret_231
-    lds     r24, CNT
+    lds     r24, CNT_IP
     inc     r24
-    sts     CNT, r24
+    sts     CNT_IP, r24
     ldi     r24, 2
     st      X, r24
     rjmp    _when_end_232
 _when_false_ret_231:
     ldi     result, FALSE
 _when_end_232:
-    lds     r24, NEW
+    lds     r24, NEW_IP
     ldi     r25, HIGH
     cp      r24, r25
     brne    _not_equal_eq2_251
@@ -352,7 +345,7 @@ _not_equal_eq2_251:
     ldi     result, FALSE
 _end_eq2_252:
     IFFALSE _and_false_ret_247
-    lds     r25, CNT
+    lds     r25, CNT_IP
     ldi     r24, MAX
     cp      r25, r24
     brlo    _not_ge_eq2_255
@@ -378,7 +371,7 @@ _when_end_246:
     rjmp    _end_case_206
 _label_case_3258:
     ;; progn-open
-    lds     r24, NEW
+    lds     r24, NEW_IP
     ldi     r25, HIGH
     cp      r24, r25
     brne    _not_equal_eq2_263
@@ -394,7 +387,7 @@ _end_eq2_264:
 _when_false_ret_259:
     ldi     result, FALSE
 _when_end_260:
-    lds     r25, NEW
+    lds     r25, NEW_IP
     ldi     r24, LOW
     cp      r25, r24
     brne    _not_equal_eq2_270
@@ -444,12 +437,3 @@ _yellow_on:
 _yellow_off:
     cbi     PORTB, 1
     ret
-
-    .data
-
-STATE:
-    .byte 0x1
-NEW:
-    .byte 0x0
-CNT:
-    .byte 0x0
