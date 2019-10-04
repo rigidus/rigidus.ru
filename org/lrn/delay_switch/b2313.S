@@ -24,9 +24,17 @@
     .equ TIFR, 0x38
     .equ TIMSK, 0x39
 
-    .macro  IFFALSE to
-        cpi     result, FALSE
+    .macro IFFALSE to
+        cp      result, r0
         breq    \to
+    .endm
+    
+    .macro SETRESULT val
+        .ifc FALSE,\val
+        mov     result, r0
+        .else
+        mov     result, r1
+        .endif
     .endm
 
     .text
@@ -74,10 +82,10 @@ _timer_1_overflow:
 
     sbis    PINB, 0
     rjmp    _not_press_IP
-    sts     NEW_IP, r2
+    sts     NEW_IP, r1
     rjmp    _end_press_handler_IP
 _not_press_IP:
-    sts     NEW_IP, r1
+    sts     NEW_IP, r0
 _end_press_handler_IP:
 
 
@@ -128,13 +136,13 @@ _timer_0_compare_A:
     reti
 
 _reset:
-    ;; Выделяем регистр r1 под значение нуля и r2 под значение единицы
-    clr     r1
-    mov     r2, r1
-    inc     r2
+    ;; Выделяем регистр r0 под значение нуля и r1 под значение единицы
+    clr     r0
+    mov     r1, r0
+    inc     r1
     
     ;; Запретить прерывания
-    out     SREG, r1
+    out     SREG, r0
     
     ;; Настроить Stack
     ldi     tmp0, RAMEND
@@ -166,7 +174,7 @@ _reset:
     
     _init_IP:
        cbi    DDRB, 0
-       sts    STATE_IP, r2
+       sts    STATE_IP, r1
     
     
     
@@ -183,12 +191,12 @@ _reset:
     ldi tmp0, 0b01
     out TCCR0B, tmp0
     ;; Clear TCNT0
-    out TCNT0, r1
+    out TCNT0, r0
     ;; OCR0A & OCR0B
     ldi tmp0, 0xFF
     out OCR0A, tmp0
     ;; Очищаем флаги прерывания таймера
-    out TIFR, r1
+    out TIFR, r0
     
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
@@ -200,7 +208,7 @@ _reset:
 
     ;; DISABLE TIMER-0
     ;; Временно остановим таймер-0 чтобы не щелкал
-    out TCCR0B, r1
+    out TCCR0B, r0
 
     rcall   _red_off
     rcall   _yellow_off
@@ -244,159 +252,132 @@ _next_205:
     push    r25
     ret 
     rjmp    _label_case_1207
-    rjmp    _label_case_2220
-    rjmp    _label_case_3252
+    rjmp    _label_case_2218
+    rjmp    _label_case_3245
 _label_case_1207:
     ;; progn-open
     ld      r25, Y
-    cp      r25, r1
-    brne    _not_equal_eq2_211
-    ldi     result, TRUE
-    rjmp    _end_eq2_212
-_not_equal_eq2_211:
-    ldi     result, FALSE
-_end_eq2_212:
-    IFFALSE _when_false_ret_208
+    cp      r25, r0
+    brne    _equal_ind2const_not_210
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_211
+_equal_ind2const_not_210:
+    SETRESULT FALSE
+_equal_ind2const_end_211:
+    IFFALSE _when_end_208
     ldi     r25, 1
     st      X, r25
-    rjmp    _when_end_209
-_when_false_ret_208:
-    ldi     result, FALSE
-_when_end_209:
+_when_end_208:
     ld      r25, Y
-    cp      r25, r2
-    brne    _not_equal_eq2_217
-    ldi     result, TRUE
-    rjmp    _end_eq2_218
-_not_equal_eq2_217:
-    ldi     result, FALSE
-_end_eq2_218:
-    IFFALSE _when_false_ret_214
-    st      Z, r1
+    cp      r25, r1
+    brne    _equal_ind2const_not_215
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_216
+_equal_ind2const_not_215:
+    SETRESULT FALSE
+_equal_ind2const_end_216:
+    IFFALSE _when_end_213
+    st      Z, r0
     ldi     r25, 2
     st      X, r25
-    rjmp    _when_end_215
-_when_false_ret_214:
-    ldi     result, FALSE
-_when_end_215:
+_when_end_213:
     ;; progn-close
     rjmp    _end_case_206
-_label_case_2220:
+_label_case_2218:
     ;; progn-open
     ld      r25, Y
-    cp      r25, r1
-    brne    _not_equal_eq2_224
-    ldi     result, TRUE
-    rjmp    _end_eq2_225
-_not_equal_eq2_224:
-    ldi     result, FALSE
-_end_eq2_225:
-    IFFALSE _when_false_ret_221
+    cp      r25, r0
+    brne    _equal_ind2const_not_221
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_222
+_equal_ind2const_not_221:
+    SETRESULT FALSE
+_equal_ind2const_end_222:
+    IFFALSE _when_end_219
     ldi     r25, 1
     st      X, r25
-    rjmp    _when_end_222
-_when_false_ret_221:
-    ldi     result, FALSE
-_when_end_222:
+_when_end_219:
     ld      r25, Y
-    cp      r25, r2
-    brne    _not_equal_eq2_232
-    ldi     result, TRUE
-    rjmp    _end_eq2_233
-_not_equal_eq2_232:
-    ldi     result, FALSE
-_end_eq2_233:
-    IFFALSE _and_false_ret_229
+    cp      r25, r1
+    brne    _equal_ind2const_not_227
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_228
+_equal_ind2const_not_227:
+    SETRESULT FALSE
+_equal_ind2const_end_228:
+    IFFALSE _and_end_225
     ld      r25, Z
     ldi     r24, MAX
     cp      r25, r24
-    brsh    _not_lt_eq2_236
-    ldi     result, TRUE
-    rjmp    _end_lt2_237
-_not_lt_eq2_236:
-    ldi     result, FALSE
-_end_lt2_237:
-    IFFALSE _and_false_ret_229
-    ldi     result, TRUE
-    rjmp    _and_end_230
-_and_false_ret_229:
-    ldi     result, FALSE
-_and_end_230:
-    IFFALSE _when_false_ret_227
+    brsh    _lt_ind2const_not_231
+    SETRESULT TRUE
+    rjmp    _lt_ind2const_end_232
+_lt_ind2const_not_231:
+    SETRESULT FALSE
+_lt_ind2const_end_232:
+    IFFALSE _and_end_225
+    SETRESULT TRUE
+_and_end_225:
+    IFFALSE _when_end_224
     ld      r24, Z
     inc     r24
     st      Z, r24
     ldi     r24, 2
     st      X, r24
-    rjmp    _when_end_228
-_when_false_ret_227:
-    ldi     result, FALSE
-_when_end_228:
+_when_end_224:
     ld      r24, Y
-    cp      r24, r2
-    brne    _not_equal_eq2_245
-    ldi     result, TRUE
-    rjmp    _end_eq2_246
-_not_equal_eq2_245:
-    ldi     result, FALSE
-_end_eq2_246:
-    IFFALSE _and_false_ret_242
+    cp      r24, r1
+    brne    _equal_ind2const_not_238
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_239
+_equal_ind2const_not_238:
+    SETRESULT FALSE
+_equal_ind2const_end_239:
+    IFFALSE _and_end_236
     ld      r24, Z
     ldi     r25, MAX
     cp      r24, r25
-    brlo    _not_ge_eq2_249
-    ldi     result, TRUE
-    rjmp    _end_ge2_250
-_not_ge_eq2_249:
-    ldi     result, FALSE
-_end_ge2_250:
-    IFFALSE _and_false_ret_242
-    ldi     result, TRUE
-    rjmp    _and_end_243
-_and_false_ret_242:
-    ldi     result, FALSE
-_and_end_243:
-    IFFALSE _when_false_ret_240
+    brlo    _ge_ind2const_not_242
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_243
+_ge_ind2const_not_242:
+    SETRESULT FALSE
+_ge_ind2const_end_243:
+    IFFALSE _and_end_236
+    SETRESULT TRUE
+_and_end_236:
+    IFFALSE _when_end_235
     ldi     r25, 3
     st      X, r25
-    rjmp    _when_end_241
-_when_false_ret_240:
-    ldi     result, FALSE
-_when_end_241:
+_when_end_235:
     ;; progn-close
     rjmp    _end_case_206
-_label_case_3252:
+_label_case_3245:
     ;; progn-open
     ld      r25, Y
-    cp      r25, r2
-    brne    _not_equal_eq2_256
-    ldi     result, TRUE
-    rjmp    _end_eq2_257
-_not_equal_eq2_256:
-    ldi     result, FALSE
-_end_eq2_257:
-    IFFALSE _when_false_ret_253
+    cp      r25, r1
+    brne    _equal_ind2const_not_248
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_249
+_equal_ind2const_not_248:
+    SETRESULT FALSE
+_equal_ind2const_end_249:
+    IFFALSE _when_end_246
     ldi     r25, 3
     st      X, r25
-    rjmp    _when_end_254
-_when_false_ret_253:
-    ldi     result, FALSE
-_when_end_254:
+_when_end_246:
     ld      r25, Y
-    cp      r25, r1
-    brne    _not_equal_eq2_262
-    ldi     result, TRUE
-    rjmp    _end_eq2_263
-_not_equal_eq2_262:
-    ldi     result, FALSE
-_end_eq2_263:
-    IFFALSE _when_false_ret_259
+    cp      r25, r0
+    brne    _equal_ind2const_not_253
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_254
+_equal_ind2const_not_253:
+    SETRESULT FALSE
+_equal_ind2const_end_254:
+    IFFALSE _when_end_251
     ldi     r25, 1
     st      X, r25
-    rjmp    _when_end_260
-_when_false_ret_259:
-    ldi     result, FALSE
-_when_end_260:
+_when_end_251:
     ;; progn-close
     rjmp    _end_case_206
 _end_case_206:
