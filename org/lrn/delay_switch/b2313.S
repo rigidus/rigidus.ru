@@ -81,30 +81,29 @@ _not_press_IP:
 _end_press_handler_IP:
 
 
-;;     ;; [[[=== Обработка нажатий клавиш ===]]]
-;;     sbis    PINB, 0
-;;     rjmp    _not_press
-;;     ;; Если нажатие зарегистрировано
-;;     sts     NEW, r2
-;;     rjmp    _end_press_handler
-;; _not_press:
-;;     ;; В противном случае
-;;     sts     NEW, r1
-;; _end_press_handler:
-
-
     ;; [[[=== Защита от дребезга ===]]]
     ;; Перед вызовом конечного автомата
-    ;; Сохраняем индексный регистр X
+    ;; Сохраняем индексные регистры
     push    xl
     push    xh
-    ;; Заготовка чтобы передавать адрес
+    push    yl
+    push    yh
+    push    zl
+    push    zh
+    ;; Передаем адрес переменной состояния
     ldi     xl, lo8(STATE_IP)
     ldi     xh, hi8(STATE_IP)
+    ;; Передаем адрес переменной сигнала
+    ldi     yl, lo8(NEW_IP)
+    ldi     yh, hi8(NEW_IP)
     ;; Вызываем конечный автомат подавления дребезга
     rcall   _fsmbtn
     ;; После вызова конечного автомата
-    ;; Восстанавливаем индексный регистр X
+    ;; Восстанавливаем индексные регистры
+    pop     zh
+    pop     zl
+    pop     yh
+    pop     yl
     pop     xh
     pop     xl
 
@@ -242,167 +241,160 @@ _next_205:
     push    r25
     ret 
     rjmp    _label_case_1207
-    rjmp    _label_case_2223
-    rjmp    _label_case_3258
+    rjmp    _label_case_2221
+    rjmp    _label_case_3253
 _label_case_1207:
     ;; progn-open
-    lds     r25, NEW_IP
-    ldi     r24, LOW
-    cp      r25, r24
-    brne    _not_equal_eq2_212
+    ld      r25, Y
+    cp      r25, r1
+    brne    _not_equal_eq2_211
     ldi     result, TRUE
-    rjmp    _end_eq2_213
-_not_equal_eq2_212:
+    rjmp    _end_eq2_212
+_not_equal_eq2_211:
     ldi     result, FALSE
-_end_eq2_213:
+_end_eq2_212:
     IFFALSE _when_false_ret_208
-    ldi     r24, 1
-    st      X, r24
+    ldi     r25, 1
+    st      X, r25
     rjmp    _when_end_209
 _when_false_ret_208:
     ldi     result, FALSE
 _when_end_209:
-    lds     r24, NEW_IP
-    ldi     r25, HIGH
-    cp      r24, r25
-    brne    _not_equal_eq2_219
+    ld      r25, Y
+    cp      r25, r2
+    brne    _not_equal_eq2_217
     ldi     result, TRUE
-    rjmp    _end_eq2_220
-_not_equal_eq2_219:
+    rjmp    _end_eq2_218
+_not_equal_eq2_217:
     ldi     result, FALSE
-_end_eq2_220:
-    IFFALSE _when_false_ret_215
+_end_eq2_218:
+    IFFALSE _when_false_ret_214
     ldi     r25, 0
     sts     CNT_IP, r25
     ldi     r25, 2
     st      X, r25
-    rjmp    _when_end_216
-_when_false_ret_215:
+    rjmp    _when_end_215
+_when_false_ret_214:
     ldi     result, FALSE
-_when_end_216:
+_when_end_215:
     ;; progn-close
     rjmp    _end_case_206
-_label_case_2223:
+_label_case_2221:
     ;; progn-open
-    lds     r25, NEW_IP
-    ldi     r24, LOW
-    cp      r25, r24
-    brne    _not_equal_eq2_228
+    ld      r25, Y
+    cp      r25, r1
+    brne    _not_equal_eq2_225
     ldi     result, TRUE
-    rjmp    _end_eq2_229
-_not_equal_eq2_228:
+    rjmp    _end_eq2_226
+_not_equal_eq2_225:
     ldi     result, FALSE
-_end_eq2_229:
-    IFFALSE _when_false_ret_224
-    ldi     r24, 1
-    st      X, r24
-    rjmp    _when_end_225
-_when_false_ret_224:
+_end_eq2_226:
+    IFFALSE _when_false_ret_222
+    ldi     r25, 1
+    st      X, r25
+    rjmp    _when_end_223
+_when_false_ret_222:
     ldi     result, FALSE
-_when_end_225:
-    lds     r24, NEW_IP
-    ldi     r25, HIGH
-    cp      r24, r25
-    brne    _not_equal_eq2_237
+_when_end_223:
+    ld      r25, Y
+    cp      r25, r2
+    brne    _not_equal_eq2_233
     ldi     result, TRUE
-    rjmp    _end_eq2_238
-_not_equal_eq2_237:
+    rjmp    _end_eq2_234
+_not_equal_eq2_233:
     ldi     result, FALSE
-_end_eq2_238:
-    IFFALSE _and_false_ret_233
+_end_eq2_234:
+    IFFALSE _and_false_ret_230
     lds     r25, CNT_IP
     ldi     r24, MAX
     cp      r25, r24
-    brsh    _not_lt_eq2_241
+    brsh    _not_lt_eq2_237
     ldi     result, TRUE
-    rjmp    _end_lt2_242
-_not_lt_eq2_241:
+    rjmp    _end_lt2_238
+_not_lt_eq2_237:
     ldi     result, FALSE
-_end_lt2_242:
-    IFFALSE _and_false_ret_233
+_end_lt2_238:
+    IFFALSE _and_false_ret_230
     ldi     result, TRUE
-    rjmp    _and_end_234
-_and_false_ret_233:
+    rjmp    _and_end_231
+_and_false_ret_230:
     ldi     result, FALSE
-_and_end_234:
-    IFFALSE _when_false_ret_231
+_and_end_231:
+    IFFALSE _when_false_ret_228
     lds     r24, CNT_IP
     inc     r24
     sts     CNT_IP, r24
     ldi     r24, 2
     st      X, r24
-    rjmp    _when_end_232
-_when_false_ret_231:
+    rjmp    _when_end_229
+_when_false_ret_228:
     ldi     result, FALSE
-_when_end_232:
-    lds     r24, NEW_IP
-    ldi     r25, HIGH
+_when_end_229:
+    ld      r24, Y
+    cp      r24, r2
+    brne    _not_equal_eq2_246
+    ldi     result, TRUE
+    rjmp    _end_eq2_247
+_not_equal_eq2_246:
+    ldi     result, FALSE
+_end_eq2_247:
+    IFFALSE _and_false_ret_243
+    lds     r24, CNT_IP
+    ldi     r25, MAX
     cp      r24, r25
-    brne    _not_equal_eq2_251
+    brlo    _not_ge_eq2_250
     ldi     result, TRUE
-    rjmp    _end_eq2_252
-_not_equal_eq2_251:
+    rjmp    _end_ge2_251
+_not_ge_eq2_250:
     ldi     result, FALSE
-_end_eq2_252:
-    IFFALSE _and_false_ret_247
-    lds     r25, CNT_IP
-    ldi     r24, MAX
-    cp      r25, r24
-    brlo    _not_ge_eq2_255
+_end_ge2_251:
+    IFFALSE _and_false_ret_243
     ldi     result, TRUE
-    rjmp    _end_ge2_256
-_not_ge_eq2_255:
+    rjmp    _and_end_244
+_and_false_ret_243:
     ldi     result, FALSE
-_end_ge2_256:
-    IFFALSE _and_false_ret_247
-    ldi     result, TRUE
-    rjmp    _and_end_248
-_and_false_ret_247:
+_and_end_244:
+    IFFALSE _when_false_ret_241
+    ldi     r25, 3
+    st      X, r25
+    rjmp    _when_end_242
+_when_false_ret_241:
     ldi     result, FALSE
-_and_end_248:
-    IFFALSE _when_false_ret_245
-    ldi     r24, 3
-    st      X, r24
-    rjmp    _when_end_246
-_when_false_ret_245:
-    ldi     result, FALSE
-_when_end_246:
+_when_end_242:
     ;; progn-close
     rjmp    _end_case_206
-_label_case_3258:
+_label_case_3253:
     ;; progn-open
-    lds     r24, NEW_IP
-    ldi     r25, HIGH
-    cp      r24, r25
+    ld      r25, Y
+    cp      r25, r2
+    brne    _not_equal_eq2_257
+    ldi     result, TRUE
+    rjmp    _end_eq2_258
+_not_equal_eq2_257:
+    ldi     result, FALSE
+_end_eq2_258:
+    IFFALSE _when_false_ret_254
+    ldi     r25, 3
+    st      X, r25
+    rjmp    _when_end_255
+_when_false_ret_254:
+    ldi     result, FALSE
+_when_end_255:
+    ld      r25, Y
+    cp      r25, r1
     brne    _not_equal_eq2_263
     ldi     result, TRUE
     rjmp    _end_eq2_264
 _not_equal_eq2_263:
     ldi     result, FALSE
 _end_eq2_264:
-    IFFALSE _when_false_ret_259
-    ldi     r25, 3
+    IFFALSE _when_false_ret_260
+    ldi     r25, 1
     st      X, r25
-    rjmp    _when_end_260
-_when_false_ret_259:
+    rjmp    _when_end_261
+_when_false_ret_260:
     ldi     result, FALSE
-_when_end_260:
-    lds     r25, NEW_IP
-    ldi     r24, LOW
-    cp      r25, r24
-    brne    _not_equal_eq2_270
-    ldi     result, TRUE
-    rjmp    _end_eq2_271
-_not_equal_eq2_270:
-    ldi     result, FALSE
-_end_eq2_271:
-    IFFALSE _when_false_ret_266
-    ldi     r24, 1
-    st      X, r24
-    rjmp    _when_end_267
-_when_false_ret_266:
-    ldi     result, FALSE
-_when_end_267:
+_when_end_261:
     ;; progn-close
     rjmp    _end_case_206
 _end_case_206:
