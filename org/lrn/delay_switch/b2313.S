@@ -59,16 +59,37 @@ _timer_1_overflow:
     push    tmp0
     push    tmp1
     ;; Сохраняем регистр флагов
-    in      tmp1, SREG
-    push    tmp1
+    in      tmp0, SREG
+    push    tmp0
+
 
     ;; [[[=== Высота звука ===]]]
     ;; Уменьшаем freq для частоты buzzer-а
     dec     freq
 
+
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
+
+
+    ;; [[[=== Обработка нажатий клавиш ===]]]
+    ;; Читаем вывод PB0
+    in      tmp0, PINB
+    ldi     tmp1, 0b00000001
+    and     tmp0, tmp1
+    ;; Есть ли нажатие?
+    breq    _not_press ; Перейти если ноль
+    ;; Если нажатие зарегистрировано
+    ldi     tmp0, HIGH
+    sts     NEW, tmp0
+    rjmp    _timer_0_overflow_ret
+_not_press:
+    ;; В противном случае
+    ;; rcall   _yellow_off
+    ldi     tmp0, LOW
+    sts     NEW, tmp0
+
 
     ;; [[[=== Защита от дребезга ===]]]
     ;; Перед вызовом конечного автомата
@@ -85,28 +106,11 @@ _timer_1_overflow:
     pop     xh
     pop     xl
 
-    ;; [[[=== Обработка нажатий клавиш ===]]]
-    ;; Читаем вывод PB0
-    in      tmp0, PINB
-    ldi     tmp1, 0b00000001
-    and     tmp0, tmp1
-    ;; Есть ли нажатие?
-    breq    _not_press ; Перейти если ноль
-    ;; Если нажатие зарегистрировано
-    ;; rcall   _yellow_on
-    ldi     tmp0, HIGH
-    sts     NEW, tmp0
-    rjmp    _timer_0_overflow_ret
-_not_press:
-    ;; В противном случае
-    ;; rcall   _yellow_off
-    ldi     tmp0, LOW
-    sts     NEW, tmp0
 
 _timer_0_overflow_ret:
     ;; Восстанавливаем регистр флагов
-    pop     tmp1
-    out     SREG, tmp1
+    pop     tmp0
+    out     SREG, tmp0
     ;; Восстанавливем регистры
     pop     tmp1
     pop     tmp0
@@ -122,11 +126,11 @@ _reset:
     ;; Запретить прерывания
     clr     r1
     out     SREG, r1
-    
+
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-    
+
     ;; Инициализируем выводы
     ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
     ;;                 |          |
@@ -139,7 +143,25 @@ _reset:
     ;;                  | +PB1
     ;;                  +PB3
     out     DDRB, tmp0
-    
+
+    ;; .data
+
+    ;; STATE_IP:
+    ;;     .byte 0x1
+    ;; NEW_IP:
+    ;;     .byte 0x0
+    ;; CNT_IP:
+    ;;     .byte 0x0
+
+    ;; .text
+
+    ;; _init_IP:
+    ;;    ;; cbi    DDRB, 0
+    ;;    ;; cbi    PORTB, 0
+    ;;    ;; sts    STATE_IP, 1
+
+
+
     ;; Для пинов подключенных на вход (кнопки)
     ;; установить подтяжку к питанию (записав 1) чтобы не было hi-z
     ;; Однако их надо подтянуть к минусу питания (!)
@@ -148,12 +170,12 @@ _reset:
     ;; PB2(0C0A) - тоже к земле, потому что он выход
     ldi     tmp0, 0b00000001
     out     PORTB, tmp0
-    
+
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
     ldi     tmp0, 0b0010
     out     TCCR1B, tmp0
-    
+
     ;; Инициализация таймера-0
     ;; TCCR0A
     ldi tmp0, 0b01000010
@@ -168,12 +190,12 @@ _reset:
     out OCR0A, tmp0
     ;; Очищаем флаги прерывания таймера
     out TIFR, r1
-    
+
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
     ldi     tmp0, 0b10000001
     out     TIMSK, tmp0
-    
+
     ;; Разрешить прерывания
     sei
 
@@ -232,7 +254,7 @@ _next_205:
     adc     r25, r23
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_1207
     rjmp    _label_case_2223
     rjmp    _label_case_3258
