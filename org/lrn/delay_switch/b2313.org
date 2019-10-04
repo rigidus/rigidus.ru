@@ -137,15 +137,15 @@
 переходе действия.
 
 #+NAME: btn_fsm
-| predicate                            | from   | to     | action          |
-|--------------------------------------+--------+--------+-----------------|
-| (= NEW $LOW)                         | Up     | Up     |                 |
-| (= NEW $HIGH)                        | Up     | Middle | (setf CNT_IP 0) |
-| (= NEW $LOW)                         | Middle | Up     |                 |
-| (and (= NEW $HIGH) (< CNT_IP $MAX))  | Middle | Middle | (incf CNT_IP)   |
-| (and (= NEW $HIGH) (>= CNT_IP $MAX)) | Middle | Down   |                 |
-| (= NEW $HIGH)                        | Down   | Down   |                 |
-| (= NEW $LOW)                         | Down   | Up     |                 |
+| predicate                         | from   | to     | action      |
+|-----------------------------------+--------+--------+-------------|
+| (= NEW $LOW)                      | Up     | Up     |             |
+| (= NEW $HIGH)                     | Up     | Middle | (clear CNT) |
+| (= NEW $LOW)                      | Middle | Up     |             |
+| (and (= NEW $HIGH) (< CNT $MAX))  | Middle | Middle | (inc CNT)   |
+| (and (= NEW $HIGH) (>= CNT $MAX)) | Middle | Down   |             |
+| (= NEW $HIGH)                     | Down   | Down   |             |
+| (= NEW $LOW)                      | Down   | Up     |             |
 
 Стоит отметить, что задавать =predicate= и =action= лучше не так как в
 этом примере, а простым вызовом функции. Помимо лучшей читаемости, это
@@ -403,30 +403,6 @@
 влияют на ход трансляции, т.е. они, по сути, являются директивами
 транслятору.
 
-Итак, =setf=, которое присваивает переменной константное значение,
-нуждается в одном виртуальном регистре, который сразу будет освобожден,
-после того, как значение будет выгружено в память. Однако на более
-поздних этапах можно будет применить ряд оптимизаций, чтобы не
-откладывать сохранение в память или даже не использовать его там где это
-возможно.
-
-#+NAME: rsetf
-#+BEGIN_SRC elisp :var a=recur
-  ;; SETF VAR1 2222
-  (add-recur-rule (lambda (lst)
-                    (and
-                     (eql 'setf (car lst))
-                     (atom (cadr lst))
-                     (not (numberp (cadr lst)))
-                     (numberp (caddr lst))))
-                  (lambda (lst)
-                    (let ((reg1 (gensym "reg=setf_")))
-                      (push `(ralloc ,reg1) ssa)
-                      (push `(ldi ,reg1 ,(caddr lst)) ssa)
-                      (push `(sts ,(cadr lst) ,reg1) ssa)
-                      (push `(rfree ,reg1) ssa))))
-#+END_SRC
-
 Следующее правило сравнивает два значения. Теоретически операция
 сравнения может сравнивать несколько значений. Каждое из этих значений
 может быть константой или переменной. Переменная может адресоваться по
@@ -440,7 +416,7 @@
 
 #+NAME: req2
 #+BEGIN_SRC elisp :var a=recur
-  ;; = VAR1 VAR2
+  ;; = Y $CONST
   (add-recur-rule (lambda (lst)
                     (and  (eql '= (car lst))
                           (eql 3 (length lst))
@@ -452,8 +428,7 @@
                           (or (equal '$LOW (caddr lst))
                               (equal '$HIGH (caddr lst)))))
                   (lambda (lst)
-                    (let ((var_indirect (cadr lst))
-                          (const (caddr lst))
+                    (let ((const (caddr lst))
                           (reg1 (gensym "reg=eq2_var_indirect"))
                           (not_equal (gensym "_not_equal_eq2_"))
                           (end  (gensym "_end_eq2_")))
@@ -611,7 +586,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 #+END_SRC
 
 Осталось добавить еще немного операций, которые есть в исходной
-программе. Первая из них - "меньше"
+программе.
 
 #+NAME: rless
 #+BEGIN_SRC elisp :var a=recur
@@ -622,18 +597,19 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                           (atom (cadr lst))
                           (atom (caddr lst))
                           (not (numberp (cadr lst)))
-                          (not (numberp (caddr lst)))))
+                          (not (numberp (caddr lst)))
+                          (equal 'CNT (cadr lst))
+                          (equal "$" (subseq (format "%s" (caddr lst)) 0 1))))
                   (lambda (lst)
-                    (let ((var_or_const_1 (cadr lst))
-                          (var_or_const_2 (caddr lst))
-                          (reg1 (gensym "reg=lt2_"))
-                          (reg2 (gensym "reg=lt2_"))
+                    (let ((const (subseq (format "%s" (caddr lst)) 1))
+                          (reg1 (gensym "reg=lt2_indirect"))
+                          (reg2 (gensym "reg=lt2_const"))
                           (not_less (gensym "_not_lt_eq2_"))
                           (end  (gensym "_end_lt2_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
-                      (rload reg1 var_or_const_1)
-                      (rload reg2 var_or_const_2)
+                      (push `(ld ,reg1 Z) ssa)
+                      (push `(ldi ,reg2 ,const) ssa)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
@@ -645,28 +621,38 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(label ,end) ssa))))
 #+END_SRC
 
-Вторая - инкремент
+Очистка переменной, адрес которой в регистре Z
 
-#+NAME: rincf
+#+NAME: rclear
+#+BEGIN_SRC elisp :var a=recur
+  ;; CLEAR CNT
+  (add-recur-rule (lambda (lst)
+                    (and
+                     (eql 'clear (car lst))
+                     (atom (cadr lst))
+                     (not (numberp (cadr lst)))
+                     (equal 'CNT (cadr lst))))
+                  (lambda (lst)
+                    (push `(st Z r1) ssa)))
+#+END_SRC
+
+Инкремент
+
+#+NAME: rinc
 #+BEGIN_SRC elisp :var a=recur
   (add-recur-rule (lambda (lst)
                     (and
-                     (eql 'incf (car lst))
+                     (eql 'inc (car lst))
                      (atom (cadr lst))
                      (not (numberp (cadr lst)))
-                     (null (caddr lst))))
+                     (null (caddr lst))
+                     (equal 'CNT (cadr lst))))
                   (lambda (lst)
-                    (let ((reg1 (gensym "reg=incf_"))
-                          (var1 (let ((par (format "%s" (cadr  lst))))
-                                  ;; тут не может быть константы
-                                  (if (equal "$" (subseq par 0 1))
-                                      (error (format "incfement of constant %s"
-                                                     par)))
-                                  par)))
+                    (let ((reg1 (gensym "reg=inc_")))
                       (push `(ralloc ,reg1) ssa)
-                      (push `(lds ,reg1 ,var1) ssa)
+                      (push `(ld ,reg1 Z) ssa)
                       (push `(inc ,reg1) ssa)
-                      (push `(sts ,(cadr lst) ,reg1) ssa)
+                      (push `(st Z ,reg1) ssa)
                       (push `(rfree ,reg1) ssa))))
 #+END_SRC
 
@@ -680,18 +666,19 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                           (atom (cadr lst))
                           (atom (caddr lst))
                           (not (numberp (cadr lst)))
-                          (not (numberp (caddr lst)))))
+                          (not (numberp (caddr lst)))
+                          (equal 'CNT (cadr lst))
+                          (equal "$" (subseq (format "%s" (caddr lst)) 0 1))))
                   (lambda (lst)
-                    (let ((var_or_const_1 (cadr lst))
-                          (var_or_const_2 (caddr lst))
-                          (reg1 (gensym "reg=lt2_"))
-                          (reg2 (gensym "reg=lt2_"))
+                    (let ((const (subseq (format "%s" (caddr lst)) 1))
+                          (reg1 (gensym "reg=lt2_indirect_"))
+                          (reg2 (gensym "reg=lt2_const_"))
                           (not_greater_or_equal (gensym "_not_ge_eq2_"))
                           (end  (gensym "_end_ge2_")))
                       (push `(ralloc ,reg1) ssa)
                       (push `(ralloc ,reg2) ssa)
-                      (rload reg1 var_or_const_1)
-                      (rload reg2 var_or_const_2)
+                      (push `(ld ,reg1 Z) ssa)
+                      (push `(ldi ,reg2 ,const) ssa)
                       (push `(cp ,reg1 ,reg2) ssa)
                       (push `(rfree ,reg1) ssa)
                       (push `(rfree ,reg2) ssa)
@@ -706,7 +693,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Теперь, когда все операции определены, мы можем получить весь код
 
 #+NAME: all
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rsetf d=req2 e=rsetstate f=rand g=rwhen h=rless i=rincf j=rge k=rcase
+#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge k=rcase
   (format
    "%s"
    (pp
@@ -1720,6 +1707,9 @@ TIFR-регистр нужно сбросить в 0:
       ;; Передаем адрес переменной сигнала
       ldi     yl, lo8(NEW_IP)
       ldi     yh, hi8(NEW_IP)
+      ;; Передаем адрес переменной счетчика сигналов
+      ldi     zl, lo8(CNT_IP)
+      ldi     zh, hi8(CNT_IP)
       ;; Вызываем конечный автомат подавления дребезга
       rcall   _fsmbtn
       ;; После вызова конечного автомата
