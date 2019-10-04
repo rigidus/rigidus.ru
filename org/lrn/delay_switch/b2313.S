@@ -73,6 +73,26 @@ _timer_1_overflow:
     rcall   _blink_green
 
 
+
+
+    ;; [[[=== Обработка нажатий клавиш ===]]]
+    ;; Читаем вывод PB0
+    in      tmp0, PINB
+    ldi     tmp1, 0b00000001
+    and     tmp0, tmp1
+    ;; Есть ли нажатие?
+    breq    _not_press ; Перейти если ноль
+    ;; Если нажатие зарегистрировано
+    ldi     tmp0, HIGH
+    sts     NEW, tmp0
+    rjmp    _end_press_handler
+_not_press:
+    ;; В противном случае
+    ldi     tmp0, LOW
+    sts     NEW, tmp0
+_end_press_handler:
+
+
     ;; [[[=== Защита от дребезга ===]]]
     ;; Перед вызовом конечного автомата
     ;; Сохраняем индексный регистр X
@@ -88,23 +108,6 @@ _timer_1_overflow:
     pop     xh
     pop     xl
 
-
-    ;; [[[=== Обработка нажатий клавиш ===]]]
-    ;; Читаем вывод PB0
-    in      tmp0, PINB
-    ldi     tmp1, 0b00000001
-    and     tmp0, tmp1
-    ;; Есть ли нажатие?
-    breq    _not_press ; Перейти если ноль
-    ;; Если нажатие зарегистрировано
-    ldi     tmp0, HIGH
-    sts     NEW, tmp0
-    rjmp    _timer_0_overflow_ret
-_not_press:
-    ;; В противном случае
-    ;; rcall   _yellow_off
-    ldi     tmp0, LOW
-    sts     NEW, tmp0
 
 
 _timer_0_overflow_ret:
@@ -157,18 +160,9 @@ _reset:
     
     _init_IP:
        cbi    DDRB, 0
-       cbi    PORTB, 0
        sts    STATE_IP, 1
     
     
-    ;; Для пинов подключенных на вход (кнопки)
-    ;; установить подтяжку к питанию (записав 1) чтобы не было hi-z
-    ;; Однако их надо подтянуть к минусу питания (!)
-    ;; PB4 и PB3 подтягиваем к земле, потому что начальное
-    ;; его состояние - выключен
-    ;; PB2(0C0A) - тоже к земле, потому что он выход
-    ldi     tmp0, 0b00000001
-    out     PORTB, tmp0
     
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
