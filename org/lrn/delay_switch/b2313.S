@@ -78,6 +78,8 @@ _timer_1_overflow:
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
 
+
+    ;; [[[==== Получаем состояние вывода в NEW_IP ===]]]
     sbis    PINB, 0
     rjmp    _not_press_IP
     sts     NEW_IP, r1
@@ -88,6 +90,8 @@ _end_press_handler_IP:
 
 
     ;; [[[=== Защита от дребезга ===]]]
+    ;; На входе: STATE, CNT, NEW
+    ;; На выходе: STATE
     ;; Перед вызовом конечного автомата
     ;; Сохраняем индексные регистры
     push    xl
@@ -116,7 +120,13 @@ _end_press_handler_IP:
     pop     xh
     pop     xl
 
-
+    ;; Здесь у нас есть STATE, но нам нужно отслеживать
+    ;; изменение STATE. Поэтому нам нужно PREV_STATE
+    ;; Тогда мы можем переключать другой автомат когда
+    ;; STATE меняется.
+    ;; Теперь если PREV_STATE и STATE не совпадают -
+    ;; мы можем выполнить какие-то действия (переключить
+    ;; состояние, выставить задержку итп)
 
 _timer_0_overflow_ret:
     ;; Восстанавливаем регистр флагов
@@ -162,6 +172,8 @@ _init_pins:
 
     .data
 
+PREV_STATE_IP:
+    .byte 0x1
 STATE_IP:
     .byte 0x1
 NEW_IP:
@@ -174,6 +186,7 @@ CNT_IP:
 _init_IP:
     cbi    DDRB, 0
     sts    STATE_IP, r1
+    sts    PREV_STATE_IP, r1
 
 
 
