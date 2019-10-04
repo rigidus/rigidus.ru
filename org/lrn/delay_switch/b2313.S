@@ -4,9 +4,8 @@
     #define HIGH 1
     #define LOW 0
     #define MAX 5
-    #define result r16
-    #define tmp0 r17
-    #define tmp1 r18
+    #define result r17
+    #define tmp0 r18
     #define freq r19
 
     .equ SPL, 0x3D
@@ -65,7 +64,6 @@ _vectors:
 _timer_1_overflow:
     ;; Сохраняем регистры
     push    tmp0
-    push    tmp1
     ;; Сохраняем регистр флагов
     in      tmp0, SREG
     push    tmp0
@@ -125,7 +123,6 @@ _timer_0_overflow_ret:
     pop     tmp0
     out     SREG, tmp0
     ;; Восстанавливем регистры
-    pop     tmp1
     pop     tmp0
     ;; Выходим
     reti
@@ -136,19 +133,21 @@ _timer_0_compare_A:
     reti
 
 _reset:
+_init:
     ;; Выделяем регистр r0 под значение нуля и r1 под значение единицы
     clr     r0
     mov     r1, r0
     inc     r1
-    
+
     ;; Запретить прерывания
     out     SREG, r0
-    
+
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-    
+
     ;; Инициализируем выводы
+_init_pins:
     ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
     ;;                 |          |
     ;;                 | +--------+
@@ -160,29 +159,29 @@ _reset:
     ;;                  | +PB1
     ;;                  +PB3
     out     DDRB, tmp0
-    
+
     .data
-    
-    STATE_IP:
-        .byte 0x1
-    NEW_IP:
-        .byte 0x0
-    CNT_IP:
-        .byte 0x0
-    
+
+STATE_IP:
+    .byte 0x1
+NEW_IP:
+    .byte 0x0
+CNT_IP:
+    .byte 0x0
+
     .text
-    
-    _init_IP:
-       cbi    DDRB, 0
-       sts    STATE_IP, r1
-    
-    
-    
+
+_init_IP:
+    cbi    DDRB, 0
+    sts    STATE_IP, r1
+
+
+
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
     ldi     tmp0, 0b0010
     out     TCCR1B, tmp0
-    
+
     ;; Инициализация таймера-0
     ;; TCCR0A
     ldi tmp0, 0b01000010
@@ -197,12 +196,12 @@ _reset:
     out OCR0A, tmp0
     ;; Очищаем флаги прерывания таймера
     out TIFR, r0
-    
+
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
     ldi     tmp0, 0b10000001
     out     TIMSK, tmp0
-    
+
     ;; Разрешить прерывания
     sei
 
@@ -215,15 +214,13 @@ _reset:
 
 _mainloop:
     lds     tmp0, STATE_IP
-    ldi     tmp1, 1             ; Проверяем на состояние
-    cp      tmp0, tmp1
+    cpi     tmp0, 1             ; Проверяем на состояние
     brne    _not_one            ;--+
     rcall   _red_on             ;  |
     rcall   _yellow_off         ;  |
     rjmp    _end                ;--|-+
 _not_one:                       ;<-+ |
-    ldi     tmp1, 2             ;    |
-    cp      tmp0, tmp1          ;    |
+    cpi     tmp0, 2             ;    |
     brne    _not_two            ;--+ |
     rcall   _red_off            ;  | |
     rcall   _yellow_on          ;  | |
@@ -236,7 +233,6 @@ _end:                           ;<---+
 
 _fsmbtn:
     push    tmp0
-    push    tmp1
     rcall   _next_205
 _next_205:
     pop     r25
@@ -382,7 +378,6 @@ _when_end_251:
     rjmp    _end_case_206
 _end_case_206:
 
-    pop     tmp1
     pop     tmp0
     ret
 
