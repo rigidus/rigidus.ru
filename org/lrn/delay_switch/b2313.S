@@ -233,8 +233,8 @@ _end:                           ;<---+
 
 _fsmbtn:
     push    tmp0
-    rcall   _next_205
-_next_205:
+    rcall   _case_next_205
+_case_next_205:
     pop     r25
     pop     r24
     clr     r23
@@ -278,7 +278,7 @@ _equal_ind2const_end_216:
     st      X, r25
 _when_end_213:
     ;; progn-close
-    rjmp    _end_case_206
+    rjmp    _case_end_206
 _label_case_2218:
     ;; progn-open
     ld      r25, Y
@@ -347,7 +347,7 @@ _and_end_236:
     st      X, r25
 _when_end_235:
     ;; progn-close
-    rjmp    _end_case_206
+    rjmp    _case_end_206
 _label_case_3245:
     ;; progn-open
     ld      r25, Y
@@ -375,8 +375,8 @@ _equal_ind2const_end_254:
     st      X, r25
 _when_end_251:
     ;; progn-close
-    rjmp    _end_case_206
-_end_case_206:
+    rjmp    _case_end_206
+_case_end_206:
 
     pop     tmp0
     ret
