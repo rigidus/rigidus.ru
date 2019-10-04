@@ -73,6 +73,22 @@ _timer_1_overflow:
     rcall   _blink_green
 
 
+    ;; [[[=== Защита от дребезга ===]]]
+    ;; Перед вызовом конечного автомата
+    ;; Сохраняем индексный регистр X
+    push    xl
+    push    xh
+    ;; Заготовка чтобы передавать адрес
+    ldi     xl, lo8(STATE)
+    ldi     xh, hi8(STATE)
+    ;; Вызываем конечный автомат подавления дребезга
+    rcall   _fsmbtn
+    ;; После вызова конечного автомата
+    ;; Восстанавливаем индексный регистр X
+    pop     xh
+    pop     xl
+
+
     ;; [[[=== Обработка нажатий клавиш ===]]]
     ;; Читаем вывод PB0
     in      tmp0, PINB
@@ -89,22 +105,6 @@ _not_press:
     ;; rcall   _yellow_off
     ldi     tmp0, LOW
     sts     NEW, tmp0
-
-
-    ;; [[[=== Защита от дребезга ===]]]
-    ;; Перед вызовом конечного автомата
-    ;; Сохраняем индексный регистр X
-    push    xl
-    push    xh
-    ;; Заготовка чтобы передавать адрес
-    ldi     xl, lo8(STATE)
-    ldi     xh, hi8(STATE)
-    ;; Вызываем конечный автомат подавления дребезга
-    rcall   _fsmbtn
-    ;; После вызова конечного автомата
-    ;; Восстанавливаем индексный регистр X
-    pop     xh
-    pop     xl
 
 
 _timer_0_overflow_ret:
@@ -126,11 +126,11 @@ _reset:
     ;; Запретить прерывания
     clr     r1
     out     SREG, r1
-
+    
     ;; Настроить Stack
     ldi     tmp0, RAMEND
     out     SPL, tmp0
-
+    
     ;; Инициализируем выводы
     ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
     ;;                 |          |
@@ -143,25 +143,24 @@ _reset:
     ;;                  | +PB1
     ;;                  +PB3
     out     DDRB, tmp0
-
-    ;; .data
-
-    ;; STATE_IP:
-    ;;     .byte 0x1
-    ;; NEW_IP:
-    ;;     .byte 0x0
-    ;; CNT_IP:
-    ;;     .byte 0x0
-
-    ;; .text
-
-    ;; _init_IP:
-    ;;    ;; cbi    DDRB, 0
-    ;;    ;; cbi    PORTB, 0
-    ;;    ;; sts    STATE_IP, 1
-
-
-
+    
+    .data
+    
+    STATE_IP:
+        .byte 0x1
+    NEW_IP:
+        .byte 0x0
+    CNT_IP:
+        .byte 0x0
+    
+    .text
+    
+    _init_IP:
+       cbi    DDRB, 0
+       cbi    PORTB, 0
+       sts    STATE_IP, 1
+    
+    
     ;; Для пинов подключенных на вход (кнопки)
     ;; установить подтяжку к питанию (записав 1) чтобы не было hi-z
     ;; Однако их надо подтянуть к минусу питания (!)
@@ -170,12 +169,12 @@ _reset:
     ;; PB2(0C0A) - тоже к земле, потому что он выход
     ldi     tmp0, 0b00000001
     out     PORTB, tmp0
-
+    
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
     ldi     tmp0, 0b0010
     out     TCCR1B, tmp0
-
+    
     ;; Инициализация таймера-0
     ;; TCCR0A
     ldi tmp0, 0b01000010
@@ -190,12 +189,12 @@ _reset:
     out OCR0A, tmp0
     ;; Очищаем флаги прерывания таймера
     out TIFR, r1
-
+    
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
     ldi     tmp0, 0b10000001
     out     TIMSK, tmp0
-
+    
     ;; Разрешить прерывания
     sei
 
@@ -254,7 +253,7 @@ _next_205:
     adc     r25, r23
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_1207
     rjmp    _label_case_2223
     rjmp    _label_case_3258
