@@ -1,10 +1,8 @@
 ;;; b2313 delay switch for 4 buttons
     #define TRUE 1
     #define FALSE 0
-    #define HIGH 1
-    #define LOW 0
     #define MAX 2
-    #define DELAY_MAX 100
+    #define DELAY_MAX 0xFF ; ~ 17 секунд. TOOD: нужен второй байт
     #define result r16
     #define tmp0 r17
     #define tmp1 r18
@@ -476,8 +474,6 @@ _init_PM:
     ;; DISABLE TIMER-0
     ;; Временно остановим таймер-0 чтобы не щелкал
     out TCCR0B, r0
-
-    YELLOW_OFF
 
 _mainloop:
     rjmp    _mainloop
