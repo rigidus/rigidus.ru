@@ -242,150 +242,149 @@ _end:                           ;<---+
 
 _fsmbtn:
     push    tmp0
-    rcall   _case_next_205
-_case_next_205:
+    rcall   _case_next_204
+_case_next_204:
     pop     r25
     pop     r24
-    clr     r23
-    ldi     r22, 12
-    add     r24, r22
-    adc     r25, r23
-    ld      r22, X
-    add     r24, r22
-    adc     r25, r23
+    ldi     r23, 11
+    add     r24, r23
+    adc     r25, r0
+    ld      r23, X
+    add     r24, r23
+    adc     r25, r0
     push    r24
     push    r25
     ret 
-    rjmp    _label_case_0207
-    rjmp    _label_case_1218
-    rjmp    _label_case_2245
-_label_case_0207:
+    rjmp    _label_case_0206
+    rjmp    _label_case_1217
+    rjmp    _label_case_2244
+_label_case_0206:
     ;; progn-open
     ld      r25, Y
     cp      r25, r0
-    brne    _equal_ind2const_not_210
+    brne    _equal_ind2const_not_209
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_211
-_equal_ind2const_not_210:
+    rjmp    _equal_ind2const_end_210
+_equal_ind2const_not_209:
     SETRESULT FALSE
-_equal_ind2const_end_211:
-    IFFALSE _when_end_208
+_equal_ind2const_end_210:
+    IFFALSE _when_end_207
     ldi     r25, 0
     st      X, r25
-_when_end_208:
+_when_end_207:
     ld      r25, Y
     cp      r25, r1
-    brne    _equal_ind2const_not_215
+    brne    _equal_ind2const_not_214
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_216
-_equal_ind2const_not_215:
+    rjmp    _equal_ind2const_end_215
+_equal_ind2const_not_214:
     SETRESULT FALSE
-_equal_ind2const_end_216:
-    IFFALSE _when_end_213
+_equal_ind2const_end_215:
+    IFFALSE _when_end_212
     st      Z, r0
     ldi     r25, 1
     st      X, r25
-_when_end_213:
+_when_end_212:
     ;; progn-close
-    rjmp    _case_end_206
-_label_case_1218:
+    rjmp    _case_end_205
+_label_case_1217:
     ;; progn-open
     ld      r25, Y
     cp      r25, r0
-    brne    _equal_ind2const_not_221
+    brne    _equal_ind2const_not_220
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_222
-_equal_ind2const_not_221:
+    rjmp    _equal_ind2const_end_221
+_equal_ind2const_not_220:
     SETRESULT FALSE
-_equal_ind2const_end_222:
-    IFFALSE _when_end_219
+_equal_ind2const_end_221:
+    IFFALSE _when_end_218
     ldi     r25, 0
     st      X, r25
-_when_end_219:
+_when_end_218:
     ld      r25, Y
     cp      r25, r1
-    brne    _equal_ind2const_not_227
+    brne    _equal_ind2const_not_226
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_228
-_equal_ind2const_not_227:
+    rjmp    _equal_ind2const_end_227
+_equal_ind2const_not_226:
     SETRESULT FALSE
-_equal_ind2const_end_228:
-    IFFALSE _and_end_225
+_equal_ind2const_end_227:
+    IFFALSE _and_end_224
     ld      r25, Z
     ldi     r24, MAX
     cp      r25, r24
-    brsh    _lt_ind2const_not_231
+    brsh    _lt_ind2const_not_230
     SETRESULT TRUE
-    rjmp    _lt_ind2const_end_232
-_lt_ind2const_not_231:
+    rjmp    _lt_ind2const_end_231
+_lt_ind2const_not_230:
     SETRESULT FALSE
-_lt_ind2const_end_232:
-    IFFALSE _and_end_225
+_lt_ind2const_end_231:
+    IFFALSE _and_end_224
     SETRESULT TRUE
-_and_end_225:
-    IFFALSE _when_end_224
+_and_end_224:
+    IFFALSE _when_end_223
     ld      r24, Z
     inc     r24
     st      Z, r24
     ldi     r24, 1
     st      X, r24
-_when_end_224:
+_when_end_223:
     ld      r24, Y
     cp      r24, r1
-    brne    _equal_ind2const_not_238
+    brne    _equal_ind2const_not_237
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_239
-_equal_ind2const_not_238:
+    rjmp    _equal_ind2const_end_238
+_equal_ind2const_not_237:
     SETRESULT FALSE
-_equal_ind2const_end_239:
-    IFFALSE _and_end_236
+_equal_ind2const_end_238:
+    IFFALSE _and_end_235
     ld      r24, Z
     ldi     r25, MAX
     cp      r24, r25
-    brlo    _ge_ind2const_not_242
+    brlo    _ge_ind2const_not_241
     SETRESULT TRUE
-    rjmp    _ge_ind2const_end_243
-_ge_ind2const_not_242:
+    rjmp    _ge_ind2const_end_242
+_ge_ind2const_not_241:
     SETRESULT FALSE
-_ge_ind2const_end_243:
-    IFFALSE _and_end_236
+_ge_ind2const_end_242:
+    IFFALSE _and_end_235
     SETRESULT TRUE
-_and_end_236:
-    IFFALSE _when_end_235
+_and_end_235:
+    IFFALSE _when_end_234
     ldi     r25, 2
     st      X, r25
-_when_end_235:
+_when_end_234:
     ;; progn-close
-    rjmp    _case_end_206
-_label_case_2245:
+    rjmp    _case_end_205
+_label_case_2244:
     ;; progn-open
     ld      r25, Y
     cp      r25, r1
-    brne    _equal_ind2const_not_248
+    brne    _equal_ind2const_not_247
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_249
-_equal_ind2const_not_248:
+    rjmp    _equal_ind2const_end_248
+_equal_ind2const_not_247:
     SETRESULT FALSE
-_equal_ind2const_end_249:
-    IFFALSE _when_end_246
+_equal_ind2const_end_248:
+    IFFALSE _when_end_245
     ldi     r25, 2
     st      X, r25
-_when_end_246:
+_when_end_245:
     ld      r25, Y
     cp      r25, r0
-    brne    _equal_ind2const_not_253
+    brne    _equal_ind2const_not_252
     SETRESULT TRUE
-    rjmp    _equal_ind2const_end_254
-_equal_ind2const_not_253:
+    rjmp    _equal_ind2const_end_253
+_equal_ind2const_not_252:
     SETRESULT FALSE
-_equal_ind2const_end_254:
-    IFFALSE _when_end_251
+_equal_ind2const_end_253:
+    IFFALSE _when_end_250
     ldi     r25, 0
     st      X, r25
-_when_end_251:
+_when_end_250:
     ;; progn-close
-    rjmp    _case_end_206
-_case_end_206:
+    rjmp    _case_end_205
+_case_end_205:
 
     pop     tmp0
     ret
