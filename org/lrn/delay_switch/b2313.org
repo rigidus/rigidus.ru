@@ -69,14 +69,11 @@
 #+NAME: gen_init_btn
 #+BEGIN_SRC elisp :var id="@" port="@" bit="@" :results output org :wrap "SRC asm" :noweb yes
   (princ (format "    .data\n\n"))
-  (princ (format "PREV_STATE_%s:\n    .byte 0x1\n" id))
-  (princ (format "STATE_%s:\n    .byte 0x1\n" id))
+  (princ (format "STATE_%s:\n    .byte 0x0\n" id))
   (princ (format "NEW_%s:\n    .byte 0x0\n" id))
   (princ (format "CNT_%s:\n    .byte 0x0\n" id))
   (princ (format "\n    .text\n\n_init_%s:\n" id))
   (princ (format "    cbi    DDR%s, %s\n" port bit))
-  (princ (format "    sts    STATE_%s, r1\n" id))
-  (princ (format "    sts    PREV_STATE_%s, r1\n" id))
 #+END_SRC
 
 В дополнение к этому нам нужен код, который проверяет есть ли на кнопке
@@ -222,7 +219,8 @@
   (let* ((lst  (read lst))
          (cnt  0)
          (nums (mapcar #'(lambda (par)
-                           (cons (car par) (incf cnt)))
+                           (prog1 (cons (car par) cnt)
+                             (incf cnt)))
                        lst)))
     `(case X
        ,@(mapcar
@@ -252,44 +250,44 @@
 #+results: pseudocode
 #+begin_example
 (case X
+  (0
+   (progn
+     (when
+         (= NEW $LOW)
+       (nop)
+       (set-state X 0))
+     (when
+         (= NEW $HIGH)
+       (clear CNT)
+       (set-state X 1))))
   (1
    (progn
      (when
          (= NEW $LOW)
        (nop)
-       (set-state X 1))
-     (when
-         (= NEW $HIGH)
-       (clear CNT)
-       (set-state X 2))))
-  (2
-   (progn
-     (when
-         (= NEW $LOW)
-       (nop)
-       (set-state X 1))
+       (set-state X 0))
      (when
          (and
           (= NEW $HIGH)
           (< CNT $MAX))
        (inc CNT)
-       (set-state X 2))
+       (set-state X 1))
      (when
          (and
           (= NEW $HIGH)
           (>= CNT $MAX))
        (nop)
-       (set-state X 3))))
-  (3
+       (set-state X 2))))
+  (2
    (progn
      (when
          (= NEW $HIGH)
        (nop)
-       (set-state X 3))
+       (set-state X 2))
      (when
          (= NEW $LOW)
        (nop)
-       (set-state X 1)))))
+       (set-state X 0)))))
 #+end_example
 
 Ассемблер, который мы хотим получить выглядит гораздо менее древовидным и
@@ -359,9 +357,10 @@
         (push `(lds ,reg ,par) ssa))))
 #+END_SRC
 
-Последняя функция нам нужна чтобы по разному загружать в регистр
-константу и переменную. Она в дальшнейшем будет использоваться во многих
-правилах, поэтому я поместил ее сюда.
+Последняя функция нам была нужна чтобы по разному загружать в регистр
+константу и переменную. Но пока в результате оптимизации ее вызовы не
+понадобились. Но в дальшнейшем, возможно, она будет использоваться во
+многих правилах, поэтому я поместил ее сюда.
 
 Теперь мы можем добавить несколько правил. Чтобы проверить концепцию я
 начну с простых правил:
@@ -536,25 +535,24 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(clr ,zero) ssa)              ; 3
                       ;; + offset
                       (push `(ralloc ,offset) ssa)
-                      (push `(ldi ,offset 11) ssa)         ; 4 CONST=12-1
+                      (push `(ldi ,offset 12) ssa)         ; 4 CONST=12
                       (push `(add ,low ,offset) ssa)       ; 5
                       (push `(adc ,high ,zero) ssa)        ; 6
                       (push `(rfree ,offset) ssa)
                       ;; + base
                       (push `(ralloc ,base) ssa)
-                      (push `(ld  ,base ,(cadr lst)) ssa)
-                      ;; (push `(lds ,base ,(cadr lst)) ssa)  ; 7,8
-                      (push `(add ,low ,base) ssa)         ; 9
-                      (push `(adc ,high ,zero) ssa)        ; 10
+                      (push `(ld  ,base ,(cadr lst)) ssa)  ; 7
+                      (push `(add ,low ,base) ssa)         ; 8
+                      (push `(adc ,high ,zero) ssa)        ; 9
                       (push `(rfree ,base) ssa)
                       ;; zero -off
                       (push `(rfree ,zero) ssa)
                       ;; indirect jump
-                      (push `(push ,low) ssa)             ; 11
+                      (push `(push ,low) ssa)             ; 10
                       (push `(rfree ,low) ssa)
-                      (push `(push ,high) ssa)            ; 12
+                      (push `(push ,high) ssa)            ; 11
                       (push `(rfree ,high) ssa)
-                      (push `(ret) ssa)                   ; 13
+                      (push `(ret) ssa)                   ; 12
                       ;; jump table
                       (mapcar #'(lambda (x)
                                   (mapcar #'(lambda (y)
@@ -853,7 +851,9 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 
 ** TODO Обработка временных интервалов
 
-Конечный автомат обработки временных интервалов
+Конечный автомат обработки временных интервалов должен срабатывать, когда
+состояние кнопки изменяется. Для этого ему нужно хранить предыдущее
+состояние кнопки, которое тоже должно быть инициализировано на старте
 
 * Программа
 
@@ -901,13 +901,13 @@ AVR и содержать типичные блоки инициализации
 
   _mainloop:
       lds     tmp0, STATE_IP
-      cpi     tmp0, 1             ; Проверяем на состояние
+      cpi     tmp0, 0             ; Проверяем на состояние
       brne    _not_one            ;--+
       rcall   _red_on             ;  |
       rcall   _yellow_off         ;  |
       rjmp    _end                ;--|-+
   _not_one:                       ;<-+ |
-      cpi     tmp0, 2             ;    |
+      cpi     tmp0, 1             ;    |
       brne    _not_two            ;--+ |
       rcall   _red_off            ;  | |
       rcall   _yellow_on          ;  | |

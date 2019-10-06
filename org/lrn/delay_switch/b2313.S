@@ -172,10 +172,8 @@ _init_pins:
 
     .data
 
-PREV_STATE_IP:
-    .byte 0x1
 STATE_IP:
-    .byte 0x1
+    .byte 0x0
 NEW_IP:
     .byte 0x0
 CNT_IP:
@@ -185,8 +183,6 @@ CNT_IP:
 
 _init_IP:
     cbi    DDRB, 0
-    sts    STATE_IP, r1
-    sts    PREV_STATE_IP, r1
 
 
 
@@ -227,13 +223,13 @@ _init_IP:
 
 _mainloop:
     lds     tmp0, STATE_IP
-    cpi     tmp0, 1             ; Проверяем на состояние
+    cpi     tmp0, 0             ; Проверяем на состояние
     brne    _not_one            ;--+
     rcall   _red_on             ;  |
     rcall   _yellow_off         ;  |
     rjmp    _end                ;--|-+
 _not_one:                       ;<-+ |
-    cpi     tmp0, 2             ;    |
+    cpi     tmp0, 1             ;    |
     brne    _not_two            ;--+ |
     rcall   _red_off            ;  | |
     rcall   _yellow_on          ;  | |
@@ -251,7 +247,7 @@ _case_next_205:
     pop     r25
     pop     r24
     clr     r23
-    ldi     r22, 11
+    ldi     r22, 12
     add     r24, r22
     adc     r25, r23
     ld      r22, X
@@ -260,10 +256,10 @@ _case_next_205:
     push    r24
     push    r25
     ret 
-    rjmp    _label_case_1207
-    rjmp    _label_case_2218
-    rjmp    _label_case_3245
-_label_case_1207:
+    rjmp    _label_case_0207
+    rjmp    _label_case_1218
+    rjmp    _label_case_2245
+_label_case_0207:
     ;; progn-open
     ld      r25, Y
     cp      r25, r0
@@ -274,7 +270,7 @@ _equal_ind2const_not_210:
     SETRESULT FALSE
 _equal_ind2const_end_211:
     IFFALSE _when_end_208
-    ldi     r25, 1
+    ldi     r25, 0
     st      X, r25
 _when_end_208:
     ld      r25, Y
@@ -287,12 +283,12 @@ _equal_ind2const_not_215:
 _equal_ind2const_end_216:
     IFFALSE _when_end_213
     st      Z, r0
-    ldi     r25, 2
+    ldi     r25, 1
     st      X, r25
 _when_end_213:
     ;; progn-close
     rjmp    _case_end_206
-_label_case_2218:
+_label_case_1218:
     ;; progn-open
     ld      r25, Y
     cp      r25, r0
@@ -303,7 +299,7 @@ _equal_ind2const_not_221:
     SETRESULT FALSE
 _equal_ind2const_end_222:
     IFFALSE _when_end_219
-    ldi     r25, 1
+    ldi     r25, 0
     st      X, r25
 _when_end_219:
     ld      r25, Y
@@ -331,7 +327,7 @@ _and_end_225:
     ld      r24, Z
     inc     r24
     st      Z, r24
-    ldi     r24, 2
+    ldi     r24, 1
     st      X, r24
 _when_end_224:
     ld      r24, Y
@@ -356,12 +352,12 @@ _ge_ind2const_end_243:
     SETRESULT TRUE
 _and_end_236:
     IFFALSE _when_end_235
-    ldi     r25, 3
+    ldi     r25, 2
     st      X, r25
 _when_end_235:
     ;; progn-close
     rjmp    _case_end_206
-_label_case_3245:
+_label_case_2245:
     ;; progn-open
     ld      r25, Y
     cp      r25, r1
@@ -372,7 +368,7 @@ _equal_ind2const_not_248:
     SETRESULT FALSE
 _equal_ind2const_end_249:
     IFFALSE _when_end_246
-    ldi     r25, 3
+    ldi     r25, 2
     st      X, r25
 _when_end_246:
     ld      r25, Y
@@ -384,7 +380,7 @@ _equal_ind2const_not_253:
     SETRESULT FALSE
 _equal_ind2const_end_254:
     IFFALSE _when_end_251
-    ldi     r25, 1
+    ldi     r25, 0
     st      X, r25
 _when_end_251:
     ;; progn-close
