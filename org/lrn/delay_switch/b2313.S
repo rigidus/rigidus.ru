@@ -4,24 +4,32 @@
     #define HIGH 1
     #define LOW 0
     #define MAX 2
-    #define DELAY_MAX 16
-    #define result r17
-    #define tmp0 r18
+    #define DELAY_MAX 100
+    #define result r16
+    #define tmp0 r17
+    #define tmp1 r18
     #define freq r19
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
     .equ RAMEND, 0xDF
+    .equ DDRA, 0x1A
     .equ DDRB, 0x17
+    .equ DDRD, 0x11
+    .equ PORTA, 0x1B
     .equ PORTB, 0x18
     .equ PORTD, 0x12
+    .equ PINA, 0x19
     .equ PINB, 0x16
+    .equ PIND, 0x10
     .equ TCCR0A, 0x30
     .equ TCCR0B, 0x33
     .equ TCCR1B, 0x2E
     .equ OCR0A, 0x36
     .equ OCR0B, 0x3C
     .equ TCNT0, 0x32
+    .equ TCNT1H, 0x2D
+    .equ TCNT1L, 0x2C
     .equ TIFR, 0x38
     .equ TIMSK, 0x39
 
@@ -44,6 +52,22 @@
     
     .macro OFF port pin
         cbi     \port, \pin
+    .endm
+    
+    .macro RED_ON
+        ON      PORTB, 3
+    .endm
+    
+    .macro RED_OFF
+        OFF     PORTB, 3
+    .endm
+    
+    .macro YELLOW_ON
+        ON      PORTB, 1
+    .endm
+    
+    .macro YELLOW_OFF
+        OFF     PORTB, 1
     .endm
 
     .text
@@ -74,6 +98,7 @@ _vectors:
 _timer_1_overflow:
     ;; Сохраняем регистры
     push    tmp0
+    push    tmp1
     ;; Сохраняем регистр флагов
     in      tmp0, SREG
     push    tmp0
@@ -94,7 +119,7 @@ _timer_1_overflow:
     rcall   _blink_green
 
 
-    ;; [[[==== Получаем состояние вывода в NEW_IP ===]]]
+    ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]
     sbis    PINB, 0
     rjmp    _not_press_IP
     sts     NEW_IP, r1
@@ -103,21 +128,63 @@ _not_press_IP:
     sts     NEW_IP, r0
 _end_press_handler_IP:
 
+    sbis    PINA, 1
+    rjmp    _not_press_SP
+    sts     NEW_SP, r1
+    rjmp    _end_press_handler_SP
+_not_press_SP:
+    sts     NEW_SP, r0
+_end_press_handler_SP:
 
-    ;; [[[=== Защита от дребезга ===]]]
-    ;; На входе: STATE, CNT, NEW
-    ;; На выходе: STATE
-    ;; Передаем адрес переменной состояния
+    sbis    PINA, 0
+    rjmp    _not_press_PP
+    sts     NEW_PP, r1
+    rjmp    _end_press_handler_PP
+_not_press_PP:
+    sts     NEW_PP, r0
+_end_press_handler_PP:
+
+    sbis    PIND, 2
+    rjmp    _not_press_PM
+    sts     NEW_PM, r1
+    rjmp    _end_press_handler_PM
+_not_press_PM:
+    sts     NEW_PM, r0
+_end_press_handler_PM:
+
+
     ldi     xl, lo8(STATE_IP)
     ldi     xh, hi8(STATE_IP)
-    ;; Передаем адрес переменной сигнала
     ldi     yl, lo8(NEW_IP)
     ldi     yh, hi8(NEW_IP)
-    ;; Передаем адрес переменной счетчика сигналов
     ldi     zl, lo8(CNT_IP)
     ldi     zh, hi8(CNT_IP)
-    ;; Вызываем конечный автомат подавления дребезга
     rcall   _fsmbtn
+
+    ldi     xl, lo8(STATE_SP)
+    ldi     xh, hi8(STATE_SP)
+    ldi     yl, lo8(NEW_SP)
+    ldi     yh, hi8(NEW_SP)
+    ldi     zl, lo8(CNT_SP)
+    ldi     zh, hi8(CNT_SP)
+    rcall   _fsmbtn
+
+    ldi     xl, lo8(STATE_PP)
+    ldi     xh, hi8(STATE_PP)
+    ldi     yl, lo8(NEW_PP)
+    ldi     yh, hi8(NEW_PP)
+    ldi     zl, lo8(CNT_PP)
+    ldi     zh, hi8(CNT_PP)
+    rcall   _fsmbtn
+
+    ldi     xl, lo8(STATE_PM)
+    ldi     xh, hi8(STATE_PM)
+    ldi     yl, lo8(NEW_PM)
+    ldi     yh, hi8(NEW_PM)
+    ldi     zl, lo8(CNT_PM)
+    ldi     zh, hi8(CNT_PM)
+    rcall   _fsmbtn
+
 
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_IP)
@@ -130,22 +197,114 @@ _end_press_handler_IP:
     ldi     zh, hi8(DELAY_IP)
     ;; Вызываем конечный автомат обработки интервалов
     rcall   _fsmprg
-
     ;; Увеличиваем счетчик задержки
     lds     tmp0, DELAY_IP
     inc     tmp0
     sts     DELAY_IP, tmp0
+    ;; Проверяем выход
+    lds     tmp0, MODE_IP
+    cp      tmp0, r0
+    breq    _switch_off_IP
+    ON PORTD 6
+    rjmp    _switch_end_IP
+_switch_off_IP:
+    OFF PORTD 6
+_switch_end_IP:
+    ;; Очищаем SWITCH и LINK
+    sts     SWITCH_IP, r0
+    sts     LINK_IP, r0
 
-    ;; Очищаем LINK
-    st      Y, r0
+    ;; Передаем адрес переменной состояния нового автомата
+    ldi     xl, lo8(MODE_SP)
+    ldi     xh, hi8(MODE_SP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_SP)
+    ldi     yh, hi8(LINK_SP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_SP)
+    ldi     zh, hi8(DELAY_SP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_SP
+    inc     tmp0
+    sts     DELAY_SP, tmp0
+    ;; Проверяем выход
+    lds     tmp0, MODE_SP
+    cp      tmp0, r0
+    breq    _switch_off_SP
+    ON PORTD 5
+    rjmp    _switch_end_SP
+_switch_off_SP:
+    OFF PORTD 5
+_switch_end_SP:
+    ;; Очищаем SWITCH и LINK
+    sts     SWITCH_SP, r0
+    sts     LINK_SP, r0
 
-    ;; Здесь у нас есть STATE, но нам нужно отслеживать
-    ;; изменение STATE. Поэтому нам нужно PREV
-    ;; Тогда мы можем переключать другой автомат когда
-    ;; STATE меняется.
-    ;; Теперь если PREV и STATE не совпадают -
-    ;; мы можем выполнить какие-то действия (переключить
-    ;; состояние, выставить задержку итп)
+    ;; Передаем адрес переменной состояния нового автомата
+    ldi     xl, lo8(MODE_PP)
+    ldi     xh, hi8(MODE_PP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_PP)
+    ldi     yh, hi8(LINK_PP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_PP)
+    ldi     zh, hi8(DELAY_PP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_PP
+    inc     tmp0
+    sts     DELAY_PP, tmp0
+    ;; Проверяем выход
+    lds     tmp0, MODE_PP
+    cp      tmp0, r0
+    breq    _switch_off_PP
+    ON PORTD 4
+    rjmp    _switch_end_PP
+_switch_off_PP:
+    OFF PORTD 4
+_switch_end_PP:
+    ;; Очищаем SWITCH и LINK
+    sts     SWITCH_PP, r0
+    sts     LINK_PP, r0
+
+    ;; Передаем адрес переменной состояния нового автомата
+    ldi     xl, lo8(MODE_PM)
+    ldi     xh, hi8(MODE_PM)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_PM)
+    ldi     yh, hi8(LINK_PM)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_PM)
+    ldi     zh, hi8(DELAY_PM)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_PM
+    inc     tmp0
+    sts     DELAY_PM, tmp0
+    ;; Проверяем выход
+    lds     tmp0, MODE_PM
+    cp      tmp0, r0
+    breq    _switch_off_PM
+    ON PORTD 3
+    rjmp    _switch_end_PM
+_switch_off_PM:
+    OFF PORTD 3
+_switch_end_PM:
+    ;; Очищаем SWITCH и LINK
+    sts     SWITCH_PM, r0
+    sts     LINK_PM, r0
+
+
+    ;; Ускорим процесс:
+    ;; Set TCNT1 to 0x00E0
+    ldi     tmp0, 0x00
+    ldi     tmp1, 0xE0
+    out     TCNT1H, tmp1
+    out     TCNT1L, tmp0
 
 _timer_0_overflow_ret:
     ;; Восстанавливаем индексные регистры
@@ -159,6 +318,7 @@ _timer_0_overflow_ret:
     pop     tmp0
     out     SREG, tmp0
     ;; Восстанавливем регистры
+    pop     tmp1
     pop     tmp0
     ;; Выходим
     reti
@@ -198,6 +358,8 @@ _init_pins:
 
     .data
 
+SWITCH_IP:
+    .byte 0x0
 LINK_IP:
     .byte 0x0
 NEW_IP:
@@ -215,6 +377,72 @@ DELAY_IP:
 
 _init_IP:
     cbi    DDRB, 0
+
+    .data
+
+SWITCH_SP:
+    .byte 0x0
+LINK_SP:
+    .byte 0x0
+NEW_SP:
+    .byte 0x0
+STATE_SP:
+    .byte 0x0
+CNT_SP:
+    .byte 0x0
+MODE_SP:
+    .byte 0x0
+DELAY_SP:
+    .byte 0x0
+
+    .text
+
+_init_SP:
+    cbi    DDRA, 1
+
+    .data
+
+SWITCH_PP:
+    .byte 0x0
+LINK_PP:
+    .byte 0x0
+NEW_PP:
+    .byte 0x0
+STATE_PP:
+    .byte 0x0
+CNT_PP:
+    .byte 0x0
+MODE_PP:
+    .byte 0x0
+DELAY_PP:
+    .byte 0x0
+
+    .text
+
+_init_PP:
+    cbi    DDRA, 0
+
+    .data
+
+SWITCH_PM:
+    .byte 0x0
+LINK_PM:
+    .byte 0x0
+NEW_PM:
+    .byte 0x0
+STATE_PM:
+    .byte 0x0
+CNT_PM:
+    .byte 0x0
+MODE_PM:
+    .byte 0x0
+DELAY_PM:
+    .byte 0x0
+
+    .text
+
+_init_PM:
+    cbi    DDRD, 2
 
 
     ;; Инициализация таймера-1
@@ -249,26 +477,9 @@ _init_IP:
     ;; Временно остановим таймер-0 чтобы не щелкал
     out TCCR0B, r0
 
-    rcall   _red_off
-    rcall   _yellow_off
+    YELLOW_OFF
 
 _mainloop:
-    lds     tmp0, STATE_IP
-    cpi     tmp0, 0             ; Проверяем на состояние
-    brne    _not_one            ;--+
-    rcall   _red_on             ;  |
-    rcall   _yellow_off         ;  |
-    rjmp    _end                ;--|-+
-_not_one:                       ;<-+ |
-    cpi     tmp0, 1             ;    |
-    brne    _not_two            ;--+ |
-    rcall   _red_off            ;  | |
-    rcall   _yellow_on          ;  | |
-    rjmp    _end                ;--|-+
-_not_two:                       ;<-+ |
-    rcall   _red_on             ;    |
-    rcall   _yellow_on          ;    |
-_end:                           ;<---+
     rjmp    _mainloop
 
 _fsmbtn:
@@ -446,10 +657,7 @@ _equal_ind2const_not_409:
     SETRESULT FALSE
 _equal_ind2const_end_410:
     IFFALSE _when_end_407
-    ;; progn-open
     st      Z, r0
-    ON PORTD 6
-    ;; progn-close
     ldi     r25, 1
     st      X, r25
 _when_end_407:
@@ -466,7 +674,6 @@ _equal_ind2const_not_415:
     SETRESULT FALSE
 _equal_ind2const_end_416:
     IFFALSE _when_end_413
-    OFF PORTD 6
     ldi     r25, 0
     st      X, r25
 _when_end_413:
@@ -480,7 +687,6 @@ _ge_ind2const_not_421:
     SETRESULT FALSE
 _ge_ind2const_end_422:
     IFFALSE _when_end_418
-    OFF PORTD 6
     ldi     r24, 0
     st      X, r24
 _when_end_418:
@@ -493,7 +699,6 @@ _case_end_405:
 _infloop:
     rjmp    _infloop
 
-
 _blink_green:
     sbic    PORTB, 4
     rjmp    _bg_clean
@@ -503,16 +708,3 @@ _bg_ret:
 _bg_clean:
     cbi     PORTB, 4
     rjmp    _bg_ret
-
-_red_on:
-    sbi     PORTB, 3
-    ret
-_red_off:
-    cbi     PORTB, 3
-    ret
-_yellow_on:
-    sbi     PORTB, 1
-    ret
-_yellow_off:
-    cbi     PORTB, 1
-    ret
