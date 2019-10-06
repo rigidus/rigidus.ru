@@ -3,7 +3,8 @@
     #define FALSE 0
     #define HIGH 1
     #define LOW 0
-    #define MAX 5
+    #define MAX 2
+    #define DELAY_MAX 16
     #define result r17
     #define tmp0 r18
     #define freq r19
@@ -13,6 +14,7 @@
     .equ RAMEND, 0xDF
     .equ DDRB, 0x17
     .equ PORTB, 0x18
+    .equ PORTD, 0x12
     .equ PINB, 0x16
     .equ TCCR0A, 0x30
     .equ TCCR0B, 0x33
@@ -34,6 +36,14 @@
         .else
         mov     result, r1
         .endif
+    .endm
+    
+    .macro ON port pin
+        sbi     \port, \pin
+    .endm
+    
+    .macro OFF port pin
+        cbi     \port, \pin
     .endm
 
     .text
@@ -67,12 +77,17 @@ _timer_1_overflow:
     ;; Сохраняем регистр флагов
     in      tmp0, SREG
     push    tmp0
-
+    ;; Сохраняем индексные регистры
+    push    xl
+    push    xh
+    push    yl
+    push    yh
+    push    zl
+    push    zh
 
     ;; [[[=== Высота звука ===]]]
     ;; Уменьшаем freq для частоты buzzer-а
     dec     freq
-
 
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
@@ -92,14 +107,6 @@ _end_press_handler_IP:
     ;; [[[=== Защита от дребезга ===]]]
     ;; На входе: STATE, CNT, NEW
     ;; На выходе: STATE
-    ;; Перед вызовом конечного автомата
-    ;; Сохраняем индексные регистры
-    push    xl
-    push    xh
-    push    yl
-    push    yh
-    push    zl
-    push    zh
     ;; Передаем адрес переменной состояния
     ldi     xl, lo8(STATE_IP)
     ldi     xh, hi8(STATE_IP)
@@ -111,7 +118,36 @@ _end_press_handler_IP:
     ldi     zh, hi8(CNT_IP)
     ;; Вызываем конечный автомат подавления дребезга
     rcall   _fsmbtn
-    ;; После вызова конечного автомата
+
+    ;; Передаем адрес переменной состояния нового автомата
+    ldi     xl, lo8(MODE_IP)
+    ldi     xh, hi8(MODE_IP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_IP)
+    ldi     yh, hi8(LINK_IP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_IP)
+    ldi     zh, hi8(DELAY_IP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_IP
+    inc     tmp0
+    sts     DELAY_IP, tmp0
+
+    ;; Очищаем LINK
+    st      Y, r0
+
+    ;; Здесь у нас есть STATE, но нам нужно отслеживать
+    ;; изменение STATE. Поэтому нам нужно PREV
+    ;; Тогда мы можем переключать другой автомат когда
+    ;; STATE меняется.
+    ;; Теперь если PREV и STATE не совпадают -
+    ;; мы можем выполнить какие-то действия (переключить
+    ;; состояние, выставить задержку итп)
+
+_timer_0_overflow_ret:
     ;; Восстанавливаем индексные регистры
     pop     zh
     pop     zl
@@ -119,16 +155,6 @@ _end_press_handler_IP:
     pop     yl
     pop     xh
     pop     xl
-
-    ;; Здесь у нас есть STATE, но нам нужно отслеживать
-    ;; изменение STATE. Поэтому нам нужно PREV_STATE
-    ;; Тогда мы можем переключать другой автомат когда
-    ;; STATE меняется.
-    ;; Теперь если PREV_STATE и STATE не совпадают -
-    ;; мы можем выполнить какие-то действия (переключить
-    ;; состояние, выставить задержку итп)
-
-_timer_0_overflow_ret:
     ;; Восстанавливаем регистр флагов
     pop     tmp0
     out     SREG, tmp0
@@ -172,18 +198,23 @@ _init_pins:
 
     .data
 
-STATE_IP:
+LINK_IP:
     .byte 0x0
 NEW_IP:
     .byte 0x0
+STATE_IP:
+    .byte 0x0
 CNT_IP:
+    .byte 0x0
+MODE_IP:
+    .byte 0x0
+DELAY_IP:
     .byte 0x0
 
     .text
 
 _init_IP:
     cbi    DDRB, 0
-
 
 
     ;; Инициализация таймера-1
@@ -241,7 +272,6 @@ _end:                           ;<---+
     rjmp    _mainloop
 
 _fsmbtn:
-    push    tmp0
     rcall   _case_next_204
 _case_next_204:
     pop     r25
@@ -351,6 +381,7 @@ _ge_ind2const_end_242:
     SETRESULT TRUE
 _and_end_235:
     IFFALSE _when_end_234
+    st      -Y, r1
     ldi     r25, 2
     st      X, r25
 _when_end_234:
@@ -386,7 +417,77 @@ _when_end_250:
     rjmp    _case_end_205
 _case_end_205:
 
-    pop     tmp0
+    ret
+
+_fsmprg:
+    rcall   _case_next_404
+_case_next_404:
+    pop     r25
+    pop     r24
+    ldi     r23, 11
+    add     r24, r23
+    adc     r25, r0
+    ld      r23, X
+    add     r24, r23
+    adc     r25, r0
+    push    r24
+    push    r25
+    ret 
+    rjmp    _label_case_0406
+    rjmp    _label_case_1412
+_label_case_0406:
+    ;; progn-open
+    ld      r25, Y
+    cp      r25, r1
+    brne    _equal_ind2const_not_409
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_410
+_equal_ind2const_not_409:
+    SETRESULT FALSE
+_equal_ind2const_end_410:
+    IFFALSE _when_end_407
+    ;; progn-open
+    st      Z, r0
+    ON PORTD 6
+    ;; progn-close
+    ldi     r25, 1
+    st      X, r25
+_when_end_407:
+    ;; progn-close
+    rjmp    _case_end_405
+_label_case_1412:
+    ;; progn-open
+    ld      r25, Y
+    cp      r25, r1
+    brne    _equal_ind2const_not_415
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_416
+_equal_ind2const_not_415:
+    SETRESULT FALSE
+_equal_ind2const_end_416:
+    IFFALSE _when_end_413
+    OFF PORTD 6
+    ldi     r25, 0
+    st      X, r25
+_when_end_413:
+    ld      r25, Z
+    ldi     r24, DELAY_MAX
+    cp      r25, r24
+    brlo    _ge_ind2const_not_421
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_422
+_ge_ind2const_not_421:
+    SETRESULT FALSE
+_ge_ind2const_end_422:
+    IFFALSE _when_end_418
+    OFF PORTD 6
+    ldi     r24, 0
+    st      X, r24
+_when_end_418:
+    ;; progn-close
+    rjmp    _case_end_405
+_case_end_405:
+
     ret
 
 _infloop:
