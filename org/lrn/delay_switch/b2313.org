@@ -146,8 +146,11 @@
   (princ (format "    rcall   _fsmprg\n" id))
   (princ (format "    ;; Увеличиваем счетчик задержки\n" id))
   (princ (format "    lds     tmp0, DELAY_%s\n" id))
-  (princ (format "    inc     tmp0\n" id))
+  (princ (format "    lds     tmp1, DELAY_%s+1\n" id))
+  (princ (format "    add     tmp0, r1\n" id))
+  (princ (format "    adc     tmp1, r0\n" id))
   (princ (format "    sts     DELAY_%s, tmp0\n" id))
+  (princ (format "    sts     DELAY_%s+1, tmp1\n" id))
   (princ (format "    ;; Проверяем выход\n" id))
   (princ (format "    lds     tmp0, MODE_%s\n" id))
   (princ (format "    cp      tmp0, r0\n" id))
@@ -778,7 +781,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Теперь, когда все операции определены, мы можем получить весь код
 
 #+NAME: codegen
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=rsetout
+#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=rsetout
   (defun codegen (tree basegen)
     (let ((gensym-counter basegen))
       (let ((ssa))
@@ -793,7 +796,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 
 Лучше будет заранее составить список регистров, доступных для
 аллокации. Мы будем использовать вторую половину регистрового файла за
-вычетом индекстных регистров =X=, =Y= и =Z=.
+вычетом индекстных регистров =X= (r26:r27), =Y= (r28:r29) и =Z=
+(r31:r30).
 
 Из этих регистров мы также забираем =r16=, чтобы хранить там =result=
 последней выполненной операции, =tmp0=, =tmp1= и =freq=. Все они
@@ -933,6 +937,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (eql 'lds (car op))
                       (eql 'ldi (car op))
                       (eql 'inc (car op))
+                      (eql 'dec (car op))
                       (eql 'pop (car op))
                       (eql 'clr (car op))
                       (eql 'push (car op))
@@ -977,11 +982,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 =INC=.
 
 #+NAME: prg_fsm
-| predicate          | from | to   | action    |
-|--------------------+------+------+-----------|
-| (= Y 1)            | Wait | Run  | (clear Z) |
-| (= Y 1)            | Run  | Wait |           |
-| (2>= Z $DELAY_MAX) | Run  | Wait |           |
+| predicate          | from | to   | action     |
+|--------------------+------+------+------------|
+| (= Y 1)            | Wait | Run  | (2clear Z) |
+| (= Y 1)            | Run  | Wait |            |
+| (2>= Z $DELAY_MAX) | Run  | Wait |            |
 
 Проверяем правильность автомата на графе
 
@@ -1039,7 +1044,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 
 
 
------------------------------------------
+????????????????????????????
 
 #+NAME: rge2
 #+BEGIN_SRC elisp :var a=recur
@@ -1054,8 +1059,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                                (equal "$" (subseq (format "%s" (caddr lst)) 0 1)))))
                   (lambda (lst)
                     (let ((const (subseq (format "%s" (caddr lst)) 1))
-                          (reg1-l  (gensym "reg=lt2_indirect_"))
-                          (reg1-h  (gensym "reg=lt2_indirect_"))
+                          (reg1-l  (gensym "reg=ge2_indirect_low_"))
+                          (reg1-h  (gensym "reg=ge2_indirect_hi__"))
                           (reg-tmp (gensym "reg=lt2_const_hi_"))
                           (not_greater_or_equal (gensym "_ge_ind2const_not_"))
                           (end  (gensym "_ge_ind2const_end_")))
@@ -1063,8 +1068,14 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                       (push `(ralloc ,reg1-h) ssa)
                       (push `(ralloc ,reg-tmp) ssa)
 
+                      (push `(push ZH) ssa)
+                      (push `(push ZL) ssa)
+
                       (push `(ld ,reg1-l Z+) ssa)
                       (push `(ld ,reg1-h Z) ssa)
+
+                      (push `(pop ZL) ssa)
+                      (push `(pop ZH) ssa)
 
                       (push `(cpi ,reg1-l  ,(format "lo8(%s)" const)) ssa)
                       (push `(ldi ,reg-tmp ,(format "hi8(%s)" const)) ssa)
@@ -1083,6 +1094,26 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 #+END_SRC
 
 
+Очистка переменной, адрес которой в регистре Z
+
+#+NAME: rclear2
+#+BEGIN_SRC elisp :var a=recur
+  ;; CLEAR Z
+  (add-recur-rule (lambda (lst)
+                    (and
+                     (eql '2clear (car lst))
+                     (eql 2 (length lst))
+                     (and (atom (cadr lst))
+                          (not (numberp (cadr lst)))
+                          (eql 'Z (cadr lst)))))
+                  (lambda (lst)
+                    (push `(push ZL) ssa)
+                    (push `(push ZH) ssa)
+                    (push `(st Z+ r0) ssa)
+                    (push `(st Z r0) ssa)
+                    (push `(pop ZH) ssa)
+                    (push `(pop ZL) ssa)))
+#+END_SRC
 
 
 
@@ -1125,7 +1156,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 TODO
 
 #+NAME: all_two
-#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout
+#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout
   (format "%s" (pp (codegen (read z) 400)))
 #+END_SRC
 
@@ -2117,11 +2148,12 @@ TIFR-регистр нужно сбросить в 0:
   #define TRUE 1
   #define FALSE 0
   #define MAX 2
-  #define DELAY_MAX 0xFF ; ~ 17 секунд. TODO: нужен второй байт
   #define result r16
   #define tmp0 r17
   #define tmp1 r18
   #define freq r19
+
+  .equ DELAY_MAX, 0x0100
 #+END_SRC
 
 * Символические имена

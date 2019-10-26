@@ -2,11 +2,12 @@
     #define TRUE 1
     #define FALSE 0
     #define MAX 2
-    #define DELAY_MAX 0xFF ; ~ 17 секунд. TODO: нужен второй байт
     #define result r16
     #define tmp0 r17
     #define tmp1 r18
     #define freq r19
+    
+    .equ DELAY_MAX, 0x0100
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
@@ -35,7 +36,7 @@
         cp      result, r0
         breq    \to
     .endm
-
+    
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -43,27 +44,27 @@
         mov     result, r1
         .endif
     .endm
-
+    
     .macro ON port pin
         sbi     \port, \pin
     .endm
-
+    
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-
+    
     .macro RED_ON
         ON      PORTB, 3
     .endm
-
+    
     .macro RED_OFF
         OFF     PORTB, 3
     .endm
-
+    
     .macro YELLOW_ON
         ON      PORTB, 1
     .endm
-
+    
     .macro YELLOW_OFF
         OFF     PORTB, 1
     .endm
@@ -199,8 +200,11 @@ _end_press_handler_PM:
     rcall   _fsmprg
     ;; Увеличиваем счетчик задержки
     lds     tmp0, DELAY_IP
-    inc     tmp0
+    lds     tmp1, DELAY_IP+1
+    add     tmp0, r1
+    adc     tmp1, r0
     sts     DELAY_IP, tmp0
+    sts     DELAY_IP+1, tmp1
     ;; Проверяем выход
     lds     tmp0, MODE_IP
     cp      tmp0, r0
@@ -227,8 +231,11 @@ _switch_end_IP:
     rcall   _fsmprg
     ;; Увеличиваем счетчик задержки
     lds     tmp0, DELAY_SP
-    inc     tmp0
+    lds     tmp1, DELAY_SP+1
+    add     tmp0, r1
+    adc     tmp1, r0
     sts     DELAY_SP, tmp0
+    sts     DELAY_SP+1, tmp1
     ;; Проверяем выход
     lds     tmp0, MODE_SP
     cp      tmp0, r0
@@ -255,8 +262,11 @@ _switch_end_SP:
     rcall   _fsmprg
     ;; Увеличиваем счетчик задержки
     lds     tmp0, DELAY_PP
-    inc     tmp0
+    lds     tmp1, DELAY_PP+1
+    add     tmp0, r1
+    adc     tmp1, r0
     sts     DELAY_PP, tmp0
+    sts     DELAY_PP+1, tmp1
     ;; Проверяем выход
     lds     tmp0, MODE_PP
     cp      tmp0, r0
@@ -283,8 +293,11 @@ _switch_end_PP:
     rcall   _fsmprg
     ;; Увеличиваем счетчик задержки
     lds     tmp0, DELAY_PM
-    inc     tmp0
+    lds     tmp1, DELAY_PM+1
+    add     tmp0, r1
+    adc     tmp1, r0
     sts     DELAY_PM, tmp0
+    sts     DELAY_PM+1, tmp1
     ;; Проверяем выход
     lds     tmp0, MODE_PM
     cp      tmp0, r0
@@ -493,7 +506,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -641,7 +654,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:
@@ -655,7 +668,12 @@ _equal_ind2const_not_409:
     SETRESULT FALSE
 _equal_ind2const_end_410:
     IFFALSE _when_end_407
+    push    ZL
+    push    ZH
+    st      Z+, r0
     st      Z, r0
+    pop     ZH
+    pop     ZL
     ldi     r25, 1
     st      X, r25
 _when_end_407:
@@ -675,8 +693,14 @@ _equal_ind2const_end_416:
     ldi     r25, 0
     st      X, r25
 _when_end_413:
+    push    ZH
+    push    ZL
     ld      r25, Z+
     ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r25, lo8(DELAY_MAX)
+    ldi     r23, hi8(DELAY_MAX)
     cpc     r24, r23
     brlo    _ge_ind2const_not_422
     SETRESULT TRUE
