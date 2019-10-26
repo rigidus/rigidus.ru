@@ -18,13 +18,13 @@ OBJS = $(PROGRAM).o $(PROGRAM).oS
 all: $(PROGRAM).hex
 
 flash: $(PROGRAM).hex
-	avrdude \
-	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v				 \
-	-p$(MCU)		 \
-	-carduino		 \
-	-P$(PORT)		 \
-	-b$(BAUDRATE)	 \
+	avrdude          \
+	$(AVRDUDE_CONF)  \
+	-v               \
+	-p$(MCU)         \
+	-carduino        \
+	-P$(PORT)        \
+	-b$(BAUDRATE)    \
 	-Uflash:w:$<:i
 
 $(PROGRAM).hex: $(PROGRAM).elf
@@ -53,34 +53,34 @@ clean:
 
 
 asmflash: $(PROGRAM).hexS
-	avrdude \
+	avrdude          \
 	$(AVRDUDE_CONF)  \
-	-v				 \
-	-p$(MCU)		 \
-	-carduino		 \
-	-P$(PORT)		 \
-	-b$(BAUDRATE)	 \
+	-v               \
+	-p$(MCU)         \
+	-carduino        \
+	-P$(PORT)        \
+	-b$(BAUDRATE)    \
 	-Uflash:w:$(PROGRAM).hexS:i
 
 $(PROGRAM).hexS: $(PROGRAM).elfS
 	$(OBJCOPY) -O ihex $< $@
 
 $(PROGRAM).elfS: $(PROGRAM).oS
-	$(CC) \
-	$(CFLAGS) \
-	$(LDFLAGS) \
+	$(CC)         \
+	$(CFLAGS)     \
+	$(LDFLAGS)    \
 	-nostartfiles \
-	-g \
-	$^ \
+	-g            \
+	$^            \
 	-o $@
 
 $(PROGRAM).oS: $(PROGRAM).S
-	$(CC) \
-	$(CFLAGS) \
-	$(LDFLAGS) \
+	$(CC)         \
+	$(CFLAGS)     \
+	$(LDFLAGS)    \
 	-nostartfiles \
-	-g \
-	$^ \
+	-g            \
+	$^            \
 	-o $@
 
 # Получение ассемблерного листинга из elfS
@@ -93,12 +93,12 @@ asmsize: $(PROGRAM).elfS
 # Извлечение прошивки в файл HEX
 extract:
 	avrdude \
-	# -C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
-	-v				 \
-	-p$(MCU)		 \
-	-carduino		 \
-	-P$(PORT)		 \
-	-b$(BAUDRATE)	 \
+	$(AVRDUDE_PATH)  \
+	-v               \
+	-p$(MCU)         \
+	-carduino        \
+	-P$(PORT)        \
+	-b$(BAUDRATE)    \
 	-Uflash:r:$(PROGRAM).hexbin:i
 
 # Преобразование файла HEX в BIN
