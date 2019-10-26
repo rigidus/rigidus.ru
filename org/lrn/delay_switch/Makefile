@@ -3,11 +3,13 @@ PROJECT_PATH = ./
 AVRTOOLS_PATH = hardware/tools/avr
 PROGRAM = b2313
 MCU = attiny2313
+AVRDUDE_CONF = -C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf
+AVRDUDE_CONF =
 PORT = /dev/ttyACM0
 BAUDRATE = 19200
 # Пока без фьюзов
 # FUSES = -U lfuse:w:0x64:m -U hfuse:w:0xdd:m -U efuse:w:0xff:m
-CC = $(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avr-gcc
+CC = avr-gcc
 OBJCOPY = avr-objcopy
 CFLAGS += -Wall -g -Os -mmcu=$(MCU) -I$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/avr/include
 LDFLAGS +=
@@ -16,7 +18,7 @@ OBJS = $(PROGRAM).o $(PROGRAM).oS
 all: $(PROGRAM).hex
 
 flash: $(PROGRAM).hex
-	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
+	avrdude \
 	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
 	-v				 \
 	-p$(MCU)		 \
@@ -51,8 +53,8 @@ clean:
 
 
 asmflash: $(PROGRAM).hexS
-	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
-	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
+	avrdude \
+	$(AVRDUDE_CONF)  \
 	-v				 \
 	-p$(MCU)		 \
 	-carduino		 \
@@ -90,8 +92,8 @@ asmsize: $(PROGRAM).elfS
 
 # Извлечение прошивки в файл HEX
 extract:
-	$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/bin/avrdude \
-	-C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
+	avrdude \
+	# -C$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/etc/avrdude.conf \
 	-v				 \
 	-p$(MCU)		 \
 	-carduino		 \

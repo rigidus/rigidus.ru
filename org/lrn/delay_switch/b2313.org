@@ -91,13 +91,13 @@
 #+NAME: gen_init_btn
 #+BEGIN_SRC elisp :var id="@" port="@" bit="@" :results output org :wrap "SRC asm"
   (princ (format "    .data\n\n"))
-  (princ (format "SWITCH_%s:\n    .byte 0x0\n" id))
-  (princ (format "LINK_%s:\n    .byte 0x0\n" id))
-  (princ (format "NEW_%s:\n    .byte 0x0\n" id))
-  (princ (format "STATE_%s:\n    .byte 0x0\n" id))
-  (princ (format "CNT_%s:\n    .byte 0x0\n" id))
-  (princ (format "MODE_%s:\n    .byte 0x0\n" id))
-  (princ (format "DELAY_%s:\n    .byte 0x0\n" id))
+  (princ (format "SWITCH_%s:\n    .byte 0x00\n" id))
+  (princ (format "LINK_%s:\n    .byte 0x00\n" id))
+  (princ (format "NEW_%s:\n    .byte 0x00\n" id))
+  (princ (format "STATE_%s:\n    .byte 0x00\n" id))
+  (princ (format "CNT_%s:\n    .byte 0x00\n" id))
+  (princ (format "MODE_%s:\n    .byte 0x00\n" id))
+  (princ (format "DELAY_%s:\n    .word 0x0000\n" id))
   (princ (format "\n    .text\n\n_init_%s:\n" id))
   (princ (format "    cbi    DDR%s, %s\n" port bit))
 #+END_SRC
@@ -778,7 +778,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Теперь, когда все операции определены, мы можем получить весь код
 
 #+NAME: codegen
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge k=rcase l=rsetout
+#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=rsetout
   (defun codegen (tree basegen)
     (let ((gensym-counter basegen))
       (let ((ssa))
@@ -926,6 +926,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                   (princ (format "    %s %s %s\n" (car op) (cadr op) (caddr op))))
                  ((or (eql 'ld (car op))
                       (eql 'cp (car op))
+                      (eql 'cpc (car op))
+                      (eql 'cpi (car op))
                       (eql 'add (car op))
                       (eql 'adc (car op))
                       (eql 'lds (car op))
@@ -975,11 +977,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 =INC=.
 
 #+NAME: prg_fsm
-| predicate         | from | to   | action    |
-|-------------------+------+------+-----------|
-| (= Y 1)           | Wait | Run  | (clear Z) |
-| (= Y 1)           | Run  | Wait |           |
-| (>= Z $DELAY_MAX) | Run  | Wait |           |
+| predicate          | from | to   | action    |
+|--------------------+------+------+-----------|
+| (= Y 1)            | Wait | Run  | (clear Z) |
+| (= Y 1)            | Run  | Wait |           |
+| (2>= Z $DELAY_MAX) | Run  | Wait |           |
 
 Проверяем правильность автомата на графе
 
@@ -1035,6 +1037,69 @@ Instruction Pointer командой CALL, потом вынем его в ре�
        (set-state X 0)))))
 #+end_example
 
+
+
+-----------------------------------------
+
+#+NAME: rge2
+#+BEGIN_SRC elisp :var a=recur
+  (add-recur-rule (lambda (lst)
+                    (and  (eql '2>= (car lst))
+                          (eql 3 (length lst))
+                          (and (atom (cadr lst))
+                               (not (numberp (cadr lst)))
+                               (equal 'Z (cadr lst)))
+                          (and (atom (caddr lst))
+                               (not (numberp (caddr lst)))
+                               (equal "$" (subseq (format "%s" (caddr lst)) 0 1)))))
+                  (lambda (lst)
+                    (let ((const (subseq (format "%s" (caddr lst)) 1))
+                          (reg1-l  (gensym "reg=lt2_indirect_"))
+                          (reg1-h  (gensym "reg=lt2_indirect_"))
+                          (reg-tmp (gensym "reg=lt2_const_hi_"))
+                          (not_greater_or_equal (gensym "_ge_ind2const_not_"))
+                          (end  (gensym "_ge_ind2const_end_")))
+                      (push `(ralloc ,reg1-l) ssa)
+                      (push `(ralloc ,reg1-h) ssa)
+                      (push `(ralloc ,reg-tmp) ssa)
+
+                      (push `(ld ,reg1-l Z+) ssa)
+                      (push `(ld ,reg1-h Z) ssa)
+
+                      (push `(cpi ,reg1-l  ,(format "lo8(%s)" const)) ssa)
+                      (push `(ldi ,reg-tmp ,(format "hi8(%s)" const)) ssa)
+                      (push `(cpc ,reg1-h ,reg-tmp) ssa)
+
+                      (push `(rfree ,reg1-l) ssa)
+                      (push `(rfree ,reg1-h) ssa)
+                      (push `(rfree ,reg-tmp) ssa)
+
+                      (push `(brlo ,not_greater_or_equal) ssa)
+                      (push `(set-result TRUE) ssa)
+                      (push `(rjmp ,end) ssa)
+                      (push `(label ,not_greater_or_equal) ssa)
+                      (push `(set-result FALSE) ssa)
+                      (push `(label ,end) ssa))))
+#+END_SRC
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Нам понадобится написать правила для включения нагрузки
 
 #+NAME: ron
@@ -1060,7 +1125,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 TODO
 
 #+NAME: all_two
-#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge k=rcase l=ron m=roff n=rsetout
+#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout
   (format "%s" (pp (codegen (read z) 400)))
 #+END_SRC
 
@@ -1878,6 +1943,8 @@ TIFR-регистр нужно сбросить в 0:
       ;; [[[=== Мигание зеленым светодиодом ===]]]
       ;; Переключим состояние зеленого светодиода
       rcall   _blink_green
+
+
 
 
       ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]

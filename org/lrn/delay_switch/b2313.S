@@ -2,7 +2,7 @@
     #define TRUE 1
     #define FALSE 0
     #define MAX 2
-    #define DELAY_MAX 0xFF ; ~ 17 секунд. TOOD: нужен второй байт
+    #define DELAY_MAX 0xFF ; ~ 17 секунд. TODO: нужен второй байт
     #define result r16
     #define tmp0 r17
     #define tmp1 r18
@@ -35,7 +35,7 @@
         cp      result, r0
         breq    \to
     .endm
-    
+
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -43,27 +43,27 @@
         mov     result, r1
         .endif
     .endm
-    
+
     .macro ON port pin
         sbi     \port, \pin
     .endm
-    
+
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-    
+
     .macro RED_ON
         ON      PORTB, 3
     .endm
-    
+
     .macro RED_OFF
         OFF     PORTB, 3
     .endm
-    
+
     .macro YELLOW_ON
         ON      PORTB, 1
     .endm
-    
+
     .macro YELLOW_OFF
         OFF     PORTB, 1
     .endm
@@ -115,6 +115,8 @@ _timer_1_overflow:
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
+
+
 
 
     ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]
@@ -357,19 +359,19 @@ _init_pins:
     .data
 
 SWITCH_IP:
-    .byte 0x0
+    .byte 0x00
 LINK_IP:
-    .byte 0x0
+    .byte 0x00
 NEW_IP:
-    .byte 0x0
+    .byte 0x00
 STATE_IP:
-    .byte 0x0
+    .byte 0x00
 CNT_IP:
-    .byte 0x0
+    .byte 0x00
 MODE_IP:
-    .byte 0x0
+    .byte 0x00
 DELAY_IP:
-    .byte 0x0
+    .word 0x0000
 
     .text
 
@@ -379,19 +381,19 @@ _init_IP:
     .data
 
 SWITCH_SP:
-    .byte 0x0
+    .byte 0x00
 LINK_SP:
-    .byte 0x0
+    .byte 0x00
 NEW_SP:
-    .byte 0x0
+    .byte 0x00
 STATE_SP:
-    .byte 0x0
+    .byte 0x00
 CNT_SP:
-    .byte 0x0
+    .byte 0x00
 MODE_SP:
-    .byte 0x0
+    .byte 0x00
 DELAY_SP:
-    .byte 0x0
+    .word 0x0000
 
     .text
 
@@ -401,19 +403,19 @@ _init_SP:
     .data
 
 SWITCH_PP:
-    .byte 0x0
+    .byte 0x00
 LINK_PP:
-    .byte 0x0
+    .byte 0x00
 NEW_PP:
-    .byte 0x0
+    .byte 0x00
 STATE_PP:
-    .byte 0x0
+    .byte 0x00
 CNT_PP:
-    .byte 0x0
+    .byte 0x00
 MODE_PP:
-    .byte 0x0
+    .byte 0x00
 DELAY_PP:
-    .byte 0x0
+    .word 0x0000
 
     .text
 
@@ -423,19 +425,19 @@ _init_PP:
     .data
 
 SWITCH_PM:
-    .byte 0x0
+    .byte 0x00
 LINK_PM:
-    .byte 0x0
+    .byte 0x00
 NEW_PM:
-    .byte 0x0
+    .byte 0x00
 STATE_PM:
-    .byte 0x0
+    .byte 0x00
 CNT_PM:
-    .byte 0x0
+    .byte 0x00
 MODE_PM:
-    .byte 0x0
+    .byte 0x00
 DELAY_PM:
-    .byte 0x0
+    .word 0x0000
 
     .text
 
@@ -491,7 +493,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -639,7 +641,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:
@@ -673,18 +675,18 @@ _equal_ind2const_end_416:
     ldi     r25, 0
     st      X, r25
 _when_end_413:
-    ld      r25, Z
-    ldi     r24, DELAY_MAX
-    cp      r25, r24
-    brlo    _ge_ind2const_not_421
+    ld      r25, Z+
+    ld      r24, Z
+    cpc     r24, r23
+    brlo    _ge_ind2const_not_422
     SETRESULT TRUE
-    rjmp    _ge_ind2const_end_422
-_ge_ind2const_not_421:
+    rjmp    _ge_ind2const_end_423
+_ge_ind2const_not_422:
     SETRESULT FALSE
-_ge_ind2const_end_422:
+_ge_ind2const_end_423:
     IFFALSE _when_end_418
-    ldi     r24, 0
-    st      X, r24
+    ldi     r23, 0
+    st      X, r23
 _when_end_418:
     ;; progn-close
     rjmp    _case_end_405
