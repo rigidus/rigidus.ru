@@ -117,7 +117,8 @@ _timer_1_overflow:
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
 
-    ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]
+_chain_IP:
+    ;; Получаем состояние кнопки IP связанной с битом 0 порта B
     sbis    PINB, 0
     rjmp    _not_press_IP
     sts     NEW_IP, r1
@@ -126,31 +127,7 @@ _not_press_IP:
     sts     NEW_IP, r0
 _end_press_handler_IP:
 
-    sbis    PINA, 1
-    rjmp    _not_press_SP
-    sts     NEW_SP, r1
-    rjmp    _end_press_handler_SP
-_not_press_SP:
-    sts     NEW_SP, r0
-_end_press_handler_SP:
-
-    sbis    PINA, 0
-    rjmp    _not_press_PP
-    sts     NEW_PP, r1
-    rjmp    _end_press_handler_PP
-_not_press_PP:
-    sts     NEW_PP, r0
-_end_press_handler_PP:
-
-    sbis    PIND, 2
-    rjmp    _not_press_PM
-    sts     NEW_PM, r1
-    rjmp    _end_press_handler_PM
-_not_press_PM:
-    sts     NEW_PM, r0
-_end_press_handler_PM:
-
-
+    ;; Вызываем конечный автомат подавления дребезга для кнопки IP
     ldi     xl, lo8(STATE_IP)
     ldi     xh, hi8(STATE_IP)
     ldi     yl, lo8(NEW_IP)
@@ -159,31 +136,7 @@ _end_press_handler_PM:
     ldi     zh, hi8(CNT_IP)
     rcall   _fsmbtn
 
-    ldi     xl, lo8(STATE_SP)
-    ldi     xh, hi8(STATE_SP)
-    ldi     yl, lo8(NEW_SP)
-    ldi     yh, hi8(NEW_SP)
-    ldi     zl, lo8(CNT_SP)
-    ldi     zh, hi8(CNT_SP)
-    rcall   _fsmbtn
-
-    ldi     xl, lo8(STATE_PP)
-    ldi     xh, hi8(STATE_PP)
-    ldi     yl, lo8(NEW_PP)
-    ldi     yh, hi8(NEW_PP)
-    ldi     zl, lo8(CNT_PP)
-    ldi     zh, hi8(CNT_PP)
-    rcall   _fsmbtn
-
-    ldi     xl, lo8(STATE_PM)
-    ldi     xh, hi8(STATE_PM)
-    ldi     yl, lo8(NEW_PM)
-    ldi     yh, hi8(NEW_PM)
-    ldi     zl, lo8(CNT_PM)
-    ldi     zh, hi8(CNT_PM)
-    rcall   _fsmbtn
-
-
+    ;; Вызываем конечный автомат отработки задержки для кнопки IP
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_IP)
     ldi     xh, hi8(MODE_IP)
@@ -215,6 +168,26 @@ _switch_end_IP:
     sts     SWITCH_IP, r0
     sts     LINK_IP, r0
 
+_chain_SP:
+    ;; Получаем состояние кнопки SP связанной с битом 1 порта A
+    sbis    PINA, 1
+    rjmp    _not_press_SP
+    sts     NEW_SP, r1
+    rjmp    _end_press_handler_SP
+_not_press_SP:
+    sts     NEW_SP, r0
+_end_press_handler_SP:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки SP
+    ldi     xl, lo8(STATE_SP)
+    ldi     xh, hi8(STATE_SP)
+    ldi     yl, lo8(NEW_SP)
+    ldi     yh, hi8(NEW_SP)
+    ldi     zl, lo8(CNT_SP)
+    ldi     zh, hi8(CNT_SP)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки SP
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_SP)
     ldi     xh, hi8(MODE_SP)
@@ -246,6 +219,26 @@ _switch_end_SP:
     sts     SWITCH_SP, r0
     sts     LINK_SP, r0
 
+_chain_PP:
+    ;; Получаем состояние кнопки PP связанной с битом 0 порта A
+    sbis    PINA, 0
+    rjmp    _not_press_PP
+    sts     NEW_PP, r1
+    rjmp    _end_press_handler_PP
+_not_press_PP:
+    sts     NEW_PP, r0
+_end_press_handler_PP:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки PP
+    ldi     xl, lo8(STATE_PP)
+    ldi     xh, hi8(STATE_PP)
+    ldi     yl, lo8(NEW_PP)
+    ldi     yh, hi8(NEW_PP)
+    ldi     zl, lo8(CNT_PP)
+    ldi     zh, hi8(CNT_PP)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки PP
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_PP)
     ldi     xh, hi8(MODE_PP)
@@ -277,6 +270,26 @@ _switch_end_PP:
     sts     SWITCH_PP, r0
     sts     LINK_PP, r0
 
+_chain_PM:
+    ;; Получаем состояние кнопки PM связанной с битом 2 порта D
+    sbis    PIND, 2
+    rjmp    _not_press_PM
+    sts     NEW_PM, r1
+    rjmp    _end_press_handler_PM
+_not_press_PM:
+    sts     NEW_PM, r0
+_end_press_handler_PM:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки PM
+    ldi     xl, lo8(STATE_PM)
+    ldi     xh, hi8(STATE_PM)
+    ldi     yl, lo8(NEW_PM)
+    ldi     yh, hi8(NEW_PM)
+    ldi     zl, lo8(CNT_PM)
+    ldi     zh, hi8(CNT_PM)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки PM
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_PM)
     ldi     xh, hi8(MODE_PM)

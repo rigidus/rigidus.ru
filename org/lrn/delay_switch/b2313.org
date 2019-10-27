@@ -79,14 +79,14 @@
 #+END_SRC
 
 Работать это будет, только если написать специальую функцию, которая
-будет раскрывать &-подстановки:
+будет раскрывать &-подстановки в asm-блоках литературного исходника:
 
 #+NAME: asm_expander
 #+BEGIN_SRC elisp
   (defun org-babel-expand-body:asm (body params)
     "Expand BODY according to the values of vars inside PARAMS.
-     Values in the form &symbol are expanded to their value
-     from `:var symbol \"value\"'."
+       Values in the form &symbol are expanded to their value
+       from `:var symbol \"value\"'."
     (mapc
      (lambda (pair)
        (setq body
@@ -102,27 +102,23 @@
   (defun org-babel-execute:asm (body params)
     "Execute a block of ASM code.
      This function is called by `org-babel-execute-src-block'."
-    body)
-
-  (defun org-babel-expand-body:sql (body params)
-    "Expand BODY according to the values of PARAMS."
-    (org-babel-asm-expand-vars
-     body (mapcar #'cdr (org-babel-get-header params :var))))
+    (org-babel-expand-body:asm body params))
 #+END_SRC
 
 Теперь мы можем построить цепочки, связав каждую с выводом кнопок на
 входе и выводом нагрузки на выходе
 
+#+NAME: chains
 #+BEGIN_SRC asm :var depends=asm_expander :tangle test.S :noweb yes :padline no
   <<chain_of_fsm(id="IP", inport="B", inbit=0, outport="D", outbit=6)>>
+  <<chain_of_fsm(id="SP", inport="A", inbit=1, outport="D", outbit=5)>>
+  <<chain_of_fsm(id="PP", inport="A", inbit=0, outport="D", outbit=4)>>
+  <<chain_of_fsm(id="PM", inport="D", inbit=2, outport="D", outbit=3)>>
 #+END_SRC
 
 
 
 
-  <<gen_get_btn("SP", "A", 1, "D", 5)>>
-  <<gen_get_btn("PP", "A", 0, "D", 4)>>
-  <<gen_get_btn("PM", "D", 2, "D", 3)>>
 
 
 После включения питания:
@@ -2075,21 +2071,7 @@ TIFR-регистр нужно сбросить в 0:
       ;; Переключим состояние зеленого светодиода
       rcall   _blink_green
 
-      ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]
-  <<gen_get_btn("IP", "B", 0)>>
-  <<gen_get_btn("SP", "A", 1)>>
-  <<gen_get_btn("PP", "A", 0)>>
-  <<gen_get_btn("PM", "D", 2)>>
-
-  <<gen_debounce_call("IP")>>
-  <<gen_debounce_call("SP")>>
-  <<gen_debounce_call("PP")>>
-  <<gen_debounce_call("PM")>>
-
-  <<gen_delay_call("IP", "D", 6)>>
-  <<gen_delay_call("SP", "D", 5)>>
-  <<gen_delay_call("PP", "D", 4)>>
-  <<gen_delay_call("PM", "D", 3)>>
+  <<chains>>
 
       ;; Ускорим процесс:
       ;; Set TCNT1 to 0x00E0
