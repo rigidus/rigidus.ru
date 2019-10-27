@@ -1168,7 +1168,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 :   (:to "Run" :predicate "(= Y 1)" :action "(2clear Z)"))
 :  ("Run"
 :   (:to "Wait" :predicate "(= Y 1)" :action "")
-:   (:to "Wait" :predicate "(2>= Z $DELAY_MAX)" :action "")))
+:   (:to "Wait" :predicate "(2>= Z $DELAY_MAX)" :action "")
+:   (:to "Run" :predicate "(and (2>= Z $SIGNAL_TIME) (not (2>= Z $DELAY_MAX)))" :action "(setout)")))
 
 Создаем псевдокод
 
@@ -1183,18 +1184,11 @@ Instruction Pointer командой CALL, потом вынем его в ре�
   (0
    (progn
      (when
-         (= Y 1)
-       (2clear Z)
-       (set-state X 1))))
-  (1
-   (progn
-     (when
-         (= Y 1)
-       (nop)
-       (set-state X 0))
-     (when
-         (2>= Z $DELAY_MAX)
-       (nop)
+         (and
+          (2>= Z $SIGNAL_TIME)
+          (not
+           (2>= Z $DELAY_MAX)))
+       (setout)
        (set-state X 0)))))
 #+end_example
 
@@ -1205,6 +1199,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                     (and  (eql 'not (car lst))
                           (eql 2 (length lst))))
                   (lambda (lst)
+                    (recur (cadr lst))
                     (push `(invert result) ssa)))
 #+END_SRC
 
@@ -1311,7 +1306,6 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 #+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout n2=rnot
   (format "%s" (pp (codegen (read z) 400)))
 #+END_SRC
-
 
 #+NAME: gencode_fsmprg
 #+BEGIN_SRC elisp :var all=all_two r=regs :results output org :wrap "SRC asm"

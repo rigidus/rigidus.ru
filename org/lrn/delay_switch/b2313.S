@@ -342,7 +342,7 @@ _switch_end_PM:
     ;; Очищаем LINK
     sts     LINK_PM, r0
 
-    ;; Включаем/выключаем таймер-0 в зависимости от BEEP_@
+    ;; Включаем/выключаем таймер-0 в зависимости от BEEPs
     lds     tmp0, BEEP_IP
     cp      tmp0, r0
     brne    _beep_on
@@ -364,7 +364,7 @@ _switch_end_PM:
 _beep_on:
     out TCCR0B, r1
 _beep_end:
-    ;; Clear BEEP_S
+    ;; Clear BEEPs
     sts     BEEP_IP, r0
     sts     BEEP_SP, r0
     sts     BEEP_PP, r0
@@ -774,14 +774,29 @@ _ge_ind2const_not_430:
     SETRESULT FALSE
 _ge_ind2const_end_431:
     IFFALSE _and_end_426
+    push    ZH
+    push    ZL
+    ld      r25, Z+
+    ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r25, lo8(DELAY_MAX)
+    ldi     r23, hi8(DELAY_MAX)
+    cpc     r24, r23
+    brlo    _ge_ind2const_not_435
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_436
+_ge_ind2const_not_435:
+    SETRESULT FALSE
+_ge_ind2const_end_436:
     INVERT result
     IFFALSE _and_end_426
     SETRESULT TRUE
 _and_end_426:
     IFFALSE _when_end_425
     st      -Y, r1
-    ldi     r25, 1
-    st      X, r25
+    ldi     r23, 1
+    st      X, r23
 _when_end_425:
     ;; progn-close
     rjmp    _case_end_405
