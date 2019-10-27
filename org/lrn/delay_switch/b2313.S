@@ -8,7 +8,7 @@
     #define freq r19
     
     .equ DELAY_MAX, 0x0100
-    .equ SIGNAL_TIME, 0x007F
+    .equ SIGNAL_TIME, 0x00FF
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
