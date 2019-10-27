@@ -6,7 +6,7 @@
     #define tmp0 r17
     #define tmp1 r18
     #define freq r19
-    
+
     .equ DELAY_MAX, 0x0100
 
     .equ SPL, 0x3D
@@ -36,7 +36,7 @@
         cp      result, r0
         breq    \to
     .endm
-    
+
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -44,27 +44,27 @@
         mov     result, r1
         .endif
     .endm
-    
+
     .macro ON port pin
         sbi     \port, \pin
     .endm
-    
+
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-    
+
     .macro RED_ON
         ON      PORTB, 3
     .endm
-    
+
     .macro RED_OFF
         OFF     PORTB, 3
     .endm
-    
+
     .macro YELLOW_ON
         ON      PORTB, 1
     .endm
-    
+
     .macro YELLOW_OFF
         OFF     PORTB, 1
     .endm
@@ -119,6 +119,7 @@ _timer_1_overflow:
 
 _chain_IP:
     ;; Получаем состояние кнопки IP связанной с битом 0 порта B
+_get_btn_IP:
     sbis    PINB, 0
     rjmp    _not_press_IP
     sts     NEW_IP, r1
@@ -128,6 +129,7 @@ _not_press_IP:
 _end_press_handler_IP:
 
     ;; Вызываем конечный автомат подавления дребезга для кнопки IP
+_debounce_call_IP:
     ldi     xl, lo8(STATE_IP)
     ldi     xh, hi8(STATE_IP)
     ldi     yl, lo8(NEW_IP)
@@ -137,6 +139,7 @@ _end_press_handler_IP:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки IP
+_delay_call_IP:
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_IP)
     ldi     xh, hi8(MODE_IP)
@@ -170,6 +173,7 @@ _switch_end_IP:
 
 _chain_SP:
     ;; Получаем состояние кнопки SP связанной с битом 1 порта A
+_get_btn_SP:
     sbis    PINA, 1
     rjmp    _not_press_SP
     sts     NEW_SP, r1
@@ -179,6 +183,7 @@ _not_press_SP:
 _end_press_handler_SP:
 
     ;; Вызываем конечный автомат подавления дребезга для кнопки SP
+_debounce_call_SP:
     ldi     xl, lo8(STATE_SP)
     ldi     xh, hi8(STATE_SP)
     ldi     yl, lo8(NEW_SP)
@@ -188,6 +193,7 @@ _end_press_handler_SP:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки SP
+_delay_call_SP:
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_SP)
     ldi     xh, hi8(MODE_SP)
@@ -221,6 +227,7 @@ _switch_end_SP:
 
 _chain_PP:
     ;; Получаем состояние кнопки PP связанной с битом 0 порта A
+_get_btn_PP:
     sbis    PINA, 0
     rjmp    _not_press_PP
     sts     NEW_PP, r1
@@ -230,6 +237,7 @@ _not_press_PP:
 _end_press_handler_PP:
 
     ;; Вызываем конечный автомат подавления дребезга для кнопки PP
+_debounce_call_PP:
     ldi     xl, lo8(STATE_PP)
     ldi     xh, hi8(STATE_PP)
     ldi     yl, lo8(NEW_PP)
@@ -239,6 +247,7 @@ _end_press_handler_PP:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PP
+_delay_call_PP:
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_PP)
     ldi     xh, hi8(MODE_PP)
@@ -272,6 +281,7 @@ _switch_end_PP:
 
 _chain_PM:
     ;; Получаем состояние кнопки PM связанной с битом 2 порта D
+_get_btn_PM:
     sbis    PIND, 2
     rjmp    _not_press_PM
     sts     NEW_PM, r1
@@ -281,6 +291,7 @@ _not_press_PM:
 _end_press_handler_PM:
 
     ;; Вызываем конечный автомат подавления дребезга для кнопки PM
+_debounce_call_PM:
     ldi     xl, lo8(STATE_PM)
     ldi     xh, hi8(STATE_PM)
     ldi     yl, lo8(NEW_PM)
@@ -290,6 +301,7 @@ _end_press_handler_PM:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PM
+_delay_call_PM:
     ;; Передаем адрес переменной состояния нового автомата
     ldi     xl, lo8(MODE_PM)
     ldi     xh, hi8(MODE_PM)
@@ -380,90 +392,54 @@ _init_pins:
     out     DDRB, tmp0
 
     .data
-
-SWITCH_IP:
-    .byte 0x00
-LINK_IP:
-    .byte 0x00
-NEW_IP:
-    .byte 0x00
-STATE_IP:
-    .byte 0x00
-CNT_IP:
-    .byte 0x00
-MODE_IP:
-    .byte 0x00
-DELAY_IP:
-    .word 0x0000
+SWITCH_IP: .byte 0x00
+LINK_IP:   .byte 0x00
+NEW_IP:    .byte 0x00
+STATE_IP:  .byte 0x00
+CNT_IP:    .byte 0x00
+MODE_IP:   .byte 0x00
+DELAY_IP:  .word 0x0000
 
     .text
-
 _init_IP:
     cbi    DDRB, 0
 
     .data
-
-SWITCH_SP:
-    .byte 0x00
-LINK_SP:
-    .byte 0x00
-NEW_SP:
-    .byte 0x00
-STATE_SP:
-    .byte 0x00
-CNT_SP:
-    .byte 0x00
-MODE_SP:
-    .byte 0x00
-DELAY_SP:
-    .word 0x0000
+SWITCH_SP: .byte 0x00
+LINK_SP:   .byte 0x00
+NEW_SP:    .byte 0x00
+STATE_SP:  .byte 0x00
+CNT_SP:    .byte 0x00
+MODE_SP:   .byte 0x00
+DELAY_SP:  .word 0x0000
 
     .text
-
 _init_SP:
     cbi    DDRA, 1
 
     .data
-
-SWITCH_PP:
-    .byte 0x00
-LINK_PP:
-    .byte 0x00
-NEW_PP:
-    .byte 0x00
-STATE_PP:
-    .byte 0x00
-CNT_PP:
-    .byte 0x00
-MODE_PP:
-    .byte 0x00
-DELAY_PP:
-    .word 0x0000
+SWITCH_PP: .byte 0x00
+LINK_PP:   .byte 0x00
+NEW_PP:    .byte 0x00
+STATE_PP:  .byte 0x00
+CNT_PP:    .byte 0x00
+MODE_PP:   .byte 0x00
+DELAY_PP:  .word 0x0000
 
     .text
-
 _init_PP:
     cbi    DDRA, 0
 
     .data
-
-SWITCH_PM:
-    .byte 0x00
-LINK_PM:
-    .byte 0x00
-NEW_PM:
-    .byte 0x00
-STATE_PM:
-    .byte 0x00
-CNT_PM:
-    .byte 0x00
-MODE_PM:
-    .byte 0x00
-DELAY_PM:
-    .word 0x0000
+SWITCH_PM: .byte 0x00
+LINK_PM:   .byte 0x00
+NEW_PM:    .byte 0x00
+STATE_PM:  .byte 0x00
+CNT_PM:    .byte 0x00
+MODE_PM:   .byte 0x00
+DELAY_PM:  .word 0x0000
 
     .text
-
 _init_PM:
     cbi    DDRD, 2
 
@@ -516,7 +492,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -664,7 +640,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:
