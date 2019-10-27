@@ -114,6 +114,34 @@
   <<chain_of_fsm(id="SP", inport="A", inbit=1, outport="D", outbit=5)>>
   <<chain_of_fsm(id="PP", inport="A", inbit=0, outport="D", outbit=4)>>
   <<chain_of_fsm(id="PM", inport="D", inbit=2, outport="D", outbit=3)>>
+
+      ;; Включаем/выключаем таймер-0 в зависимости от BEEPs
+      lds     tmp0, BEEP_IP
+      cp      tmp0, r0
+      brne    _beep_on
+
+      lds     tmp0, BEEP_SP
+      cp      tmp0, r0
+      brne    _beep_on
+
+      lds     tmp0, BEEP_PP
+      cp      tmp0, r0
+      brne    _beep_on
+
+      lds     tmp0, BEEP_PM
+      cp      tmp0, r0
+      brne    _beep_on
+
+      out TCCR0B, r0
+      rjmp    _beep_end
+  _beep_on:
+      out TCCR0B, r1
+  _beep_end:
+      ;; Clear BEEPs
+      sts     BEEP_IP, r0
+      sts     BEEP_SP, r0
+      sts     BEEP_PP, r0
+      sts     BEEP_PM, r0
 #+END_SRC
 
 Осталось сформировать переменные каждого из автоматов и код их
@@ -165,7 +193,9 @@
 После этого мы можем очистить переменную =LINK_@=, потому что
 самостоятельно она не очищается (автоматом подавления дребезга).
 
-Аналогично, по тем же причинам надо очистить переменную =BEEP_@=.
+Аналогично, по тем же причинам надо очистить переменную =BEEP_@=, но это
+будет происходить уже после того как мы включим или выключим звук в
+зависимости от ее состояния.
 
 #+NAME: gen_init_btn
 #+BEGIN_SRC asm :var id="@" port="@" bit="@" :results output
@@ -264,20 +294,8 @@
   _switch_off_&id:
       OFF PORT&port &bit
   _switch_end_&id:
-  ;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
-  ;;     lds     tmp0, BEEP_&id
-  ;;     cp      tmp0, r0
-  ;;     breq    _beep_off_&id
-  ;;     out TCCR0B, r1
-  ;;     rjmp    _beep_end_&id
-  ;; _beep_off_&id:
-  ;;     out TCCR0B, r0
-  ;; _beep_end_&id:
-
-      ;; Очищаем LINK и BEEP
+      ;; Очищаем LINK
       sts     LINK_&id, r0
-      sts     BEEP_&id, r0
-
 #+END_SRC
 
 * Обработка нажатий кнопок
@@ -1042,6 +1060,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                   (princ (format "    IFFALSE %s\n" (cadr op))))
                  ((eql 'if-true (car op))
                   (princ (format "    IFTRUE %s\n" (cadr op))))
+                 ((eql 'invert (car op))
+                  (princ (format "    INVERT %s\n" (cadr op))))
                  ((eql 'progn-open (car op))
                   (princ (format "    ;; progn-open\n")))
                  ((eql 'progn-close (car op))
@@ -1114,12 +1134,12 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 =Run= и оставшееся время не больше =$SIGNAL_TIME=.
 
 #+NAME: prg_fsm
-| predicate            | from | to   | action     |
-|----------------------+------+------+------------|
-| (= Y 1)              | Wait | Run  | (2clear Z) |
-| (= Y 1)              | Run  | Wait |            |
-| (2>= Z $DELAY_MAX)   | Run  | Wait |            |
-| (2>= Z $SIGNAL_TIME) | Run  | Run  | (setout)   |
+| predicate                                           | from | to   | action     |
+|-----------------------------------------------------+------+------+------------|
+| (= Y 1)                                             | Wait | Run  | (2clear Z) |
+| (= Y 1)                                             | Run  | Wait |            |
+| (2>= Z $DELAY_MAX)                                  | Run  | Wait |            |
+| (and (2>= Z $SIGNAL_TIME) (not (2>= Z $DELAY_MAX))) | Run  | Run  | (setout)   |
 
 Проверяем правильность автомата на графе
 
@@ -1177,6 +1197,17 @@ Instruction Pointer командой CALL, потом вынем его в ре�
        (nop)
        (set-state X 0)))))
 #+end_example
+
+
+#+NAME: rnot
+#+BEGIN_SRC elisp :var a=recur
+  (add-recur-rule (lambda (lst)
+                    (and  (eql 'not (car lst))
+                          (eql 2 (length lst))))
+                  (lambda (lst)
+                    (push `(invert result) ssa)))
+#+END_SRC
+
 
 Теперь определяем недостающие двухбайтовые операции.
 
@@ -1274,10 +1305,10 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                     (push `(OFF ,(cadr lst) ,(caddr lst)) ssa)))
 #+END_SRC
 
-TODO
+[TODO:gmm]
 
 #+NAME: all_two
-#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout
+#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout n2=rnot
   (format "%s" (pp (codegen (read z) 400)))
 #+END_SRC
 
@@ -2102,6 +2133,7 @@ TIFR-регистр нужно сбросить в 0:
       ;; [[[=== Высота звука ===]]]
       ;; Уменьшаем freq для частоты buzzer-а
       dec     freq
+      ldi     freq, 0xFF
 
       ;; [[[=== Мигание зеленым светодиодом ===]]]
       ;; Переключим состояние зеленого светодиода
@@ -2196,6 +2228,41 @@ TIFR-регистр нужно сбросить в 0:
   <<inits>>
 #+END_SRC
 
+* Мигание светодиодом
+
+#+NAME: blink_green
+#+BEGIN_SRC asm
+  _blink_green:
+      sbic    PORTB, 4
+      rjmp    _bg_clean
+      sbi     PORTB, 4
+  _bg_ret:
+      ret
+  _bg_clean:
+      cbi     PORTB, 4
+      rjmp    _bg_ret
+#+END_SRC
+
+Константы
+
+Нам нужны:
+- минимум два временных регистра
+- счетчик
+
+#+NAME: defines
+#+BEGIN_SRC asm
+  #define TRUE 1
+  #define FALSE 0
+  #define MAX 2
+  #define result r16
+  #define tmp0 r17
+  #define tmp1 r18
+  #define freq r19
+
+  .equ DELAY_MAX, 0x0100
+  .equ SIGNAL_TIME, 0x007F
+#+END_SRC
+
 * Схема
 
 #+BEGIN_EXAMPLE
@@ -2233,41 +2300,6 @@ TIFR-регистр нужно сбросить в 0:
         +[10]-|-+        +----------+      OUT-SP:pd5 |          |
          [uF] +-------------------------->gnd---------+----------+
 #+END_EXAMPLE
-
-* Мигание светодиодом
-
-#+NAME: blink_green
-#+BEGIN_SRC asm
-  _blink_green:
-      sbic    PORTB, 4
-      rjmp    _bg_clean
-      sbi     PORTB, 4
-  _bg_ret:
-      ret
-  _bg_clean:
-      cbi     PORTB, 4
-      rjmp    _bg_ret
-#+END_SRC
-
-Константы
-
-Нам нужны:
-- минимум два временных регистра
-- счетчик
-
-#+NAME: defines
-#+BEGIN_SRC asm
-  #define TRUE 1
-  #define FALSE 0
-  #define MAX 2
-  #define result r16
-  #define tmp0 r17
-  #define tmp1 r18
-  #define freq r19
-
-  .equ DELAY_MAX, 0x0100
-  .equ SIGNAL_TIME, 0x007F
-#+END_SRC
 
 * Символические имена
 
@@ -2315,6 +2347,16 @@ TIFR-регистр нужно сбросить в 0:
       .else
       mov     result, r1
       .endif
+  .endm
+
+  .macro INVERT reg
+      cp      result, r0
+      breq    1f
+      mov     result, r0
+      rjmp    2f
+  1:
+      mov     result, r1
+  2:
   .endm
 
   .macro ON port pin

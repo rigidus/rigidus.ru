@@ -46,6 +46,16 @@
         .endif
     .endm
     
+    .macro INVERT reg
+        cp      result, r0
+        breq    1f
+        mov     result, r0
+        rjmp    2f
+    1:
+        mov     result, r1
+    2:
+    .endm
+    
     .macro ON port pin
         sbi     \port, \pin
     .endm
@@ -113,6 +123,7 @@ _timer_1_overflow:
     ;; [[[=== Высота звука ===]]]
     ;; Уменьшаем freq для частоты buzzer-а
     dec     freq
+    ldi     freq, 0xFF
 
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
@@ -169,20 +180,8 @@ _delay_call_IP:
 _switch_off_IP:
     OFF PORTD 6
 _switch_end_IP:
-;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
-;;     lds     tmp0, BEEP_IP
-;;     cp      tmp0, r0
-;;     breq    _beep_off_IP
-;;     out TCCR0B, r1
-;;     rjmp    _beep_end_IP
-;; _beep_off_IP:
-;;     out TCCR0B, r0
-;; _beep_end_IP:
-
-    ;; Очищаем LINK и BEEP
+    ;; Очищаем LINK
     sts     LINK_IP, r0
-    sts     BEEP_IP, r0
-
 _chain_SP:
     ;; Получаем состояние кнопки SP связанной с битом 1 порта A
 _get_btn_SP:
@@ -234,20 +233,8 @@ _delay_call_SP:
 _switch_off_SP:
     OFF PORTD 5
 _switch_end_SP:
-;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
-;;     lds     tmp0, BEEP_SP
-;;     cp      tmp0, r0
-;;     breq    _beep_off_SP
-;;     out TCCR0B, r1
-;;     rjmp    _beep_end_SP
-;; _beep_off_SP:
-;;     out TCCR0B, r0
-;; _beep_end_SP:
-
-    ;; Очищаем LINK и BEEP
+    ;; Очищаем LINK
     sts     LINK_SP, r0
-    sts     BEEP_SP, r0
-
 _chain_PP:
     ;; Получаем состояние кнопки PP связанной с битом 0 порта A
 _get_btn_PP:
@@ -299,20 +286,8 @@ _delay_call_PP:
 _switch_off_PP:
     OFF PORTD 4
 _switch_end_PP:
-;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
-;;     lds     tmp0, BEEP_PP
-;;     cp      tmp0, r0
-;;     breq    _beep_off_PP
-;;     out TCCR0B, r1
-;;     rjmp    _beep_end_PP
-;; _beep_off_PP:
-;;     out TCCR0B, r0
-;; _beep_end_PP:
-
-    ;; Очищаем LINK и BEEP
+    ;; Очищаем LINK
     sts     LINK_PP, r0
-    sts     BEEP_PP, r0
-
 _chain_PM:
     ;; Получаем состояние кнопки PM связанной с битом 2 порта D
 _get_btn_PM:
@@ -364,20 +339,36 @@ _delay_call_PM:
 _switch_off_PM:
     OFF PORTD 3
 _switch_end_PM:
-;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
-;;     lds     tmp0, BEEP_PM
-;;     cp      tmp0, r0
-;;     breq    _beep_off_PM
-;;     out TCCR0B, r1
-;;     rjmp    _beep_end_PM
-;; _beep_off_PM:
-;;     out TCCR0B, r0
-;; _beep_end_PM:
-
-    ;; Очищаем LINK и BEEP
+    ;; Очищаем LINK
     sts     LINK_PM, r0
-    sts     BEEP_PM, r0
 
+    ;; Включаем/выключаем таймер-0 в зависимости от BEEP_@
+    lds     tmp0, BEEP_IP
+    cp      tmp0, r0
+    brne    _beep_on
+
+    lds     tmp0, BEEP_SP
+    cp      tmp0, r0
+    brne    _beep_on
+
+    lds     tmp0, BEEP_PP
+    cp      tmp0, r0
+    brne    _beep_on
+
+    lds     tmp0, BEEP_PM
+    cp      tmp0, r0
+    brne    _beep_on
+
+    out TCCR0B, r0
+    rjmp    _beep_end
+_beep_on:
+    out TCCR0B, r1
+_beep_end:
+    ;; Clear BEEP_S
+    sts     BEEP_IP, r0
+    sts     BEEP_SP, r0
+    sts     BEEP_PP, r0
+    sts     BEEP_PM, r0
 
     ;; Ускорим процесс:
     ;; Set TCNT1 to 0x00E0
@@ -776,12 +767,17 @@ _when_end_418:
     cpi     r23, lo8(SIGNAL_TIME)
     ldi     r25, hi8(SIGNAL_TIME)
     cpc     r24, r25
-    brlo    _ge_ind2const_not_429
+    brlo    _ge_ind2const_not_430
     SETRESULT TRUE
-    rjmp    _ge_ind2const_end_430
-_ge_ind2const_not_429:
+    rjmp    _ge_ind2const_end_431
+_ge_ind2const_not_430:
     SETRESULT FALSE
-_ge_ind2const_end_430:
+_ge_ind2const_end_431:
+    IFFALSE _and_end_426
+    INVERT result
+    IFFALSE _and_end_426
+    SETRESULT TRUE
+_and_end_426:
     IFFALSE _when_end_425
     st      -Y, r1
     ldi     r25, 1
