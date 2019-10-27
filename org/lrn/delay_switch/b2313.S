@@ -117,9 +117,6 @@ _timer_1_overflow:
     ;; Переключим состояние зеленого светодиода
     rcall   _blink_green
 
-
-
-
     ;; [[[==== Получаем состояние вывода в NEW_@ ===]]]
     sbis    PINB, 0
     rjmp    _not_press_IP
