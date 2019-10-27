@@ -6,8 +6,9 @@
     #define tmp0 r17
     #define tmp1 r18
     #define freq r19
-
+    
     .equ DELAY_MAX, 0x0100
+    .equ SIGNAL_TIME, 0x007F
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
@@ -36,7 +37,7 @@
         cp      result, r0
         breq    \to
     .endm
-
+    
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -44,27 +45,27 @@
         mov     result, r1
         .endif
     .endm
-
+    
     .macro ON port pin
         sbi     \port, \pin
     .endm
-
+    
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-
+    
     .macro RED_ON
         ON      PORTB, 3
     .endm
-
+    
     .macro RED_OFF
         OFF     PORTB, 3
     .endm
-
+    
     .macro YELLOW_ON
         ON      PORTB, 1
     .endm
-
+    
     .macro YELLOW_OFF
         OFF     PORTB, 1
     .endm
@@ -140,7 +141,7 @@ _debounce_call_IP:
 
     ;; Вызываем конечный автомат отработки задержки для кнопки IP
 _delay_call_IP:
-    ;; Передаем адрес переменной состояния нового автомата
+    ;; Передаем адрес переменной состояния автомата выдержки
     ldi     xl, lo8(MODE_IP)
     ldi     xh, hi8(MODE_IP)
     ;; Передаем адрес переменной связи автоматов
@@ -158,7 +159,8 @@ _delay_call_IP:
     adc     tmp1, r0
     sts     DELAY_IP, tmp0
     sts     DELAY_IP+1, tmp1
-    ;; Проверяем выход
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
     lds     tmp0, MODE_IP
     cp      tmp0, r0
     breq    _switch_off_IP
@@ -167,9 +169,19 @@ _delay_call_IP:
 _switch_off_IP:
     OFF PORTD 6
 _switch_end_IP:
-    ;; Очищаем SWITCH и LINK
-    sts     SWITCH_IP, r0
+;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
+;;     lds     tmp0, BEEP_IP
+;;     cp      tmp0, r0
+;;     breq    _beep_off_IP
+;;     out TCCR0B, r1
+;;     rjmp    _beep_end_IP
+;; _beep_off_IP:
+;;     out TCCR0B, r0
+;; _beep_end_IP:
+
+    ;; Очищаем LINK и BEEP
     sts     LINK_IP, r0
+    sts     BEEP_IP, r0
 
 _chain_SP:
     ;; Получаем состояние кнопки SP связанной с битом 1 порта A
@@ -194,7 +206,7 @@ _debounce_call_SP:
 
     ;; Вызываем конечный автомат отработки задержки для кнопки SP
 _delay_call_SP:
-    ;; Передаем адрес переменной состояния нового автомата
+    ;; Передаем адрес переменной состояния автомата выдержки
     ldi     xl, lo8(MODE_SP)
     ldi     xh, hi8(MODE_SP)
     ;; Передаем адрес переменной связи автоматов
@@ -212,7 +224,8 @@ _delay_call_SP:
     adc     tmp1, r0
     sts     DELAY_SP, tmp0
     sts     DELAY_SP+1, tmp1
-    ;; Проверяем выход
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
     lds     tmp0, MODE_SP
     cp      tmp0, r0
     breq    _switch_off_SP
@@ -221,9 +234,19 @@ _delay_call_SP:
 _switch_off_SP:
     OFF PORTD 5
 _switch_end_SP:
-    ;; Очищаем SWITCH и LINK
-    sts     SWITCH_SP, r0
+;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
+;;     lds     tmp0, BEEP_SP
+;;     cp      tmp0, r0
+;;     breq    _beep_off_SP
+;;     out TCCR0B, r1
+;;     rjmp    _beep_end_SP
+;; _beep_off_SP:
+;;     out TCCR0B, r0
+;; _beep_end_SP:
+
+    ;; Очищаем LINK и BEEP
     sts     LINK_SP, r0
+    sts     BEEP_SP, r0
 
 _chain_PP:
     ;; Получаем состояние кнопки PP связанной с битом 0 порта A
@@ -248,7 +271,7 @@ _debounce_call_PP:
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PP
 _delay_call_PP:
-    ;; Передаем адрес переменной состояния нового автомата
+    ;; Передаем адрес переменной состояния автомата выдержки
     ldi     xl, lo8(MODE_PP)
     ldi     xh, hi8(MODE_PP)
     ;; Передаем адрес переменной связи автоматов
@@ -266,7 +289,8 @@ _delay_call_PP:
     adc     tmp1, r0
     sts     DELAY_PP, tmp0
     sts     DELAY_PP+1, tmp1
-    ;; Проверяем выход
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
     lds     tmp0, MODE_PP
     cp      tmp0, r0
     breq    _switch_off_PP
@@ -275,9 +299,19 @@ _delay_call_PP:
 _switch_off_PP:
     OFF PORTD 4
 _switch_end_PP:
-    ;; Очищаем SWITCH и LINK
-    sts     SWITCH_PP, r0
+;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
+;;     lds     tmp0, BEEP_PP
+;;     cp      tmp0, r0
+;;     breq    _beep_off_PP
+;;     out TCCR0B, r1
+;;     rjmp    _beep_end_PP
+;; _beep_off_PP:
+;;     out TCCR0B, r0
+;; _beep_end_PP:
+
+    ;; Очищаем LINK и BEEP
     sts     LINK_PP, r0
+    sts     BEEP_PP, r0
 
 _chain_PM:
     ;; Получаем состояние кнопки PM связанной с битом 2 порта D
@@ -302,7 +336,7 @@ _debounce_call_PM:
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PM
 _delay_call_PM:
-    ;; Передаем адрес переменной состояния нового автомата
+    ;; Передаем адрес переменной состояния автомата выдержки
     ldi     xl, lo8(MODE_PM)
     ldi     xh, hi8(MODE_PM)
     ;; Передаем адрес переменной связи автоматов
@@ -320,7 +354,8 @@ _delay_call_PM:
     adc     tmp1, r0
     sts     DELAY_PM, tmp0
     sts     DELAY_PM+1, tmp1
-    ;; Проверяем выход
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
     lds     tmp0, MODE_PM
     cp      tmp0, r0
     breq    _switch_off_PM
@@ -329,9 +364,19 @@ _delay_call_PM:
 _switch_off_PM:
     OFF PORTD 3
 _switch_end_PM:
-    ;; Очищаем SWITCH и LINK
-    sts     SWITCH_PM, r0
+;;     ;; Включаем/выключаем таймер-0 в зависимости от BEEP
+;;     lds     tmp0, BEEP_PM
+;;     cp      tmp0, r0
+;;     breq    _beep_off_PM
+;;     out TCCR0B, r1
+;;     rjmp    _beep_end_PM
+;; _beep_off_PM:
+;;     out TCCR0B, r0
+;; _beep_end_PM:
+
+    ;; Очищаем LINK и BEEP
     sts     LINK_PM, r0
+    sts     BEEP_PM, r0
 
 
     ;; Ускорим процесс:
@@ -392,52 +437,76 @@ _init_pins:
     out     DDRB, tmp0
 
     .data
-SWITCH_IP: .byte 0x00
-LINK_IP:   .byte 0x00
-NEW_IP:    .byte 0x00
-STATE_IP:  .byte 0x00
-CNT_IP:    .byte 0x00
-MODE_IP:   .byte 0x00
-DELAY_IP:  .word 0x0000
+;; Переменная выходного воздействия второго автомата
+;; Он на 1 адрес выше чем LINK_IP, адрес которого мы передаем в =Y=
+;; перед вызовом второго автомата
+BEEP_IP:   .byte 0x00
+;; Переменные конечного автомата подавления дребезга
+LINK_IP:   .byte 0x00   ;; Выход (Y-1)
+NEW_IP:    .byte 0x00   ;; Вход (Y) (есть ли на пине напряжение)
+STATE_IP:  .byte 0x00   ;; Текущее состояние (X)
+CNT_IP:    .byte 0x00   ;; Счетчик сигналов (Z)
+;; Переменные конечного автомата выдержки
+;; Его вход - это LINK_IP, а выход - BEEP_IP
+MODE_IP:   .byte 0x00   ;; Текущее состояние (X)
+DELAY_IP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_IP:
     cbi    DDRB, 0
 
     .data
-SWITCH_SP: .byte 0x00
-LINK_SP:   .byte 0x00
-NEW_SP:    .byte 0x00
-STATE_SP:  .byte 0x00
-CNT_SP:    .byte 0x00
-MODE_SP:   .byte 0x00
-DELAY_SP:  .word 0x0000
+;; Переменная выходного воздействия второго автомата
+;; Он на 1 адрес выше чем LINK_SP, адрес которого мы передаем в =Y=
+;; перед вызовом второго автомата
+BEEP_SP:   .byte 0x00
+;; Переменные конечного автомата подавления дребезга
+LINK_SP:   .byte 0x00   ;; Выход (Y-1)
+NEW_SP:    .byte 0x00   ;; Вход (Y) (есть ли на пине напряжение)
+STATE_SP:  .byte 0x00   ;; Текущее состояние (X)
+CNT_SP:    .byte 0x00   ;; Счетчик сигналов (Z)
+;; Переменные конечного автомата выдержки
+;; Его вход - это LINK_SP, а выход - BEEP_SP
+MODE_SP:   .byte 0x00   ;; Текущее состояние (X)
+DELAY_SP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_SP:
     cbi    DDRA, 1
 
     .data
-SWITCH_PP: .byte 0x00
-LINK_PP:   .byte 0x00
-NEW_PP:    .byte 0x00
-STATE_PP:  .byte 0x00
-CNT_PP:    .byte 0x00
-MODE_PP:   .byte 0x00
-DELAY_PP:  .word 0x0000
+;; Переменная выходного воздействия второго автомата
+;; Он на 1 адрес выше чем LINK_PP, адрес которого мы передаем в =Y=
+;; перед вызовом второго автомата
+BEEP_PP:   .byte 0x00
+;; Переменные конечного автомата подавления дребезга
+LINK_PP:   .byte 0x00   ;; Выход (Y-1)
+NEW_PP:    .byte 0x00   ;; Вход (Y) (есть ли на пине напряжение)
+STATE_PP:  .byte 0x00   ;; Текущее состояние (X)
+CNT_PP:    .byte 0x00   ;; Счетчик сигналов (Z)
+;; Переменные конечного автомата выдержки
+;; Его вход - это LINK_PP, а выход - BEEP_PP
+MODE_PP:   .byte 0x00   ;; Текущее состояние (X)
+DELAY_PP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_PP:
     cbi    DDRA, 0
 
     .data
-SWITCH_PM: .byte 0x00
-LINK_PM:   .byte 0x00
-NEW_PM:    .byte 0x00
-STATE_PM:  .byte 0x00
-CNT_PM:    .byte 0x00
-MODE_PM:   .byte 0x00
-DELAY_PM:  .word 0x0000
+;; Переменная выходного воздействия второго автомата
+;; Он на 1 адрес выше чем LINK_PM, адрес которого мы передаем в =Y=
+;; перед вызовом второго автомата
+BEEP_PM:   .byte 0x00
+;; Переменные конечного автомата подавления дребезга
+LINK_PM:   .byte 0x00   ;; Выход (Y-1)
+NEW_PM:    .byte 0x00   ;; Вход (Y) (есть ли на пине напряжение)
+STATE_PM:  .byte 0x00   ;; Текущее состояние (X)
+CNT_PM:    .byte 0x00   ;; Счетчик сигналов (Z)
+;; Переменные конечного автомата выдержки
+;; Его вход - это LINK_PM, а выход - BEEP_PM
+MODE_PM:   .byte 0x00   ;; Текущее состояние (X)
+DELAY_PM:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_PM:
@@ -492,7 +561,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -640,7 +709,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:
@@ -698,6 +767,26 @@ _ge_ind2const_end_423:
     ldi     r23, 0
     st      X, r23
 _when_end_418:
+    push    ZH
+    push    ZL
+    ld      r23, Z+
+    ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r23, lo8(SIGNAL_TIME)
+    ldi     r25, hi8(SIGNAL_TIME)
+    cpc     r24, r25
+    brlo    _ge_ind2const_not_429
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_430
+_ge_ind2const_not_429:
+    SETRESULT FALSE
+_ge_ind2const_end_430:
+    IFFALSE _when_end_425
+    st      -Y, r1
+    ldi     r25, 1
+    st      X, r25
+_when_end_425:
     ;; progn-close
     rjmp    _case_end_405
 _case_end_405:
