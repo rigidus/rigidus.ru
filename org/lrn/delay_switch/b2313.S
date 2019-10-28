@@ -126,7 +126,7 @@ _timer_1_overflow:
     ;; Уменьшаем freq для частоты buzzer-а
     dec     freq
     cpi     freq, END_FREQ
-    brne    1f
+    brsh    1f                  ; Перейти если больше или равно
     ldi     freq, START_FREQ
 1:
 
