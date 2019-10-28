@@ -6,7 +6,7 @@
     #define tmp0 r17
     #define tmp1 r18
     #define freq r19
-    
+
     .equ DELAY_MAX, 0x0200
     .equ SIGNAL_TIME, 0x0010
     .equ START_FREQ, 0xAF
@@ -39,7 +39,7 @@
         cp      result, r0
         breq    \to
     .endm
-    
+
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -47,7 +47,7 @@
         mov     result, r1
         .endif
     .endm
-    
+
     .macro INVERT reg
         cp      result, r0
         breq    1f
@@ -57,27 +57,27 @@
         mov     result, r1
     2:
     .endm
-    
+
     .macro ON port pin
         sbi     \port, \pin
     .endm
-    
+
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-    
+
     .macro RED_ON
         ON      PORTB, 3
     .endm
-    
+
     .macro RED_OFF
         OFF     PORTB, 3
     .endm
-    
+
     .macro YELLOW_ON
         ON      PORTB, 1
     .endm
-    
+
     .macro YELLOW_OFF
         OFF     PORTB, 1
     .endm
@@ -564,7 +564,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -712,7 +712,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret 
+    ret
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:
