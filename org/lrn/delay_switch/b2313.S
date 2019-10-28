@@ -187,6 +187,7 @@ _switch_off_PM:
 _switch_end_PM:
     ;; Очищаем LINK
     sts     LINK_PM, r0
+
 _chain_IP:
     ;; Получаем состояние кнопки IP связанной с битом 1 порта A
 _get_btn_IP:
@@ -240,6 +241,7 @@ _switch_off_IP:
 _switch_end_IP:
     ;; Очищаем LINK
     sts     LINK_IP, r0
+
 _chain_PP:
     ;; Получаем состояние кнопки PP связанной с битом 0 порта A
 _get_btn_PP:
@@ -293,6 +295,7 @@ _switch_off_PP:
 _switch_end_PP:
     ;; Очищаем LINK
     sts     LINK_PP, r0
+
 _chain_SP:
     ;; Получаем состояние кнопки SP связанной с битом 2 порта D
 _get_btn_SP:
@@ -347,6 +350,7 @@ _switch_end_SP:
     ;; Очищаем LINK
     sts     LINK_SP, r0
 
+
     ;; Включаем/выключаем таймер-0 в зависимости от BEEPs
     lds     tmp0, BEEP_IP
     cp      tmp0, r0
@@ -376,7 +380,7 @@ _beep_end:
     sts     BEEP_PM, r0
 
     ;; Ускорим процесс:
-    ;; Set TCNT1 to 0x00E0
+    ;; Set TCNT1 to 0xE000
     ldi     tmp0, 0x00
     ldi     tmp1, 0xE0
     out     TCNT1H, tmp1
@@ -803,8 +807,6 @@ _ge_ind2const_end_436:
 _and_end_426:
     IFFALSE _when_end_425
     st      -Y, r1
-    ldi     r23, 1
-    st      X, r23
 _when_end_425:
     ;; progn-close
     rjmp    _case_end_405
