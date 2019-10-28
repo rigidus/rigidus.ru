@@ -6,7 +6,7 @@
     #define tmp0 r17
     #define tmp1 r18
     #define freq r19
-
+    
     .equ DELAY_MAX, 0x0200
     .equ SIGNAL_TIME, 0x0010
     .equ START_FREQ, 0xAF
@@ -39,7 +39,7 @@
         cp      result, r0
         breq    \to
     .endm
-
+    
     .macro SETRESULT val
         .ifc FALSE,\val
         mov     result, r0
@@ -47,7 +47,7 @@
         mov     result, r1
         .endif
     .endm
-
+    
     .macro INVERT reg
         cp      result, r0
         breq    1f
@@ -57,29 +57,38 @@
         mov     result, r1
     2:
     .endm
-
+    
     .macro ON port pin
         sbi     \port, \pin
     .endm
-
+    
     .macro OFF port pin
         cbi     \port, \pin
     .endm
-
-    .macro RED_ON
-        ON      PORTB, 3
-    .endm
-
-    .macro RED_OFF
-        OFF     PORTB, 3
-    .endm
-
+    
     .macro YELLOW_ON
-        ON      PORTB, 1
+        ON  PORTB, 4
     .endm
-
     .macro YELLOW_OFF
-        OFF     PORTB, 1
+        OFF PORTB, 4
+    .endm
+    .macro RED_ON
+        ON  PORTB, 3
+    .endm
+    .macro RED_OFF
+        OFF PORTB, 3
+    .endm
+    .macro WHITE_ON
+        ON  PORTD, 0
+    .endm
+    .macro WHITE_OFF
+        OFF PORTD, 0
+    .endm
+    .macro BLUE_ON
+        ON  PORTD, 1
+    .endm
+    .macro BLUE_OFF
+        OFF PORTD, 1
     .endm
 
     .text
@@ -424,17 +433,20 @@ _init:
 
     ;; Инициализируем выводы
 _init_pins:
-    ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
-    ;;                 |          |
-    ;;                 | +--------+
-    ;;                 | |
-    ;;                 v v
-    ldi     tmp0, 0b00011110;;<--pb0 - вход
-    ;;                  ^ ^
-    ;;                  | |
-    ;;                  | +PB1
-    ;;                  +PB3
+    ;; Настроить PB7:PB0 на выход
+    ;;              76543210
+    ldi     tmp0, 0b11111111
     out     DDRB, tmp0
+    ;; Настроить на выход
+    ;; BLUE:pd1, WHITE:pd0,
+    ;; OUT-IP:pd4, OUT-PP:pd5
+    ;; OUT-PM:pd6
+    ;; остальные - на вход
+    ;;              76543210
+    ldi     tmp0, 0b01110011
+    out     DDRD, tmp0
+    ;; Настроить A1
+
 
     .data
 ;; Переменная выходного воздействия второго автомата
@@ -544,6 +556,11 @@ _init_PM:
     ;; Разрешить прерывания
     sei
 
+    ;; YELLOW_ON
+    ;; RED_ON
+    ;; BLUE_ON
+    ;; WHITE_ON
+
     ;; DISABLE TIMER-0
     ;; Временно остановим таймер-0 чтобы не щелкал
     out TCCR0B, r0
@@ -564,7 +581,7 @@ _case_next_204:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0206
     rjmp    _label_case_1217
     rjmp    _label_case_2244
@@ -712,7 +729,7 @@ _case_next_404:
     adc     r25, r0
     push    r24
     push    r25
-    ret
+    ret 
     rjmp    _label_case_0406
     rjmp    _label_case_1412
 _label_case_0406:

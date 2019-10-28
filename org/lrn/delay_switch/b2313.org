@@ -2225,6 +2225,11 @@ TIFR-регистр нужно сбросить в 0:
 
       ;; Разрешить прерывания
       sei
+
+      ;; YELLOW_ON
+      ;; RED_ON
+      ;; BLUE_ON
+      ;; WHITE_ON
 #+END_SRC
 
 Первым делом настроим стек:
@@ -2240,17 +2245,20 @@ TIFR-регистр нужно сбросить в 0:
 #+NAME: init_pins
 #+BEGIN_SRC asm :noweb yes
   _init_pins:
-      ;; Настроить PB4(blink) и PB2(OC0A) на выход, остальные на вход
-      ;;                 |          |
-      ;;                 | +--------+
-      ;;                 | |
-      ;;                 v v
-      ldi     tmp0, 0b00011110;;<--pb0 - вход
-      ;;                  ^ ^
-      ;;                  | |
-      ;;                  | +PB1
-      ;;                  +PB3
+      ;; Настроить PB7:PB0 на выход
+      ;;              76543210
+      ldi     tmp0, 0b11111111
       out     DDRB, tmp0
+      ;; Настроить на выход
+      ;; BLUE:pd1, WHITE:pd0,
+      ;; OUT-IP:pd4, OUT-PP:pd5
+      ;; OUT-PM:pd6
+      ;; остальные - на вход
+      ;;              76543210
+      ldi     tmp0, 0b01110011
+      out     DDRD, tmp0
+      ;; Настроить A1
+
 
   <<inits>>
 #+END_SRC
@@ -2303,26 +2311,26 @@ TIFR-регистр нужно сбросить в 0:
             | | | +------+            | | | | | | +-[LED-GREEN]:pb1--+
             v v v v      |  +--vcc--+ | | | | | | | +---OUT-SP:pb0---+
   /=+=+=+=+=+=+=+=+=+=   |  |       | | | | | | | | | +-OUT-PM:pd6---+
-  |     ^ ^ ^ ^ ^ ^  /   |  |       v v v v V V v v v v              |
-  |     | | | | | |  \   |  |   /===+=+=+=+=O=O=+=+=+=+===\          |
-  | aref+ | | | | |  /   |  |   |   ^ ^ ^ ^ ^ ^           |          |
-  |    gnd+ | | | |  \   |  |   |   | | | | | |           |          |
-  |     (13)+ | | |  /   |  |   |vcc+ | | | | |           |          |
-  |       (12)+ | |  \   |  |   |  sck+ | | | |           |          |
-  |         (11)+ |  /   |  |   |   miso+ | | |           |          |
-  |           (10)+  \   |  |   |     mosi+ | |           |          |
-  |                  /   |  |   |        pb4+ |           |          |
-  |                  \   |  |   |          pb3+           |          |
+  |     ^ ^ ^ ^ ^ ^  /   |  |       v v v v v v v v v v              |
+  |     | | | | | |  \   |  |   /===+=+=+=+=o=o=o=o=o=o===\          |
+  | aref+ | | | | |  /   |  |   |   ^ ^ ^ ^               |          |
+  |    gnd+ | | | |  \   |  |   |   | | | |               |          |
+  |     (13)+ | | |  /   |  |   |vcc+ | | |               |          |
+  |       (12)+ | |  \   |  |   |  sck+ | |               |          |
+  |         (11)+ |  /   |  |   |   miso+ |               |          |
+  |           (10)+  \   |  |   |     mosi+               |          |
+  |                  /   |  |   |                         |          |
+  |                  \   |  |   |                         |          |
   |                  /   |  |   |                         |          |
   |        (gnd)+    \   |  |   |                         |          |
   |      (gnd)+ |    /   |  |   |      IN-PM:pd3+         |          |
   |     (5v)+ | |    \   |  |   |    IN-SP:pd2+ |         |          |
   | (3.3v)+ | | |    /   |  |   |  IN-PP:pa0+ | |         |          |
   |reset+ | | | |    \   |  |   |IN-IP:pa1+ | | |         |          |
-  |     | | | | |    /   |  |   |   :pd1+ | | | |     +gnd|          |
-  |     v v v v v    \   |  |   | :pd0+ | | | | |     |   |          |
-  \=+=+=+=+=+=+=+=+=+=   |  |   |     V V V V V V     v   |          |
-        ^   ^ ^ ^        |  |   \===+=o=o=+=+=+=+=+=+=+===/          |
+  |     | | | | |    /   |  |   |         | | | |     +gnd|          |
+  |     v v v v v    \   |  |   |         | | | |     |   |          |
+  \=+=+=+=+=+=+=+=+=+=   |  |   |         V V V V     v   |          |
+        ^   ^ ^ ^        |  |   \===+=O=O=I=I=I=I=o=o=+===/          |
         |   | | |        |  |       ^ ^ ^         ^ ^ ^              |
         |   +------vcc------+       | | |         | | |              |
         |     | |        |    reset | | |OUT-IP:pd4 | |              |
@@ -2367,7 +2375,7 @@ TIFR-регистр нужно сбросить в 0:
 * Макросы
 
 #+NAME: asmmacro
-#+BEGIN_SRC asm
+#+BEGIN_SRC asm :noweb yes
   .macro IFFALSE to
       cp      result, r0
       breq    \to
@@ -2399,35 +2407,20 @@ TIFR-регистр нужно сбросить в 0:
       cbi     \port, \pin
   .endm
 
-  .macro RED_ON
-      ON      PORTB, 5
-  .endm
+  <<on_off_led(id="YELLOW", port="B", bit="4")>>
+  <<on_off_led(id="RED", port="B", bit="3")>>
+  <<on_off_led(id="WHITE", port="D", bit="0")>>
+  <<on_off_led(id="BLUE", port="D", bit="1")>>
+#+END_SRC
 
-  .macro RED_OFF
-      OFF     PORTB, 5
-  .endm
+** Макросы включения/выключения LED
 
-  .macro YELLOW_ON
-      ON      PORTB, 4
+#+NAME: on_off_led
+#+BEGIN_SRC asm :var id="@" port="@" bit="@"
+  .macro &id_ON
+      ON  PORT&port, &bit
   .endm
-
-  .macro YELLOW_OFF
-      OFF     PORTB, 4
-  .endm
-
-  .macro WHITE_ON
-      ON      PORTB, 4
-  .endm
-
-  .macro WHITE_OFF
-      OFF     PORTB, 4
-  .endm
-
-  .macro BLUE_ON
-      ON      PORTB, 4
-  .endm
-
-  .macro BLUE_OFF
-      OFF     PORTB, 4
+  .macro &id_OFF
+      OFF PORT&port, &bit
   .endm
 #+END_SRC
