@@ -808,11 +808,11 @@ _infloop:
     rjmp    _infloop
 
 _blink_green:
-    sbic    PORTB, 4
+    sbic    PORTB, 1
     rjmp    _bg_clean
-    sbi     PORTB, 4
+    sbi     PORTB, 1
 _bg_ret:
     ret
 _bg_clean:
-    cbi     PORTB, 4
+    cbi     PORTB, 1
     rjmp    _bg_ret
