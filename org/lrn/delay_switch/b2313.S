@@ -7,8 +7,10 @@
     #define tmp1 r18
     #define freq r19
     
-    .equ DELAY_MAX, 0x0100
-    .equ SIGNAL_TIME, 0x00FF
+    .equ DELAY_MAX, 0x0200
+    .equ SIGNAL_TIME, 0x0010
+    .equ START_FREQ, 0xAF
+    .equ END_FREQ, 0x7F
 
     .equ SPL, 0x3D
     .equ SREG, 0x3F
@@ -123,7 +125,10 @@ _timer_1_overflow:
     ;; [[[=== Высота звука ===]]]
     ;; Уменьшаем freq для частоты buzzer-а
     dec     freq
-    ldi     freq, 0xFF
+    cpi     freq, END_FREQ
+    brne    1f
+    ldi     freq, START_FREQ
+1:
 
     ;; [[[=== Мигание зеленым светодиодом ===]]]
     ;; Переключим состояние зеленого светодиода
@@ -528,6 +533,9 @@ _init_PM:
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
     ldi     tmp0, 0b10000001
     out     TIMSK, tmp0
+
+    ;; Начальное значение
+    ldi     freq, START_FREQ
 
     ;; Разрешить прерывания
     sei
