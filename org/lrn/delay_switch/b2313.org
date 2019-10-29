@@ -418,8 +418,8 @@
 Теперь по полученной картинке можно "поводить пальцем" и убедиться в ее
 правильности. После этого можно попробовать получить код:
 
-#+NAME: grouping
-#+BEGIN_SRC elisp :var table=btn_fsm :results value pp :hlines no :colnames yes
+#+NAME: make_fsm_group
+#+BEGIN_SRC elisp
   (defun make-fsm-group (param)
     (let ((result))
       (mapcar #'(lambda (par)
@@ -437,7 +437,10 @@
                                       (list val)))))))
               param)
       (nreverse result)))
+#+END_SRC
 
+#+NAME: grouping
+#+BEGIN_SRC elisp :var table=btn_fsm depends=make_fsm_group :results value pp :hlines no :colnames yes
   (make-fsm-group table)
 #+END_SRC
 
@@ -460,8 +463,8 @@
 узлам. Теперь мы можем обработать его, чтобы получить псевдокод
 реализации конечного автомата.
 
-#+NAME: pseudocode
-#+BEGIN_SRC elisp :var lst=grouping :results value pp
+#+NAME: make_fsm_code
+#+BEGIN_SRC elisp
   (defun make-fsm-code (param)
     (let* ((param  (read param))
            (cnt  0)
@@ -491,7 +494,10 @@
                                           `(set-state X ,to)))))
                               (cdr par))))))
             param))))
+#+END_SRC
 
+#+NAME: pseudocode
+#+BEGIN_SRC elisp :var lst=grouping depends=make_fsm_code :results value pp
   (make-fsm-code lst)
 #+END_SRC
 
@@ -953,14 +959,18 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 
 Теперь, когда все операции определены, мы можем получить весь код
 
-#+NAME: codegen
-#+BEGIN_SRC elisp :var z=pseudocode a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=rsetout
+#+NAME: codegen_def
+#+BEGIN_SRC elisp
   (defun codegen (tree basegen)
     (let ((gensym-counter basegen))
       (let ((ssa))
         (recur tree)
         (nreverse ssa))))
+#+END_SRC
 
+
+#+NAME: codegen
+#+BEGIN_SRC elisp :var cd=codegen_def z=pseudocode a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=rsetout
   (format "%s" (pp (codegen (read z) 200)))
 #+END_SRC
 
@@ -1024,8 +1034,8 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 
 Теперь, когда у нас есть регистры, получаем листинг
 
-#+NAME: gencode_fsmbtn
-#+BEGIN_SRC elisp :var all=codegen r=regs :results output org :wrap "SRC asm"
+#+NAME: gen_code_def
+#+BEGIN_SRC elisp :var r=regs :results output org :wrap "SRC asm"
   (defun gen-code (ops)
     (let* ((allocs)
            (*registers* (get-reg-list 20 26))
@@ -1127,7 +1137,12 @@ Instruction Pointer командой CALL, потом вынем его в ре�
                   (funcall make-cmd (car op) (cadr op) (caddr op)))
                  (t (princ (format "::=-> %s : %s\n" (car op) op)))))
        ops)))
+#+END_SRC
 
+Вызываем
+
+#+NAME: gencode_fsmbtn
+#+BEGIN_SRC elisp :var gcd=gen_code_def all=codegen r=regs :results output org :wrap "SRC asm"
   (gen-code (read all))
 #+END_SRC
 
@@ -1193,7 +1208,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Группируем состояния
 
 #+NAME: prg_group
-#+BEGIN_SRC elisp :var table=prg_fsm :results value pp :hlines no :colnames yes
+#+BEGIN_SRC elisp :var table=prg_fsm depends=make_fsm_group :results value pp :hlines no :colnames yes
   (make-fsm-group table)
 #+END_SRC
 
@@ -1208,7 +1223,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 Создаем псевдокод
 
 #+NAME: prg_code
-#+BEGIN_SRC elisp :var lst=prg_group :results value pp
+#+BEGIN_SRC elisp :var lst=prg_group depends=make_fsm_code :results value pp
   (make-fsm-code lst)
 #+END_SRC
 
@@ -1351,7 +1366,7 @@ Instruction Pointer командой CALL, потом вынем его в ре�
 [TODO:gmm]
 
 #+NAME: all_two
-#+BEGIN_SRC elisp :var z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout n2=rnot
+#+BEGIN_SRC elisp :var cd=codegen_def z=prg_code a=recur b=rnopprogn c=rclear c2=rclear2 d=req2 e=rsetstate f=rand g=rwhen h=rless i=rinc j=rge j2=rge2 k=rcase l=ron m=roff n=rsetout n2=rnot
   (format "%s" (pp (codegen (read z) 400)))
 #+END_SRC
 
@@ -2247,10 +2262,6 @@ TIFR-регистр нужно сбросить в 0:
       ;; Разрешить прерывания
       sei
 
-      ;; YELLOW_ON
-      ;; RED_ON
-      ;; BLUE_ON
-      ;; WHITE_ON
 #+END_SRC
 
 Первым делом настроим стек:
@@ -2437,7 +2448,7 @@ TIFR-регистр нужно сбросить в 0:
 ** Макросы включения/выключения LED
 
 #+NAME: on_off_led
-#+BEGIN_SRC asm :var id="@" port="@" bit="@"
+#+BEGIN_SRC asm :var id="@" port="@" bit="@" :var depends=asm_expander
   .macro &id_ON
       ON  PORT&port, &bit
   .endm

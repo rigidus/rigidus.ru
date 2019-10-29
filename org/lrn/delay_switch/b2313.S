@@ -594,10 +594,6 @@ _init_PM:
     ;; Разрешить прерывания
     sei
 
-    ;; YELLOW_ON
-    ;; RED_ON
-    ;; BLUE_ON
-    ;; WHITE_ON
 
     ;; DISABLE TIMER-0
     ;; Временно остановим таймер-0 чтобы не щелкал
