@@ -360,6 +360,43 @@ _switch_end_SP:
     sts     LINK_SP, r0
 
 
+    ;; Включаем/выключаем  светодиоды в зависимости от BEEPs
+    ;; IP
+    lds     tmp0, BEEP_IP
+    cpse    tmp0, r0
+    rjmp    1f
+    WHITE_OFF
+    rjmp    2f
+1:
+    WHITE_ON
+2:
+    ;; SP
+    lds     tmp0, BEEP_SP
+    cpse    tmp0, r0
+    rjmp    1f
+    YELLOW_OFF
+    rjmp    2f
+1:
+    YELLOW_ON
+2:
+    ;; PP
+    lds     tmp0, BEEP_PP
+    cpse    tmp0, r0
+    rjmp    1f
+    BLUE_OFF
+    rjmp    2f
+1:
+    BLUE_ON
+2:
+    ;; PM
+    lds     tmp0, BEEP_PM
+    cpse    tmp0, r0
+    rjmp    1f
+    RED_OFF
+    rjmp    2f
+1:
+    RED_ON
+2:
     ;; Включаем/выключаем таймер-0 в зависимости от BEEPs
     lds     tmp0, BEEP_IP
     cp      tmp0, r0
@@ -379,6 +416,7 @@ _switch_end_SP:
 
     out TCCR0B, r0
     rjmp    _beep_end
+
 _beep_on:
     out TCCR0B, r1
 _beep_end:
