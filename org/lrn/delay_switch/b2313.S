@@ -165,200 +165,38 @@ _debounce_call_PM:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PM
-_delay_call_PM:
-    ;; Передаем адрес переменной состояния автомата выдержки
-    ldi     xl, lo8(MODE_PM)
-    ldi     xh, hi8(MODE_PM)
-    ;; Передаем адрес переменной связи автоматов
-    ldi     yl, lo8(LINK_PM)
-    ldi     yh, hi8(LINK_PM)
-    ;; Передаем адрес переменной задержки
-    ldi     zl, lo8(DELAY_PM)
-    ldi     zh, hi8(DELAY_PM)
-    ;; Вызываем конечный автомат обработки интервалов
-    rcall   _fsmprg
-    ;; Увеличиваем счетчик задержки
-    lds     tmp0, DELAY_PM
-    lds     tmp1, DELAY_PM+1
-    add     tmp0, r1
-    adc     tmp1, r0
-    sts     DELAY_PM, tmp0
-    sts     DELAY_PM+1, tmp1
-    ;; Проверяем состояние автомата выдержки
-    ;; И в зависимости от него управляем нагрузкой
-    lds     tmp0, MODE_PM
-    cp      tmp0, r0
-    breq    _switch_off_PM
-    ON PORTD 6
-    rjmp    _switch_end_PM
-_switch_off_PM:
-    OFF PORTD 6
-_switch_end_PM:
-    ;; Очищаем LINK
-    sts     LINK_PM, r0
-
-_chain_IP:
-    ;; Получаем состояние кнопки IP связанной с битом 1 порта A
-_get_btn_IP:
-    sbis    PINA, 1
-    rjmp    _not_press_IP
-    sts     NEW_IP, r1
-    rjmp    _end_press_handler_IP
-_not_press_IP:
-    sts     NEW_IP, r0
-_end_press_handler_IP:
-
-    ;; Вызываем конечный автомат подавления дребезга для кнопки IP
-_debounce_call_IP:
-    ldi     xl, lo8(STATE_IP)
-    ldi     xh, hi8(STATE_IP)
-    ldi     yl, lo8(NEW_IP)
-    ldi     yh, hi8(NEW_IP)
-    ldi     zl, lo8(CNT_IP)
-    ldi     zh, hi8(CNT_IP)
-    rcall   _fsmbtn
-
-    ;; Вызываем конечный автомат отработки задержки для кнопки IP
-_delay_call_IP:
-    ;; Передаем адрес переменной состояния автомата выдержки
-    ldi     xl, lo8(MODE_IP)
-    ldi     xh, hi8(MODE_IP)
-    ;; Передаем адрес переменной связи автоматов
-    ldi     yl, lo8(LINK_IP)
-    ldi     yh, hi8(LINK_IP)
-    ;; Передаем адрес переменной задержки
-    ldi     zl, lo8(DELAY_IP)
-    ldi     zh, hi8(DELAY_IP)
-    ;; Вызываем конечный автомат обработки интервалов
-    rcall   _fsmprg
-    ;; Увеличиваем счетчик задержки
-    lds     tmp0, DELAY_IP
-    lds     tmp1, DELAY_IP+1
-    add     tmp0, r1
-    adc     tmp1, r0
-    sts     DELAY_IP, tmp0
-    sts     DELAY_IP+1, tmp1
-    ;; Проверяем состояние автомата выдержки
-    ;; И в зависимости от него управляем нагрузкой
-    lds     tmp0, MODE_IP
-    cp      tmp0, r0
-    breq    _switch_off_IP
-    ON PORTD 4
-    rjmp    _switch_end_IP
-_switch_off_IP:
-    OFF PORTD 4
-_switch_end_IP:
-    ;; Очищаем LINK
-    sts     LINK_IP, r0
-
-_chain_PP:
-    ;; Получаем состояние кнопки PP связанной с битом 0 порта A
-_get_btn_PP:
-    sbis    PINA, 0
-    rjmp    _not_press_PP
-    sts     NEW_PP, r1
-    rjmp    _end_press_handler_PP
-_not_press_PP:
-    sts     NEW_PP, r0
-_end_press_handler_PP:
-
-    ;; Вызываем конечный автомат подавления дребезга для кнопки PP
-_debounce_call_PP:
-    ldi     xl, lo8(STATE_PP)
-    ldi     xh, hi8(STATE_PP)
-    ldi     yl, lo8(NEW_PP)
-    ldi     yh, hi8(NEW_PP)
-    ldi     zl, lo8(CNT_PP)
-    ldi     zh, hi8(CNT_PP)
-    rcall   _fsmbtn
-
-    ;; Вызываем конечный автомат отработки задержки для кнопки PP
-_delay_call_PP:
-    ;; Передаем адрес переменной состояния автомата выдержки
-    ldi     xl, lo8(MODE_PP)
-    ldi     xh, hi8(MODE_PP)
-    ;; Передаем адрес переменной связи автоматов
-    ldi     yl, lo8(LINK_PP)
-    ldi     yh, hi8(LINK_PP)
-    ;; Передаем адрес переменной задержки
-    ldi     zl, lo8(DELAY_PP)
-    ldi     zh, hi8(DELAY_PP)
-    ;; Вызываем конечный автомат обработки интервалов
-    rcall   _fsmprg
-    ;; Увеличиваем счетчик задержки
-    lds     tmp0, DELAY_PP
-    lds     tmp1, DELAY_PP+1
-    add     tmp0, r1
-    adc     tmp1, r0
-    sts     DELAY_PP, tmp0
-    sts     DELAY_PP+1, tmp1
-    ;; Проверяем состояние автомата выдержки
-    ;; И в зависимости от него управляем нагрузкой
-    lds     tmp0, MODE_PP
-    cp      tmp0, r0
-    breq    _switch_off_PP
-    ON PORTD 5
-    rjmp    _switch_end_PP
-_switch_off_PP:
-    OFF PORTD 5
-_switch_end_PP:
-    ;; Очищаем LINK
-    sts     LINK_PP, r0
-
-_chain_SP:
-    ;; Получаем состояние кнопки SP связанной с битом 2 порта D
-_get_btn_SP:
-    sbis    PIND, 2
-    rjmp    _not_press_SP
-    sts     NEW_SP, r1
-    rjmp    _end_press_handler_SP
-_not_press_SP:
-    sts     NEW_SP, r0
-_end_press_handler_SP:
-
-    ;; Вызываем конечный автомат подавления дребезга для кнопки SP
-_debounce_call_SP:
-    ldi     xl, lo8(STATE_SP)
-    ldi     xh, hi8(STATE_SP)
-    ldi     yl, lo8(NEW_SP)
-    ldi     yh, hi8(NEW_SP)
-    ldi     zl, lo8(CNT_SP)
-    ldi     zh, hi8(CNT_SP)
-    rcall   _fsmbtn
-
-    ;; Вызываем конечный автомат отработки задержки для кнопки SP
-_delay_call_SP:
-    ;; Передаем адрес переменной состояния автомата выдержки
-    ldi     xl, lo8(MODE_SP)
-    ldi     xh, hi8(MODE_SP)
-    ;; Передаем адрес переменной связи автоматов
-    ldi     yl, lo8(LINK_SP)
-    ldi     yh, hi8(LINK_SP)
-    ;; Передаем адрес переменной задержки
-    ldi     zl, lo8(DELAY_SP)
-    ldi     zh, hi8(DELAY_SP)
-    ;; Вызываем конечный автомат обработки интервалов
-    rcall   _fsmprg
-    ;; Увеличиваем счетчик задержки
-    lds     tmp0, DELAY_SP
-    lds     tmp1, DELAY_SP+1
-    add     tmp0, r1
-    adc     tmp1, r0
-    sts     DELAY_SP, tmp0
-    sts     DELAY_SP+1, tmp1
-    ;; Проверяем состояние автомата выдержки
-    ;; И в зависимости от него управляем нагрузкой
-    lds     tmp0, MODE_SP
-    cp      tmp0, r0
-    breq    _switch_off_SP
-    ON PORTB 0
-    rjmp    _switch_end_SP
-_switch_off_SP:
-    OFF PORTB 0
-_switch_end_SP:
-    ;; Очищаем LINK
-    sts     LINK_SP, r0
-
+;; _delay_call_PM:
+;;     ;; Передаем адрес переменной состояния автомата выдержки
+;;     ldi     xl, lo8(MODE_PM)
+;;     ldi     xh, hi8(MODE_PM)
+;;     ;; Передаем адрес переменной связи автоматов
+;;     ldi     yl, lo8(LINK_PM)
+;;     ldi     yh, hi8(LINK_PM)
+;;     ;; Передаем адрес переменной задержки
+;;     ldi     zl, lo8(DELAY_PM)
+;;     ldi     zh, hi8(DELAY_PM)
+;;     ;; Вызываем конечный автомат обработки интервалов
+;;     rcall   _fsmprg
+;;     ;; Увеличиваем счетчик задержки
+;;     lds     tmp0, DELAY_PM
+;;     lds     tmp1, DELAY_PM+1
+;;     add     tmp0, r1
+;;     adc     tmp1, r0
+;;     sts     DELAY_PM, tmp0
+;;     sts     DELAY_PM+1, tmp1
+;;     ;; Проверяем состояние автомата выдержки
+;;     ;; И в зависимости от него управляем нагрузкой
+;;     lds     tmp0, MODE_PM
+;;     cp      tmp0, r0
+;;     breq    _switch_off_PM
+;;     ON PORTD 6
+;;     rjmp    _switch_end_PM
+;; _switch_off_PM:
+;;     OFF PORTD 6
+;; _switch_end_PM:
+;;     ;; Очищаем LINK
+;;     sts     LINK_PM, r0
+;; 
 
     ;; Включаем/выключаем  светодиоды в зависимости от BEEPs
     ;; IP
@@ -503,8 +341,16 @@ DELAY_IP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_IP:
-    cbi    DDRA, 1
-
+    cbi     DDRA, 1
+    ;; Важно не забывать инициализацию нулями в начале программы
+    ;; Если этого не сделать можно потерять еще пару часов отладки
+    sts     BEEP_IP, r0
+    sts     LINK_IP, r0
+    sts     NEW_IP, r0
+    sts     STATE_IP, r0
+    sts     CNT_IP, r0
+    sts     MODE_IP, r0
+    sts     DELAY_IP, r0
     .data
 ;; Переменная выходного воздействия второго автомата
 ;; Он на 1 адрес выше чем LINK_SP, адрес которого мы передаем в =Y=
@@ -522,8 +368,16 @@ DELAY_SP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_SP:
-    cbi    DDRD, 2
-
+    cbi     DDRD, 2
+    ;; Важно не забывать инициализацию нулями в начале программы
+    ;; Если этого не сделать можно потерять еще пару часов отладки
+    sts     BEEP_SP, r0
+    sts     LINK_SP, r0
+    sts     NEW_SP, r0
+    sts     STATE_SP, r0
+    sts     CNT_SP, r0
+    sts     MODE_SP, r0
+    sts     DELAY_SP, r0
     .data
 ;; Переменная выходного воздействия второго автомата
 ;; Он на 1 адрес выше чем LINK_PP, адрес которого мы передаем в =Y=
@@ -541,8 +395,16 @@ DELAY_PP:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_PP:
-    cbi    DDRA, 0
-
+    cbi     DDRA, 0
+    ;; Важно не забывать инициализацию нулями в начале программы
+    ;; Если этого не сделать можно потерять еще пару часов отладки
+    sts     BEEP_PP, r0
+    sts     LINK_PP, r0
+    sts     NEW_PP, r0
+    sts     STATE_PP, r0
+    sts     CNT_PP, r0
+    sts     MODE_PP, r0
+    sts     DELAY_PP, r0
     .data
 ;; Переменная выходного воздействия второго автомата
 ;; Он на 1 адрес выше чем LINK_PM, адрес которого мы передаем в =Y=
@@ -560,8 +422,16 @@ DELAY_PM:  .word 0x0000 ;; Счетчик выдержки (Z)
 
     .text
 _init_PM:
-    cbi    DDRD, 3
-
+    cbi     DDRD, 3
+    ;; Важно не забывать инициализацию нулями в начале программы
+    ;; Если этого не сделать можно потерять еще пару часов отладки
+    sts     BEEP_PM, r0
+    sts     LINK_PM, r0
+    sts     NEW_PM, r0
+    sts     STATE_PM, r0
+    sts     CNT_PM, r0
+    sts     MODE_PM, r0
+    sts     DELAY_PM, r0
 
     ;; Инициализация таймера-1
     ;; Выставляем предделитель
