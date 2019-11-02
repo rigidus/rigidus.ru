@@ -783,118 +783,118 @@ _case_end_205:
     ret
 
 _fsmprg:
-     rcall   _case_next_404
- _case_next_404:
-     pop     r25
-     pop     r24
-     ldi     r23, 11
-     add     r24, r23
-     adc     r25, r0
-     ld      r23, X
-     add     r24, r23
-     adc     r25, r0
-     push    r24
-     push    r25
-     ret 
-     rjmp    _label_case_0406
-     rjmp    _label_case_1412
- _label_case_0406:
-     ;; progn-open
-     ld      r25, Y
-     cp      r25, r1
-     brne    _equal_ind2const_not_409
-     SETRESULT TRUE
-     rjmp    _equal_ind2const_end_410
- _equal_ind2const_not_409:
-     SETRESULT FALSE
- _equal_ind2const_end_410:
-     IFFALSE _when_end_407
-     push    ZL
-     push    ZH
-     st      Z+, r0
-     st      Z, r0
-     pop     ZH
-     pop     ZL
-     ldi     r25, 1
-     st      X, r25
- _when_end_407:
-     ;; progn-close
-     rjmp    _case_end_405
- _label_case_1412:
-     ;; progn-open
-     ld      r25, Y
-     cp      r25, r1
-     brne    _equal_ind2const_not_415
-     SETRESULT TRUE
-     rjmp    _equal_ind2const_end_416
- _equal_ind2const_not_415:
-     SETRESULT FALSE
- _equal_ind2const_end_416:
-     IFFALSE _when_end_413
-     ldi     r25, 0
-     st      X, r25
- _when_end_413:
-     push    ZH
-     push    ZL
-     ld      r25, Z+
-     ld      r24, Z
-     pop     ZL
-     pop     ZH
-     cpi     r25, lo8(DELAY_MAX)
-     ldi     r23, hi8(DELAY_MAX)
-     cpc     r24, r23
-     brlo    _ge_ind2const_not_422
-     SETRESULT TRUE
-     rjmp    _ge_ind2const_end_423
- _ge_ind2const_not_422:
-     SETRESULT FALSE
- _ge_ind2const_end_423:
-     IFFALSE _when_end_418
-     ldi     r23, 0
-     st      X, r23
- _when_end_418:
-     push    ZH
-     push    ZL
-     ld      r23, Z+
-     ld      r24, Z
-     pop     ZL
-     pop     ZH
-     cpi     r23, lo8(SIGNAL_TIME)
-     ldi     r25, hi8(SIGNAL_TIME)
-     cpc     r24, r25
-     brlo    _ge_ind2const_not_430
-     SETRESULT TRUE
-     rjmp    _ge_ind2const_end_431
- _ge_ind2const_not_430:
-     SETRESULT FALSE
- _ge_ind2const_end_431:
-     IFFALSE _and_end_426
-     push    ZH
-     push    ZL
-     ld      r25, Z+
-     ld      r24, Z
-     pop     ZL
-     pop     ZH
-     cpi     r25, lo8(DELAY_MAX)
-     ldi     r23, hi8(DELAY_MAX)
-     cpc     r24, r23
-     brlo    _ge_ind2const_not_435
-     SETRESULT TRUE
-     rjmp    _ge_ind2const_end_436
- _ge_ind2const_not_435:
-     SETRESULT FALSE
- _ge_ind2const_end_436:
-     INVERT result
-     IFFALSE _and_end_426
-     SETRESULT TRUE
- _and_end_426:
-     IFFALSE _when_end_425
-     st      -Y, r1
- _when_end_425:
-     ;; progn-close
-     rjmp    _case_end_405
- _case_end_405:
- 
+    rcall   _case_next_404
+_case_next_404:
+    pop     r25
+    pop     r24
+    ldi     r23, 11
+    add     r24, r23
+    adc     r25, r0
+    ld      r23, X
+    add     r24, r23
+    adc     r25, r0
+    push    r24
+    push    r25
+    ret 
+    rjmp    _label_case_0406
+    rjmp    _label_case_1412
+_label_case_0406:
+    ;; progn-open
+    ld      r25, Y
+    cp      r25, r1
+    brne    _equal_ind2const_not_409
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_410
+_equal_ind2const_not_409:
+    SETRESULT FALSE
+_equal_ind2const_end_410:
+    IFFALSE _when_end_407
+    push    ZL
+    push    ZH
+    st      Z+, r0
+    st      Z, r0
+    pop     ZH
+    pop     ZL
+    ldi     r25, 1
+    st      X, r25
+_when_end_407:
+    ;; progn-close
+    rjmp    _case_end_405
+_label_case_1412:
+    ;; progn-open
+    ld      r25, Y
+    cp      r25, r1
+    brne    _equal_ind2const_not_415
+    SETRESULT TRUE
+    rjmp    _equal_ind2const_end_416
+_equal_ind2const_not_415:
+    SETRESULT FALSE
+_equal_ind2const_end_416:
+    IFFALSE _when_end_413
+    ldi     r25, 0
+    st      X, r25
+_when_end_413:
+    push    ZH
+    push    ZL
+    ld      r25, Z+
+    ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r25, lo8(DELAY_MAX)
+    ldi     r23, hi8(DELAY_MAX)
+    cpc     r24, r23
+    brlo    _ge_ind2const_not_422
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_423
+_ge_ind2const_not_422:
+    SETRESULT FALSE
+_ge_ind2const_end_423:
+    IFFALSE _when_end_418
+    ldi     r23, 0
+    st      X, r23
+_when_end_418:
+    push    ZH
+    push    ZL
+    ld      r23, Z+
+    ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r23, lo8(SIGNAL_TIME)
+    ldi     r25, hi8(SIGNAL_TIME)
+    cpc     r24, r25
+    brlo    _ge_ind2const_not_430
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_431
+_ge_ind2const_not_430:
+    SETRESULT FALSE
+_ge_ind2const_end_431:
+    IFFALSE _and_end_426
+    push    ZH
+    push    ZL
+    ld      r25, Z+
+    ld      r24, Z
+    pop     ZL
+    pop     ZH
+    cpi     r25, lo8(DELAY_MAX)
+    ldi     r23, hi8(DELAY_MAX)
+    cpc     r24, r23
+    brlo    _ge_ind2const_not_435
+    SETRESULT TRUE
+    rjmp    _ge_ind2const_end_436
+_ge_ind2const_not_435:
+    SETRESULT FALSE
+_ge_ind2const_end_436:
+    INVERT result
+    IFFALSE _and_end_426
+    SETRESULT TRUE
+_and_end_426:
+    IFFALSE _when_end_425
+    st      -Y, r1
+_when_end_425:
+    ;; progn-close
+    rjmp    _case_end_405
+_case_end_405:
+
     ret
 
 _infloop:
