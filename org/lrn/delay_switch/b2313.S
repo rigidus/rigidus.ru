@@ -165,38 +165,200 @@ _debounce_call_PM:
     rcall   _fsmbtn
 
     ;; Вызываем конечный автомат отработки задержки для кнопки PM
-;; _delay_call_PM:
-;;     ;; Передаем адрес переменной состояния автомата выдержки
-;;     ldi     xl, lo8(MODE_PM)
-;;     ldi     xh, hi8(MODE_PM)
-;;     ;; Передаем адрес переменной связи автоматов
-;;     ldi     yl, lo8(LINK_PM)
-;;     ldi     yh, hi8(LINK_PM)
-;;     ;; Передаем адрес переменной задержки
-;;     ldi     zl, lo8(DELAY_PM)
-;;     ldi     zh, hi8(DELAY_PM)
-;;     ;; Вызываем конечный автомат обработки интервалов
-;;     rcall   _fsmprg
-;;     ;; Увеличиваем счетчик задержки
-;;     lds     tmp0, DELAY_PM
-;;     lds     tmp1, DELAY_PM+1
-;;     add     tmp0, r1
-;;     adc     tmp1, r0
-;;     sts     DELAY_PM, tmp0
-;;     sts     DELAY_PM+1, tmp1
-;;     ;; Проверяем состояние автомата выдержки
-;;     ;; И в зависимости от него управляем нагрузкой
-;;     lds     tmp0, MODE_PM
-;;     cp      tmp0, r0
-;;     breq    _switch_off_PM
-;;     ON PORTD 6
-;;     rjmp    _switch_end_PM
-;; _switch_off_PM:
-;;     OFF PORTD 6
-;; _switch_end_PM:
-;;     ;; Очищаем LINK
-;;     sts     LINK_PM, r0
-;; 
+_delay_call_PM:
+    ;; Передаем адрес переменной состояния автомата выдержки
+    ldi     xl, lo8(MODE_PM)
+    ldi     xh, hi8(MODE_PM)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_PM)
+    ldi     yh, hi8(LINK_PM)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_PM)
+    ldi     zh, hi8(DELAY_PM)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_PM
+    lds     tmp1, DELAY_PM+1
+    add     tmp0, r1
+    adc     tmp1, r0
+    sts     DELAY_PM, tmp0
+    sts     DELAY_PM+1, tmp1
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
+    lds     tmp0, MODE_PM
+    cp      tmp0, r0
+    breq    _switch_off_PM
+    ON PORTD 6
+    rjmp    _switch_end_PM
+_switch_off_PM:
+    OFF PORTD 6
+_switch_end_PM:
+    ;; Очищаем LINK
+    sts     LINK_PM, r0
+
+_chain_IP:
+    ;; Получаем состояние кнопки IP связанной с битом 1 порта A
+_get_btn_IP:
+    sbis    PINA, 1
+    rjmp    _not_press_IP
+    sts     NEW_IP, r1
+    rjmp    _end_press_handler_IP
+_not_press_IP:
+    sts     NEW_IP, r0
+_end_press_handler_IP:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки IP
+_debounce_call_IP:
+    ldi     xl, lo8(STATE_IP)
+    ldi     xh, hi8(STATE_IP)
+    ldi     yl, lo8(NEW_IP)
+    ldi     yh, hi8(NEW_IP)
+    ldi     zl, lo8(CNT_IP)
+    ldi     zh, hi8(CNT_IP)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки IP
+_delay_call_IP:
+    ;; Передаем адрес переменной состояния автомата выдержки
+    ldi     xl, lo8(MODE_IP)
+    ldi     xh, hi8(MODE_IP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_IP)
+    ldi     yh, hi8(LINK_IP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_IP)
+    ldi     zh, hi8(DELAY_IP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_IP
+    lds     tmp1, DELAY_IP+1
+    add     tmp0, r1
+    adc     tmp1, r0
+    sts     DELAY_IP, tmp0
+    sts     DELAY_IP+1, tmp1
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
+    lds     tmp0, MODE_IP
+    cp      tmp0, r0
+    breq    _switch_off_IP
+    ON PORTD 4
+    rjmp    _switch_end_IP
+_switch_off_IP:
+    OFF PORTD 4
+_switch_end_IP:
+    ;; Очищаем LINK
+    sts     LINK_IP, r0
+
+_chain_PP:
+    ;; Получаем состояние кнопки PP связанной с битом 0 порта A
+_get_btn_PP:
+    sbis    PINA, 0
+    rjmp    _not_press_PP
+    sts     NEW_PP, r1
+    rjmp    _end_press_handler_PP
+_not_press_PP:
+    sts     NEW_PP, r0
+_end_press_handler_PP:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки PP
+_debounce_call_PP:
+    ldi     xl, lo8(STATE_PP)
+    ldi     xh, hi8(STATE_PP)
+    ldi     yl, lo8(NEW_PP)
+    ldi     yh, hi8(NEW_PP)
+    ldi     zl, lo8(CNT_PP)
+    ldi     zh, hi8(CNT_PP)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки PP
+_delay_call_PP:
+    ;; Передаем адрес переменной состояния автомата выдержки
+    ldi     xl, lo8(MODE_PP)
+    ldi     xh, hi8(MODE_PP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_PP)
+    ldi     yh, hi8(LINK_PP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_PP)
+    ldi     zh, hi8(DELAY_PP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_PP
+    lds     tmp1, DELAY_PP+1
+    add     tmp0, r1
+    adc     tmp1, r0
+    sts     DELAY_PP, tmp0
+    sts     DELAY_PP+1, tmp1
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
+    lds     tmp0, MODE_PP
+    cp      tmp0, r0
+    breq    _switch_off_PP
+    ON PORTD 5
+    rjmp    _switch_end_PP
+_switch_off_PP:
+    OFF PORTD 5
+_switch_end_PP:
+    ;; Очищаем LINK
+    sts     LINK_PP, r0
+
+_chain_SP:
+    ;; Получаем состояние кнопки SP связанной с битом 2 порта D
+_get_btn_SP:
+    sbis    PIND, 2
+    rjmp    _not_press_SP
+    sts     NEW_SP, r1
+    rjmp    _end_press_handler_SP
+_not_press_SP:
+    sts     NEW_SP, r0
+_end_press_handler_SP:
+
+    ;; Вызываем конечный автомат подавления дребезга для кнопки SP
+_debounce_call_SP:
+    ldi     xl, lo8(STATE_SP)
+    ldi     xh, hi8(STATE_SP)
+    ldi     yl, lo8(NEW_SP)
+    ldi     yh, hi8(NEW_SP)
+    ldi     zl, lo8(CNT_SP)
+    ldi     zh, hi8(CNT_SP)
+    rcall   _fsmbtn
+
+    ;; Вызываем конечный автомат отработки задержки для кнопки SP
+_delay_call_SP:
+    ;; Передаем адрес переменной состояния автомата выдержки
+    ldi     xl, lo8(MODE_SP)
+    ldi     xh, hi8(MODE_SP)
+    ;; Передаем адрес переменной связи автоматов
+    ldi     yl, lo8(LINK_SP)
+    ldi     yh, hi8(LINK_SP)
+    ;; Передаем адрес переменной задержки
+    ldi     zl, lo8(DELAY_SP)
+    ldi     zh, hi8(DELAY_SP)
+    ;; Вызываем конечный автомат обработки интервалов
+    rcall   _fsmprg
+    ;; Увеличиваем счетчик задержки
+    lds     tmp0, DELAY_SP
+    lds     tmp1, DELAY_SP+1
+    add     tmp0, r1
+    adc     tmp1, r0
+    sts     DELAY_SP, tmp0
+    sts     DELAY_SP+1, tmp1
+    ;; Проверяем состояние автомата выдержки
+    ;; И в зависимости от него управляем нагрузкой
+    lds     tmp0, MODE_SP
+    cp      tmp0, r0
+    breq    _switch_off_SP
+    ON PORTB 0
+    rjmp    _switch_end_SP
+_switch_off_SP:
+    OFF PORTB 0
+_switch_end_SP:
+    ;; Очищаем LINK
+    sts     LINK_SP, r0
+
 
     ;; Включаем/выключаем  светодиоды в зависимости от BEEPs
     ;; IP
@@ -621,118 +783,118 @@ _case_end_205:
     ret
 
 _fsmprg:
-    rcall   _case_next_404
-_case_next_404:
-    pop     r25
-    pop     r24
-    ldi     r23, 11
-    add     r24, r23
-    adc     r25, r0
-    ld      r23, X
-    add     r24, r23
-    adc     r25, r0
-    push    r24
-    push    r25
-    ret 
-    rjmp    _label_case_0406
-    rjmp    _label_case_1412
-_label_case_0406:
-    ;; progn-open
-    ld      r25, Y
-    cp      r25, r1
-    brne    _equal_ind2const_not_409
-    SETRESULT TRUE
-    rjmp    _equal_ind2const_end_410
-_equal_ind2const_not_409:
-    SETRESULT FALSE
-_equal_ind2const_end_410:
-    IFFALSE _when_end_407
-    push    ZL
-    push    ZH
-    st      Z+, r0
-    st      Z, r0
-    pop     ZH
-    pop     ZL
-    ldi     r25, 1
-    st      X, r25
-_when_end_407:
-    ;; progn-close
-    rjmp    _case_end_405
-_label_case_1412:
-    ;; progn-open
-    ld      r25, Y
-    cp      r25, r1
-    brne    _equal_ind2const_not_415
-    SETRESULT TRUE
-    rjmp    _equal_ind2const_end_416
-_equal_ind2const_not_415:
-    SETRESULT FALSE
-_equal_ind2const_end_416:
-    IFFALSE _when_end_413
-    ldi     r25, 0
-    st      X, r25
-_when_end_413:
-    push    ZH
-    push    ZL
-    ld      r25, Z+
-    ld      r24, Z
-    pop     ZL
-    pop     ZH
-    cpi     r25, lo8(DELAY_MAX)
-    ldi     r23, hi8(DELAY_MAX)
-    cpc     r24, r23
-    brlo    _ge_ind2const_not_422
-    SETRESULT TRUE
-    rjmp    _ge_ind2const_end_423
-_ge_ind2const_not_422:
-    SETRESULT FALSE
-_ge_ind2const_end_423:
-    IFFALSE _when_end_418
-    ldi     r23, 0
-    st      X, r23
-_when_end_418:
-    push    ZH
-    push    ZL
-    ld      r23, Z+
-    ld      r24, Z
-    pop     ZL
-    pop     ZH
-    cpi     r23, lo8(SIGNAL_TIME)
-    ldi     r25, hi8(SIGNAL_TIME)
-    cpc     r24, r25
-    brlo    _ge_ind2const_not_430
-    SETRESULT TRUE
-    rjmp    _ge_ind2const_end_431
-_ge_ind2const_not_430:
-    SETRESULT FALSE
-_ge_ind2const_end_431:
-    IFFALSE _and_end_426
-    push    ZH
-    push    ZL
-    ld      r25, Z+
-    ld      r24, Z
-    pop     ZL
-    pop     ZH
-    cpi     r25, lo8(DELAY_MAX)
-    ldi     r23, hi8(DELAY_MAX)
-    cpc     r24, r23
-    brlo    _ge_ind2const_not_435
-    SETRESULT TRUE
-    rjmp    _ge_ind2const_end_436
-_ge_ind2const_not_435:
-    SETRESULT FALSE
-_ge_ind2const_end_436:
-    INVERT result
-    IFFALSE _and_end_426
-    SETRESULT TRUE
-_and_end_426:
-    IFFALSE _when_end_425
-    st      -Y, r1
-_when_end_425:
-    ;; progn-close
-    rjmp    _case_end_405
-_case_end_405:
-
+     rcall   _case_next_404
+ _case_next_404:
+     pop     r25
+     pop     r24
+     ldi     r23, 11
+     add     r24, r23
+     adc     r25, r0
+     ld      r23, X
+     add     r24, r23
+     adc     r25, r0
+     push    r24
+     push    r25
+     ret 
+     rjmp    _label_case_0406
+     rjmp    _label_case_1412
+ _label_case_0406:
+     ;; progn-open
+     ld      r25, Y
+     cp      r25, r1
+     brne    _equal_ind2const_not_409
+     SETRESULT TRUE
+     rjmp    _equal_ind2const_end_410
+ _equal_ind2const_not_409:
+     SETRESULT FALSE
+ _equal_ind2const_end_410:
+     IFFALSE _when_end_407
+     push    ZL
+     push    ZH
+     st      Z+, r0
+     st      Z, r0
+     pop     ZH
+     pop     ZL
+     ldi     r25, 1
+     st      X, r25
+ _when_end_407:
+     ;; progn-close
+     rjmp    _case_end_405
+ _label_case_1412:
+     ;; progn-open
+     ld      r25, Y
+     cp      r25, r1
+     brne    _equal_ind2const_not_415
+     SETRESULT TRUE
+     rjmp    _equal_ind2const_end_416
+ _equal_ind2const_not_415:
+     SETRESULT FALSE
+ _equal_ind2const_end_416:
+     IFFALSE _when_end_413
+     ldi     r25, 0
+     st      X, r25
+ _when_end_413:
+     push    ZH
+     push    ZL
+     ld      r25, Z+
+     ld      r24, Z
+     pop     ZL
+     pop     ZH
+     cpi     r25, lo8(DELAY_MAX)
+     ldi     r23, hi8(DELAY_MAX)
+     cpc     r24, r23
+     brlo    _ge_ind2const_not_422
+     SETRESULT TRUE
+     rjmp    _ge_ind2const_end_423
+ _ge_ind2const_not_422:
+     SETRESULT FALSE
+ _ge_ind2const_end_423:
+     IFFALSE _when_end_418
+     ldi     r23, 0
+     st      X, r23
+ _when_end_418:
+     push    ZH
+     push    ZL
+     ld      r23, Z+
+     ld      r24, Z
+     pop     ZL
+     pop     ZH
+     cpi     r23, lo8(SIGNAL_TIME)
+     ldi     r25, hi8(SIGNAL_TIME)
+     cpc     r24, r25
+     brlo    _ge_ind2const_not_430
+     SETRESULT TRUE
+     rjmp    _ge_ind2const_end_431
+ _ge_ind2const_not_430:
+     SETRESULT FALSE
+ _ge_ind2const_end_431:
+     IFFALSE _and_end_426
+     push    ZH
+     push    ZL
+     ld      r25, Z+
+     ld      r24, Z
+     pop     ZL
+     pop     ZH
+     cpi     r25, lo8(DELAY_MAX)
+     ldi     r23, hi8(DELAY_MAX)
+     cpc     r24, r23
+     brlo    _ge_ind2const_not_435
+     SETRESULT TRUE
+     rjmp    _ge_ind2const_end_436
+ _ge_ind2const_not_435:
+     SETRESULT FALSE
+ _ge_ind2const_end_436:
+     INVERT result
+     IFFALSE _and_end_426
+     SETRESULT TRUE
+ _and_end_426:
+     IFFALSE _when_end_425
+     st      -Y, r1
+ _when_end_425:
+     ;; progn-close
+     rjmp    _case_end_405
+ _case_end_405:
+ 
     ret
 
 _infloop:
