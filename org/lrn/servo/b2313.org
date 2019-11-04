@@ -148,17 +148,11 @@ AVR и содержать типичные блоки инициализации
   _vectors:
       <<vectors>>
 
-  <<timer_1_fast_pwm>>
-
   _timer_0_compare_A:
       <<timer_0_cmp_A>>
 
   _reset:
   <<initialization>>
-
-      ;; DISABLE TIMER-0
-      ;; Временно остановим таймер-0 чтобы не щелкал
-      out TCCR0B, r1
 
   _mainloop:
       rjmp    _mainloop
@@ -624,12 +618,12 @@ Reserved
 
 см аналог =TOV0=
 
-** Настройка таймера-1 (16-bit) в Normal Mode
+** Настройка таймера-1 (16-bit) в Fast PWM
 :PROPERTIES:
-:header-args: :noweb-ref timer_1_normal
+:header-args: :noweb-ref timer_1_fast_pwm_init
 :END:
 
-Для отсчета времени мы воспользуемся таймером-1. Так как он
+Для управления сервомашинкой мы воспользуемся таймером-1. Так как он
 16-разрядный - мы должны использовать специальную процедуру доступа к
 16-битным регистрам по 8-битной шине.
 
@@ -652,17 +646,18 @@ Reserved
 
 Для режима =FastPWM=, в котором TOP задается регистром сравнения OCR1A,
 все биты WGM должны быть установлены в единицу (надо не забыть что
-биты =WGM12= находится в следующем =TCR1B=).
+биты =WGM12= находится в следующем регистре -  =TCR1B=).
 
 Мы хотим использовать внешний пин =OC1A= (надо не забыть включить его в
-DDR - он соответствует =PB3= (15-ая ножка микроконтроллера). Мы хотим,
+DDR - он соответствует =PB3= 15-ой ножке микроконтроллера). Мы хотим,
 чтобы он включался при переходе через TOP и выключался по достижении
 значения в регистре сравнения OCR1A. Это соответствует значениям
-COM1A1:COM1A0 = =1:0= (прямой PWM).
+=COM1A1:COM1A0= равным =1:0= (прямой PWM).
 
 #+BEGIN_SRC asm
   ;; Fast PWM с очисткой по достижении значения регистра сравнения
-  ldi     tmp0, 0b10000011
+  ;; WGM = 1110
+  ldi     tmp0, 0b10000010
   out     TCCR1A, tmp0
 #+END_SRC
 
@@ -704,8 +699,9 @@ Capture) будет задержан на 4 такта генератора ми
 Так как мы не используем захват ввода, то оставляем биты =ICNC1= и
 =ICES1= нулевыми.
 
-**** Bit 2:0 – CS12:10: Clock Select. Эти 3 бита задают источник тактового
-сигнала для счетчика.
+**** Bit 2:0 – CS12:10: Clock Select.
+
+Эти 3 бита задают источник тактового сигнала для счетчика.
 
 | CS12 | CS11 | CS10 | Описание                                      |
 |------+------+------+-----------------------------------------------|
@@ -740,20 +736,17 @@ Capture) будет задержан на 4 такта генератора ми
 мы видим что он равен единице. Это значит что он НЕ установлен. Если бы
 он был равен нулю, микроконтроллер работал бы на частоте 1Mhz.
 
-Если мы будем использовать частоту "как есть", то 16-разрядный счетчик
-будет переполняться с частотой 8000000/0xFFFF=15.259 раз в секунду, что
-дает нам одно переполнение раз в 0.06554. Этого вполне достаточно для
-устранения дребезга контактов.
-
-Если бы =CKDIV8= был бы установлен, то мы бы получали одно переполнение
-раз в полсекунды и чтобы сократить этот интервал, в процедуре обработки
-прерывания по переполнению пришлось бы записывать в =TCNT1= начальное
-значение, чтобы он считал не с нуля.
+Мы включим предделитель на 64 и заполним оставшиеся WGM-биты
+(=единицами=). А потом закинем значение TOP в =ICR1=.
 
 #+BEGIN_SRC asm
   ;; Выставляем предделитель
-  ldi     tmp0, 0b0010
+  ldi     tmp0, 0b00011010
   out     TCCR1B, tmp0
+  ldi     tmp0, hi8(2499)
+  out     ICR1H, tmp0
+  ldi     tmp0, lo8(2499)
+  out     ICR1L, tmp0
 #+END_SRC
 
 *** TCCR1C
@@ -766,7 +759,17 @@ Capture) будет задержан на 4 такта генератора ми
 
 *** OCR1AH и OCR1AL а также OCR1BH и OCR1BL
 
-Не требует изменений
+#+BEGIN_SRC asm
+  ; Частота ШИМ считается как Fpwm = Fcpu / (N*(1+TOP)) = 8000000 / (64*(1+2499)) = 50 Гц
+  ; Устанавливаем начальный коэффициент заполнения - 50%
+  LDI 	tmp0, hi8(165)
+  OUT 	OCR1AH, tmp0
+  LDI 	tmp0, lo8(165)
+  OUT 	OCR1AL, tmp0
+ 	; Обнуление счетчика таймера 1
+	OUT 	TCNT1H, r0
+	OUT 	TCNT1L, r0
+#+END_SRC
 
 *** ICR1H and ICR1L – Input Capture Register 1
 
@@ -775,87 +778,6 @@ Capture) будет задержан на 4 такта генератора ми
 *** TIFR
 
 Не требует изменений
-
-** Настройка таймера-0 (8b-it) в CTC Mode
-:PROPERTIES:
-:header-args: :noweb-ref timer_0_ctc
-:END:
-
-Мы будем использовать таймер-0 для генерации звука. Чтобы получить
-возможность изменять его частоту мы воспользуемся режимом CTC - высота
-будет регулироваться регистром сравнения.
-
-*** TCCR0A
-
-|      7 |      6 |      5 |      4 | 3 | 2 |     1 |     0 |
-|--------+--------+--------+--------+---+---+-------+-------|
-| COM0A1 | COM0A0 | COM0B1 | COM0B0 | – | – | WGM01 | WGM00 |
-
-Нам надо:
-- =COM0A1:A0= = 0:1 чтобы переключать =OC0A= когда произойдет
-  =Compare-Match=
-- =WGM01:00= = 1:0 чтобы установить режим =CTC=
-
-#+NAME: timer_ctc_TCCR0A
-#+BEGIN_SRC asm
-  ;; TCCR0A
-  ldi tmp0, 0b01000010
-  out TCCR0A, tmp0
-#+END_SRC
-
-*** TCCR0B
-
-|     7 |     6 | 5 | 4 |     3 |    2 |    1 |    0 |
-|-------+-------+---+---+-------+------+------+------|
-| FOC0A | FOC0B | – | – | WGM02 | CS02 | CS01 | CS00 |
-
-Здесь мы хотим настроить частоту.
-
-Для нашего режима бит =WGM02= должен быть сброшен.
-
-Есть вопросы по FOC0A - пока оставлю его нулевым
-
-#+NAME: timer_ctc_TCCR0B
-#+BEGIN_SRC asm
-  ;; TCCR0B
-  ldi tmp0, 0b01
-  out TCCR0B, tmp0
-#+END_SRC
-
-*** TCNT0
-
-|     7 |     6 | 5 | 4 |     3 |    2 |    1 |    0 |
-|-------+-------+---+---+-------+------+------+------|
-| FOC0A | FOC0B | – | – | WGM02 | CS02 | CS01 | CS00 |
-
-#+NAME: timer_ctc_TCNT0
-#+BEGIN_SRC asm
-  ;; Clear TCNT0
-  out TCNT0, r0
-#+END_SRC
-
-*** OCR0A & OCR0B
-
-#+NAME: timer_ctc_OCR0A_0B
-#+BEGIN_SRC asm
-  ;; OCR0A & OCR0B
-  ldi tmp0, 0xFF
-  out OCR0A, tmp0
-#+END_SRC
-
-*** TIFR
-
-|    7 |     6 |     5 | 4 |    3 |     2 |    1 |     0 |
-|------+-------+-------+---+------+-------+------+-------|
-| TOV1 | OCF1A | OCF1B | – | ICF1 | OCF0B | TOV0 | OCF0A |
-
-TIFR-регистр нужно сбросить в 0:
-
-#+NAME: timer_ctc_TIFR
-#+BEGIN_SRC asm
-  ;; Очищаем флаги прерывания таймера
-  out TIFR, r0
-#+END_SRC
 
 ** Настройка прерываний таймеров
 
@@ -866,7 +788,7 @@ TIFR-регистр нужно сбросить в 0:
 #+NAME: timer_TIMSK
 #+BEGIN_SRC asm
   ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
-  ldi     tmp0, 0b10000001
+  ldi     tmp0, 0b00000000
   out     TIMSK, tmp0
 #+END_SRC
 
@@ -879,7 +801,7 @@ TIFR-регистр нужно сбросить в 0:
   rjmp    _infloop            ; External Interrupt1 Handler
   rjmp    _infloop            ; Timer1 Capture Handler
   rjmp    _infloop            ; Timer1 CompareA Handler
-  rjmp    _timer_1_overflow   ; Timer1 Overflow Handler
+  rjmp    _infloop            ; Timer1 Overflow Handler
   rjmp    _infloop            ; Timer0 Overflow Handler
   rjmp    _infloop            ; USART0 RX Complete Handler
   rjmp    _infloop            ; USART0,UDR Empty Handler
@@ -887,79 +809,12 @@ TIFR-регистр нужно сбросить в 0:
   rjmp    _infloop            ; Analog Comparator Handler
   rjmp    _infloop            ; Pin Change Interrupt
   rjmp    _infloop            ; Timer1 Compare B Handler
-  rjmp    _timer_0_compare_A  ; Timer0 Compare A Handler
+  rjmp    _infloop            ; Timer0 Compare A Handler
   rjmp    _infloop            ; Timer0 Compare B Handler
   rjmp    _infloop            ; USI Start Handler
   rjmp    _infloop            ; USI Overflow Handler
   rjmp    _infloop            ; EEPROM Ready Handler
   rjmp    _infloop            ; Watchdog Overflow Handler
-#+END_SRC
-
-* Прерывание по сравнению таймера-0
-
-#+NAME: timer_0_cmp_A
-#+BEGIN_SRC asm
-  ;; Записываем freq в регистр сравнения
-  out     OCR0A, freq
-  reti
-#+END_SRC
-
-* Прерывание по переполнению таймера-1
-
-#+NAME: timer_1_fast_pwm
-#+BEGIN_SRC asm :noweb yes
-  _timer_1_overflow:
-      ;; Сохраняем регистры
-      push    tmp0
-      push    tmp1
-      ;; Сохраняем регистр флагов
-      in      tmp0, SREG
-      push    tmp0
-      ;; Сохраняем индексные регистры
-      push    xl
-      push    xh
-      push    yl
-      push    yh
-      push    zl
-      push    zh
-
-      ;; [[[=== Высота звука ===]]]
-      ;; Уменьшаем freq для частоты buzzer-а
-      dec     freq
-  ;;     cpi     freq, END_FREQ
-  ;;     brsh    1f                  ; Перейти если больше или равно
-  ;;     ldi     freq, START_FREQ
-  ;; 1:
-
-      ;; [[[=== Мигание зеленым светодиодом ===]]]
-      ;; Переключим состояние зеленого светодиода
-      rcall   _blink_green
-
-  <<chains>>
-
-      ;; Ускорим процесс:
-      ;; Set TCNT1 to 0xE000
-      ldi     tmp0, 0x00
-      ldi     tmp1, 0xE0
-      out     TCNT1H, tmp1
-      out     TCNT1L, tmp0
-
-  _timer_0_overflow_ret:
-      ;; Восстанавливаем индексные регистры
-      pop     zh
-      pop     zl
-      pop     yh
-      pop     yl
-      pop     xh
-      pop     xl
-      ;; Восстанавливаем регистр флагов
-      pop     tmp0
-      out     SREG, tmp0
-      ;; Восстанавливем регистры
-      pop     tmp1
-      pop     tmp0
-      ;; Выходим
-      reti
 #+END_SRC
 
 * Инициализация
@@ -984,7 +839,7 @@ TIFR-регистр нужно сбросить в 0:
   <<init_pins>>
 
       ;; Инициализация таймера-1
-      <<timer_1_normal>>
+      <<timer_1_fast_pwm_init>>
 
       ;; Инициализация таймера-0
       <<timer_0_ctc>>
@@ -1120,26 +975,31 @@ TIFR-регистр нужно сбросить в 0:
 
 #+NAME: symbols
 #+BEGIN_SRC asm
-  .equ SPL, 0x3D
-  .equ SREG, 0x3F
-  .equ RAMEND, 0xDF
-  .equ DDRA, 0x1A
-  .equ DDRB, 0x17
-  .equ DDRD, 0x11
-  .equ PORTA, 0x1B
-  .equ PORTB, 0x18
-  .equ PORTD, 0x12
-  .equ PINA, 0x19
-  .equ PINB, 0x16
-  .equ PIND, 0x10
-  .equ TCCR0A, 0x30
-  .equ TCCR0B, 0x33
-  .equ TCCR1B, 0x2E
-  .equ OCR0A, 0x36
-  .equ OCR0B, 0x3C
-  .equ TCNT0, 0x32
-  .equ TCNT1H, 0x2D
-  .equ TCNT1L, 0x2C
-  .equ TIFR, 0x38
-  .equ TIMSK, 0x39
+    .equ SPL, 0x3D
+    .equ SREG, 0x3F
+    .equ RAMEND, 0xDF
+    .equ DDRA, 0x1A
+    .equ DDRB, 0x17
+    .equ DDRD, 0x11
+    .equ PORTA, 0x1B
+    .equ PORTB, 0x18
+    .equ PORTD, 0x12
+    .equ PINA, 0x19
+    .equ PINB, 0x16
+    .equ PIND, 0x10
+    .equ TCCR0A, 0x30
+    .equ TCCR0B, 0x33
+    .equ TCCR1B, 0x2E
+    .equ OCR0A, 0x36
+    .equ OCR0B, 0x3C
+    .equ TCNT0, 0x32
+    .equ TCNT1H, 0x2D
+    .equ TCNT1L, 0x2C
+    .equ TIFR, 0x38
+    .equ TIMSK, 0x39
+    .equ ICR1L, 0x24
+    .equ ICR1H, 0x25
+    .equ TCCR1A, 0x2F
+    .equ OCR1AH, 0x2B
+    .equ OCR1AL, 0x2A
 #+END_SRC
