@@ -13,6 +13,8 @@
     #define OCR_MAX ICR_MAX/10
     #define OCR_CENTER (ICR_MAX/4/10)*3
     
+    .equ DELAY_MAX, 0x0200
+    .equ SIGNAL_TIME, 0x0010
     .equ START_FREQ, 0xAF
     .equ END_FREQ, 0x7F
 
@@ -39,6 +41,8 @@
     .equ TIFR, 0x38
     .equ TIMSK, 0x39
 
+    
+
     .text
     .global main
 main:
@@ -57,7 +61,7 @@ _vectors:
     rjmp    _infloop            ; Analog Comparator Handler
     rjmp    _infloop            ; Pin Change Interrupt
     rjmp    _infloop            ; Timer1 Compare B Handler
-    rjmp    _timer_0_fast_pwm   ; Timer0 Compare A Handler
+    rjmp    _timer_0_compare_A  ; Timer0 Compare A Handler
     rjmp    _infloop            ; Timer0 Compare B Handler
     rjmp    _infloop            ; USI Start Handler
     rjmp    _infloop            ; USI Overflow Handler
@@ -117,7 +121,7 @@ _timer_0_overflow_ret:
     ;; Выходим
     reti
 
-_timer_0_fast_pwm:
+_timer_0_compare_A:
     ;; Записываем freq в регистр сравнения
     out     OCR0A, freq
     reti
@@ -159,9 +163,19 @@ _init_pins:
     out     TCCR1B, tmp0
 
     ;; Инициализация таймера-0
-    ;; Записываем freq в регистр сравнения
-    out     OCR0A, freq
-    reti
+    ;; TCCR0A
+    ldi tmp0, 0b01000010
+    out TCCR0A, tmp0
+    ;; TCCR0B
+    ldi tmp0, 0b01
+    out TCCR0B, tmp0
+    ;; Clear TCNT0
+    out TCNT0, r0
+    ;; OCR0A & OCR0B
+    ldi tmp0, 0xFF
+    out OCR0A, tmp0
+    ;; Очищаем флаги прерывания таймера
+    out TIFR, r0
 
     ;; Настройка прерываний таймеров
     ;; TOEI1(ovfl-1) & OCIE0A(cmpA-0)
