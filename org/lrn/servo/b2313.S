@@ -115,15 +115,20 @@ _init_pins:
     ;; Выставляем предделитель
     ldi     tmp0, 0b00011010
     out     TCCR1B, tmp0
-    ldi     tmp0, hi8(2499)
+    ;; Частота ШИМ считается как:
+    ;; Fpwm = Fcpu / (N*(1+TOP)) = 1000000 / (8*(1+2499)) = 50 Гц
+    .equ ICR_VAL, 2499
+    ldi     tmp0, hi8(ICR_VAL)
     out     ICR1H, tmp0
-    ldi     tmp0, lo8(2499)
+    ldi     tmp0, lo8(ICR_VAL)
     out     ICR1L, tmp0
-    ; Частота ШИМ считается как Fpwm = Fcpu / (N*(1+TOP)) = 8000000 / (64*(1+2499)) = 50 Гц
     ; Устанавливаем начальный коэффициент заполнения - 50%
-    LDI 	tmp0, hi8(165)
+    .equ PWM_MIN, 75
+    .equ PWM_MIDDLE, 165
+    .equ PWM_MAX, 300
+    LDI 	tmp0, hi8(PWM_MIN)
     OUT 	OCR1AH, tmp0
-    LDI 	tmp0, lo8(165)
+    LDI 	tmp0, lo8(PWM_MIN)
     OUT 	OCR1AL, tmp0
       ; Обнуление счетчика таймера 1
       OUT 	TCNT1H, r0
