@@ -2,25 +2,96 @@
 
 * Intro
 
-Это внешняя система мониторинга проекта ~SAUS~, предназначеная для
-наблюдения за работой узла сети. Она отслеживает изменения экрана и
-некоторых файлов, упаковывает их и отсылает управляющему серверу.
+Это внешняя система мониторинга, предназначеная для наблюдения за работой
+узла сети. Она отслеживает изменения экрана и некоторых файлов,
+упаковывает их и отсылает управляющему серверу.
 
 Наша основная задача - сократить количество передаваемых данных, потому
 что узлов сети может быть множество и не все из них имеют быстрые каналы
 передачи. Поэтому мы используем множество различных трюков для этого.
 
+* Process
+
+Наша задача состоит в том, чтобы:
+- Осуществлять мониторинг
+  - Делать снимок экрана один раз в секунду (или другой временной интервал)
+  - Сравнивать его с предыдущим снимком экрана
+  - Если нашлись различия - кодировать эти различия и отправлять их
+  - Если различий нет - использовать освободившуюся полосу пропускания
+    канала чтобы отправить больше данных уточняющих предыдущее состояние
+- Запрашивать команды
+  - Если команды есть выполнять их и отсылать отчет о выполнении
+
+Для того чтобы справиться со всем этим мы будем использовать систему,
+построенную на очередях, потоках и таймерах. Нам также придется
+реализовать компактные форматы для передачи данных.
+
+Пайплайн обработки следующий:
+- Основной поток запускает таймер в котором будет произведен вызов
+  процедуры скриншота.
+- Процедура скриншота делает скриншот и кладет его в очередь
+  скриншотов. После этого она сигнализирует о новом скриншоте всем, кто
+  подписан на ее сообщения. После этого она реинициализирует свой таймер,
+  чтобы перезапуститься через интервал задержки. Этот интервал
+  динамически перестраивается в зависимости от загрузки.
+- Процедура обработки получает сообщения и обрабатывает данные, передавая
+  их процедуре отправки с помощью такого-же механизма
+- Процедура отправки отправляет данные.
+- Процедура получения команд асинхронно обрабатывает команды по мере их
+  поступления.
+
+* Base
+
+Нам необходима обвязка, которая нужна для передачи скринштов между
+процедурами:
+- очередь, куда записываются скриншоты
+- переменная взаимоблокировки
+- condition-variable чтобы размораживать другие потоки
+
+#+NAME: base
+#+BEGIN_SRC lisp :noweb yes
+  <<x_display>>
+
+  (defparameter *shot-queue*       nil)
+  (defparameter *shot-lock*        (bt:make-lock "shot-lock"))
+  (defparameter *cv-shot*          (bt:make-condition-variable :name "cv-pc"))
+
+  (defun call-subscribers (subscribers)
+    (loop :for subscriber :in subscribers
+       :do (funcall subscriber)))
+
+  (defparameter *img-processor*
+    (lambda ()
+      (format t "~%::img-processor-func-stub")
+      (force-output)))
+
+  (defparameter *shot-subscribers* (list *img-processor*))
+
+  (defparameter *shot-func*
+    (lambda ()
+      (format t "~%::shot-func-stub")
+      (force-output)
+      (call-subscribers *shot-subscribers*)))
+
+  (defparameter *shot-timer*
+    (make-timer #'(lambda ()
+                    (funcall *shot-func*))
+                :name "shot" :thread t))
+
+  (schedule-timer *shot-timer* 0.5)
+#+END_SRC
+
+
 * Screen operations
+
+** X-Display
 
 Работа с экраном через ~xlib~:
 - Получение размеров экрана
 - Получение снимков экрана
 
 #+NAME: x_display
-#+BEGIN_SRC lisp :tangle srv.lisp :noweb tangle :padline no
-  (ql:quickload "clx")
-  (ql:quickload "zpng")
-  (ql:quickload "png-read")
+#+BEGIN_SRC lisp :padline no
 
   (defmacro with-display (host (display screen root-window) &body body)
     `(let* ((,display (xlib:open-display ,host))
@@ -116,7 +187,7 @@
   ;; (x-snapshot :path "x-snapshot-true-color.png")
 #+END_SRC
 
-* Binarization
+** Binarization
 
 Получение черно-белого изображения или в градациях серого из
 полноцветного.
@@ -184,7 +255,7 @@ SIMD-операций.
   ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 #+END_SRC
 
-* Bit-image
+** Bit-image
 
 Упаковка бинаризованного черно-белого изображения в битовый массив
 
@@ -325,4 +396,15 @@ SIMD-операций.
                   :absolute-p nil)
 
   (unschedule-timer *timer*)
+#+END_SRC
+* Assembly
+
+#+NAME:
+#+BEGIN_SRC lisp :tangle srv.lisp :noweb yes
+  (ql:quickload "bordeaux-threads")
+  (ql:quickload "clx")
+  (ql:quickload "zpng")
+  (ql:quickload "png-read")
+
+  <<base>>
 #+END_SRC
