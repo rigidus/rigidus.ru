@@ -233,38 +233,18 @@
 Окей, теперь мы будем просто брать последнее изображение из очереди,
 сохранять его на диск и удалять из очереди. Для первого прототипа сойдет
 
+Расширим это, бинаризуя изображения - так они будут занимать меньше места
+
 #+NAME: img_packer_contents
 #+BEGIN_SRC lisp :noweb yes
   (let ((img  (car (last *shot-queue*)))
         (file (format nil "~A" (gensym "FILE"))))
     (setf *shot-queue*  (nbutlast *shot-queue*))
-    (save-png *default-width* *default-height* file img)
+    (save-png *default-width* *default-height* file
+              (binarization img 127) :grayscale)
     (format t "~%::img-packer-stub ~A~%" file)
     (force-output))
 #+END_SRC
-
------------------------
-
-Нам необходима обвязка, которая нужна для передачи скринштов между
-процедурами:
-- очередь, куда записываются скриншоты
-- переменная взаимоблокировки
-- condition-variable чтобы размораживать другие потоки
-
-#+NAME: base_old
-#+BEGIN_SRC lisp :noweb yes
-  <<x_display>>
-
-  (defparameter *shot-queue*       nil)
-  (defparameter *shot-lock*        (bt:make-lock "shot-lock"))
-  (defparameter *cv-shot*          (bt:make-condition-variable :name "cv-pc"))
-
-  (schedule-timer *shot-timer* 1)
-#+END_SRC
-
-
-* Screen operations
-
 
 ** Binarization
 
@@ -333,6 +313,32 @@ SIMD-операций.
   ;;       (array-dimensions image-data)
   ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 #+END_SRC
+
+
+** цуацуа
+-----------------------
+
+Нам необходима обвязка, которая нужна для передачи скринштов между
+процедурами:
+- очередь, куда записываются скриншоты
+- переменная взаимоблокировки
+- condition-variable чтобы размораживать другие потоки
+
+#+NAME: base_old
+#+BEGIN_SRC lisp :noweb yes
+  <<x_display>>
+
+  (defparameter *shot-queue*       nil)
+  (defparameter *shot-lock*        (bt:make-lock "shot-lock"))
+  (defparameter *cv-shot*          (bt:make-condition-variable :name "cv-pc"))
+
+  (schedule-timer *shot-timer* 1)
+#+END_SRC
+
+
+* Screen operations
+
+
 
 ** Bit-image
 
@@ -485,21 +491,7 @@ SIMD-операций.
   (ql:quickload "zpng")
   (ql:quickload "png-read")
 
-  (defun save-png (width height pathname-str image
-                   &optional (color-type :truecolor-alpha))
-    (let* ((png (make-instance 'zpng:png :width width :height height
-                               :color-type color-type))
-           (vector (make-array ;; displaced vector - need copy for save
-                    (* height width (zpng:samples-per-pixel png))
-                    :displaced-to image :element-type '(unsigned-byte 8))))
-      ;; Тут применен потенциально опасный трюк, когда мы создаем
-      ;; объект PNG без данных, а потом добавляем в него данные,
-      ;; используя неэкспортируемый writer.
-      ;; Это нужно чтобы получить третью размерность массива,
-      ;; который мы хотим передать как данные и при этом
-      ;; избежать создания для этого временного объекта
-      (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
+  <<binarization>>
 
   <<base>>
 #+END_SRC
