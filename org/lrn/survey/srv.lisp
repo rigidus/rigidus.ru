@@ -59,6 +59,117 @@
 ;;   (destructuring-bind (height width) ;; NB: no depth!
 ;;       (array-dimensions image-data)
 ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
+(defun load-png (pathname-str)
+  "Возвращает массив size-X столбцов по size-Y точек,
+     где столбцы идут слева-направо, а точки в них - сверху-вниз
+     ----
+     В zpng есть указание на возможные варианты COLOR:
+     ----
+           (defmethod samples-per-pixel (png)
+             (ecase (color-type png)
+               (:grayscale 1)
+               (:truecolor 3)
+               (:indexed-color 1) ;; НЕ ПОДДЕРЖИВАЕТСЯ
+               (:grayscale-alpha 2)
+               (:truecolor-alpha 4)))
+    "
+  (let* ((png (png-read:read-png-file pathname-str))
+         (image-data (png-read:image-data png))
+         (color (png-read:colour-type png))
+         (dims (cond ((or (equal color :truecolor-alpha)
+                          (equal color :truecolor))
+                      (list (array-dimension image-data 1)
+                            (array-dimension image-data 0)
+                            (array-dimension image-data 2)))
+                     ((or (equal color :grayscale)
+                          (equal color :greyscale))
+                      (list (array-dimension image-data 1)
+                            (array-dimension image-data 0)))
+                     (t (error 'unk-png-color-type :color color))))
+         (result ;; меняем размерности X и Y местами
+          (make-array dims :element-type '(unsigned-byte 8))))
+    ;; (dbg "~% new-arr ~A "(array-dimensions result))
+    ;; ширина, высота, цвет => высота, ширина, цвет
+    (macrolet ((cycle (&body body)
+                 `(do ((y 0 (incf y)))
+                      ((= y (array-dimension result 0)))
+                    (do ((x 0 (incf x)))
+                        ((= x (array-dimension result 1)))
+                      ,@body))))
+      (cond ((or (equal color :truecolor-alpha)
+                 (equal color :truecolor))
+             (cycle (do ((z 0 (incf z)))
+                        ((= z (array-dimension result 2)))
+                      (setf (aref result y x z)
+                            (aref image-data x y z)))))
+            ((or (equal color :grayscale)
+                 (equal color :greyscale))
+             (cycle (setf (aref result y x)
+                          (aref image-data x y))))
+            (t (error 'unk-png-color-type :color color)))
+      result)))
+
+(defun make-bit-image (image-data)
+  (destructuring-bind (height width &optional colors)
+      (array-dimensions image-data)
+    ;; функция может работать только с бинарными изобажениями
+    (assert (null colors))
+    (let* ((new-width (+ (logior width 7) 1))
+           (bit-array (make-array (list height new-width)
+                                  :element-type 'bit)))
+      (do ((qy 0 (incf qy)))
+          ((= qy height))
+        (do ((qx 0 (incf qx)))
+            ((= qx width))
+          ;; если цвет пикселя не белый, считаем,
+          ;; что это не фон и заносим в битовый массив 1
+          (unless (equal (aref image-data qy qx) 255)
+            (setf (bit bit-array qy qx) 1))))
+      bit-array)))
+
+;; TEST: make-bit-image
+;; (print
+;;  (make-bit-image
+;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
+(defun bit-vector->integer (bit-vector)
+  "Create a positive integer from a bit-vector."
+  (reduce #'(lambda (first-bit second-bit)
+              (+ (* first-bit 2) second-bit))
+          bit-vector))
+
+(defun integer->bit-vector (integer)
+  "Create a bit-vector from a positive integer."
+  (labels ((integer->bit-list (int &optional accum)
+             (cond ((> int 0)
+                    (multiple-value-bind (i r) (truncate int 2)
+                      (integer->bit-list i (push r accum))))
+                   ((null accum) (push 0 accum))
+                   (t accum))))
+    (coerce (integer->bit-list integer) 'bit-vector)))
+
+(defun pack-image (bit-array)
+  (destructuring-bind (height width)
+      (array-dimensions bit-array)
+    (let* ((disp (make-array (array-total-size bit-array)
+                             :displaced-to bit-array
+                             :element-type (array-element-type bit-array)))
+           (new-image (make-array (list height (floor width 8))
+                                  :element-type '(unsigned-byte 8))))
+      (let ((nxt 0))
+        (do ((pt 0 (+ pt 8)))
+            ((= pt (array-total-size disp)))
+          (setf (row-major-aref new-image nxt)
+                (bit-vector->integer
+                 (subseq disp pt (+ pt 8))))
+          (incf nxt)))
+      new-image)))
+
+;; TEST: pack-image
+;; (print
+;;  (pack-image (make-bit-image
+;;               (binarization
+;;                (x-snapshot :width 31 :height 23)
+;;                127))))
 
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
@@ -166,8 +277,13 @@
     (let ((img  (car (last *shot-queue*)))
           (file (format nil "~A" (gensym "FILE"))))
       (setf *shot-queue*  (nbutlast *shot-queue*))
-      (save-png *default-width* *default-height* file
-                (binarization img 127) :grayscale)
+      (save-png (floor *default-width* 8) *default-height*
+                file
+                (pack-image
+                 (make-bit-image
+                  (binarization img 127)
+                  ))
+      :grayscale)
       (format t "~%::img-packer-stub ~A~%" file)
       (force-output))
     ;; end - no subscribers
@@ -190,4 +306,4 @@
                   (funcall *shot-func*))
               :name "shot" :thread t))
 
-;; (schedule-timer *shot-timer* 0.5)
+(schedule-timer *shot-timer* 0.5)
