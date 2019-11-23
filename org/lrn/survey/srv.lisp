@@ -3,6 +3,21 @@
 (ql:quickload "zpng")
 (ql:quickload "png-read")
 
+(defun save-png (width height pathname-str image
+                 &optional (color-type :truecolor-alpha))
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type color-type))
+         (vector (make-array ;; displaced vector - need copy for save
+                  (* height width (zpng:samples-per-pixel png))
+                  :displaced-to image :element-type '(unsigned-byte 8))))
+    ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;; объект PNG без данных, а потом добавляем в него данные,
+    ;; используя неэкспортируемый writer.
+    ;; Это нужно чтобы получить третью размерность массива,
+    ;; который мы хотим передать как данные и при этом
+    ;; избежать создания для этого временного объекта
+    (setf (zpng::%image-data png) (copy-seq vector))
+    (zpng:write-png png pathname-str)))
 
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
@@ -97,26 +112,36 @@
 
 ;; (x-snapshot :path "x-snapshot-true-color.png")
 
-(defparameter *shot-queue*       nil)
-(defparameter *shot-lock*        (bt:make-lock "shot-lock"))
-(defparameter *cv-shot*          (bt:make-condition-variable :name "cv-pc"))
-
 (defun call-subscribers (subscribers)
   (loop :for subscriber :in subscribers
      :do (funcall subscriber)))
 
-(defparameter *img-processor*
-  (lambda ()
-    (format t "~%::img-processor-func-stub")
-    (force-output)))
+(defparameter *shot-queue* nil)
 
-(defparameter *shot-subscribers* (list *img-processor*))
+;; list of subscribers for `shot-func'
+(defparameter *img-packer*
+  (lambda ()
+    ;; img_packer_contents
+    (let ((img  (car (last *shot-queue*)))
+          (file (format nil "~A" (gensym "FILE"))))
+      (setf *shot-queue*  (nbutlast *shot-queue*))
+      (save-png *default-width* *default-height* file img)
+      (format t "~%::img-packer-stub ~A~%" file)
+      (force-output))
+    ;; end - no subscribers
+    ))
+
+(defparameter *shot-subscribers* (list *img-packer*))
 
 (defparameter *shot-func*
   (lambda ()
-    (format t "~%::shot-func-stub")
+    ;; shot_func_contents:
+    (push (x-snapshot) *shot-queue*)
+    (format t "~%::shot-func-stub ~A" (length *shot-queue*))
     (force-output)
-    (call-subscribers *shot-subscribers*)))
+    ;; Call for all subscibers
+    (call-subscribers *shot-subscribers*)
+    (schedule-timer *shot-timer* 1 :absolute-p nil)))
 
 (defparameter *shot-timer*
   (make-timer #'(lambda ()
