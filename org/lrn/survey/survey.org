@@ -251,15 +251,11 @@
     (force-output))
 #+END_SRC
 
-*** Binarization
+*** Save and Load
 
-Получение черно-белого изображения или в градациях серого из
-полноцветного.
+Для целей отладки нам нужно уметь сохранять и загружать png-изображения
 
-Здесь остается пространство для оптимизаций путем применения
-SIMD-операций.
-
-#+NAME: binarization
+#+NAME: save_and_load_png
 #+BEGIN_SRC lisp
   (defun save-png (width height pathname-str image
                    &optional (color-type :truecolor-alpha))
@@ -277,54 +273,6 @@ SIMD-операций.
       (setf (zpng::%image-data png) (copy-seq vector))
       (zpng:write-png png pathname-str)))
 
-  (defun binarization (image &optional threshold)
-    (let* ((dims (array-dimensions image))
-           (new-dims (cond ((equal 3 (length dims))  (butlast dims))
-                           ((equal 2 (length dims))  dims)
-                           (t (error 'binarization-error))))
-           (result (make-array new-dims :element-type '(unsigned-byte 8))))
-      (macrolet ((cycle (&body body)
-                   `(do ((y 0 (incf y)))
-                        ((= y (array-dimension image 0)))
-                      (do ((x 0 (incf x)))
-                          ((= x (array-dimension image 1)))
-                        ,@body))))
-        (cond ((equal 3 (length dims))
-               (cycle (do ((z 0 (incf z)))
-                          ((= z (array-dimension image 2)))
-                        (let ((avg (floor (+ (aref image y x 0)
-                                             (aref image y x 1)
-                                             (aref image y x 2))
-                                          3)))
-                          (when threshold
-                            (if (< threshold avg)
-                                (setf avg 255)
-                                (setf avg 0)))
-                          (setf (aref result y x) avg)))))
-              ((equal 2 (length dims))
-               (cycle (let ((avg (aref image y x)))
-                        (when threshold
-                          (if (< threshold avg)
-                              (setf avg 255)
-                              (setf avg 0)))
-                        (setf (aref result y x) avg))))
-              (t (error 'binarization-error))))
-      result))
-
-  ;; TEST: binarize and save screenshot
-  ;; (let* ((to   "x-snapshot-binarize.png")
-  ;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
-  ;;   (destructuring-bind (height width) ;; NB: no depth!
-  ;;       (array-dimensions image-data)
-  ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
-#+END_SRC
-
-*** Bit-image
-
-Упаковка бинаризованного черно-белого изображения в битовый массив
-
-#+NAME: make_bit_image
-#+BEGIN_SRC lisp
   (defun load-png (pathname-str)
     "Возвращает массив size-X столбцов по size-Y точек,
        где столбцы идут слева-направо, а точки в них - сверху-вниз
@@ -374,34 +322,14 @@ SIMD-операций.
                             (aref image-data x y))))
               (t (error 'unk-png-color-type :color color)))
         result)))
-
-  (defun make-bit-image (image-data)
-    (destructuring-bind (height width &optional colors)
-        (array-dimensions image-data)
-      ;; функция может работать только с бинарными изобажениями
-      (assert (null colors))
-      (let* ((new-width (+ (logior width 7) 1))
-             (bit-array (make-array (list height new-width)
-                                    :element-type 'bit)))
-        (do ((qy 0 (incf qy)))
-            ((= qy height))
-          (do ((qx 0 (incf qx)))
-              ((= qx width))
-            ;; если цвет пикселя не белый, считаем,
-            ;; что это не фон и заносим в битовый массив 1
-            (unless (equal (aref image-data qy qx) 255)
-              (setf (bit bit-array qy qx) 1))))
-        bit-array)))
-
-  ;; TEST: make-bit-image
-  ;; (print
-  ;;  (make-bit-image
-  ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
 #+END_SRC
 
-*** Pack-image
+*** Bit-vector operations
 
-#+NAME: pack_image
+Для целей отладки определим операции кодирования в битовый вектор и
+обратно
+
+#+NAME: bit_vector
 #+BEGIN_SRC lisp
   (defun bit-vector->integer (bit-vector)
     "Create a positive integer from a bit-vector."
@@ -418,30 +346,216 @@ SIMD-операций.
                      ((null accum) (push 0 accum))
                      (t accum))))
       (coerce (integer->bit-list integer) 'bit-vector)))
+#+END_SRC
 
-  (defun pack-image (bit-array)
-    (destructuring-bind (height width)
-        (array-dimensions bit-array)
-      (let* ((disp (make-array (array-total-size bit-array)
-                               :displaced-to bit-array
-                               :element-type (array-element-type bit-array)))
-             (new-image (make-array (list height (floor width 8))
-                                    :element-type '(unsigned-byte 8))))
-        (let ((nxt 0))
-          (do ((pt 0 (+ pt 8)))
-              ((= pt (array-total-size disp)))
-            (setf (row-major-aref new-image nxt)
-                  (bit-vector->integer
-                   (subseq disp pt (+ pt 8))))
-            (incf nxt)))
-        new-image)))
+*** Binarization
+
+Получение черно-белого изображения или в градациях серого из
+полноцветного.
+
+Здесь остается пространство для оптимизаций путем применения
+SIMD-операций.
+
+#+NAME: binarization
+#+BEGIN_SRC lisp
+  (defun binarization (image &optional threshold)
+    (let* ((dims (array-dimensions image))
+           (new-dims (cond ((equal 3 (length dims))  (butlast dims))
+                           ((equal 2 (length dims))  dims)
+                           (t (error 'binarization-error))))
+           (result (make-array new-dims :element-type '(unsigned-byte 8))))
+      (macrolet ((cycle (&body body)
+                   `(do ((y 0 (incf y)))
+                        ((= y (array-dimension image 0)))
+                      (do ((x 0 (incf x)))
+                          ((= x (array-dimension image 1)))
+                        ,@body))))
+        (cond ((equal 3 (length dims))
+               (cycle (do ((z 0 (incf z)))
+                          ((= z (array-dimension image 2)))
+                        (let ((avg (floor (+ (aref image y x 0)
+                                             (aref image y x 1)
+                                             (aref image y x 2))
+                                          3)))
+                          (when threshold
+                            (if (< threshold avg)
+                                (setf avg 255)
+                                (setf avg 0)))
+                          (setf (aref result y x) avg)))))
+              ((equal 2 (length dims))
+               (cycle (let ((avg (aref image y x)))
+                        (when threshold
+                          (if (< threshold avg)
+                              (setf avg 255)
+                              (setf avg 0)))
+                        (setf (aref result y x) avg))))
+              (t (error 'binarization-error))))
+      result))
+
+  ;; TEST: binarize and save screenshot
+  ;; (let* ((to   "x-snapshot-binarize.png")
+  ;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+  ;;   (destructuring-bind (height width) ;; NB: no depth!
+  ;;       (array-dimensions image-data)
+  ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
+#+END_SRC
+
+*** Bit-image
+
+Упаковка бинаризованного черно-белого изображения в битовый массив
+
+#+NAME: make_bit_image
+#+BEGIN_SRC lisp
+  (defun make-bit-image (image-data)
+    (destructuring-bind (height width &optional colors)
+        (array-dimensions image-data)
+      ;; функция может работать только с бинарными изобажениями
+      (assert (null colors))
+      (let* ((new-width (+ (logior width 7) 1))
+             (bit-array (make-array (list height new-width)
+                                    :element-type 'bit
+                                    :initial-element 1)))
+        (do ((qy 0 (incf qy)))
+            ((= qy height))
+          (do ((qx 0 (incf qx)))
+              ((= qx width))
+            ;; если цвет пикселя не белый, считаем,
+            ;; что это не фон и заносим в битовый массив 1
+            (if (equal (aref image-data qy qx) 255)
+                (setf (bit bit-array qy qx) 1)
+                (setf (bit bit-array qy qx) 0))))
+        bit-array)))
+
+  ;; TEST: make-bit-image
+  ;; (print
+  ;;  (make-bit-image
+  ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
+#+END_SRC
+
+*** Pack-image
+
+Нам нужна функция, для быстрой упаковки изображения. Она не тривиальна.
+
+Мы берем полноцветное изображение и используем два вложенных цикла,
+проходя по ~Y~ и ~X~ чтобы обработать каждую точку. После обработки одна
+точка должна занимать только один бит.
+
+Мы также должны упаковать по восемь точек в байт, но если размер
+изображения в точках не кратен байту, то нужно дополнить недостающие
+точки. За это отвечате внутренний макрос ~byte-finiser~, который
+вызывается по мере накопления значений в байте и в конце обработки
+строки, если это необходимо.
+
+#+NAME: pack_image
+#+BEGIN_SRC lisp
+  (defun pack-image (image)
+    (declare (optimize (speed 3) (safety 0)))
+    (let* ((dims (array-dimensions image))
+           (height (car dims))
+           (width (cadr dims))
+           (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+           (need-finisher (not (equal new-width (ash width -3))))
+           (result (make-array (list height new-width)
+                               :element-type '(unsigned-byte 8)))
+           (bp 8)
+           (acc 0))
+      (declare (type (unsigned-byte 8) acc)
+               (type fixnum bp)
+               (type fixnum width)
+               (type fixnum new-width)
+               (type fixnum height))
+      (macrolet ((byte-finisher (acc qy qx bp)
+                   `(progn
+                      ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
+                      (setf (aref result ,qy (ash ,qx -3)) ,acc)
+                      (setf ,acc 0)
+                      (setf ,bp 8))))
+        (do ((qy 0 (incf qy)))
+            ((= qy height))
+          (declare (type fixnum qy))
+          (do ((qx 0 (incf qx)))
+              ((= qx width) (when need-finisher
+                              (byte-finisher acc qy qx bp)))
+            (declare (type fixnum qx))
+            (let* ((avg (floor (+ (aref image qy qx 0)
+                                  (aref image qy qx 1)
+                                  (aref image qy qx 2))
+                               3))
+                   (pnt (ash avg -7)))
+              (declare (type fixnum avg))
+              (declare (type fixnum pnt))
+              (decf bp)
+              (setf acc (logior acc (ash pnt bp)))
+              (when (= bp 0)
+                (byte-finisher acc qy qx bp))))
+          ;; (format t "~%")
+          ))
+      result))
+
+  ;; (disassemble 'pack-image)
 
   ;; TEST: pack-image
+  ;; (time
+  ;;  (let* ((image (pack-image (x-snapshot)))
+  ;;         (dims (array-dimensions image)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              image
+  ;;              :grayscale)))
+#+END_SRC
+
+*** Unpack image
+
+#+NAME: unpack_image
+#+BEGIN_SRC lisp
+  (defun unpack-image (image)
+    (declare (optimize (speed 3) (safety 0)))
+    (let* ((dims (array-dimensions image))
+           (height (car dims))
+           (width (cadr dims))
+           (new-width (ash width 3))
+           (result (make-array (list height new-width)
+                               :element-type '(unsigned-byte 8))))
+      (declare (type fixnum width)
+               (type fixnum new-width)
+               (type fixnum height))
+      (do ((qy 0 (incf qy)))
+          ((= qy height))
+        (declare (type fixnum qy))
+        (do ((qx 0 (incf qx)))
+            ((= qx width))
+          (declare (type fixnum qx))
+          (let ((acc (aref image qy qx)))
+            (declare (type (unsigned-byte 8) acc))
+            ;; (format t "~8,'0B" acc)
+            (do ((out 0 (incf out))
+                 (in  7 (decf in)))
+                ((= 8 out))
+              (declare (type fixnum out in))
+              (unless (= 0 (logand acc (ash 1 in)))
+                (setf (aref result qy (logior (ash qx 3) out))
+                      255)))))
+        ;; (format t "~%")
+        )
+      result))
+
+  ;; TEST
   ;; (print
-  ;;  (pack-image (make-bit-image
-  ;;               (binarization
-  ;;                (x-snapshot :width 31 :height 23)
-  ;;                127))))
+  ;;  (unpack-image
+  ;;   (pack-image
+  ;;    (x-snapshot :width 31 :height 23))))
+
+  ;; TEST
+  ;; (time
+  ;;  (let* ((image  (load-png "FILE1068"))
+  ;;         (unpack (unpack-image image))
+  ;;         (dims (array-dimensions unpack)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              unpack
+  ;;              :grayscale)))
 #+END_SRC
 
 ** цуацуа
@@ -512,6 +626,7 @@ SIMD-операций.
   (ql:quickload "zpng")
   (ql:quickload "png-read")
 
+  <<save_and_load_png>>
   <<binarization>>
   <<make_bit_image>>
   <<pack_image>>

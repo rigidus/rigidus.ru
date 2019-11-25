@@ -19,46 +19,6 @@
     (setf (zpng::%image-data png) (copy-seq vector))
     (zpng:write-png png pathname-str)))
 
-(defun binarization (image &optional threshold)
-  (let* ((dims (array-dimensions image))
-         (new-dims (cond ((equal 3 (length dims))  (butlast dims))
-                         ((equal 2 (length dims))  dims)
-                         (t (error 'binarization-error))))
-         (result (make-array new-dims :element-type '(unsigned-byte 8))))
-    (macrolet ((cycle (&body body)
-                 `(do ((y 0 (incf y)))
-                      ((= y (array-dimension image 0)))
-                    (do ((x 0 (incf x)))
-                        ((= x (array-dimension image 1)))
-                      ,@body))))
-      (cond ((equal 3 (length dims))
-             (cycle (do ((z 0 (incf z)))
-                        ((= z (array-dimension image 2)))
-                      (let ((avg (floor (+ (aref image y x 0)
-                                           (aref image y x 1)
-                                           (aref image y x 2))
-                                        3)))
-                        (when threshold
-                          (if (< threshold avg)
-                              (setf avg 255)
-                              (setf avg 0)))
-                        (setf (aref result y x) avg)))))
-            ((equal 2 (length dims))
-             (cycle (let ((avg (aref image y x)))
-                      (when threshold
-                        (if (< threshold avg)
-                            (setf avg 255)
-                            (setf avg 0)))
-                      (setf (aref result y x) avg))))
-            (t (error 'binarization-error))))
-    result))
-
-;; TEST: binarize and save screenshot
-;; (let* ((to   "x-snapshot-binarize.png")
-;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
-;;   (destructuring-bind (height width) ;; NB: no depth!
-;;       (array-dimensions image-data)
-;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 (defun load-png (pathname-str)
   "Возвращает массив size-X столбцов по size-Y точек,
      где столбцы идут слева-направо, а точки в них - сверху-вниз
@@ -108,7 +68,46 @@
                           (aref image-data x y))))
             (t (error 'unk-png-color-type :color color)))
       result)))
+(defun binarization (image &optional threshold)
+  (let* ((dims (array-dimensions image))
+         (new-dims (cond ((equal 3 (length dims))  (butlast dims))
+                         ((equal 2 (length dims))  dims)
+                         (t (error 'binarization-error))))
+         (result (make-array new-dims :element-type '(unsigned-byte 8))))
+    (macrolet ((cycle (&body body)
+                 `(do ((y 0 (incf y)))
+                      ((= y (array-dimension image 0)))
+                    (do ((x 0 (incf x)))
+                        ((= x (array-dimension image 1)))
+                      ,@body))))
+      (cond ((equal 3 (length dims))
+             (cycle (do ((z 0 (incf z)))
+                        ((= z (array-dimension image 2)))
+                      (let ((avg (floor (+ (aref image y x 0)
+                                           (aref image y x 1)
+                                           (aref image y x 2))
+                                        3)))
+                        (when threshold
+                          (if (< threshold avg)
+                              (setf avg 255)
+                              (setf avg 0)))
+                        (setf (aref result y x) avg)))))
+            ((equal 2 (length dims))
+             (cycle (let ((avg (aref image y x)))
+                      (when threshold
+                        (if (< threshold avg)
+                            (setf avg 255)
+                            (setf avg 0)))
+                      (setf (aref result y x) avg))))
+            (t (error 'binarization-error))))
+    result))
 
+;; TEST: binarize and save screenshot
+;; (let* ((to   "x-snapshot-binarize.png")
+;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+;;   (destructuring-bind (height width) ;; NB: no depth!
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 (defun make-bit-image (image-data)
   (destructuring-bind (height width &optional colors)
       (array-dimensions image-data)
@@ -116,15 +115,17 @@
     (assert (null colors))
     (let* ((new-width (+ (logior width 7) 1))
            (bit-array (make-array (list height new-width)
-                                  :element-type 'bit)))
+                                  :element-type 'bit
+                                  :initial-element 1)))
       (do ((qy 0 (incf qy)))
           ((= qy height))
         (do ((qx 0 (incf qx)))
             ((= qx width))
           ;; если цвет пикселя не белый, считаем,
           ;; что это не фон и заносим в битовый массив 1
-          (unless (equal (aref image-data qy qx) 255)
-            (setf (bit bit-array qy qx) 1))))
+          (if (equal (aref image-data qy qx) 255)
+              (setf (bit bit-array qy qx) 1)
+              (setf (bit bit-array qy qx) 0))))
       bit-array)))
 
 ;; TEST: make-bit-image
@@ -164,12 +165,33 @@
           (incf nxt)))
       new-image)))
 
+;; (defun unpack-image (image)
+
+
 ;; TEST: pack-image
 ;; (print
-;;  (pack-image (make-bit-image
-;;               (binarization
-;;                (x-snapshot :width 31 :height 23)
-;;                127))))
+;;  ;; (pack-image
+;;   ;; (make-bit-image
+;;    ;; (binarization
+;;  (let* ((image (x-snapshot :width 31 :height 23))
+;;         (dims (array-dimensions image))
+;;         (height (car dims))
+;;         (width (cadr dims))
+;;         (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+;;         (result (make-array (list height new-width) :element-type 'bit)))
+;;    (do ((qy 0 (incf qy)))
+;;        ((= qy height))
+;;      (do ((qx 0 (incf qx)))
+;;          ((= qx new-width))
+;;        (let ((avg (floor (+ (aref image qy qx 0)
+;;                             (aref image qy qx 1)
+;;                             (aref image qy qx 2))
+;;                          3)))
+;;          (format t "~A " avg)
+;;          (if (< 127 avg)
+;;              (setf (bit result qy qx) 1))))
+;;      (format t "~%"))
+;;    result))
 
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
@@ -277,12 +299,12 @@
     (let ((img  (car (last *shot-queue*)))
           (file (format nil "~A" (gensym "FILE"))))
       (setf *shot-queue*  (nbutlast *shot-queue*))
-      (save-png (floor *default-width* 8) *default-height*
+      (save-png *default-width* *default-height*
                 file
-                (pack-image
-                 (make-bit-image
+                ;; (pack-image
+                ;;  (make-bit-image
                   (binarization img 127)
-                  ))
+                  ;; ))
       :grayscale)
       (format t "~%::img-packer-stub ~A~%" file)
       (force-output))
