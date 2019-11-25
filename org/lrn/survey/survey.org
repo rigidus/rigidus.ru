@@ -495,14 +495,14 @@ SIMD-операций.
   ;; (disassemble 'pack-image)
 
   ;; TEST: pack-image
-  ;; (time
-  ;;  (let* ((image (pack-image (x-snapshot)))
-  ;;         (dims (array-dimensions image)))
-  ;;    (save-png (cadr dims)
-  ;;              (car dims)
-  ;;              (format nil "~A" (gensym "FILE"))
-  ;;              image
-  ;;              :grayscale)))
+  (time
+   (let* ((image (pack-image (x-snapshot)))
+          (dims (array-dimensions image)))
+     (save-png (cadr dims)
+               (car dims)
+               (format nil "~A" (gensym "FILE"))
+               image
+               :grayscale)))
 #+END_SRC
 
 *** Unpack image
@@ -547,16 +547,106 @@ SIMD-операций.
   ;;    (x-snapshot :width 31 :height 23))))
 
   ;; TEST
-  ;; (time
-  ;;  (let* ((image  (load-png "FILE1068"))
-  ;;         (unpack (unpack-image image))
-  ;;         (dims (array-dimensions unpack)))
-  ;;    (save-png (cadr dims)
-  ;;              (car dims)
-  ;;              (format nil "~A" (gensym "FILE"))
-  ;;              unpack
-  ;;              :grayscale)))
+  (time
+   (let* ((image  (load-png "FILE1088"))
+          (unpack (unpack-image image))
+          (dims (array-dimensions unpack)))
+     (save-png (cadr dims)
+               (car dims)
+               (format nil "~A" (gensym "FILE"))
+               unpack
+               :grayscale)))
 #+END_SRC
+
+*** Upload image
+
+#+NAME: upload_image
+#+BEGIN_SRC lisp
+  (setf drakma:*header-stream* *standard-output*)
+
+  (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
+
+  (defparameter *user-agent* "curl/7.47.0")
+
+  (defparameter *additional-headers*
+    `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+      ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
+      ("Accept-Charset" . "utf-8")))
+
+  (defun get-csrf (text)
+    (loop :for str :in (split-sequence:split-sequence #\Newline text)
+       :do (multiple-value-bind (match-p result)
+               (ppcre:scan-to-strings "(?m)app_csrf_token\\s+=\\s+\"(.*)\";" str)
+             (when match-p (return (aref result 0))))))
+
+  (defun get-cookies-alist (cookie-jar)
+    "Получаем alist с печеньками из cookie-jar"
+    (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
+         (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
+
+  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+    (multiple-value-bind (body-or-stream status-code headers
+                                         uri stream must-close reason-phrase)
+        (drakma:http-request "https://anonfile.com/"
+                             :user-agent *user-agent*
+                             :redirect 10
+                             :force-binary t
+                             :cookie-jar cookie-jar
+                             :additional-headers *additional-headers*)
+      (let* ((text (flexi-streams:octets-to-string body-or-stream
+                                                   :external-format :utf-8))
+             (csrf (get-csrf text))
+             (new-headers `(("Accept" . "application/json")
+                            ("Accept-Language" . "en-US,en;q=0.5")
+                            ("Cache-Control" . "no-cache")
+                            ("X-Requested-With" . "XMLHttpRequest")
+                            ("X-CSRF-Token" . ,csrf)
+                            ("Origin" . "https://anonfile.com")
+                            ("Referer" . "https://anonfile.com/")
+                            ("TE" . "Trailers"))))
+        (multiple-value-bind (body-or-stream status-code headers
+                                             uri stream must-close reason-phrase)
+            (drakma:http-request
+             "https://api.anonfile.com/upload"
+             ;; "http://localhost:9993/upload"
+             :user-agent *user-agent*
+             :method :post
+             :form-data t
+             :parameters `(("file" .  (,#P"png.png"
+                                          :content-type "application/octet-stream"
+                                          :filename "png.png"
+                                          )))
+             :cookie-jar cookie-jar
+             :additional-headers new-headers
+             ;; :external-format-in :UTF-8
+             ;; :external-format-out :UTF-8
+             :force-binary t)
+          (let* ((text (flexi-streams:octets-to-string body-or-stream
+                                                       :external-format :utf-8)))
+            (format t "~%<<~A>>" text))))))
+
+  ;; (print (get-cookies-alist cookie-jar))
+  ;; (print headers)
+  (setf drakma" . "drakma-default-external-format* :UTF-8)
+
+  (in-package :rigidus)
+
+  (ql:quickload "rigidus")
+
+  (restas:define-route upload ("/upload")
+    "<form enctype=\"multipart/form-data\" method=\"post\">
+     <input type=\"file\" name=\"file\">
+     <input type=\"submit\" value=\"Отправить\">
+     </form>")
+
+  (restas:define-route upload-post ("/upload" :method :post)
+    (let ((file-info (hunchentoot:post-parameter "file")))
+      ;; (hunchentoot:escape-for-html
+      ;;  (alexandria:read-file-into-string (first file-info)))
+      (format nil "~A"
+              (bprint file-info))))
+#+END_SRC
+
 
 ** цуацуа
 
@@ -625,6 +715,8 @@ SIMD-операций.
   (ql:quickload "clx")
   (ql:quickload "zpng")
   (ql:quickload "png-read")
+  (ql:quickload "drakma")
+  (ql:quickload "cl-ppcre")
 
   <<save_and_load_png>>
   <<binarization>>

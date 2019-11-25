@@ -328,4 +328,4 @@
                   (funcall *shot-func*))
               :name "shot" :thread t))
 
-(schedule-timer *shot-timer* 0.5)
+;; (schedule-timer *shot-timer* 0.5)
