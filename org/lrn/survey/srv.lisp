@@ -388,22 +388,15 @@
 ;;              unpack
 ;;              :grayscale)))
 
-(defun set-base (dims image)
+(defun save (name dims image)
   ;; (save-png (cadr dims)
   ;;           (car dims)
-  ;;           (format nil "~A" (gensym "FILE"))
+  ;;           (format nil "~A" (gensym name))
   ;;           image
   ;;           :grayscale)
   (save-png (* 8 (cadr dims))
             (car dims)
-            (format nil "~A" (gensym "FILE"))
-            (unpack-image image)
-            :grayscale))
-
-(defun set-diff (dims image)
-  (save-png (* 8 (cadr dims))
-            (car dims)
-            (format nil "~A" (gensym "DIFF"))
+            (format nil "~A" (gensym name))
             (unpack-image image)
             :grayscale))
 
@@ -415,7 +408,7 @@
            (dims (array-dimensions snap)))
       (if (> cnt 4)
           (progn
-            (set-base dims snap)
+            (save "FILE" dims snap)
             (setf prev snap)
             (setf cnt 0))
           ;; else
@@ -429,7 +422,7 @@
                 (setf (aref xored qy qx)
                       (logxor (aref prev qy qx)
                               (aref snap qy qx)))))
-            (set-diff dims xored)
+            (save "DIFF" dims xored)
             (setf prev snap)
             (incf cnt))))
     ;; re-schedule times
