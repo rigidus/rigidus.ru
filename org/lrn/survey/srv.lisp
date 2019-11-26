@@ -2,6 +2,10 @@
 (ql:quickload "clx")
 (ql:quickload "zpng")
 (ql:quickload "png-read")
+(ql:quickload "drakma")
+(ql:quickload "cl-ppcre")
+(ql:quickload "cl-base64")
+(ql:quickload "prbs")
 
 (defun save-png (width height pathname-str image
                  &optional (color-type :truecolor-alpha))
@@ -132,66 +136,61 @@
 ;; (print
 ;;  (make-bit-image
 ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
-(defun bit-vector->integer (bit-vector)
-  "Create a positive integer from a bit-vector."
-  (reduce #'(lambda (first-bit second-bit)
-              (+ (* first-bit 2) second-bit))
-          bit-vector))
+(defun pack-image (image)
+  (declare (optimize (speed 3) (safety 0)))
+  (let* ((dims (array-dimensions image))
+         (height (car dims))
+         (width (cadr dims))
+         (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+         (need-finisher (not (equal new-width (ash width -3))))
+         (result (make-array (list height new-width)
+                             :element-type '(unsigned-byte 8)))
+         (bp 8)
+         (acc 0))
+    (declare (type (unsigned-byte 8) acc)
+             (type fixnum bp)
+             (type fixnum width)
+             (type fixnum new-width)
+             (type fixnum height))
+    (macrolet ((byte-finisher (acc qy qx bp)
+                 `(progn
+                    ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
+                    (setf (aref result ,qy (ash ,qx -3)) ,acc)
+                    (setf ,acc 0)
+                    (setf ,bp 8))))
+      (do ((qy 0 (incf qy)))
+          ((= qy height))
+        (declare (type fixnum qy))
+        (do ((qx 0 (incf qx)))
+            ((= qx width) (when need-finisher
+                            (byte-finisher acc qy qx bp)))
+          (declare (type fixnum qx))
+          (let* ((avg (floor (+ (aref image qy qx 0)
+                                (aref image qy qx 1)
+                                (aref image qy qx 2))
+                             3))
+                 (pnt (ash avg -7)))
+            (declare (type fixnum avg))
+            (declare (type fixnum pnt))
+            (decf bp)
+            (setf acc (logior acc (ash pnt bp)))
+            (when (= bp 0)
+              (byte-finisher acc qy qx bp))))
+        ;; (format t "~%")
+        ))
+    result))
 
-(defun integer->bit-vector (integer)
-  "Create a bit-vector from a positive integer."
-  (labels ((integer->bit-list (int &optional accum)
-             (cond ((> int 0)
-                    (multiple-value-bind (i r) (truncate int 2)
-                      (integer->bit-list i (push r accum))))
-                   ((null accum) (push 0 accum))
-                   (t accum))))
-    (coerce (integer->bit-list integer) 'bit-vector)))
-
-(defun pack-image (bit-array)
-  (destructuring-bind (height width)
-      (array-dimensions bit-array)
-    (let* ((disp (make-array (array-total-size bit-array)
-                             :displaced-to bit-array
-                             :element-type (array-element-type bit-array)))
-           (new-image (make-array (list height (floor width 8))
-                                  :element-type '(unsigned-byte 8))))
-      (let ((nxt 0))
-        (do ((pt 0 (+ pt 8)))
-            ((= pt (array-total-size disp)))
-          (setf (row-major-aref new-image nxt)
-                (bit-vector->integer
-                 (subseq disp pt (+ pt 8))))
-          (incf nxt)))
-      new-image)))
-
-;; (defun unpack-image (image)
-
+;; (disassemble 'pack-image)
 
 ;; TEST: pack-image
-;; (print
-;;  ;; (pack-image
-;;   ;; (make-bit-image
-;;    ;; (binarization
-;;  (let* ((image (x-snapshot :width 31 :height 23))
-;;         (dims (array-dimensions image))
-;;         (height (car dims))
-;;         (width (cadr dims))
-;;         (new-width (ash (logand (+ width 7) (lognot 7)) -3))
-;;         (result (make-array (list height new-width) :element-type 'bit)))
-;;    (do ((qy 0 (incf qy)))
-;;        ((= qy height))
-;;      (do ((qx 0 (incf qx)))
-;;          ((= qx new-width))
-;;        (let ((avg (floor (+ (aref image qy qx 0)
-;;                             (aref image qy qx 1)
-;;                             (aref image qy qx 2))
-;;                          3)))
-;;          (format t "~A " avg)
-;;          (if (< 127 avg)
-;;              (setf (bit result qy qx) 1))))
-;;      (format t "~%"))
-;;    result))
+;; (time
+;;  (let* ((image (pack-image (x-snapshot)))
+;;         (dims (array-dimensions image)))
+;;    (save-png (cadr dims)
+;;              (car dims)
+;;              (format nil "~A" (gensym "FILE"))
+;;              image
+;;              :grayscale)))
 
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
@@ -286,46 +285,159 @@
 
 ;; (x-snapshot :path "x-snapshot-true-color.png")
 
-(defun call-subscribers (subscribers)
-  (loop :for subscriber :in subscribers
-     :do (funcall subscriber)))
+(defun pack-image (image)
+  (declare (optimize (speed 3) (safety 0)))
+  (let* ((dims (array-dimensions image))
+         (height (car dims))
+         (width (cadr dims))
+         (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+         (need-finisher (not (equal new-width (ash width -3))))
+         (result (make-array (list height new-width)
+                             :element-type '(unsigned-byte 8)))
+         (bp 8)
+         (acc 0))
+    (declare (type (unsigned-byte 8) acc)
+             (type fixnum bp)
+             (type fixnum width)
+             (type fixnum new-width)
+             (type fixnum height))
+    (macrolet ((byte-finisher (acc qy qx bp)
+                 `(progn
+                    ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
+                    (setf (aref result ,qy (ash ,qx -3)) ,acc)
+                    (setf ,acc 0)
+                    (setf ,bp 8))))
+      (do ((qy 0 (incf qy)))
+          ((= qy height))
+        (declare (type fixnum qy))
+        (do ((qx 0 (incf qx)))
+            ((= qx width) (when need-finisher
+                            (byte-finisher acc qy qx bp)))
+          (declare (type fixnum qx))
+          (let* ((avg (floor (+ (aref image qy qx 0)
+                                (aref image qy qx 1)
+                                (aref image qy qx 2))
+                             3))
+                 (pnt (ash avg -7)))
+            (declare (type fixnum avg))
+            (declare (type fixnum pnt))
+            (decf bp)
+            (setf acc (logior acc (ash pnt bp)))
+            (when (= bp 0)
+              (byte-finisher acc qy qx bp))))
+        ;; (format t "~%")
+        ))
+    result))
 
-(defparameter *shot-queue* nil)
+;; (disassemble 'pack-image)
 
-;; list of subscribers for `shot-func'
-(defparameter *img-packer*
-  (lambda ()
-    ;; img_packer_contents
-    (let ((img  (car (last *shot-queue*)))
-          (file (format nil "~A" (gensym "FILE"))))
-      (setf *shot-queue*  (nbutlast *shot-queue*))
-      (save-png *default-width* *default-height*
-                file
-                ;; (pack-image
-                ;;  (make-bit-image
-                  (binarization img 127)
-                  ;; ))
-      :grayscale)
-      (format t "~%::img-packer-stub ~A~%" file)
-      (force-output))
-    ;; end - no subscribers
-    ))
+;; TEST: pack-image
+;; (time
+;;  (let* ((image (pack-image (x-snapshot)))
+;;         (dims (array-dimensions image)))
+;;    (save-png (cadr dims)
+;;              (car dims)
+;;              (format nil "~A" (gensym "FILE"))
+;;              image
+;;              :grayscale)))
+(defun unpack-image (image)
+  (declare (optimize (speed 3) (safety 0)))
+  (let* ((dims (array-dimensions image))
+         (height (car dims))
+         (width (cadr dims))
+         (new-width (ash width 3))
+         (result (make-array (list height new-width)
+                             :element-type '(unsigned-byte 8))))
+    (declare (type fixnum width)
+             (type fixnum new-width)
+             (type fixnum height))
+    (do ((qy 0 (incf qy)))
+        ((= qy height))
+      (declare (type fixnum qy))
+      (do ((qx 0 (incf qx)))
+          ((= qx width))
+        (declare (type fixnum qx))
+        (let ((acc (aref image qy qx)))
+          (declare (type (unsigned-byte 8) acc))
+          ;; (format t "~8,'0B" acc)
+          (do ((out 0 (incf out))
+               (in  7 (decf in)))
+              ((= 8 out))
+            (declare (type fixnum out in))
+            (unless (= 0 (logand acc (ash 1 in)))
+              (setf (aref result qy (logior (ash qx 3) out))
+                    255)))))
+      ;; (format t "~%")
+      )
+    result))
 
-(defparameter *shot-subscribers* (list *img-packer*))
+;; TEST
+;; (print
+;;  (unpack-image
+;;   (pack-image
+;;    (x-snapshot :width 31 :height 23))))
 
-(defparameter *shot-func*
-  (lambda ()
-    ;; shot_func_contents:
-    (push (x-snapshot) *shot-queue*)
-    (format t "~%::shot-func-stub ~A" (length *shot-queue*))
-    (force-output)
-    ;; Call for all subscibers
-    (call-subscribers *shot-subscribers*)
+;; TEST
+;; (time
+;;  (let* ((image  (load-png "FILE1088"))
+;;         (unpack (unpack-image image))
+;;         (dims (array-dimensions unpack)))
+;;    (save-png (cadr dims)
+;;              (car dims)
+;;              (format nil "~A" (gensym "FILE"))
+;;              unpack
+;;              :grayscale)))
+
+(defun set-base (dims image)
+  ;; (save-png (cadr dims)
+  ;;           (car dims)
+  ;;           (format nil "~A" (gensym "FILE"))
+  ;;           image
+  ;;           :grayscale)
+  (save-png (* 8 (cadr dims))
+            (car dims)
+            (format nil "~A" (gensym "FILE"))
+            (unpack-image image)
+            :grayscale))
+
+(defun set-diff (dims image)
+  (save-png (* 8 (cadr dims))
+            (car dims)
+            (format nil "~A" (gensym "DIFF"))
+            (unpack-image image)
+            :grayscale))
+
+(let ((prev)
+      (cnt 9999))
+  (defun shot-func ()
+    (format t "~%::shot-func")
+    (let* ((snap (pack-image (x-snapshot)))
+           (dims (array-dimensions snap)))
+      (if (> cnt 4)
+          (progn
+            (set-base dims snap)
+            (setf prev snap)
+            (setf cnt 0))
+          ;; else
+          (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+            (do ((qy 0 (incf qy)))
+                ((= qy (car dims)))
+              (declare (type fixnum qy))
+              (do ((qx 0 (incf qx)))
+                  ((= qx (cadr dims)))
+                (declare (type fixnum qx))
+                (setf (aref xored qy qx)
+                      (logxor (aref prev qy qx)
+                              (aref snap qy qx)))))
+            (set-diff dims xored)
+            (setf prev snap)
+            (incf cnt))))
+    ;; re-schedule times
     (schedule-timer *shot-timer* 1 :absolute-p nil)))
 
 (defparameter *shot-timer*
   (make-timer #'(lambda ()
-                  (funcall *shot-func*))
+                  (shot-func))
               :name "shot" :thread t))
 
-;; (schedule-timer *shot-timer* 0.5)
+(schedule-timer *shot-timer* 0.5)

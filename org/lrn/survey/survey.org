@@ -53,55 +53,11 @@
 
   (defparameter *shot-timer*
     (make-timer #'(lambda ()
-                    (funcall *shot-func*))
+                    (shot-func))
                 :name "shot" :thread t))
 
   (schedule-timer *shot-timer* 0.5)
 #+END_SRC
-
-Сама функция скриншота после того как выполнит свою работу должна вызвать
-всех своих подписчиков и реинициализировать свой таймер. Нам также нужна
-очередь, через которую функция скриншота будет передавать скриншоты своим
-подписчикам.
-
-#+NAME: shot_func
-#+BEGIN_SRC lisp :noweb yes
-  (defun call-subscribers (subscribers)
-    (loop :for subscriber :in subscribers
-       :do (funcall subscriber)))
-
-  (defparameter *shot-queue* nil)
-
-  ;; list of subscribers for `shot-func'
-  <<shot_subscribers>>
-
-  (defparameter *shot-func*
-    (lambda ()
-      ;; shot_func_contents:
-      <<shot_func_contents>>
-      ;; Call for all subscibers
-      (call-subscribers *shot-subscribers*)
-      (schedule-timer *shot-timer* 1 :absolute-p nil)))
-#+END_SRC
-
-Подписчиком, который обрабатывает изображения будет функция
-~img-packer~. После ее определения мы можем сформировать список
-подписчиков функции ~shot-func~:
-
-#+NAME: shot_subscribers
-#+BEGIN_SRC lisp :noweb yes
-  (defparameter *img-packer*
-    (lambda ()
-      ;; img_packer_contents
-      <<img_packer_contents>>
-      ;; end - no subscribers
-      ))
-
-  (defparameter *shot-subscribers* (list *img-packer*))
-#+END_SRC
-
-Нам осталось сформировать ~shot_func_contents~ и
-~img_packer_contents~. Это мы сделаем в подразделах ниже:
 
 ** X-Display
 
@@ -217,41 +173,152 @@
   ;; (x-snapshot :path "x-snapshot-true-color.png")
 #+END_SRC
 
-** Shot func contents
 
-Наша задача - получить скриншот и сохранить его в очереди
 
-#+NAME: shot_func_contents
+* Snaphot function
+
+Сама функция скриншота должна сделать скриншт и обработать его, а потом
+реинициализировать свой таймер
+
+#+NAME: shot_func
 #+BEGIN_SRC lisp :noweb yes
-  (push (x-snapshot) *shot-queue*)
-  (format t "~%::shot-func-stub ~A" (length *shot-queue*))
-  (force-output)
+  <<pack_image>>
+  <<unpack_image>>
+
+  (defun set-base (dims image)
+    ;; (save-png (cadr dims)
+    ;;           (car dims)
+    ;;           (format nil "~A" (gensym "FILE"))
+    ;;           image
+    ;;           :grayscale)
+    (save-png (* 8 (cadr dims))
+              (car dims)
+              (format nil "~A" (gensym "FILE"))
+              (unpack-image image)
+              :grayscale))
+
+  (defun set-diff (dims image)
+    (save-png (* 8 (cadr dims))
+              (car dims)
+              (format nil "~A" (gensym "DIFF"))
+              (unpack-image image)
+              :grayscale))
+
+  (let ((prev)
+        (cnt 9999))
+    (defun shot-func ()
+      (format t "~%::shot-func")
+      (let* ((snap (pack-image (x-snapshot)))
+             (dims (array-dimensions snap)))
+        (if (> cnt 4)
+            (progn
+              (set-base dims snap)
+              (setf prev snap)
+              (setf cnt 0))
+            ;; else
+            (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+              (do ((qy 0 (incf qy)))
+                  ((= qy (car dims)))
+                (declare (type fixnum qy))
+                (do ((qx 0 (incf qx)))
+                    ((= qx (cadr dims)))
+                  (declare (type fixnum qx))
+                  (setf (aref xored qy qx)
+                        (logxor (aref prev qy qx)
+                                (aref snap qy qx)))))
+              (set-diff dims xored)
+              (setf prev snap)
+              (incf cnt))))
+      ;; re-schedule times
+      (schedule-timer *shot-timer* 1 :absolute-p nil)))
 #+END_SRC
 
-** Processing
+** Packing image
 
-Окей, теперь мы будем просто брать последнее изображение из очереди,
-сохранять его на диск и удалять из очереди. Для первого прототипа сойдет
+Нам нужна функция, для быстрой упаковки изображения. Она не тривиальна.
 
-Расширим это, бинаризуя изображения - так они будут занимать меньше места
+Мы берем полноцветное изображение и используем два вложенных цикла,
+проходя по ~Y~ и ~X~ чтобы обработать каждую точку. После обработки одна
+точка должна занимать только один бит.
 
-#+NAME: img_packer_contents
-#+BEGIN_SRC lisp :noweb yes
-  (let ((img  (car (last *shot-queue*)))
-        (file (format nil "~A" (gensym "FILE"))))
-    (setf *shot-queue*  (nbutlast *shot-queue*))
-    (save-png (floor *default-width* 8) *default-height*
-              file
-              (pack-image
-               (make-bit-image
-                (binarization img 127)
-                ))
-    :grayscale)
-    (format t "~%::img-packer-stub ~A~%" file)
-    (force-output))
+Мы также должны упаковать по восемь точек в байт, но если размер
+изображения в точках не кратен байту, то нужно дополнить недостающие
+точки. За это отвечате внутренний макрос ~byte-finiser~, который
+вызывается по мере накопления значений в байте и в конце обработки
+строки, если это необходимо.
+
+#+NAME: pack_image
+#+BEGIN_SRC lisp
+  (defun pack-image (image)
+    (declare (optimize (speed 3) (safety 0)))
+    (let* ((dims (array-dimensions image))
+           (height (car dims))
+           (width (cadr dims))
+           (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+           (need-finisher (not (equal new-width (ash width -3))))
+           (result (make-array (list height new-width)
+                               :element-type '(unsigned-byte 8)))
+           (bp 8)
+           (acc 0))
+      (declare (type (unsigned-byte 8) acc)
+               (type fixnum bp)
+               (type fixnum width)
+               (type fixnum new-width)
+               (type fixnum height))
+      (macrolet ((byte-finisher (acc qy qx bp)
+                   `(progn
+                      ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
+                      (setf (aref result ,qy (ash ,qx -3)) ,acc)
+                      (setf ,acc 0)
+                      (setf ,bp 8))))
+        (do ((qy 0 (incf qy)))
+            ((= qy height))
+          (declare (type fixnum qy))
+          (do ((qx 0 (incf qx)))
+              ((= qx width) (when need-finisher
+                              (byte-finisher acc qy qx bp)))
+            (declare (type fixnum qx))
+            (let* ((avg (floor (+ (aref image qy qx 0)
+                                  (aref image qy qx 1)
+                                  (aref image qy qx 2))
+                               3))
+                   (pnt (ash avg -7)))
+              (declare (type fixnum avg))
+              (declare (type fixnum pnt))
+              (decf bp)
+              (setf acc (logior acc (ash pnt bp)))
+              (when (= bp 0)
+                (byte-finisher acc qy qx bp))))
+          ;; (format t "~%")
+          ))
+      result))
+
+  ;; (disassemble 'pack-image)
+
+  ;; TEST: pack-image
+  ;; (time
+  ;;  (let* ((image (pack-image (x-snapshot)))
+  ;;         (dims (array-dimensions image)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              image
+  ;;              :grayscale)))
 #+END_SRC
 
-*** Save and Load
+
+** LFSR
+
+#+NAME: lfsr
+#+BEGIN_SRC lisp
+  (ql:quickload "prbs")
+
+  (setq bytes (prbs:byte-gen 31 :seed (get-universal-time)))
+#+END_SRC
+
+
+
+** Save and Load
 
 Для целей отладки нам нужно уметь сохранять и загружать png-изображения
 
@@ -324,7 +391,7 @@
         result)))
 #+END_SRC
 
-*** Bit-vector operations
+** Bit-vector operations
 
 Для целей отладки определим операции кодирования в битовый вектор и
 обратно
@@ -348,7 +415,7 @@
       (coerce (integer->bit-list integer) 'bit-vector)))
 #+END_SRC
 
-*** Binarization
+** Binarization
 
 Получение черно-белого изображения или в градациях серого из
 полноцветного.
@@ -400,7 +467,7 @@ SIMD-операций.
   ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 #+END_SRC
 
-*** Bit-image
+** Bit-image
 
 Упаковка бинаризованного черно-белого изображения в битовый массив
 
@@ -432,80 +499,7 @@ SIMD-операций.
   ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
 #+END_SRC
 
-*** Pack-image
-
-Нам нужна функция, для быстрой упаковки изображения. Она не тривиальна.
-
-Мы берем полноцветное изображение и используем два вложенных цикла,
-проходя по ~Y~ и ~X~ чтобы обработать каждую точку. После обработки одна
-точка должна занимать только один бит.
-
-Мы также должны упаковать по восемь точек в байт, но если размер
-изображения в точках не кратен байту, то нужно дополнить недостающие
-точки. За это отвечате внутренний макрос ~byte-finiser~, который
-вызывается по мере накопления значений в байте и в конце обработки
-строки, если это необходимо.
-
-#+NAME: pack_image
-#+BEGIN_SRC lisp
-  (defun pack-image (image)
-    (declare (optimize (speed 3) (safety 0)))
-    (let* ((dims (array-dimensions image))
-           (height (car dims))
-           (width (cadr dims))
-           (new-width (ash (logand (+ width 7) (lognot 7)) -3))
-           (need-finisher (not (equal new-width (ash width -3))))
-           (result (make-array (list height new-width)
-                               :element-type '(unsigned-byte 8)))
-           (bp 8)
-           (acc 0))
-      (declare (type (unsigned-byte 8) acc)
-               (type fixnum bp)
-               (type fixnum width)
-               (type fixnum new-width)
-               (type fixnum height))
-      (macrolet ((byte-finisher (acc qy qx bp)
-                   `(progn
-                      ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
-                      (setf (aref result ,qy (ash ,qx -3)) ,acc)
-                      (setf ,acc 0)
-                      (setf ,bp 8))))
-        (do ((qy 0 (incf qy)))
-            ((= qy height))
-          (declare (type fixnum qy))
-          (do ((qx 0 (incf qx)))
-              ((= qx width) (when need-finisher
-                              (byte-finisher acc qy qx bp)))
-            (declare (type fixnum qx))
-            (let* ((avg (floor (+ (aref image qy qx 0)
-                                  (aref image qy qx 1)
-                                  (aref image qy qx 2))
-                               3))
-                   (pnt (ash avg -7)))
-              (declare (type fixnum avg))
-              (declare (type fixnum pnt))
-              (decf bp)
-              (setf acc (logior acc (ash pnt bp)))
-              (when (= bp 0)
-                (byte-finisher acc qy qx bp))))
-          ;; (format t "~%")
-          ))
-      result))
-
-  ;; (disassemble 'pack-image)
-
-  ;; TEST: pack-image
-  (time
-   (let* ((image (pack-image (x-snapshot)))
-          (dims (array-dimensions image)))
-     (save-png (cadr dims)
-               (car dims)
-               (format nil "~A" (gensym "FILE"))
-               image
-               :grayscale)))
-#+END_SRC
-
-*** Unpack image
+** Unpack image
 
 #+NAME: unpack_image
 #+BEGIN_SRC lisp
@@ -547,18 +541,18 @@ SIMD-операций.
   ;;    (x-snapshot :width 31 :height 23))))
 
   ;; TEST
-  (time
-   (let* ((image  (load-png "FILE1088"))
-          (unpack (unpack-image image))
-          (dims (array-dimensions unpack)))
-     (save-png (cadr dims)
-               (car dims)
-               (format nil "~A" (gensym "FILE"))
-               unpack
-               :grayscale)))
+  ;; (time
+  ;;  (let* ((image  (load-png "FILE1088"))
+  ;;         (unpack (unpack-image image))
+  ;;         (dims (array-dimensions unpack)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              unpack
+  ;;              :grayscale)))
 #+END_SRC
 
-*** Upload image
+** Upload image
 
 #+NAME: upload_image
 #+BEGIN_SRC lisp
@@ -659,66 +653,6 @@ SIMD-операций.
               (bprint file-info))))
 #+END_SRC
 
-
-** цуацуа
-
-Нам необходима обвязка, которая нужна для передачи скринштов между
-процедурами:
-- очередь, куда записываются скриншоты
-- переменная взаимоблокировки
-- condition-variable чтобы размораживать другие потоки
-
-#+NAME: base_old
-#+BEGIN_SRC lisp :noweb yes
-  <<x_display>>
-
-  (defparameter *shot-queue*       nil)
-  (defparameter *shot-lock*        (bt:make-lock "shot-lock"))
-  (defparameter *cv-shot*          (bt:make-condition-variable :name "cv-pc"))
-
-  (schedule-timer *shot-timer* 1)
-#+END_SRC
-
-* Timers
-
-#+NAME: timers
-#+BEGIN_SRC lisp
-  (let ((cnt 0))
-    (defun send-key-frame (image-data)
-      (let ((file (format nil "~30,'0d.png" cnt)))
-        (destructuring-bind (height width)
-            (array-dimensions image-data)
-          (save-png width height file image-data :grayscale))
-        (incf cnt))))
-
-  (defun xor-img (prev next)
-    (let* ((dims (array-dimensions prev))
-           (new-dims (cond ((equal 3 (length dims))  (butlast dims))
-                           ((equal 2 (length dims))  dims)
-                           (t (error 'binarization-error))))
-           (result (make-array new-dims :element-type '(unsigned-byte 8))))
-      (do ((qy 0 (incf qy)))
-          ((= qy *default-height*))
-        (do ((qx 0 (incf qx)))
-            ((= qx *default-width*))
-          (setf (aref result qy qx)
-                (logxor (aref prev qy qx)
-                        (aref next qy qx)))))
-      result))
-
-  (let ((prev-img))
-    (defun every-second-func ()
-      (if (null prev-img)
-          (progn
-            (setf prev-img (binarization (x-snapshot) 127))
-            (send-key-frame prev-img))
-          ;; else
-          (let* ((next-img  (binarization (x-snapshot) 127))
-                 (xored-img (xor-img prev-img next-img)))
-            (print (send-key-frame xored-img))))))
-
-#+END_SRC
-
 * Assembly
 
 #+NAME:
@@ -730,6 +664,7 @@ SIMD-операций.
   (ql:quickload "drakma")
   (ql:quickload "cl-ppcre")
   (ql:quickload "cl-base64")
+  (ql:quickload "prbs")
 
   <<save_and_load_png>>
   <<binarization>>
