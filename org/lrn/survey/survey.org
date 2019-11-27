@@ -173,7 +173,6 @@
   ;; (x-snapshot :path "x-snapshot-true-color.png")
 #+END_SRC
 
-
 * Snaphot function
 
 Сама функция скриншота должна сделать скриншт и обработать его, а потом
@@ -184,13 +183,43 @@
   <<pack_image>>
   <<unpack_image>>
 
+  (defun seq-xor (len seq-1 seq-2)
+    (let ((result (make-array len :element-type '(unsigned-byte 8))))
+      (do ((idx 0 (incf idx)))
+          ((= idx len))
+        (setf (aref result idx)
+              (logxor (aref seq-1 idx)
+                      (aref seq-2 idx))))
+      result))
+
   (defun save (frmt-filename-str dims image)
     (let* ((height (car dims))
-           (width  (* 8 (cadr dims))) ;; dbg: for unpack image
+           (width  (* 8 (cadr dims))) ;; tmp: for unpack image
            (unpacked-image (unpack-image image))
-           (unk-filename (format nil frmt-filename-str (gensym)))
-           (png (get-png-obj width height unpacked-image :grayscale)))
-      (save-png unk-filename png)))
+           (png (get-png-obj width height unpacked-image :grayscale))
+           (png-seq (get-png-sequence png))
+           (png-len (length png-seq))
+           (seed (get-universal-time))
+           (encoder (prbs:byte-gen 31 :seed seed))
+           (enc-gamma (funcall encoder png-len))
+           (encoded (seq-xor png-len png-seq enc-gamma))
+           (base64 (cl-base64:usb8-array-to-base64-string encoded))
+           (unbase64 (cl-base64:base64-string-to-usb8-array base64))
+           (decoder (prbs:byte-gen 31 :seed seed))
+           (dec-gamma (funcall decoder png-len))
+           (decoded (seq-xor (length unbase64) unbase64 dec-gamma))
+           (unk-filename (format nil frmt-filename-str
+                                 (format nil "~A-~A-~A-"
+                                         (gensym) seed png-len))))
+      ;; (alexandria:write-string-into-file
+      ;;  base64 unk-filename :if-exists :supersede  :external-format :utf-8)
+      (with-open-file (file-stream unk-filename
+                                   :direction :output
+                                   :if-exists :supersede
+                                   :if-does-not-exist :create
+                                   :element-type '(unsigned-byte 8))
+        (write-sequence decoded file-stream))
+      ))
 
   ;; TODO: get-png-sequence and encrypt
 
@@ -303,6 +332,8 @@
   (ql:quickload "prbs")
 
   (setq bytes (prbs:byte-gen 31 :seed (get-universal-time)))
+
+  ;; (funcall bytes)
 #+END_SRC
 
 ** Save and Load
@@ -326,12 +357,13 @@
       (setf (zpng::%image-data png) (copy-seq vector))
       png))
 
-  (defun save-png (pathname-str png)
-    (zpng:write-png png pathname-str))
-
   (defun get-png-sequence (png)
     (flex:with-output-to-sequence (stream)
       (zpng:write-png-stream png stream)))
+
+  ;; DEPRECATED, use explicit saving png-sequence by with-open-file
+  ;; (defun save-png (pathname-str png)
+  ;;   (zpng:write-png png pathname-str))
 
   (defun load-png (pathname-str)
     "Возвращает массив size-X столбцов по size-Y точек,
