@@ -174,7 +174,6 @@
 #+END_SRC
 
 
-
 * Snaphot function
 
 Сама функция скриншота должна сделать скриншт и обработать его, а потом
@@ -185,17 +184,15 @@
   <<pack_image>>
   <<unpack_image>>
 
-  (defun save (name dims image)
-    ;; (save-png (cadr dims)
-    ;;           (car dims)
-    ;;           (format nil "~A" (gensym name))
-    ;;           image
-    ;;           :grayscale)
-    (save-png (* 8 (cadr dims))
-              (car dims)
-              (format nil "~A" (gensym name))
-              (unpack-image image)
-              :grayscale))
+  (defun save (frmt-filename-str dims image)
+    (let* ((height (car dims))
+           (width  (* 8 (cadr dims))) ;; dbg: for unpack image
+           (unpacked-image (unpack-image image))
+           (unk-filename (format nil frmt-filename-str (gensym)))
+           (png (get-png-obj width height unpacked-image :grayscale)))
+      (save-png unk-filename png)))
+
+  ;; TODO: get-png-sequence and encrypt
 
   (let ((prev)
         (cnt 9999))
@@ -205,7 +202,7 @@
              (dims (array-dimensions snap)))
         (if (> cnt 4)
             (progn
-              (save "FILE" dims snap)
+              (save "FILE~A" dims snap)
               (setf prev snap)
               (setf cnt 0))
             ;; else
@@ -219,7 +216,7 @@
                   (setf (aref xored qy qx)
                         (logxor (aref prev qy qx)
                                 (aref snap qy qx)))))
-              (save "DIFF" dims xored)
+              (save "FILE~ADIFF" dims xored)
               (setf prev snap)
               (incf cnt))))
       ;; re-schedule times
@@ -308,15 +305,13 @@
   (setq bytes (prbs:byte-gen 31 :seed (get-universal-time)))
 #+END_SRC
 
-
 ** Save and Load
 
 Для целей отладки нам нужно уметь сохранять и загружать png-изображения
 
 #+NAME: save_and_load_png
 #+BEGIN_SRC lisp
-  (defun save-png (width height pathname-str image
-                   &optional (color-type :truecolor-alpha))
+  (defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
     (let* ((png (make-instance 'zpng:png :width width :height height
                                :color-type color-type))
            (vector (make-array ;; displaced vector - need copy for save
@@ -329,7 +324,14 @@
       ;; который мы хотим передать как данные и при этом
       ;; избежать создания для этого временного объекта
       (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
+      png))
+
+  (defun save-png (pathname-str png)
+    (zpng:write-png png pathname-str))
+
+  (defun get-png-sequence (png)
+    (flex:with-output-to-sequence (stream)
+      (zpng:write-png-stream png stream)))
 
   (defun load-png (pathname-str)
     "Возвращает массив size-X столбцов по size-Y точек,
@@ -456,6 +458,20 @@ SIMD-операций.
   ;;   (destructuring-bind (height width) ;; NB: no depth!
   ;;       (array-dimensions image-data)
   ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
+
+
+  ;; TEST: binarize get png and save
+  ;; (print
+  ;;  (let* ((image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+  ;;    (destructuring-bind (height width) ;; NB: no depth!
+  ;;        (array-dimensions image-data)
+  ;;      (let ((seq (get-png width height image-data :grayscale)))
+  ;;        (with-open-file (file-stream "tee.png"
+  ;;                                     :direction :output
+  ;;                                     :if-exists :supersede
+  ;;                                     :if-does-not-exist :create
+  ;;                                     :element-type '(unsigned-byte 8))
+  ;;          (write-sequence seq file-stream))))))
 #+END_SRC
 
 ** Bit-image

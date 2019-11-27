@@ -7,8 +7,7 @@
 (ql:quickload "cl-base64")
 (ql:quickload "prbs")
 
-(defun save-png (width height pathname-str image
-                 &optional (color-type :truecolor-alpha))
+(defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
   (let* ((png (make-instance 'zpng:png :width width :height height
                              :color-type color-type))
          (vector (make-array ;; displaced vector - need copy for save
@@ -21,7 +20,14 @@
     ;; который мы хотим передать как данные и при этом
     ;; избежать создания для этого временного объекта
     (setf (zpng::%image-data png) (copy-seq vector))
-    (zpng:write-png png pathname-str)))
+    png))
+
+(defun save-png (pathname-str png)
+  (zpng:write-png png pathname-str))
+
+(defun get-png-sequence (png)
+  (flex:with-output-to-sequence (stream)
+    (zpng:write-png-stream png stream)))
 
 (defun load-png (pathname-str)
   "Возвращает массив size-X столбцов по size-Y точек,
@@ -112,6 +118,20 @@
 ;;   (destructuring-bind (height width) ;; NB: no depth!
 ;;       (array-dimensions image-data)
 ;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
+
+
+;; TEST: binarize get png and save
+;; (print
+;;  (let* ((image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+;;    (destructuring-bind (height width) ;; NB: no depth!
+;;        (array-dimensions image-data)
+;;      (let ((seq (get-png width height image-data :grayscale)))
+;;        (with-open-file (file-stream "tee.png"
+;;                                     :direction :output
+;;                                     :if-exists :supersede
+;;                                     :if-does-not-exist :create
+;;                                     :element-type '(unsigned-byte 8))
+;;          (write-sequence seq file-stream))))))
 (defun make-bit-image (image-data)
   (destructuring-bind (height width &optional colors)
       (array-dimensions image-data)
@@ -388,17 +408,15 @@
 ;;              unpack
 ;;              :grayscale)))
 
-(defun save (name dims image)
-  ;; (save-png (cadr dims)
-  ;;           (car dims)
-  ;;           (format nil "~A" (gensym name))
-  ;;           image
-  ;;           :grayscale)
-  (save-png (* 8 (cadr dims))
-            (car dims)
-            (format nil "~A" (gensym name))
-            (unpack-image image)
-            :grayscale))
+(defun save (frmt-filename-str dims image)
+  (let* ((height (car dims))
+         (width  (* 8 (cadr dims))) ;; dbg: for unpack image
+         (unpacked-image (unpack-image image))
+         (unk-filename (format nil frmt-filename-str (gensym)))
+         (png (get-png-obj width height unpacked-image :grayscale)))
+    (save-png unk-filename png)))
+
+;; TODO: get-png-sequence and encrypt
 
 (let ((prev)
       (cnt 9999))
@@ -408,7 +426,7 @@
            (dims (array-dimensions snap)))
       (if (> cnt 4)
           (progn
-            (save "FILE" dims snap)
+            (save "FILE~A" dims snap)
             (setf prev snap)
             (setf cnt 0))
           ;; else
@@ -422,7 +440,7 @@
                 (setf (aref xored qy qx)
                       (logxor (aref prev qy qx)
                               (aref snap qy qx)))))
-            (save "DIFF" dims xored)
+            (save "FILE~ADIFF" dims xored)
             (setf prev snap)
             (incf cnt))))
     ;; re-schedule times
@@ -433,4 +451,4 @@
                   (shot-func))
               :name "shot" :thread t))
 
-(schedule-timer *shot-timer* 0.5)
+;; (schedule-timer *shot-timer* 0.5)
