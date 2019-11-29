@@ -74,6 +74,45 @@
 
 ** Read loop
 
+При временном отключении интернета внутри ~CL-IRC:READ-MESSAGE-LOOP~
+может возникнуть ошибка ~SB-INT:SIMPLE-STREAM-ERROR~ с сообщением вида
+couldn't read from #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644,
+peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
+
+[TODO:gmm] В этом случае нужно как-то сделать реконнект... Может быть
+через THROW.
+
+#+BEGIN_EXAMPLE
+  couldn't read from #<SB-SYS:FD-STREAM
+                       for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667"
+                       {1008002283}>:
+    Connection reset by peer
+     [Condition of type SB-INT:SIMPLE-STREAM-ERROR]
+
+  Restarts:
+   0: [ABORT] abort thread (#<THREAD "irc-thread" RUNNING {1008E466F3}>)
+
+  Backtrace:
+    0: (SB-IMPL::SIMPLE-STREAM-PERROR "couldn't read from ~S" #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> 104)
+    1: (SB-IMPL::REFILL-INPUT-BUFFER #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}>)
+    2: (SB-IMPL::INPUT-UNSIGNED-8BIT-BYTE #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> NIL NIL)
+    3: (READ-BYTE #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> NIL NIL)
+    4: (CL-IRC::READ-SEQUENCE-UNTIL #<unavailable argument> #<unavailable argument> #<unavailable argument> :NON-BLOCKING #<unavailable argument>)
+    5: (CL-IRC::READ-PROTOCOL-LINE #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>)
+    6: ((:METHOD CL-IRC:READ-IRC-MESSAGE (CL-IRC:CONNECTION)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
+    7: ((:METHOD CL-IRC:READ-MESSAGE (CL-IRC:CONNECTION)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
+    8: ((:METHOD CL-IRC:READ-MESSAGE-LOOP (T)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
+    9: ((LAMBDA NIL :IN BORDEAUX-THREADS::BINDING-DEFAULT-SPECIALS))
+   10: ((FLET #:WITHOUT-INTERRUPTS-BODY-1156 :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE))
+   11: ((FLET SB-THREAD::WITH-MUTEX-THUNK :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE))
+   12: ((FLET #:WITHOUT-INTERRUPTS-BODY-359 :IN SB-THREAD::CALL-WITH-MUTEX))
+   13: (SB-THREAD::CALL-WITH-MUTEX #<CLOSURE (FLET SB-THREAD::WITH-MUTEX-THUNK :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE) {7FFFEBB96D5B}> #<SB-THREAD:MUTEX "thread result lock" owner: #<SB-THREAD:THR..
+   14: (SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE #<SB-THREAD:THREAD "irc-thread" RUNNING {1008E466F3}> NIL #<CLOSURE (LAMBDA NIL :IN BORDEAUX-THREADS::BINDING-DEFAULT-SPECIALS) {1008E4667B}> (#<SB-THREA..
+   15: ("foreign function: call_into_lisp")
+   16: ("foreign function: new_thread_trampoline")
+
+#+END_EXAMPLE
+
 #+NAME: irc_loop
 #+BEGIN_SRC lisp :noweb yes
   (defun irc-loop ()
