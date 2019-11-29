@@ -572,34 +572,38 @@ Content-Type: application/octet-stream
 ;;             (bprint file-info))))
 
 (defun save (frmt-filename-str dims image)
-  (let* ((height     (car  dims))
-         (width      (cadr dims))
-         (png        (get-png-obj width height image :grayscale))
-         (png-seq    (get-png-sequence png))
-         (base64     (encrypt png-seq *irc-sess*))
-         (decoded    (decrypt base64 *irc-sess*))
-         (filename   (format nil frmt-filename-str
-                             (format nil "~A" (get-universal-time))))
-         (upload-ret (cl-json:decode-json-from-string
-                      (anon-file-upload filename base64)))
-         (link       (if (cdr (assoc :status upload-ret))
-                         (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
-                         nil))
-         ;; (full-filename (format nil "FILE_~A_~A"
-         ;;                        *irc-sess*
-         ;;                        filename))
-         )
-    (cl-irc:privmsg *irc-conn* *irc-chan*
-                    (if link
-                        link
-                        upload-ret))
-    ;; (with-open-file (file-stream full-filename
-    ;;                              :direction :output
-    ;;                              :if-exists :supersede
-    ;;                              :if-does-not-exist :create
-    ;;                              :element-type '(unsigned-byte 8))
-    ;;   (write-sequence decoded file-stream))
-    ))
+  (block save-block
+    (let* ((height     (car  dims))
+           (width      (cadr dims))
+           (png        (get-png-obj width height image :grayscale))
+           (png-seq    (get-png-sequence png))
+           (base64     (encrypt png-seq *irc-sess*))
+           (decoded    (decrypt base64 *irc-sess*))
+           (filename   (format nil frmt-filename-str
+                               (format nil "~A" (get-universal-time))))
+           (upload-ret (handler-case
+                           (cl-json:decode-json-from-string
+                            (anon-file-upload filename base64))
+                         (JSON:JSON-SYNTAX-ERROR ()
+                           (return-from save-block nil))))
+           (link       (if (cdr (assoc :status upload-ret))
+                           (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
+                           nil))
+           ;; (full-filename (format nil "FILE_~A_~A"
+           ;;                        *irc-sess*
+           ;;                        filename))
+           )
+      (cl-irc:privmsg *irc-conn* *irc-chan*
+                      (if link
+                          link
+                          upload-ret))
+      ;; (with-open-file (file-stream full-filename
+      ;;                              :direction :output
+      ;;                              :if-exists :supersede
+      ;;                              :if-does-not-exist :create
+      ;;                              :element-type '(unsigned-byte 8))
+      ;;   (write-sequence decoded file-stream))
+      )))
 
 (defparameter *shot-timer*
   (make-timer #'(lambda ()
