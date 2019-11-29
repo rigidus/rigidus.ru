@@ -297,6 +297,131 @@
               (incf cnt))))))
 
   (schedule-timer *shot-timer* 1 :repeat-interval 1)
+
+
+
+  (defun save-png (width height pathname-str image
+                   &optional (color-type :truecolor-alpha))
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type color-type))
+           (vector (make-array ;; displaced vector - need copy for save
+                    (* height width (zpng:samples-per-pixel png))
+                    :displaced-to image :element-type '(unsigned-byte 8))))
+      ;; Тут применен потенциально опасный трюк, когда мы создаем
+      ;; объект PNG без данных, а потом добавляем в него данные,
+      ;; используя неэкспортируемый writer.
+      ;; Это нужно чтобы получить третью размерность массива,
+      ;; который мы хотим передать как данные и при этом
+      ;; избежать создания для этого временного объекта
+      (setf (zpng::%image-data png) (copy-seq vector))
+      (zpng:write-png png pathname-str)))
+
+
+  (let* (;; (fname-in #P"~/Downloads/3784024465")
+         ;; (enc  (alexandria:read-file-into-string fname-in :external-format :utf-8))
+         ;; (dec  (decrypt enc *irc-sess*))
+         (dec (alexandria:read-file-into-byte-vector #P"~/Documents/ab.png"))
+         (png (let ((png-read::*png-file* "fake-file"))
+                 (flex:with-input-from-sequence (stream dec)
+                   (png-read:read-png-datastream stream))))
+         (image-data (png-read:image-data png))
+         ;; reverse
+         (dims   (subseq (array-dimensions image-data) 0 2))
+         (height (cadr dims))
+         (width  (car  dims))
+         (image ;; меняем размерности X и Y местами
+          (let ((result (make-array (list height width 4)
+                                    :element-type '(unsigned-byte 8))))
+            (do ((y 0 (incf y)))
+                ((= y height))
+              (do ((x 0 (incf x)))
+                  ((= x width))
+                (setf (aref result y x 0)
+                      (aref image-data x y 0)
+                      (aref result y x 1)
+                      (aref image-data x y 1)
+                      (aref result y x 1)
+                      (aref image-data x y 1)))) ;; only red channel
+            result))
+         ;; packing
+         (pak (pack-image image))
+         (pak-dims (array-dimensions pak))
+         (new-width (cadr pak-dims))
+         (pathname-str "~/Documents/ab-pack.png")
+         )
+    (let* ((png (make-instance 'zpng:png
+                               :width new-width
+                               :height height
+                               :color-type :grayscale))
+           (vector (make-array ;; displaced vector - need copy for save
+                    (* height new-width (zpng:samples-per-pixel png))
+                    :displaced-to pak :element-type '(unsigned-byte 8))))
+      ;; Тут применен потенциально опасный трюк, когда мы создаем
+      ;; объект PNG без данных, а потом добавляем в него данные,
+      ;; используя неэкспортируемый writer.
+      ;; Это нужно чтобы получить третью размерность массива,
+      ;; который мы хотим передать как данные и при этом
+      ;; избежать создания для этого временного объекта
+      (setf (zpng::%image-data png) (copy-seq vector))
+      (zpng:write-png png pathname-str))
+    )
+
+         ;; (dims (array-dimensions pak))
+
+         ;; (image-data2 ;; to bit
+         ;;  (let ((result (make-array dims :element-type '(unsigned-byte 8))))
+         ;;    (do ((y 0 (incf y)))
+         ;;        ((= y height))
+         ;;      (do ((x 0 (incf x)))
+         ;;          ((= x width))
+         ;;        (setf (aref result y x)
+         ;;              (aref image-data x y))))
+         ;;    result))
+
+         ;; (height (car dims))
+         ;; (width  (cadr dims))
+         ;; (image ;; меняем размерности X и Y местами
+         ;;  (let ((result (make-array dims :element-type '(unsigned-byte 8))))
+         ;;    (do ((y 0 (incf y)))
+         ;;        ((= y height))
+         ;;      (do ((x 0 (incf x)))
+         ;;          ((= x width))
+         ;;        (setf (aref result y x)
+         ;;              (aref image-data x y))))
+         ;;    result))
+         ;; (pathname-str #P"~/Downloads/test1.png")
+         ;; (result
+         ;;  (unpack-image image))
+         ;;  ;; image)
+         ;; (new-width
+         ;;  ;; width)
+         ;;  (* 8 width))
+         )
+    ;; (let* ((png (make-instance 'zpng:png
+    ;;                            :width width
+    ;;                            :height height
+    ;;                            :color-type :grayscale))
+    ;;        (vector (make-array ;; displaced vector - need copy for save
+    ;;                 (* height new-width (zpng:samples-per-pixel png))
+    ;;                 :displaced-to result :element-type '(unsigned-byte 8))))
+    ;;   ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;;   ;; объект PNG без данных, а потом добавляем в него данные,
+    ;;   ;; используя неэкспортируемый writer.
+    ;;   ;; Это нужно чтобы получить третью размерность массива,
+    ;;   ;; который мы хотим передать как данные и при этом
+    ;;   ;; избежать создания для этого временного объекта
+    ;;   (setf (zpng::%image-data png) (copy-seq vector))
+    ;;   (zpng:write-png png pathname-str))
+    ;; (print image-data)
+    ;; (png-read:colour-type png)
+    rev-dims
+    ;; height
+    ;; (print pak)
+    ;; (print dims)
+    ;; image
+    )
+
+
 #+END_SRC
 
 ** X-Display
