@@ -203,7 +203,7 @@
 
 * Snaphot function
 
-Сама функция скриншота должна сделать скриншт и обработать его, а потом
+Сама функция скриншота должна сделать скриншот и обработать его, а потом
 реинициализировать свой таймер
 
 #+NAME: shot
@@ -211,8 +211,10 @@
   <<x_display>>
   <<pack_image>>
   <<unpack_image>>
+  <<upload>>
 
   (defun save (frmt-filename-str dims image)
+    nil) ;; >>>>>>>>>>>>>>>>>>>>>
     (let* ((height (car  dims))
            (width  (* 8 (cadr dims)))
            (unpacked-image (unpack-image image))
@@ -239,28 +241,28 @@
   (let ((prev)
         (cnt 9999))
     (defun shot ()
-      (format t "~%::shot-func")
-      (let* ((snap (pack-image (x-snapshot)))
-             (dims (array-dimensions snap)))
-        (if (> cnt 4)
-            (progn
-              (save "FILE~A" dims snap)
-              (setf prev snap)
-              (setf cnt 0))
-            ;; else
-            (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-              (do ((qy 0 (incf qy)))
-                  ((= qy (car dims)))
-                (declare (type fixnum qy))
-                (do ((qx 0 (incf qx)))
-                    ((= qx (cadr dims)))
-                  (declare (type fixnum qx))
-                  (setf (aref xored qy qx)
-                        (logxor (aref prev qy qx)
-                                (aref snap qy qx)))))
-              (save "FILE~ADIFF" dims xored)
-              (setf prev snap)
-              (incf cnt))))
+      ;; (format t "~%::shot-func")
+      ;; (let* ((snap (pack-image (x-snapshot)))
+      ;;        (dims (array-dimensions snap)))
+      ;;   (if (> cnt 4)
+      ;;       (progn
+      ;;         (save "FILE~A" dims snap)
+      ;;         (setf prev snap)
+      ;;         (setf cnt 0))
+      ;;       ;; else
+      ;;       (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+      ;;         (do ((qy 0 (incf qy)))
+      ;;             ((= qy (car dims)))
+      ;;           (declare (type fixnum qy))
+      ;;           (do ((qx 0 (incf qx)))
+      ;;               ((= qx (cadr dims)))
+      ;;             (declare (type fixnum qx))
+      ;;             (setf (aref xored qy qx)
+      ;;                   (logxor (aref prev qy qx)
+      ;;                           (aref snap qy qx)))))
+      ;;         (save "FILE~ADIFF" dims xored)
+      ;;         (setf prev snap)
+      ;;         (incf cnt))))
       (sleep 1)
       (shot)))
 
@@ -710,15 +712,13 @@ SIMD-операций.
   ;;              :grayscale)))
 #+END_SRC
 
-** Upload image
+** Upload
 
-#+NAME: upload_image
+#+NAME: upload
 #+BEGIN_SRC lisp
   (setf drakma:*header-stream* *standard-output*)
 
   (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
-
-  (defparameter *user-agent* "curl/7.47.0")
 
   (defparameter *additional-headers*
     `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -736,79 +736,84 @@ SIMD-операций.
     (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
          (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
 
-  (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-    (multiple-value-bind (body-or-stream status-code headers
-                                         uri stream must-close reason-phrase)
-        (drakma:http-request "https://anonfile.com/"
-                             :user-agent *user-agent*
-                             :redirect 10
-                             :force-binary t
-                             :cookie-jar cookie-jar
-                             :additional-headers *additional-headers*)
-      (let* ((text (flexi-streams:octets-to-string body-or-stream
-                                                   :external-format :utf-8))
-             (csrf (get-csrf text))
-             (new-headers `(("Accept" . "application/json")
-                            ("Accept-Language" . "en-US,en;q=0.5")
-                            ("Cache-Control" . "no-cache")
-                            ("X-Requested-With" . "XMLHttpRequest")
-                            ("X-CSRF-Token" . ,csrf)
-                            ("Origin" . "https://anonfile.com")
-                            ("Referer" . "https://anonfile.com/")
-                            ("TE" . "Trailers"))))
-        (multiple-value-bind (body-or-stream status-code headers
-                                             uri stream must-close reason-phrase)
-            (drakma:http-request
-             "https://api.anonfile.com/upload"
-             ;; "http://localhost:9993/upload"
-             :user-agent *user-agent*
-             :method :post
-             :form-data t
-             :parameters `(("file" .  (,#P"test.txt"
-                                          :content-type "application/octet-stream"
-                                          :filename ,#P"test.txt"
-                                          )))
-             :cookie-jar cookie-jar
-             :additional-headers new-headers
-             ;; :external-format-in :UTF-8
-             ;; :external-format-out :UTF-8
-             :force-binary t)
-          (let* ((text (flexi-streams:octets-to-string body-or-stream
-                                                       :external-format :utf-8)))
-            (format t "~%<<~A>>" text))))))
+  (defun anon-file-upload (filename content)
+    (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+      ;; load mainpage for cookies, headers and csrf
+      (multiple-value-bind (body-or-stream status-code headers
+                                           uri stream must-close reason-phrase)
+          (drakma:http-request "https://anonfile.com/"
+                               :user-agent *user-agent*
+                               :redirect 10
+                               :force-binary t
+                               :cookie-jar cookie-jar
+                               :additional-headers *additional-headers*)
+        (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8))
+               (csrf (get-csrf text))
+               (boundary "---------------------------196955623314664815241571979859")
+               (type-header (format nil "multipart/form-data; boundary=~A" boundary))
+               (new-headers `(("Accept" . "application/json")
+                              ("Accept-Language" . "en-US,en;q=0.5")
+                              ("Cache-Control" . "no-cache")
+                              ("X-Requested-With" . "XMLHttpRequest")
+                              ("X-CSRF-Token" . ,csrf)
+                              ("Origin" . "https://anonfile.com")
+                              ("Referer" . "https://anonfile.com/")
+                              ("Content-Type" . ,type-header)
+                              ("TE" . "Trailers"))))
+          (multiple-value-bind (body-or-stream status-code headers
+                                               uri stream must-close reason-phrase)
+              (drakma:http-request
+               "https://api.anonfile.com/upload"
+               ;; "http://localhost:9993/upload"
+               :user-agent *user-agent*
+               :method :post
+               :form-data t
+               :content (format nil "--~A
+  Content-Disposition: form-data; name=\"file\"; filename=\"~A\"
+  Content-Type: application/octet-stream
+
+  ~A
+  --~A--" boundary filename content boundary)
+               :cookie-jar cookie-jar
+               :additional-headers new-headers
+               :force-binary t)
+            (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8)))
+              (format t "~%<<~A>>" text)))))))
+
+  ;; (anon-file-upload "555f.txt" "the content")
 
 
-  (alexandria:write-string-into-file
-   (cl-base64:usb8-array-to-base64-string
-    (alexandria:read-file-into-byte-vector #P"png.png"))
-   #P"test.txt" :if-exists :supersede :external-format :utf-8)
+  ;; (alexandria:write-string-into-file
+  ;;  (cl-base64:usb8-array-to-base64-string
+  ;;   (alexandria:read-file-into-byte-vector #P"png.png"))
+  ;;  #P"test.txt" :if-exists :supersede :external-format :utf-8)
 
-  (alexandria:write-byte-vector-into-file
-   (cl-base64:base64-string-to-usb8-array
-    (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
-   #P"test2" :if-exists :supersede)
+  ;; (alexandria:write-byte-vector-into-file
+  ;;  (cl-base64:base64-string-to-usb8-array
+  ;;   (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
+  ;;  #P"test2" :if-exists :supersede)
 
 
   ;; (print (get-cookies-alist cookie-jar))
   ;; (print headers)
-  (setf drakma" . "drakma-default-external-format* :UTF-8)
+  ;; (setf drakma" . "drakma-default-external-format* :UTF-8)
 
-  (in-package :rigidus)
+  ;; (in-package :rigidus)
 
-  (ql:quickload "rigidus")
+  ;; (ql:quickload "rigidus")
 
-  (restas:define-route upload ("/upload")
-    "<form enctype=\"multipart/form-data\" method=\"post\">
-     <input type=\"file\" name=\"file\">
-     <input type=\"submit\" value=\"Отправить\">
-     </form>")
+  ;; (restas:define-route upload ("/upload")
+  ;;   "<form enctype=\"multipart/form-data\" method=\"post\">
+  ;;    <input type=\"file\" name=\"file\">
+  ;;    <input type=\"submit\" value=\"Отправить\">
+  ;;    </form>")
 
-  (restas:define-route upload-post ("/upload" :method :post)
-    (let ((file-info (hunchentoot:post-parameter "file")))
-      ;; (hunchentoot:escape-for-html
-      ;;  (alexandria:read-file-into-string (first file-info)))
-      (format nil "~A"
-              (bprint file-info))))
+  ;; (restas:define-route upload-post ("/upload" :method :post)
+  ;;   (let ((file-info (hunchentoot:post-parameter "file")))
+  ;;     ;; (hunchentoot:escape-for-html
+  ;;     ;;  (alexandria:read-file-into-string (first file-info)))
+  ;;     (format nil "~A"
+  ;;             (bprint file-info))))
 #+END_SRC
 
 * Assembly
@@ -825,6 +830,7 @@ SIMD-операций.
   (ql:quickload "prbs")
   (ql:quickload "cl-irc")
 
+  ;; may be not needed
   <<save_and_load_png>>
   <<binarization>>
   <<make_bit_image>>
