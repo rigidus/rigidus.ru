@@ -10,7 +10,8 @@
 Это внешняя система мониторинга, предназначеная для наблюдения за работой
 узла сети. Узел сети может быть не только desktop-системой, но и сервером
 умного дома и осуществлять управление его компонентами: включать и
-выключать нагрузку, отправлять команды роботу пылесосу, и.т.п.
+выключать нагрузку, отправлять команды роботу-пылесосу ("ехать на
+зарядку"), и.т.п.
 
 К сожалению, некоторые проприетарные компоненты автоматизации, такие как
 3D-принтер, могут управляться только через GUI своей управляющей
@@ -27,7 +28,76 @@
 что узлов сети может быть множество и не все из них имеют быстрые каналы
 передачи.
 
+* Supervisor
+
+Мы хотим создать надежную систему, но подключение к интернету может быть
+ненадежным, к тому же нет уверенности в том, что все ошибки, которые
+могут возникнуть будут корректно перехвачены.
+
+Поэтому мы сделаем супервизор, который будет перезапускать потоки, в
+которых будет происходить основная работа. Если у потока возникнуть
+проблемы - супервизор отследит это и перезапустит поток.
+
+Мы также используем флаги, размещенные в глобальных переменных, чтобы
+супервизор мог принудительно завершать потоки. Если что-то пойдет не так
+то поток может, например, перезапустить себя, выставив нужный флаг.
+
+#+NAME: supervisor
+#+BEGIN_SRC lisp
+  (defparameter *outlock* (bt:make-lock "output-lock"))
+
+  (defmacro dbg (msg &rest params)
+    "debug output with lock"
+    `(bt:with-lock-held (*outlock*)
+       (format t ,msg ,@params)
+       (finish-output)))
+
+  (defparameter *supervisor-stop-flag* nil)
+
+  (defparameter *irc-th-stop-flag* nil)
+
+  ;; TODO: replace to real irc function
+  (defun irc ()
+    (dbg "~%::irc function")
+    (sleep 100))
+
+  (defparameter *supervisor*
+    (lambda ()
+      (let ((all-threads (mapcar #'(lambda (th)  (cons (bt:thread-name th) th))
+                                 (bt:all-threads))))
+        (labels ((fnd (name) (loop :for (nm . th) :in all-threads
+                                :do (when (equal name nm)  (return th)))))
+          (when (and (null (fnd "irc-th"))       ;; no irc-th
+                     (null *irc-th-stop-flag*))  ;; no irc-th stop flag
+            (dbg "~%::supervisor lambda: start irc-th")
+            (bt:make-thread
+             #'irc :name "irc-th"
+             :initial-bindings
+             `((*standard-output* . ,*standard-output*)
+               (*irc-thread-stop-flag* . ,*irc-th-stop-flag*))))
+          (awhen (fnd "irc-th")
+            (when *irc-th-stop-flag*
+              (dbg "~%supervisor-lambda: stop irc-th")
+              (handler-case (bt:destroy-thread it)
+                ;; happens, when thread destroyed already
+                (TYPE-ERROR () nil))))))))
+
+  (defun supervisor-loop ()
+    (tagbody
+     infinite
+       (when *supervisor-stop-flag*
+         (go end))
+       (dbg "~%::supervisor loop")
+       (funcall *supervisor*)
+       (sleep 1)
+       (go infinite)
+     end))
+
+  (supervisor-loop)
+#+END_SRC
+
 * Irc
+
 
 Работа с IRC состоит из нескольких этапов
 - Подключение
@@ -954,6 +1024,8 @@ SIMD-операций.
 
 #+NAME:
 #+BEGIN_SRC lisp :tangle srv.lisp :noweb yes
+  (ql:quickload "anaphora")
+  (use-package :anaphora)
   (ql:quickload "bordeaux-threads")
   (ql:quickload "clx")
   (ql:quickload "zpng")
