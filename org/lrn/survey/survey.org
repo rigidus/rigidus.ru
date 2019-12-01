@@ -32,18 +32,23 @@
 
 Мы хотим создать надежную систему, но подключение к интернету может быть
 ненадежным, к тому же нет уверенности в том, что все ошибки, которые
-могут возникнуть будут корректно перехвачены.
+могут возникнуть, будут корректно перехвачены.
 
 Поэтому мы сделаем супервизор, который будет перезапускать потоки, в
-которых будет происходить основная работа. Если у потока возникнуть
+которых будет происходить основная работа. Если у потока возникнут
 проблемы - супервизор отследит это и перезапустит поток.
 
 Мы также используем флаги, размещенные в глобальных переменных, чтобы
 супервизор мог принудительно завершать потоки. Если что-то пойдет не так
 то поток может, например, перезапустить себя, выставив нужный флаг.
 
+Каждую секунду супервизор инкрементирует состояние переменной
+~watchdog-timer~. Если поток завис и не сбрасывает эту переменную в
+ноль - супервизор принудительно завершает поток, что приводит к его
+перезапуску.
+
 #+NAME: supervisor
-#+BEGIN_SRC lisp
+#+BEGIN_SRC lisp :noweb yes
   (defparameter *outlock* (bt:make-lock "output-lock"))
 
   (defmacro dbg (msg &rest params)
@@ -52,21 +57,27 @@
        (format t ,msg ,@params)
        (finish-output)))
 
+  (defparameter *watchdog-timer* 0)
+
+  (defparameter *watchdog-timer-max* 20)
+
   (defparameter *supervisor-stop-flag* nil)
 
   (defparameter *irc-th-stop-flag* nil)
 
-  ;; TODO: replace to real irc function
-  (defun irc ()
-    (dbg "~%::irc function")
-    (sleep 100))
+  <<irc_conn>>
 
   (defparameter *supervisor*
     (lambda ()
       (let ((all-threads (mapcar #'(lambda (th)  (cons (bt:thread-name th) th))
                                  (bt:all-threads))))
         (labels ((fnd (name) (loop :for (nm . th) :in all-threads
-                                :do (when (equal name nm)  (return th)))))
+                                :do (when (equal name nm)  (return th))))
+                 (kill (th)  (progn
+                               (handler-case (bt:destroy-thread th)
+                                 ;; happens, when thread destroyed already
+                                 (TYPE-ERROR () nil))
+                               (setf *watchdog-timer* 0))))
           (when (and (null (fnd "irc-th"))       ;; no irc-th
                      (null *irc-th-stop-flag*))  ;; no irc-th stop flag
             (dbg "~%::supervisor lambda: start irc-th")
@@ -76,20 +87,23 @@
              `((*standard-output* . ,*standard-output*)
                (*irc-thread-stop-flag* . ,*irc-th-stop-flag*))))
           (awhen (fnd "irc-th")
+            (when (> *watchdog-timer*  *watchdog-timer-max*)
+              (dbg "~%::supervisor-lambda: kill irc-th by WDG")
+              (kill it))
             (when *irc-th-stop-flag*
-              (dbg "~%supervisor-lambda: stop irc-th")
-              (handler-case (bt:destroy-thread it)
-                ;; happens, when thread destroyed already
-                (TYPE-ERROR () nil))))))))
+              (dbg "~%::supervisor-lambda: kill irc-th by FLAG")
+              (kill it)))))))
 
   (defun supervisor-loop ()
+    (setf *watchdog-timer* 0)
     (tagbody
      infinite
        (when *supervisor-stop-flag*
          (go end))
-       (dbg "~%::supervisor loop")
+       (dbg "~%::supervisor-loop WDG=~3,'0D" *watchdog-timer*)
        (funcall *supervisor*)
        (sleep 1)
+       (incf *watchdog-timer*)
        (go infinite)
      end))
 
@@ -97,7 +111,6 @@
 #+END_SRC
 
 * Irc
-
 
 Работа с IRC состоит из нескольких этапов
 - Подключение
@@ -118,8 +131,8 @@
 Начнем с подключения к IRC - нашему коммуникационному каналу.
 
 В случае если по какой-то причине мы не можем подключиться - то вызываем
-процедуру подключения хвосторекурсивно каждые три секунды. Пока
-подключиться не удастся мы все равно ничего не можем сделать.
+процедуру подключения хвосторекурсивно каждые три секунды. Пока не
+удастся подключиться мы все равно ничего не можем сделать.
 
 #+NAME: irc_conn
 #+BEGIN_SRC lisp :noweb yes
@@ -128,18 +141,18 @@
   (defparameter *irc-serv* "irc.freenode.org")
   (defparameter *irc-chan* "#nvrtlessfndout")
   (defparameter *irc-lock* (bt:make-lock "irc-lock"))
+  (defparameter *irc-conn* nil)
 
-  (defun try-irc-conn ()
-    (let ((conn (handler-case
-                    (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
-                  (USOCKET:NS-TRY-AGAIN-CONDITION () nil))))
-      (if conn
-          conn
-          (progn
-            (sleep 3)
-            (try-irc-conn)))))
-
-  (defparameter *irc-conn* (try-irc-conn))
+  (defun irc ()
+    "irc thread func"
+    (setf *irc-conn*
+          (handler-case
+              (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
+            (USOCKET:NS-TRY-AGAIN-CONDITION () nil)))
+    (when *irc-conn*
+      (dbg "~%::irc conn:~A" *irc-conn*))
+    (setf *watchdog-timer* 0)
+    (sleep 40))
 #+END_SRC
 
 ** Read loop
@@ -1021,6 +1034,24 @@ SIMD-операций.
 #+END_SRC
 
 * Assembly
+
+#+NAME:
+#+BEGIN_SRC lisp :tangle s.lisp :noweb yes
+  (ql:quickload "anaphora")
+  (use-package :anaphora)
+  (ql:quickload "bordeaux-threads")
+  (ql:quickload "clx")
+  (ql:quickload "zpng")
+  (ql:quickload "png-read")
+  (ql:quickload "drakma")
+  (ql:quickload "cl-ppcre")
+  (ql:quickload "cl-base64")
+  (ql:quickload "prbs")
+  (ql:quickload "cl-irc")
+  (ql:quickload "cl-json")
+
+  <<supervisor>>
+#+END_SRC
 
 #+NAME:
 #+BEGIN_SRC lisp :tangle srv.lisp :noweb yes

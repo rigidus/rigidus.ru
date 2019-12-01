@@ -1,3 +1,5 @@
+(ql:quickload "anaphora")
+(use-package :anaphora)
 (ql:quickload "bordeaux-threads")
 (ql:quickload "clx")
 (ql:quickload "zpng")
@@ -166,18 +168,17 @@
 (defparameter *irc-serv* "irc.freenode.org")
 (defparameter *irc-chan* "#nvrtlessfndout")
 (defparameter *irc-lock* (bt:make-lock "irc-lock"))
+(defparameter *irc-conn* nil)
 
-(defun try-irc-conn ()
-  (let ((conn (handler-case
-                  (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
-                (USOCKET:NS-TRY-AGAIN-CONDITION () nil))))
-    (if conn
-        conn
-        (progn
-          (sleep 3)
-          (try-irc-conn)))))
-
-(defparameter *irc-conn* (try-irc-conn))
+(defun irc ()
+  "irc thread func"
+  (setf *irc-conn*
+        (handler-case
+            (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
+          (USOCKET:NS-TRY-AGAIN-CONDITION () nil)))
+  (when *irc-conn*
+    (dbg "~%::irc conn:~A" *irc-conn*))
+  (sleep 40))
 (defun irc-loop ()
   (cl-irc:read-message-loop *irc-conn*))
 
@@ -638,3 +639,21 @@ Content-Type: application/octet-stream
             (incf cnt))))))
 
 (schedule-timer *shot-timer* 1 :repeat-interval 1)
+
+
+
+(defun save-png (width height pathname-str image
+                 &optional (color-type :truecolor-alpha))
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type color-type))
+         (vector (make-array ;; displaced vector - need copy for save
+                  (* height width (zpng:samples-per-pixel png))
+                  :displaced-to image :element-type '(unsigned-byte 8))))
+    ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;; объект PNG без данных, а потом добавляем в него данные,
+    ;; используя неэкспортируемый writer.
+    ;; Это нужно чтобы получить третью размерность массива,
+    ;; который мы хотим передать как данные и при этом
+    ;; избежать создания для этого временного объекта
+    (setf (zpng::%image-data png) (copy-seq vector))
+    (zpng:write-png png pathname-str)))
