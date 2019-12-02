@@ -594,7 +594,7 @@ Content-Type: application/octet-stream
 
 (defun shot ()
   ;; (dbg "~A~%" *shot-threads*)
-  ;; (sendmsg "shot started")
+  (sendmsg "shot started")
   (sleep 100))
 
 ;; (defparameter *shot-timer*
