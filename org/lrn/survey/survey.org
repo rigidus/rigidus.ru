@@ -38,6 +38,10 @@
 которых будет происходить основная работа. Если у потока возникнут
 проблемы - супервизор отследит это и перезапустит поток.
 
+Чтобы иметь возможность изменять супервизор на лету, мы оформим его как
+лямбду в глобальной переменной, которую будет вызывать функция
+~supervisor-loop~.
+
 Мы также используем флаги, размещенные в глобальных переменных, чтобы
 супервизор мог принудительно завершать потоки. Если что-то пойдет не так
 то поток может, например, перезапустить себя, выставив нужный флаг.
@@ -65,7 +69,7 @@
 
   (defparameter *irc-th-stop-flag* nil)
 
-  <<irc_conn>>
+  <<irc>>
 
   (defparameter *supervisor*
     (lambda ()
@@ -80,7 +84,8 @@
                                (setf *watchdog-timer* 0))))
           (when (and (null (fnd "irc-th"))       ;; no irc-th
                      (null *irc-th-stop-flag*))  ;; no irc-th stop flag
-            (dbg "~%::supervisor lambda: start irc-th")
+            (dbg "::supervisor lambda: start irc-th~%")
+            (setf *watchdog-timer* 0)
             (bt:make-thread
              #'irc :name "irc-th"
              :initial-bindings
@@ -88,10 +93,10 @@
                (*irc-thread-stop-flag* . ,*irc-th-stop-flag*))))
           (awhen (fnd "irc-th")
             (when (> *watchdog-timer*  *watchdog-timer-max*)
-              (dbg "~%::supervisor-lambda: kill irc-th by WDG")
+              (dbg "::supervisor-lambda: kill irc-th by WDG~%")
               (kill it))
             (when *irc-th-stop-flag*
-              (dbg "~%::supervisor-lambda: kill irc-th by FLAG")
+              (dbg "::supervisor-lambda: kill irc-th by FLAG~%")
               (kill it)))))))
 
   (defun supervisor-loop ()
@@ -100,7 +105,7 @@
      infinite
        (when *supervisor-stop-flag*
          (go end))
-       (dbg "~%::supervisor-loop WDG=~3,'0D" *watchdog-timer*)
+       (dbg "::supervisor-loop WDG=~3,'0D~%" *watchdog-timer*)
        (funcall *supervisor*)
        (sleep 1)
        (incf *watchdog-timer*)
@@ -114,110 +119,128 @@
 
 Работа с IRC состоит из нескольких этапов
 - Подключение
-- Запуск цикла чтения сообщений (в отдельном потоке)
+- Запуск цикла чтения сообщений
 - Установка хука, чтобы перехватить сообщения-команды
 - Подключение к каналу и отправка первого сообщения
-
-#+NAME: irc
-#+BEGIN_SRC lisp :noweb yes
-  <<irc_conn>>
-  <<irc_loop>>
-  <<irc_hook>>
-  <<irc_join>>
-#+END_SRC
 
 ** Connect
 
 Начнем с подключения к IRC - нашему коммуникационному каналу.
 
-В случае если по какой-то причине мы не можем подключиться - то вызываем
-процедуру подключения хвосторекурсивно каждые три секунды. Пока не
-удастся подключиться мы все равно ничего не можем сделать.
+Если нет подключения к сети мы получим ошибку
+~USOCKET:NS-TRY-AGAIN-CONDITION~, которая будет проигнорирована, но
+записана в лог, как и любые другие ошибки подключения. В этих случаях
+функция ~irc-loop~ не будет вызвана, произойдет выход их функции потока и
+поток будет завершен. Обнаружив отсутствие потока супервизор перезапустит
+его и это приведет к следующей попытке подключения.
 
-#+NAME: irc_conn
+Если подключение произошло успешно - мы вызываем ~irc-loop~.
+
+#+NAME: irc
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *irc-sess* (get-universal-time))
-  (defparameter *irc-user* (format nil "b~A" *irc-sess*))
+  (defparameter *irc-sess* nil) ;; (get-universal-time)
+  (defparameter *irc-user* nil) ;; (format nil "b~A" *irc-sess*)
   (defparameter *irc-serv* "irc.freenode.org")
   (defparameter *irc-chan* "#nvrtlessfndout")
   (defparameter *irc-lock* (bt:make-lock "irc-lock"))
   (defparameter *irc-conn* nil)
+  (defparameter *irc-lock* (bt:make-lock "irc-lock"))
+
+  <<irc_loop>>
 
   (defun irc ()
     "irc thread func"
+    (setf *irc-sess* (get-universal-time))
+    (setf *irc-user* (format nil "b~A" *irc-sess*))
     (setf *irc-conn*
           (handler-case
               (cl-irc:connect :nickname *irc-user* :server *irc-serv*)
-            (USOCKET:NS-TRY-AGAIN-CONDITION () nil)))
+            (USOCKET:NS-TRY-AGAIN-CONDITION (err)
+              (dbg "::irc connect error: ~A~%" (type-of err))
+              nil)
+            (t (err)
+              (dbg "::irc connect error: ~A~%" (type-of err))
+              nil)))
     (when *irc-conn*
-      (dbg "~%::irc conn:~A" *irc-conn*))
-    (setf *watchdog-timer* 0)
-    (sleep 40))
+      (dbg "::irc conn:~A~%" *irc-conn*)
+      (setf *watchdog-timer* 0)
+      (irc-loop)))
 #+END_SRC
 
 ** Read loop
+
+После успешного подключения мы запускаем цикл чтения сообщений из
+коммуникационного канала. В случае успеха этот поток будет зациклен в
+нем, поэтому здесь мы должны запустить вспомогательный поток
+~irc-helper~, который установит нужные хуки
 
 При временном отключении интернета внутри ~CL-IRC:READ-MESSAGE-LOOP~
 может возникнуть ошибка ~SB-INT:SIMPLE-STREAM-ERROR~ с сообщением вида
 couldn't read from #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644,
 peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
 
-[TODO:gmm] В этом случае нужно как-то сделать реконнект... Может быть
-через THROW.
-
-#+BEGIN_EXAMPLE
-  couldn't read from #<SB-SYS:FD-STREAM
-                       for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667"
-                       {1008002283}>:
-    Connection reset by peer
-     [Condition of type SB-INT:SIMPLE-STREAM-ERROR]
-
-  Restarts:
-   0: [ABORT] abort thread (#<THREAD "irc-thread" RUNNING {1008E466F3}>)
-
-  Backtrace:
-    0: (SB-IMPL::SIMPLE-STREAM-PERROR "couldn't read from ~S" #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> 104)
-    1: (SB-IMPL::REFILL-INPUT-BUFFER #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}>)
-    2: (SB-IMPL::INPUT-UNSIGNED-8BIT-BYTE #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> NIL NIL)
-    3: (READ-BYTE #<SB-SYS:FD-STREAM for "socket 192.168.0.102:50644, peer: 149.56.134.238:6667" {1008002283}> NIL NIL)
-    4: (CL-IRC::READ-SEQUENCE-UNTIL #<unavailable argument> #<unavailable argument> #<unavailable argument> :NON-BLOCKING #<unavailable argument>)
-    5: (CL-IRC::READ-PROTOCOL-LINE #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>)
-    6: ((:METHOD CL-IRC:READ-IRC-MESSAGE (CL-IRC:CONNECTION)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
-    7: ((:METHOD CL-IRC:READ-MESSAGE (CL-IRC:CONNECTION)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
-    8: ((:METHOD CL-IRC:READ-MESSAGE-LOOP (T)) #<CL-IRC:CONNECTION irc.freenode.org {10081A08D3}>) [fast-method]
-    9: ((LAMBDA NIL :IN BORDEAUX-THREADS::BINDING-DEFAULT-SPECIALS))
-   10: ((FLET #:WITHOUT-INTERRUPTS-BODY-1156 :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE))
-   11: ((FLET SB-THREAD::WITH-MUTEX-THUNK :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE))
-   12: ((FLET #:WITHOUT-INTERRUPTS-BODY-359 :IN SB-THREAD::CALL-WITH-MUTEX))
-   13: (SB-THREAD::CALL-WITH-MUTEX #<CLOSURE (FLET SB-THREAD::WITH-MUTEX-THUNK :IN SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE) {7FFFEBB96D5B}> #<SB-THREAD:MUTEX "thread result lock" owner: #<SB-THREAD:THR..
-   14: (SB-THREAD::INITIAL-THREAD-FUNCTION-TRAMPOLINE #<SB-THREAD:THREAD "irc-thread" RUNNING {1008E466F3}> NIL #<CLOSURE (LAMBDA NIL :IN BORDEAUX-THREADS::BINDING-DEFAULT-SPECIALS) {1008E4667B}> (#<SB-THREA..
-   15: ("foreign function: call_into_lisp")
-   16: ("foreign function: new_thread_trampoline")
-
-#+END_EXAMPLE
+В этом случае нужно сделать реконнект. Чтобы его осуществить мы просто
+игнорируем ошибку, выведя её в лог и возвращая NIL. Это приводит к выходу
+из функции потока и супервизор запустит поток снова на следующем шаге.
 
 #+NAME: irc_loop
 #+BEGIN_SRC lisp :noweb yes
-  (defun irc-loop ()
-    (cl-irc:read-message-loop *irc-conn*))
+  <<irc_helper>>
 
-  (defparameter *irc-thread*
-    (bt:make-thread (lambda ()
-                      (irc-loop))
-                    :name "irc-thread"
-                    :initial-bindings
-                    `((*standard-output* . ,*standard-output*)
-                      (*irc-user* . ,*irc-user*)
-                      (*irc-serv* . ,*irc-serv*)
-                      (*irc-chan* . ,*irc-chan*)
-                      (*irc-conn* . ,*irc-conn*))))
+  (defun irc-loop ()
+    (bt:make-thread
+     #'irc-helper :name "irc-helper-th"
+     :initial-bindings
+     `((*standard-output* . ,*standard-output*)
+       (*irc-sess* . ,*irc-sess*)
+       (*irc-user* . ,*irc-user*)
+       (*irc-serv* . ,*irc-serv*)
+       (*irc-chan* . ,*irc-chan*)
+       (*irc-lock* . ,*irc-lock*)
+       (*irc-conn* . ,*irc-conn*)
+       (*irc-lock* . ,*irc-lock*)))
+    (handler-case (cl-irc:read-message-loop *irc-conn*)
+      (SB-INT:SIMPLE-STREAM-ERROR (err)
+        (dbg "::irc-loop error: ~A~%" (type-of err)))
+      ;; (t (err)
+      ;;   (dbg "::irc-loop error: ~A~%" (type-of err)))
+      ))
+#+END_SRC
+
+** Irc helper
+
+После того как мы запустили цикл чтения сообщений следует подождать
+немного, чтобы успели дойти приветственные сообщения канала.
+
+Мы устанавливаем хук чтобы перехватить приход сообщений.
+
+После этого можно подключаться к каналу и отправить сообщение о
+присутствии.
+
+Затем поток завершается - свою задачу он выполнил.
+
+#+NAME: irc_helper
+#+BEGIN_SRC lisp :noweb yes
+  <<irc_hook>>
+
+  (defun irc-helper ()
+    (sleep 1)
+    (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
+    (sleep 1)
+    (bt:with-lock-held (*irc-lock*)
+      (cl-irc:join *irc-conn* *irc-chan*))
+    (sleep 1)
+    (bt:with-lock-held (*irc-lock*)
+      (cl-irc:privmsg
+       ,*irc-conn* *irc-chan*
+       (format nil "hi"))))
 #+END_SRC
 
 ** Command hook
 
-Функция, которая читает сообщения из канала должна быть запущена в
-отдельном потоке. При получении команды она вызовет хук, который должен
-исполнить эту команду (command processor).
+Определим функцию, которая будет обрабатывать сообщения, получаемые из
+irc-канала. Она должна возвращать T чтобы предотвратить дальнейшую
+обработку принятого сообщения.
 
 #+NAME: irc_hook
 #+BEGIN_SRC lisp :noweb yes
@@ -227,6 +250,7 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
   (defun irc-msg-hook (param)
     "MUST return T for stop hooks processing"
     (funcall *irc-cmd* param)
+    (setf *watchdog-timer* 0)
     t)
 #+END_SRC
 
@@ -240,58 +264,46 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
 - CL-IRC:RECEIVED-TIME
 - CL-IRC:RAW-MESSAGE-STRING
 
-Из них нас интересует собственно команда размещенная в ~ARGUMENTS~ и имя
-пользователя из ~SOURCE~. Имя пользователя будет содержать
-инициализационный вектор для регистра с линейной обратной связью, который
-даст нам гамму для расшифровки команды.
+Из них нас интересует собственно команда размещенная в ~ARGUMENTS~.
 
 #+NAME: irc_cmd_proc
-#+BEGIN_SRC lisp
-  (defun seq-xor (len seq-1 seq-2)
-    (let ((result (make-array len :element-type '(unsigned-byte 8))))
-      (do ((idx 0 (incf idx)))
-          ((= idx len))
-        (setf (aref result idx)
-              (logxor (aref seq-1 idx)
-                      (aref seq-2 idx))))
-      result))
-
-  (defun encrypt (oct seed)
-    (let* ((len (length oct))
-           (gen (prbs:byte-gen 31 :seed seed))
-           (gam (funcall gen len))
-           (enc (seq-xor len oct gam)))
-      (base64:usb8-array-to-base64-string enc)))
-
-  (defun decrypt (base64 seed)
-    (let* ((oct (base64:base64-string-to-usb8-array base64))
-           (gen (prbs:byte-gen 31 :seed seed))
-           (len (length oct))
-           (gam (funcall gen len)))
-      (seq-xor len oct gam)))
-
-  (defmacro bprint (var)
-    `(subseq (with-output-to-string (*standard-output*)
-               (pprint ,var)) 1))
+#+BEGIN_SRC lisp :noweb yes
+  ;; seq_xor
+  <<seq_xor>>
+  ;; ecrypt
+  <<encrypt>>
+  ;; decrypt
+  <<decrypt>>
+  ;; bprint
+  <<bprint>>
 
   (defparameter *irc-cmd*
     (lambda (param)
       (block irc-cmd-block
         (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
-               (src  (CL-IRC:SOURCE param))
-               (oct  (decrypt msg *irc-sess*))
-               (str  (handler-case
-                         (flex:octets-to-string oct :external-format :utf-8)
-                       (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil))))
-          (format t "~%::COMMAND::~A::" msg)
-          (format t "~%::SOURCE::~A::" src)
-          (format t "~%::str::~A::" str)
+               ;; (oct  (decrypt msg *irc-sess*))
+               ;; (str  (handler-case
+               ;;           (flex:octets-to-string oct :external-format :utf-8)
+               ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
+               (str msg)
+               )
+          (dbg "::COMMAND: [~A]~%" msg)
+          (dbg "::EVAL [~A]~%" str)
+          (finish-output)
+          (setf *watchdog-timer* 0)
           (let ((result (handler-case (bprint (eval (read-from-string  str)))
-                          (TYPE-ERROR () (return-from irc-cmd-block nil)))))
+                          (t (err)
+                            (dbg "::irc-cmd error: ~A~%" (type-of err))
+                            (bt:with-lock-held (*irc-lock*)
+                              (cl-irc:privmsg
+                               ,*irc-conn* *irc-chan*
+                               (format nil "ERR: [~A]" (type-of err))))
+                            (return-from irc-cmd-block nil)))))
+            (setf *watchdog-timer* 0)
             (bt:with-lock-held (*irc-lock*)
               (cl-irc:privmsg *irc-conn* *irc-chan*
                               (format nil "=> ~A" result)))
-            (format t "~%::eval::~A::" result)
+            (dbg "::=> ~A~%" result)
             (finish-output))))))
 
   ;; (encrypt
@@ -319,25 +331,51 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
   ;;  :external-format :utf-8)
 #+END_SRC
 
-** Join to channel
+** Sequence XOR
 
-После того как мы запустили цикл чтения сообщений можно подключаться к
-каналу и отправить сообщение о присутствии.
+#+NAME: seq_xor
+#+BEGIN_SRC lisp
+  (defun seq-xor (len seq-1 seq-2)
+    (let ((result (make-array len :element-type '(unsigned-byte 8))))
+      (do ((idx 0 (incf idx)))
+          ((= idx len))
+        (setf (aref result idx)
+              (logxor (aref seq-1 idx)
+                      (aref seq-2 idx))))
+      result))
+#+END_SRC
 
-#+NAME: irc_join
-#+BEGIN_SRC lisp :noweb yes
-  (defun irc-join ()
-    (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
-    (sleep 1)
-    (bt:with-lock-held (*irc-lock*)
-      (cl-irc:join *irc-conn* *irc-chan*))
-    (sleep 1)
-    (bt:with-lock-held (*irc-lock*)
-      (cl-irc:privmsg
-       ,*irc-conn* *irc-chan*
-       (format nil "nfo:start"))))
+** Encrypt
 
-  (irc-join)
+#+NAME: encrypt
+#+BEGIN_SRC lisp
+  (defun encrypt (oct seed)
+    (let* ((len (length oct))
+           (gen (prbs:byte-gen 31 :seed seed))
+           (gam (funcall gen len))
+           (enc (seq-xor len oct gam)))
+      (base64:usb8-array-to-base64-string enc)))
+#+END_SRC
+
+** Decrypt
+
+#+NAME: decrypt
+#+BEGIN_SRC lisp
+  (defun decrypt (base64 seed)
+    (let* ((oct (base64:base64-string-to-usb8-array base64))
+           (gen (prbs:byte-gen 31 :seed seed))
+           (len (length oct))
+           (gam (funcall gen len)))
+      (seq-xor len oct gam)))
+#+END_SRC
+
+** BPrint
+
+#+NAME: bprint
+#+BEGIN_SRC lisp
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
 #+END_SRC
 
 * Snaphot function
