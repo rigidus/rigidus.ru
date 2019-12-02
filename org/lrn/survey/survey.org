@@ -139,11 +139,18 @@
           ;; kill latecomers shot-threads if there are too many
           ;; TODO: debug it!
           (when (> (length *shot-threads*) *max-shot-thread-cnt*)
+            (dbg "many threads~%")
             (loop :for (shot-th . time) :in *shot-threads* :do
-                 (when (> (- time (get-universal-time))
+                 (dbg "~A . ~A~%" shot-th time)
+                 (when (> (- (get-universal-time) time)
                           ,*max-shot-thread-life-time*)
                    (dbg "::supervisor-lambda: kill shot-th by lifetime exceed~%")
-                   (kill shot-th))))
+                   (kill shot-th)))
+            (bt:with-lock-held (*thread-operations-lock*)
+              (setf *shot-threads*
+                    (remove-if-not #'(lambda (pair)
+                                       (bt:thread-alive-p (car pair)))
+                                   ,*shot-threads*))))
           ;; start new shot-thread (every second when connection-established)
           (when *connection-established-flag*
             (let ((bindings `((*standard-output* . ,*standard-output*)
@@ -158,8 +165,7 @@
                 (push (cons (bt:make-thread #'shot :name "shot-th"
                                             :initial-bindings bindings)
                             (get-universal-time))
-                      ,*shot-threads*)
-                )))))))
+                      ,*shot-threads*))))))))
 
   (defun supervisor-loop ()
     (setf *watchdog-timer* 0)
