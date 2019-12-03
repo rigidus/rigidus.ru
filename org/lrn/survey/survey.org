@@ -187,6 +187,67 @@
   (supervisor-loop)
 #+END_SRC
 
+Ниже - диаграмма работы супервизора с остальными компонентами
+
+#+BEGIN_SRC plantuml :file ../../../img/survey-01.png
+  participant Supervisor
+  participant Shot_Thread
+  participant Irc_Thread
+  participant Irc_Helper
+  participant Irc_Server
+  hide footbox
+  create Irc_Thread
+  Supervisor -> Irc_Thread : make_thread
+  Supervisor -> Supervisor : wait for **CONNECTION_ESTABLISHED_FLAG**
+  Irc_Thread -> Irc_Server : connect
+  Irc_Server -> Irc_Thread : ok
+
+  group Irc_Loop
+    create Irc_Helper
+    Irc_Thread   -> Irc_Helper : make_thread
+    Irc_Thread -> Irc_Thread : read_message_loop
+    activate Irc_Helper
+    note right Irc_Helper
+      add_hook **IRC_MSG_HOOK**
+      join to channel
+      send presence
+      set **CONNECTION_ESTABLISHED_FLAG**
+    end note
+    Irc_Helper --> Irc_Helper :
+    destroy Irc_Helper
+	end
+
+  Irc_Thread --> Irc_Thread : IRC_MSG_HOOK
+  Irc_Thread --> Irc_Thread : IRC_MSG_HOOK
+  Irc_Thread --> Irc_Thread : IRC_MSG_HOOK
+
+  group When **CONNECTION_ESTABLISHED_FLAG**
+    create Shot_Thread
+    Supervisor -> Shot_Thread : make_thread
+    activate Shot_Thread
+
+    note over Shot_Thread
+      x_snapshot
+      pack_img
+    end note
+
+    group Wrap_Img
+      note over Shot_Thread
+        encrypt
+        anon-file-upload
+        sendmsg
+      end note
+    end
+
+    Shot_Thread --> Shot_Thread :
+    destroy Shot_Thread
+	end
+#+END_SRC
+
+#+results:
+[[file:../../../img/survey-01.png]]
+
+
 * Irc
 
 Работа с IRC состоит из нескольких этапов
