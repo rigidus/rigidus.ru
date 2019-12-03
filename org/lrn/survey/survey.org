@@ -75,9 +75,11 @@
        (format t ,msg ,@params)
        (finish-output)))
 
+  (defparameter *sleep-interval* 2)
+
   (defparameter *watchdog-timer* 0)
 
-  (defparameter *watchdog-timer-max* 200)
+  (defparameter *watchdog-timer-max* 100)
 
   (defparameter *supervisor-stop-flag* nil)
 
@@ -114,7 +116,13 @@
                  (kill-irc (th)
                    (kill th)
                    (setf *watchdog-timer* 0)
-                   (setf *connection-established-flag* nil)))
+                   (setf *connection-established-flag* nil))
+                 (clear ()
+                   (bt:with-lock-held (*thread-operations-lock*)
+                     (setf *shot-threads*
+                           (remove-if-not #'(lambda (pair)
+                                              (bt:thread-alive-p (car pair)))
+                                          ,*shot-threads*)))))
           ;; if there is no irs-thread then start it
           (when (and (null (fnd "irc-th"))       ;; no irc-th
                      (null *irc-th-stop-flag*))  ;; no irc-th stop flag
@@ -144,12 +152,9 @@
                           ,*max-shot-thread-life-time*)
                    (dbg "::supervisor-lambda: kill shot-th by lifetime exceed~%")
                    (kill shot-th)))
-            (bt:with-lock-held (*thread-operations-lock*)
-              (setf *shot-threads*
-                    (remove-if-not #'(lambda (pair)
-                                       (bt:thread-alive-p (car pair)))
-                                   ,*shot-threads*))))
+            (clear))
           ;; start new shot-thread (every second when connection-established)
+          (clear)
           (when *connection-established-flag*
             (let ((bindings `((*standard-output* . ,*standard-output*)
                               (*shot-thread-stop-flag* . ,*shot-th-stop-flag*)
@@ -174,7 +179,7 @@
          (go end))
        (dbg "::supervisor-loop WDG=~3,'0D~%" *watchdog-timer*)
        (funcall *supervisor*)
-       (sleep 1)
+       (sleep *sleep-interval*)
        (incf *watchdog-timer*)
        (go infinite)
      end))
