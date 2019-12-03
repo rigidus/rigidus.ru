@@ -75,7 +75,7 @@
        (format t ,msg ,@params)
        (finish-output)))
 
-  (defparameter *sleep-interval* 2)
+  (defparameter *sleep-interval* 3)
 
   (defparameter *watchdog-timer* 0)
 
@@ -369,7 +369,7 @@ irc-канала. Она должна возвращать T чтобы пред
           (let ((result (handler-case (bprint (eval (read-from-string  str)))
                           (t (err)
                             (dbg "::irc-cmd error: ~A~%" (type-of err))
-                            (sendmsg "ERR: [~A]" (type-of err))
+                            (sendmsg "ERR(irc-cmd): [~A]" (type-of err))
                             (return-from irc-cmd-block nil)))))
             (setf *watchdog-timer* 0)
             (sendmsg "=> ~A" result)
@@ -482,6 +482,11 @@ irc-канал.
 эксперименты показывают, что PNG эффективно сжимает большие черные
 участки.
 
+Важным моментом тут является то, что в общем случае невозможно
+гарантировать успех загрузки изображения на файлообменник. В случае сбоя
+мы должны в следующий раз пытаться загрузить "ключевой кадр". Для этого
+~wrap-img~ возвращает T в случае успеха и NIL - если произошел сбой.
+
 Кроме того, по соображениям безопасности стоит шифровать изображения
 после сжатия. Это шифрование нельзя назвать стойким, возможна атака на
 открытый текст, так как формат PNG предсказуем. Кроме того, в качестве
@@ -527,15 +532,18 @@ irc-канал.
       (let* ((snap (pack-img (x-snapshot)))
              (dims (array-dimensions snap)))
         (if (> cnt 4)
-            (progn
+            (progn ;; key frame
               (wrap-img "~A" dims snap)
               (setf prev snap)
               (setf cnt 0))
-            ;; else
-            (let ((diff (get-img-diff dims prev snap)))
-              (wrap-img (format nil "~~A_~A" cnt) dims diff)
-              (setf prev snap)
-              (incf cnt))))))
+            ;; else - diff
+            (if (wrap-img (format nil "~~A_~A" cnt) dims
+                          (get-img-diff dims prev snap))
+                (progn
+                  (setf prev snap)
+                  (incf cnt))
+                ;; else: wrap failure
+                (setf cnt 9999))))))
 #+END_SRC
 
 ** Wrap image
@@ -571,37 +579,31 @@ irc-канал.
 
   ;; wrap-img
   (defun wrap-img (frmt-filename-str dims image)
-    (block save-block
-      (let* ((height     (car  dims))
-             (width      (cadr dims))
-             (png        (get-png-obj width height image :grayscale))
-             (png-seq    (get-png-seq png))
-             (base64     (encrypt png-seq *irc-sess*))
-             (filename   (format nil frmt-filename-str
-                                 (format nil "~A" (get-universal-time))))
-             (upload-ret (handler-case
-                             (cl-json:decode-json-from-string
-                              (anon-file-upload filename base64))
-                           (JSON:JSON-SYNTAX-ERROR ()
-                             (return-from save-block nil))))
-             (link       (if (cdr (assoc :status upload-ret))
-                             (subseq (cdadr (cadadr (assoc :data upload-ret))) 20)
-                             nil))
-             ;; (full-filename (format nil "FILE_~A_~A"
-             ;;                        *irc-sess*
-             ;;                        filename))
-             )
-        (cl-irc:privmsg *irc-conn* *irc-chan*
-                        (if link
-                            link
-                            upload-ret))
-        ;; (with-open-file (file-stream full-filename
-        ;;                              :direction :output
-        ;;                              :if-exists :supersede
-        ;;                              :if-does-not-exist :create
-        ;;                              :element-type '(unsigned-byte 8))
-        ;;   (write-sequence decoded file-stream))
-        )))
+    (let* ((height   (car  dims))
+           (width    (cadr dims))
+           (png      (get-png-obj width height image :grayscale))
+           (png-seq  (get-png-seq png))
+           (base64   (encrypt png-seq *irc-sess*))
+           (filename (format nil frmt-filename-str
+                             (format nil "~A" (get-universal-time))))
+           (result   (handler-case
+                         (cl-json:decode-json-from-string
+                          (anon-file-upload filename base64))
+                       (JSON:JSON-SYNTAX-ERROR (err)
+                         (dbg "::wrap-img error: ~A~%" (type-of err))
+                         (sendmsg "ERR(wrap-img): [~A]" (type-of err))
+                         (return-from wrap-img nil))
+                       (t (err)
+                         (dbg "::wrap-img error: ~A~%" (type-of err))
+                         (sendmsg "ERR(wrap-img): [~A]" (type-of err))
+                         (return-from wrap-img nil))))
+           (link     (if (cdr (assoc :status result))
+                         (subseq (cdadr (cadadr (assoc :data result))) 20)
+                         nil)))
+      (if link
+          (sendmsg link)
+          (sendmsg result))
+      t))
 #+END_SRC
 
 *** Get PNG object
@@ -1258,28 +1260,4 @@ SIMD-операций.
   (ql:quickload "cl-json")
 
   <<supervisor>>
-#+END_SRC
-
-#+NAME:
-#+BEGIN_SRC lisp :tangle srv.lisp :noweb yes
-  (ql:quickload "anaphora")
-  (use-package :anaphora)
-  (ql:quickload "bordeaux-threads")
-  (ql:quickload "clx")
-  (ql:quickload "zpng")
-  (ql:quickload "png-read")
-  (ql:quickload "drakma")
-  (ql:quickload "cl-ppcre")
-  (ql:quickload "cl-base64")
-  (ql:quickload "prbs")
-  (ql:quickload "cl-irc")
-  (ql:quickload "cl-json")
-
-  ;; may be not needed
-  <<save_and_load_png>>
-  <<binarization>>
-  <<make_bit_image>>
-
-  <<irc>>
-  <<shot>>
 #+END_SRC
