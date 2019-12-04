@@ -359,11 +359,22 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
 
 Затем поток завершается - свою задачу он выполнил.
 
+[TODO:gmm] По-видимому, вероятна ситуация, когда пропадает коннект в
+момент передачи сообщения в канал. В этом случае поток застревает в
+блокировке, не давая ее взять другим потокам. Я добавил ~recursive-lock~,
+но этого недостаточно. Полагаю, необходимо применение таймаутов на
+блокировку, но пока не могу придумать модельную ситуацию чтобы проверить
+это.
+
 #+NAME: irc_helper
 #+BEGIN_SRC lisp :noweb yes
   (defmacro sendmsg (msg &rest params)
     `(bt:with-recursive-lock-held (*irc-lock*)
-       (cl-irc:privmsg *irc-conn* *irc-chan* (format nil ,msg ,@params))))
+       (handler-case
+           (cl-irc:privmsg *irc-conn* *irc-chan* (format nil ,msg ,@params))
+         (t (err)
+           (dbg "::irc connect error: ~A~%" (type-of err))
+           nil))))
 
   ;; irc-hook
   <<irc_hook>>
