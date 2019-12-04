@@ -63,7 +63,7 @@
 
 #+NAME: supervisor
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *outlock* (bt:make-lock "output-lock"))
+  (defparameter *outlock* (bt:make-recursive-lock "output-lock"))
 
   (defmacro bprint (var)
     `(subseq (with-output-to-string (*standard-output*)
@@ -71,7 +71,7 @@
 
   (defmacro dbg (msg &rest params)
     "debug output with lock"
-    `(bt:with-lock-held (*outlock*)
+    `(bt:with-recursive-lock-held (*outlock*)
        (format t ,msg ,@params)
        (finish-output)))
 
@@ -96,7 +96,7 @@
   (defparameter *max-shot-thread-cnt* 5)
 
   (defparameter *thread-operations-lock*
-    (bt:make-lock "thread-operations-lock"))
+    (bt:make-recursive-lock "thread-operations-lock"))
 
   ;; irc
   <<irc>>
@@ -118,7 +118,7 @@
                    (setf *watchdog-timer* 0)
                    (setf *connection-established-flag* nil))
                  (clear ()
-                   (bt:with-lock-held (*thread-operations-lock*)
+                   (bt:with-recursive-lock-held (*thread-operations-lock*)
                      (setf *shot-threads*
                            (remove-if-not #'(lambda (pair)
                                               (bt:thread-alive-p (car pair)))
@@ -165,7 +165,7 @@
                               (*irc-lock* . ,*irc-lock*)
                               (*irc-conn* . ,*irc-conn*)
                               (*watchdog-timer* . ,*watchdog-timer*))))
-              (bt:with-lock-held (*thread-operations-lock*)
+              (bt:with-recursive-lock-held (*thread-operations-lock*)
                 (push (cons (bt:make-thread #'shot :name "shot-th"
                                             :initial-bindings bindings)
                             (get-universal-time))
@@ -277,7 +277,7 @@
   (defparameter *irc-user* nil) ;; (format nil "b~A" *irc-sess*)
   (defparameter *irc-serv* "irc.freenode.org")
   (defparameter *irc-chan* "#nvrtlessfndout")
-  (defparameter *irc-lock* (bt:make-lock "irc-lock"))
+  (defparameter *irc-lock* (bt:make-recursive-lock "irc-lock"))
   (defparameter *irc-conn* nil)
 
   <<irc_loop>>
@@ -362,7 +362,7 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
 #+NAME: irc_helper
 #+BEGIN_SRC lisp :noweb yes
   (defmacro sendmsg (msg &rest params)
-    `(bt:with-lock-held (*irc-lock*)
+    `(bt:with-recursive-lock-held (*irc-lock*)
        (cl-irc:privmsg *irc-conn* *irc-chan* (format nil ,msg ,@params))))
 
   ;; irc-hook
@@ -372,10 +372,10 @@ peer: 149.56.134.238:6667" {1008002283}>: Connection reset by peer
     (sleep 1)
     (cl-irc:add-hook *irc-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'irc-msg-hook)
     (sleep 1)
-    (bt:with-lock-held (*irc-lock*)
+    (bt:with-recursive-lock-held (*irc-lock*)
       (cl-irc:join *irc-conn* *irc-chan*))
     (sleep 1)
-    (bt:with-lock-held (*irc-lock*)
+    (bt:with-recursive-lock-held (*irc-lock*)
       (setf *connection-established-flag* t))
     (sendmsg "hi"))
 #+END_SRC
@@ -979,7 +979,7 @@ irc-канал.
 
 #+NAME: operator
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *outlock* (bt:make-lock "output-lock"))
+  (defparameter *outlock* (bt:make-recursive-lock "output-lock"))
 
   (defmacro bprint (var)
     `(subseq (with-output-to-string (*standard-output*)
@@ -987,7 +987,7 @@ irc-канал.
 
   (defmacro dbg (msg &rest params)
     "debug output with lock"
-    `(bt:with-lock-held (*outlock*)
+    `(bt:with-recursive-lock-held (*outlock*)
        (format t ,msg ,@params)
        (finish-output)))
 
@@ -995,7 +995,7 @@ irc-канал.
   (defparameter *op-user* nil)
   (defparameter *op-serv* "irc.freenode.org")
   (defparameter *op-chan* "#nvrtlessfndout")
-  (defparameter *op-lock* (bt:make-lock "op-lock"))
+  (defparameter *op-lock* (bt:make-recursive-lock "op-lock"))
   (defparameter *op-conn* nil)
 
   (defparameter *op-connection-established-flag* nil)
@@ -1051,7 +1051,7 @@ irc-канал.
 #+NAME: op_helper
 #+BEGIN_SRC lisp :noweb yes
   (defmacro sendmsg (msg &rest params)
-    `(bt:with-lock-held (*op-lock*)
+    `(bt:with-recursive-lock-held (*op-lock*)
        (cl-irc:privmsg *op-conn* *op-chan* (format nil ,msg ,@params))))
 
   ;; op-hook
@@ -1061,10 +1061,10 @@ irc-канал.
     (sleep 1)
     (cl-irc:add-hook *op-conn* 'cl-irc:IRC-PRIVMSG-MESSAGE #'op-msg-hook)
     (sleep 1)
-    (bt:with-lock-held (*op-lock*)
+    (bt:with-recursive-lock-held (*op-lock*)
       (cl-irc:join *op-conn* *op-chan*))
     (sleep 1)
-    (bt:with-lock-held (*op-lock*)
+    (bt:with-recursive-lock-held (*op-lock*)
       (setf *op-connection-established-flag* t))
     (sendmsg "op here"))
 #+END_SRC
@@ -1104,7 +1104,7 @@ irc-канал.
                ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
                (str msg)
                )
-          (dbg "---~A~%" src)
+          (dbg "~A: ~A~%" src str)
           (block op-rules-dispatcher
             (let ((applyed_rules 0))
               (loop :for (antecedent . consequent) :in *op-rules* :do
