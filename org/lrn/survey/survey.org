@@ -761,7 +761,6 @@ irc-канал.
                                 )
               (drakma:http-request
                "https://api.anonfile.com/upload"
-               ;; "http://localhost:9993/upload"
                :user-agent *user-agent*
                :method :post
                :form-data t
@@ -775,41 +774,6 @@ irc-канал.
                :additional-headers new-headers
                :force-binary t)
             (flex:octets-to-string body-or-stream :external-format :utf-8))))))
-
-  ;; (anon-file-upload "555f.txt" "the content")
-
-
-  ;; (alexandria:write-string-into-file
-  ;;  (cl-base64:usb8-array-to-base64-string
-  ;;   (alexandria:read-file-into-byte-vector #P"png.png"))
-  ;;  #P"test.txt" :if-exists :supersede :external-format :utf-8)
-
-  ;; (alexandria:write-byte-vector-into-file
-  ;;  (cl-base64:base64-string-to-usb8-array
-  ;;   (alexandria:read-file-into-string #P"test.txt" :external-format :utf-8))
-  ;;  #P"test2" :if-exists :supersede)
-
-
-  ;; (print (get-cookies-alist cookie-jar))
-  ;; (print headers)
-  ;; (setf drakma" . "drakma-default-external-format* :UTF-8)
-
-  ;; (in-package :rigidus)
-
-  ;; (ql:quickload "rigidus")
-
-  ;; (restas:define-route upload ("/upload")
-  ;;   "<form enctype=\"multipart/form-data\" method=\"post\">
-  ;;    <input type=\"file\" name=\"file\">
-  ;;    <input type=\"submit\" value=\"Отправить\">
-  ;;    </form>")
-
-  ;; (restas:define-route upload-post ("/upload" :method :post)
-  ;;   (let ((file-info (hunchentoot:post-parameter "file")))
-  ;;     ;; (hunchentoot:escape-for-html
-  ;;     ;;  (alexandria:read-file-into-string (first file-info)))
-  ;;     (format nil "~A"
-  ;;             (bprint file-info))))
 #+END_SRC
 
 ** Packing image
@@ -1116,14 +1080,6 @@ irc-канал.
     t)
 #+END_SRC
 
-Я временно отключил эти блоки, но они понадобятся в дальнейшем:
-  ;; seq_xor
-  <<seq_xor>>
-  ;; ecrypt
-  <<encrypt>>
-  ;; decrypt
-  <<decrypt>>
-
 Ну вот, теперь осталось правильно реагировать на команды. Чтобы
 распознать команду мы будем применять диспетчер, работающий как система
 правил. Он опирается на список правил, каждая из которых представляет
@@ -1141,22 +1097,25 @@ irc-канал.
     (lambda (param)
       (block op-cmd-block
         (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
+               (src  (CL-IRC:SOURCE param))
                ;; (oct  (decrypt msg *op-sess*))
                ;; (str  (handler-case
                ;;           (flex:octets-to-string oct :external-format :utf-8)
                ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
                (str msg)
                )
+          (dbg "---~A~%" src)
           (block op-rules-dispatcher
             (let ((applyed_rules 0))
               (loop :for (antecedent . consequent) :in *op-rules* :do
-                   (when (funcall antecedent str)
+                   (when (funcall antecedent str src)
                      (incf applyed_rules)
-                     (when (funcall consequent str)
+                     (when (funcall consequent str src)
                        (return-from op-rules-dispatcher nil))))
               (when (> 0 applyed_rules)
-                (dbg "::UNKMSG [~A]~%" str))
-              (finish-output)))))))
+                (dbg "::UNKMSG [~A] from [~A]~%" str))
+              (finish-output)))
+          ))))
 #+END_SRC
 
 Правило для скриншотов просто проверяет сообщение на соответствие
@@ -1165,16 +1124,164 @@ irc-канал.
 
 #+NAME: shot_rule
 #+BEGIN_SRC lisp :noweb yes
-  (defun shot-rule-antecedent (str)
-    (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" "/n695m1Dan7/3784409777_9"))
+  (defun shot-rule-antecedent (str src)
+    (declare (ignore src))
+    (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" str))
 
-  (defun shot-rule-consequent (str)
-    ;; TODO
+  ;; download
+  <<download>>
+
+  ;; seq_xor
+  <<seq_xor>>
+
+  ;; decrypt
+  <<decrypt>>
+
+  ;; unpack_img
+  <<unpack_img>>
+
+  (defun shot-rule-consequent (str src)
+    (let* ((key (parse-integer (subseq src 1)))
+           (enc (anon-file-download str))
+           (dec  (decrypt enc key))
+           (png (let ((png-read::*png-file* "fake-file"))
+                  (flex:with-input-from-sequence (stream dec)
+                    (png-read:read-png-datastream stream))))
+           (image-data (png-read:image-data png))
+           ;; reverse
+           (dims   (subseq (array-dimensions image-data) 0 2))
+           (height (cadr dims))
+           (width  (car  dims))
+           (image ;; меняем размерности X и Y местами
+            (let ((result (make-array (list height width)
+                                      :element-type '(unsigned-byte 8))))
+              (do ((y 0 (incf y)))
+                  ((= y height))
+                (do ((x 0 (incf x)))
+                    ((= x width))
+                  (setf (aref result y x)
+                        (aref image-data x y))))
+              result))
+           ;; unpacking
+           (unpack (unpack-img image))
+           (unpack-dims (array-dimensions unpack))
+           (new-width (cadr unpack-dims))
+           (pathname-str "~/Documents/unpack-big.png")
+           )
+      (let* ((png (make-instance 'zpng:png
+                                 :width new-width
+                                 :height height
+                                 :color-type :grayscale))
+             (vector (make-array ;; displaced vector - need copy for save
+                      (* height new-width (zpng:samples-per-pixel png))
+                      :displaced-to unpack :element-type '(unsigned-byte 8))))
+        ;; Тут применен потенциально опасный трюк, когда мы создаем
+        ;; объект PNG без данных, а потом добавляем в него данные,
+        ;; используя неэкспортируемый writer.
+        ;; Это нужно чтобы получить третью размерность массива,
+        ;; который мы хотим передать как данные и при этом
+        ;; избежать создания для этого временного объекта
+        (setf (zpng::%image-data png) (copy-seq vector))
+        (zpng:write-png png pathname-str)))
     t)
-
-
 #+END_SRC
 
+** Download
+
+#+NAME: download
+#+BEGIN_SRC lisp :noweb yes
+  (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
+
+  (defparameter *additional-headers*
+    `(("Accept" . "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+      ("Accept-Language" . "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3")
+      ("Accept-Charset" . "utf-8")))
+
+  (defun get-download-link (text)
+    (loop :for str :in (split-sequence:split-sequence #\Newline text)
+       :do (multiple-value-bind (match-p result)
+               (ppcre:scan-to-strings
+                "(https://cdn-([0-9]*)\.anonfile.com\/(.*))\\\""
+                str)
+             (when match-p (return (aref result 0))))))
+
+  (defun anon-file-download (filename)
+    (let ((cookie-jar (make-instance 'drakma:cookie-jar)))
+      ;; load mainpage for cookies, headers and csrf
+      (multiple-value-bind (body-or-stream ;; status-code headers uri
+                            ;;stream must-close reason-phrase
+                            )
+          (drakma:http-request (format nil "https://anonfile.com~A" filename)
+                               :user-agent *user-agent*
+                               :redirect 10
+                               :force-binary t
+                               :cookie-jar cookie-jar
+                               :additional-headers *additional-headers*)
+        (let* ((text (flex:octets-to-string body-or-stream :external-format :utf-8))
+               (link (get-download-link text)))
+          (multiple-value-bind (body-or-stream ;; status-code headers uri
+                                ;;stream must-close reason-phrase
+                                )
+              (drakma:http-request link
+               :user-agent *user-agent*
+               :cookie-jar cookie-jar
+               :additional-headers *additional-headers*
+               :force-binary t)
+            (flex:octets-to-string body-or-stream :external-format :utf-8))))))
+#+END_SRC
+
+** Unpack image
+
+#+NAME: unpack_img
+#+BEGIN_SRC lisp
+  (defun unpack-img (image)
+    (declare (optimize (speed 3) (safety 0)))
+    (let* ((dims (array-dimensions image))
+           (height (car dims))
+           (width (cadr dims))
+           (new-width (ash width 3))
+           (result (make-array (list height new-width)
+                               :element-type '(unsigned-byte 8))))
+      (declare (type fixnum width)
+               (type fixnum new-width)
+               (type fixnum height))
+      (do ((qy 0 (incf qy)))
+          ((= qy height))
+        (declare (type fixnum qy))
+        (do ((qx 0 (incf qx)))
+            ((= qx width))
+          (declare (type fixnum qx))
+          (let ((acc (aref image qy qx)))
+            (declare (type (unsigned-byte 8) acc))
+            ;; (format t "~8,'0B" acc)
+            (do ((out 0 (incf out))
+                 (in  7 (decf in)))
+                ((= 8 out))
+              (declare (type fixnum out in))
+              (unless (= 0 (logand acc (ash 1 in)))
+                (setf (aref result qy (logior (ash qx 3) out))
+                      255)))))
+        ;; (format t "~%")
+        )
+      result))
+
+  ;; TEST
+  ;; (print
+  ;;  (unpack-img
+  ;;   (pack-img
+  ;;    (x-snapshot :width 31 :height 23))))
+
+  ;; TEST
+  ;; (time
+  ;;  (let* ((image  (load-png "FILE1088"))
+  ;;         (unpack (unpack-img image))
+  ;;         (dims (array-dimensions unpack)))
+  ;;    (save-png (cadr dims)
+  ;;              (car dims)
+  ;;              (format nil "~A" (gensym "FILE"))
+  ;;              unpack
+  ;;              :grayscale)))
+#+END_SRC
 
 * Old
 
@@ -1433,58 +1540,6 @@ SIMD-операций.
   ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
 #+END_SRC
 
-** Unpack image
-
-#+NAME: unpack_image
-#+BEGIN_SRC lisp
-  (defun unpack-img (image)
-    (declare (optimize (speed 3) (safety 0)))
-    (let* ((dims (array-dimensions image))
-           (height (car dims))
-           (width (cadr dims))
-           (new-width (ash width 3))
-           (result (make-array (list height new-width)
-                               :element-type '(unsigned-byte 8))))
-      (declare (type fixnum width)
-               (type fixnum new-width)
-               (type fixnum height))
-      (do ((qy 0 (incf qy)))
-          ((= qy height))
-        (declare (type fixnum qy))
-        (do ((qx 0 (incf qx)))
-            ((= qx width))
-          (declare (type fixnum qx))
-          (let ((acc (aref image qy qx)))
-            (declare (type (unsigned-byte 8) acc))
-            ;; (format t "~8,'0B" acc)
-            (do ((out 0 (incf out))
-                 (in  7 (decf in)))
-                ((= 8 out))
-              (declare (type fixnum out in))
-              (unless (= 0 (logand acc (ash 1 in)))
-                (setf (aref result qy (logior (ash qx 3) out))
-                      255)))))
-        ;; (format t "~%")
-        )
-      result))
-
-  ;; TEST
-  ;; (print
-  ;;  (unpack-img
-  ;;   (pack-img
-  ;;    (x-snapshot :width 31 :height 23))))
-
-  ;; TEST
-  ;; (time
-  ;;  (let* ((image  (load-png "FILE1088"))
-  ;;         (unpack (unpack-img image))
-  ;;         (dims (array-dimensions unpack)))
-  ;;    (save-png (cadr dims)
-  ;;              (car dims)
-  ;;              (format nil "~A" (gensym "FILE"))
-  ;;              unpack
-  ;;              :grayscale)))
-#+END_SRC
 
 * Assembly
 
