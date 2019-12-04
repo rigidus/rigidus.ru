@@ -247,7 +247,6 @@
 #+results:
 [[file:../../../img/survey-01.png]]
 
-
 * Irc
 
 Работа с IRC состоит из нескольких этапов
@@ -1125,10 +1124,19 @@ irc-канал.
   ;; decrypt
   <<decrypt>>
 
-[TODO:gmm] Ну вот, теперь осталось правильно реагировать на команды
+Ну вот, теперь осталось правильно реагировать на команды. Чтобы
+распознать команду мы будем применять диспетчер, работающий как система
+правил. Он опирается на список правил, каждая из которых представляет
+пару (условие . действие).
+
 
 #+NAME: op_cmd_proc
 #+BEGIN_SRC lisp :noweb yes
+  <<shot_rule>>
+
+  (defparameter *op-rules*
+    (list (cons #'shot-rule-antecedent #'shot-rule-consequent)))
+
   (defparameter *op-cmd*
     (lambda (param)
       (block op-cmd-block
@@ -1139,30 +1147,34 @@ irc-канал.
                ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
                (str msg)
                )
-          (dbg "::COMMAND: [~A]~%" msg)
-          (dbg "::EVAL [~A]~%" str)
-          (finish-output)
-          ;; (let ((result (handler-case (bprint (eval (read-from-string  str)))
-          ;;                 (t (err)
-          ;;                   (dbg "::op-cmd error: ~A~%" (type-of err))
-          ;;                   (sendmsg "ERR(op-cmd): [~A]" (type-of err))
-          ;;                   (return-from op-cmd-block nil)))))
-          ;;   (sendmsg "=> ~A" result)
-          ;;   (dbg "::=> ~A~%" result)
-          ;;   (finish-output))
-          ))))
-
-  ;; (encrypt
-  ;;  (flex:string-to-octets
-  ;;   "(progn (quit))"
-  ;;   :external-format :utf-8)
-  ;;  3783992823)
-
-  ;; (flex:octets-to-string
-  ;;  (decrypt
-  ;;   "62Y5gGs3D5BAEdec7Ls=" 3783992823)
-  ;;  :external-format :utf-8)
+          (block op-rules-dispatcher
+            (let ((applyed_rules 0))
+              (loop :for (antecedent . consequent) :in *op-rules* :do
+                   (when (funcall antecedent str)
+                     (incf applyed_rules)
+                     (when (funcall consequent str)
+                       (return-from op-rules-dispatcher nil))))
+              (when (> 0 applyed_rules)
+                (dbg "::UNKMSG [~A]~%" str))
+              (finish-output)))))))
 #+END_SRC
+
+Правило для скриншотов просто проверяет сообщение на соответствие
+регулярному выражению. Если есть совпадение мы начинаем работу по
+скачиванию и сохранению данных
+
+#+NAME: shot_rule
+#+BEGIN_SRC lisp :noweb yes
+  (defun shot-rule-antecedent (str)
+    (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" "/n695m1Dan7/3784409777_9"))
+
+  (defun shot-rule-consequent (str)
+    ;; TODO
+    t)
+
+
+#+END_SRC
+
 
 * Old
 
@@ -1477,7 +1489,7 @@ SIMD-операций.
 * Assembly
 
 #+NAME:
-#+BEGIN_SRC lisp :tangle s.lisp :noweb yes
+#+BEGIN_SRC lisp :tangle q.lisp :noweb yes
   (ql:quickload "anaphora")
   (use-package :anaphora)
   (ql:quickload "bordeaux-threads")
