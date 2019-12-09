@@ -115,6 +115,9 @@
   ;; replace_yourself
   <<replace_yourself>>
 
+  ;; remote_gui
+  <<remote_gui>>
+
   ;; shell_command
   <<shell_command>>
 
@@ -554,7 +557,7 @@ irc-канала. Она должна возвращать T чтобы пред
             nil)))))
 #+END_SRC
 
-* Update On Irc
+* Update On Irc & Features
 
 Чтобы удаленно расширять функциональность супервизора нам нужен способ
 обновить код. В блоке кода [[irc_cmd_proc][irc_cmd_proc]] раздела [[*Command hook][Command hook]] опредено,
@@ -1021,6 +1024,111 @@ irc-канала. Она должна возвращать T чтобы пред
    "(shell-command \"./rbt.sh\")"
    ,*tmpkey*
    ,*receiver*)
+#+END_SRC
+
+** Remote GUI: moving & actions
+:PROPERTIES:
+:xtest: xlib/xtest
+:END:
+
+#+NAME: get_property
+#+BEGIN_SRC elisp :var prop=""
+  (org-entry-get nil prop t)
+#+END_SRC
+
+Для управления GUI-программами на узле нам нужны возможности по
+управлению мышью. Тут приведен код, функции которого можно вызывать.
+
+~perform-mouse-action~ создает фейковое событие мышки, а
+~perform-key-action~ создает фейковое событие клаиватуры. Обе функции
+принимают первым параметров ~t~ или ~nil~, что соответствует "нажать" и
+"отпустить", затем ~keysym~.
+
+~perform-mouse-action~ принимает еще и координаты, куда следует кликнуть
+"мышкой".
+
+#+NAME: remote_gui
+#+BEGIN_SRC lisp :noweb yes
+  (defun x-move (x y)
+    (if (and (integerp x) (integerp y))
+        (with-default-display-force (d)
+          (<<get_property("xtest")>>:fake-motion-event d x y))
+        (error "Integer only for position, (x: ~S, y: ~S)" x y)))
+
+  (defun mklist (obj)
+    (if (and
+         (listp obj)
+         (not (null obj)))
+        obj (list obj)))
+
+  (defmacro defun-with-actions (name params actions &body body)
+    ;; "This macro defun a function which witch do mouse or keyboard actions,
+    ;; body is called on each action."
+    `(defun ,name ,params
+       (mapcar
+        #'(lambda (action)
+            ,@body)
+        (mklist ,actions))))
+
+  (defun perform-mouse-action (press? button &key x y)
+    (and x y (x-move x y))
+    (with-default-display-force (d)
+      (<<get_property("xtest")>>:fake-button-event d button press?)))
+
+  (defun perform-key-action (press? keycode) ; use xev to get keycode
+    (with-default-display-force (d)
+      (<<get_property("xtest")>>:fake-key-event d keycode press?)))
+
+  (macrolet ((def (name actions)
+               `(defun-with-actions ,name
+                    (&key (button 1) x y)
+                  ,actions
+                  (funcall #'perform-mouse-action
+                           action button :x x :y y))))
+    (def x-mouse-down t)
+    (def x-mouse-up nil)
+    (def x-click '(t nil))
+    (def x-dbclick '(t nil t nil)))
+
+  (defmacro with-scroll (pos neg clicks x y)
+    `(let ((button (cond
+                     ((= 0 ,clicks) nil)
+                     ((> 0 ,clicks) ,pos)    ; scroll up/right
+                     ((< 0 ,clicks) ,neg)))) ; scroll down/left
+       (dotimes (_ (abs ,clicks))
+         (x-click :button button :x ,x :y ,y))))
+
+  (defun x-vscroll (clicks &key x y)
+    (with-scroll 4 5 clicks x y))
+
+  (defun x-scroll (clicks &key x y)
+    (x-vscroll clicks :x x :y y))
+
+  (defun x-hscroll (clicks &key x y)
+    (with-scroll 7 6 clicks x y))
+
+  (macrolet ((def (name actions)
+               `(defun-with-actions ,name (keycode)
+                  ,actions
+                  (funcall #'perform-key-action
+                           action keycode))))
+    (def x-key-down t)
+    (def x-key-up nil)
+    (def x-press '(t nil)))
+
+  ;; (block perform-key-action-test
+  ;;   (perform-key-action t 116)
+  ;;   (sleep .1)
+  ;;   (perform-key-action nil 116))
+
+  ;; (defparameter *mouse-left* 1)
+
+  ;; (defparameter *mouse-middle* 2)
+
+  ;; (block perform-mouse-action-test
+  ;;   (perform-mouse-action t *mouse-left* :x 100 :y 100)
+  ;;   (sleep .1)
+  ;;   (perform-mouse-action nil *mouse-left* :x 100 :y 100))
 #+END_SRC
 
 * Snapshot function
