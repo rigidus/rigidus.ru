@@ -63,17 +63,7 @@
 
 #+NAME: supervisor
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *outlock* (bt:make-recursive-lock "output-lock"))
-
-  (defmacro bprint (var)
-    `(subseq (with-output-to-string (*standard-output*)
-               (pprint ,var)) 1))
-
-  (defmacro dbg (msg &rest params)
-    "debug output with lock"
-    `(bt:with-recursive-lock-held (*outlock*)
-       (format t ,msg ,@params)
-       (finish-output)))
+  <<debug>>
 
   (defparameter *max-diffs-cnt* 4)
 
@@ -1619,17 +1609,7 @@ irc-канал.
 
 #+NAME: operator
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *outlock* (bt:make-recursive-lock "output-lock"))
-
-  (defmacro bprint (var)
-    `(subseq (with-output-to-string (*standard-output*)
-               (pprint ,var)) 1))
-
-  (defmacro dbg (msg &rest params)
-    "debug output with lock"
-    `(bt:with-recursive-lock-held (*outlock*)
-       (format t ,msg ,@params)
-       (finish-output)))
+  <<debug>>
 
   (defparameter *op-sess* nil)
   (defparameter *op-user* nil)
@@ -1925,6 +1905,23 @@ irc-канал.
   ;;              :grayscale)))
 #+END_SRC
 
+* Utils
+
+#+NAME: debug
+#+BEGIN_SRC lisp
+  (defparameter *outlock* (bt:make-recursive-lock "output-lock"))
+
+  (defmacro bprint (var)
+    `(subseq (with-output-to-string (*standard-output*)
+               (pprint ,var)) 1))
+
+  (defmacro dbg (msg &rest params)
+    "debug output with lock"
+    `(bt:with-recursive-lock-held (*outlock*)
+       (format t ,msg ,@params)
+       (finish-output)))
+#+END_SRC
+
 * Old
 
 #+NAME:
@@ -1948,55 +1945,6 @@ irc-канал.
       (setf (zpng::%image-data png) (copy-seq vector))
       (zpng:write-png png pathname-str)))
 
-#+END_SRC
-
-** unpack_procedure
-
-#+NAME: unpack_procedure
-#+BEGIN_SRC lisp
-  (let* ((fname-in #P"~/Downloads/3784024465")
-         (enc  (alexandria:read-file-into-string fname-in :external-format :utf-8))
-         (dec  (decrypt enc *irc-sess*))
-         ;; (dec (alexandria:read-file-into-byte-vector #P"~/Documents/ab-pack.png"))
-         (png (let ((png-read::*png-file* "fake-file"))
-                 (flex:with-input-from-sequence (stream dec)
-                   (png-read:read-png-datastream stream))))
-         (image-data (png-read:image-data png))
-         ;; reverse
-         (dims   (subseq (array-dimensions image-data) 0 2))
-         (height (cadr dims))
-         (width  (car  dims))
-         (image ;; меняем размерности X и Y местами
-          (let ((result (make-array (list height width)
-                                    :element-type '(unsigned-byte 8))))
-            (do ((y 0 (incf y)))
-                ((= y height))
-              (do ((x 0 (incf x)))
-                  ((= x width))
-                (setf (aref result y x)
-                      (aref image-data x y))))
-            result))
-         ;; unpacking
-         (unpack (unpack-img image))
-         (unpack-dims (array-dimensions unpack))
-         (new-width (cadr unpack-dims))
-         (pathname-str "~/Documents/unpack-big.png")
-         )
-    (let* ((png (make-instance 'zpng:png
-                               :width new-width
-                               :height height
-                               :color-type :grayscale))
-           (vector (make-array ;; displaced vector - need copy for save
-                    (* height new-width (zpng:samples-per-pixel png))
-                    :displaced-to unpack :element-type '(unsigned-byte 8))))
-      ;; Тут применен потенциально опасный трюк, когда мы создаем
-      ;; объект PNG без данных, а потом добавляем в него данные,
-      ;; используя неэкспортируемый writer.
-      ;; Это нужно чтобы получить третью размерность массива,
-      ;; который мы хотим передать как данные и при этом
-      ;; избежать создания для этого временного объекта
-      (setf (zpng::%image-data png) (copy-seq vector))
-      (zpng:write-png png pathname-str)))
 #+END_SRC
 
 ** Save and Load
