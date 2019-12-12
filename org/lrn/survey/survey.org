@@ -1804,7 +1804,7 @@ irc-канал.
         ;; который мы хотим передать как данные и при этом
         ;; избежать создания для этого временного объекта
         (setf (zpng::%image-data png) (copy-seq vector))
-        (zpng:write-png png pathname-str)))
+        (zpng:write-png png pathname-str :if-exists :supersede)))
     t)
 #+END_SRC
 
@@ -1920,6 +1920,173 @@ irc-канал.
     `(bt:with-recursive-lock-held (*outlock*)
        (format t ,msg ,@params)
        (finish-output)))
+#+END_SRC
+
+* Analysis
+
+Когда мы скачиваем файл с файлообменника - это может окончиться
+неудачей. В этом случае удобно обрабатывать такие сбои в CPS-стиле,
+особенно когда мы хотим запускать скачку паралельно, в несколько
+потоков.
+
+Чтобы отвязать запуск потоков от системы правил мы будем использовать
+очередь, в которую будем добавлять задания на обработку. Преимуществом
+такого подхода может быть возможность ссылаться на ранее выполнявшиеся
+задания.
+
+Структуру задания определим так:
+
+#+NAME: task
+#+BEGIN_SRC lisp
+  (defstruct task
+    class
+    data
+    code)
+#+END_SRC
+
+Для обслуживания очереди нам понадобится сама очередь и блокировка на
+ней:
+
+#+NAME: task_queue
+#+BEGIN_SRC lisp
+  (defparameter *task-queue* nil)
+  (defparameter *task-queue-lock* (bt:make-lock "task-queue-lock"))
+#+END_SRC
+
+Теперь можно добавить операции для добавления и удаления из очереди
+заданий.
+
+#+NAME: task_queue_ops
+#+BEGIN_SRC lisp
+  (defun ins-task (task)
+    (bt:with-lock-held (*task-queue-lock*)
+      (setf *task-queue*
+            (append *task-queue*
+                    (list task)))))
+
+  (defun pop-task ()
+    (bt:with-lock-held (*task-queue-lock*)
+      (pop *task-queue*)))
+#+END_SRC
+
+Таким образом, теперь consequent правила, получив сообщение, может просто
+добавить его в очередь и больше ни о чем не думать:
+
+#+NAME: shot_rule_consequent
+#+BEGIN_SRC lisp
+  <<shot_downloader>>
+
+  (defun shot-rule-consequent (str src)
+    (ins-task (make-task :class 'shot-task
+                         :data (list str src)
+                         :code #'shot-downloader)))
+
+  (shot-rule-consequent "/pe3bM7E9n5/3785062633" "b3785062627")
+#+END_SRC
+
+Однако, необходимо описать операцию, которая будет вызываться из таска и
+выполнять всю грязную работу.
+
+#+NAME: shot_downloader
+#+BEGIN_SRC lisp
+  (defun shot-downloader (param)
+    (let* ((key (parse-integer (subseq src 1)))
+           (enc (anon-file-download str))
+           (dec (decrypt enc key))
+           (png (let ((png-read::*png-file* "fake-file"))
+                  (flex:with-input-from-sequence (stream dec)
+                    (png-read:read-png-datastream stream))))
+           (image-data (png-read:image-data png))
+           ;; reverse
+           (dims   (subseq (array-dimensions image-data) 0 2))
+           (height (cadr dims))
+           (width  (car  dims))
+           (image ;; меняем размерности X и Y местами
+            (let ((result (make-array (list height width)
+                                      :element-type '(unsigned-byte 8))))
+              (do ((y 0 (incf y)))
+                  ((= y height))
+                (do ((x 0 (incf x)))
+                    ((= x width))
+                  (setf (aref result y x)
+                        (aref image-data x y))))
+              result))
+           ;; (dif (ppcre:scan-to-strings "/(.*)/([0-9]*)_([0-9]*)" str))
+           ;; (img (if (not dif)
+           ;;          (setf prev image)
+           ;;          ;; else
+           ;;          (setf prev (get-img-diff dims prev image))))
+           (img image)
+           ;; unpacking
+           (unpack (unpack-img img))
+           (unpack-dims (array-dimensions unpack))
+           (new-width (cadr unpack-dims))
+           (fname-str (multiple-value-bind (match-p result)
+                          (ppcre:scan-to-strings "/.*/(.*)" str)
+                        (elt result 0))))
+      (format t "~%~A" fname-str)
+      (let* ((png (make-instance 'zpng:png
+                                 :width new-width
+                                 :height height
+                                 :color-type :grayscale))
+             (vector (make-array ;; displaced vector - need copy for save
+                      (* height new-width (zpng:samples-per-pixel png))
+                      :displaced-to unpack :element-type '(unsigned-byte 8))))
+        ;; Тут применен потенциально опасный трюк, когда мы создаем
+        ;; объект PNG без данных, а потом добавляем в него данные,
+        ;; используя неэкспортируемый writer.
+        ;; Это нужно чтобы получить третью размерность массива,
+        ;; который мы хотим передать как данные и при этом
+        ;; избежать создания для этого временного объекта
+        (setf (zpng::%image-data png) (copy-seq vector))
+        (zpng:write-png png (format nil "~~/Documents/~A" fname-str)))
+      t))
+#+END_SRC
+
+[TODO:gmm] Конечно же нужен диспетчер, который будет проходить по очереди
+запускать таски. Этот диспетчер должен запускаться в отдельном потоке.
+
+#+NAME:
+#+BEGIN_SRC lisp
+  TODO
+#+END_SRC
+
+
+
+
+#+NAME:
+#+BEGIN_SRC lisp
+  (defun get-img-diff (dims prev snap)
+    (format t "~% diff: dims ~A" dims)
+    ;; (let ((diff (make-array dims :element-type '(unsigned-byte 8))))
+    ;;   (do ((qy 0 (incf qy)))
+    ;;       ((= qy (car dims)))
+    ;;     (declare (type fixnum qy))
+    ;;     (do ((qx 0 (incf qx)))
+    ;;         ((= qx (cadr dims)))
+    ;;       (declare (type fixnum qx))
+    ;;       (setf (aref diff qy qx)
+    ;;             (logxor (aref prev qy qx)
+    ;;                     (aref snap qy qx)))))
+    ;;   diff)
+    snap
+    )
+
+  (let ((prev))
+    (defun shot-rule-consequent (str src)
+      (format t "~%~A:~A" str src)
+      (finish-output)
+
+  (loop :for item :in (subseq *log* 2)
+     :do
+       (progn
+         (sleep (random 5))
+         (bt:make-thread #'(lambda ()
+                             (destructuring-bind (src str) item
+                               (shot-rule-consequent str src))))))
+
+  (length *log*)
+  (car *log*)
 #+END_SRC
 
 * Old
