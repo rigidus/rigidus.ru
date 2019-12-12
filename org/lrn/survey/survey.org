@@ -61,6 +61,11 @@
 количество таких потоков и если их становится больше чем
 ~max-shot-thread-cnt~ удаляет те, которые работают слишком долго.
 
+[TODO:gmm] Возможно, эта модель не требуется, т.к. нам не нужно создавать
+по отдельному потоку для скриншотинга каждую секунду. Т.е. мы вполне
+можем обойтись только контролем зависания одного потока, в котором
+работает цикл приема сообщений.
+
 #+NAME: supervisor
 #+BEGIN_SRC lisp :noweb yes
   <<debug>>
@@ -1602,15 +1607,107 @@ irc-канал.
 довести его до зарядной станции.
 
 Для этого оператору нужно только уметь принимать сообщения и декодировать
-отправленные данные. В общем случае нам не требуется такая же
-отказоустойчивость как у узла, так как предполагается, что в случае
-каких-то проблем программа-оператор может попросить помощи пользователя в
-любой момент.
+отправленные данные. Общая схема работы будет такая же как у супервизора:
+используем ~operator-loop~ и ~watchdog-timer~, чтобы циклически вызывать
+функцию из глобальной переменной ~*operator*~.
 
-#+NAME: operator
+#+NAME: operator_loop
 #+BEGIN_SRC lisp :noweb yes
   <<debug>>
 
+  (defparameter *watchdog-timer* 0)
+
+  (defparameter *operator-stop-flag* nil)
+
+  (defparameter *sleep-interval* 3)
+
+  <<operator>>
+
+  (defun operator-loop ()
+    (setf *watchdog-timer* 0)
+    (tagbody
+     infinite
+       (when *operator-stop-flag*
+         (go end))
+       (dbg ":operator-loop WGD=~3,'OD~%" *watchdog-timer*)
+       (funcall *operator*)
+       (sleep *sleep-interval*)
+       (incf *watchdog-timer*)
+       (go infinite)
+     end))
+
+  (operator-loop)
+#+END_SRC
+
+Если отсутствуют потоки ~op-irc-th~ оператор будет пытаться создать один,
+и реинициализировать ~watchdog-timer~.
+
+Если хотя бы один поток ~op-irc-th~ существует, но ~watchdog-timer~
+слишком большой - он будет убит, т.к. вероятно он завис. На следующей
+итерации запуска ~operator~ будет убит следующий поток, и так далее, пока
+потоков не останется (или кто-то не обнулит watchdog - например при
+приходе сообщения) - и тогда можно будет создавать новые. Так мы
+обеспечиваем попытки перезапуска.
+
+#+NAME: operator
+#+BEGIN_SRC lisp :noweb yes
+  (defparameter *watchdog-timer-max* 10000)
+
+  (defparameter *op-irc-th-stop-flag* nil)
+
+  (defparameter *op-connection-established-flag* nil)
+
+  (defparameter *op-irc-threads* nil)
+
+  <<op_irc>>
+
+  (defparameter *operator*
+    (lambda ()
+      (let ((all-threads (mapcar #'(lambda (th)  (cons (bt:thread-name th) th))
+                                 (bt:all-threads))))
+        (labels ((fnd (name) (loop :for (nm . th) :in all-threads
+                                :do (when (equal name nm)  (return th))))
+                 (kill (th)  (handler-case (bt:destroy-thread th)
+                               ;; happens, when thread destroyed already
+                               (TYPE-ERROR () nil)))
+                 (kill-op-irc (th)
+                   (kill th)
+                   (setf *watchdog-timer* 0)
+                   (setf *op-connection-established-flag* nil)))
+          ;; if there is no irs-thread then start it
+          (when (and (null (fnd "op-irc-th"))       ;; no op-irc-th
+                     (null *op-irc-th-stop-flag*))  ;; no op-irc-th stop flag
+            (dbg "::operator lambda: start irc-th~%")
+            (setf *watchdog-timer* 0)
+            (bt:make-thread
+             #'op-irc :name "op-irc-th"
+             :initial-bindings
+             `((*standard-output* . ,*standard-output*)
+               (*op-irc-thread-stop-flag* . ,*op-irc-th-stop-flag*))))
+          ;; if there is irc-thread, but the watchdog-timer exceeds
+          ;; or the flag is set - then kill it.
+          (awhen (fnd "op-irc-th")
+            (when (> *watchdog-timer*  *watchdog-timer-max*)
+              (dbg "::operator-lambda: kill op-irc-th by WDG~%")
+              (kill-op-irc it))
+            (when *op-irc-th-stop-flag*
+              (dbg "::operator-lambda: kill op-irc-th by FLAG~%")
+              (kill-op-irc it)))))))
+#+END_SRC
+
+Теперь оператор подключается к IRC.
+
+Если нет подключения к сети мы получим ошибку
+~USOCKET:NS-TRY-AGAIN-CONDITION~, которая будет проигнорирована, но
+записана в лог, как и любые другие ошибки подключения. В этих случаях
+функция ~irc-loop~ не будет вызвана, произойдет выход их функции потока и
+поток будет завершен. Обнаружив отсутствие потока супервизор перезапустит
+его и это приведет к следующей попытке подключения.
+
+Если подключение произошло успешно - мы вызываем ~op-loop~.
+
+#+NAME: op_irc
+#+BEGIN_SRC lisp :noweb yes
   (defparameter *op-sess* nil)
   (defparameter *op-user* nil)
   (defparameter *op-serv* "irc.freenode.org")
@@ -1618,30 +1715,29 @@ irc-канал.
   (defparameter *op-lock* (bt:make-recursive-lock "op-lock"))
   (defparameter *op-conn* nil)
 
-  (defparameter *op-connection-established-flag* nil)
-
   <<op_loop>>
 
-  <<upload_code_and_send>>
-
-  (defun operator ()
+  (defun op-irc ()
+    "operator's irc thread func"
     (setf *op-sess* (get-universal-time))
-    (setf *op-user* (format nil "op~A" *op-sess*))
+    (setf *op-user* (format nil "b~A" *op-sess*))
     (setf *op-conn*
           (handler-case
               (cl-irc:connect :nickname *op-user* :server *op-serv*)
             (USOCKET:NS-TRY-AGAIN-CONDITION (err)
-              (dbg "::op connect error: ~A~%" (type-of err))
+              (dbg "::irc connect error: ~A~%" (type-of err))
               nil)
             (t (err)
-              (dbg "::op connect error: ~A~%" (type-of err))
+              (dbg "::irc connect error: ~A~%" (type-of err))
               nil)))
     (when *op-conn*
-      (dbg "::op conn:~A~%" *op-conn*)
+      (dbg "::op irc conn:~A~%" *op-conn*)
+      (setf *watchdog-timer* 0)
       (op-loop)))
 
-  (operator)
+  ;; <<upload_code_and_send>>
 #+END_SRC
+
 
 На этом месте текущий поток должен зависнуть в цикле чтения сообщений и
 дальше будут работать установленные хуки.
@@ -2334,5 +2430,5 @@ SIMD-операций.
   (ql:quickload "cl-json")
   (ql:quickload "ironclad")
 
-  <<operator>>
+  <<operator_loop>>
 #+END_SRC
