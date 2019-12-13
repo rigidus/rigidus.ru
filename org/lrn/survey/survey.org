@@ -1598,7 +1598,7 @@ irc-канал.
   ;; (x-snapshot :path "x-snapshot-true-color.png")
 #+END_SRC
 
-* Operator
+* Operator's Loop
 
 Наблюдать за узлом сети и отправлять команды очень увлекательно, но
 хочется добавить автоматизации. Например, если глупый робот-пылесос умеет
@@ -1610,6 +1610,11 @@ irc-канал.
 отправленные данные. Общая схема работы будет такая же как у супервизора:
 используем ~operator-loop~ и ~watchdog-timer~, чтобы циклически вызывать
 функцию из глобальной переменной ~*operator*~.
+
+Каждую секунду ~operator-loop~ инкрементирует состояние переменной
+~watchdog-timer~ и вызывает ~operator~. Внутри себя ~operator~ использует
+значение этой переменной, чтобы отслеживать зависшие потоки и завершать
+их.
 
 #+NAME: operator_loop
 #+BEGIN_SRC lisp :noweb yes
@@ -1639,17 +1644,31 @@ irc-канал.
   (operator-loop)
 #+END_SRC
 
+** Operator
+
+Оператор работает с потоками ~op-irc-th~, задача которых - обрабатывать
+сообщения, которые приходят из IRC-канала. Эти потоки могут зависнуть
+попав в необработанную ошибку или при сбое сети, поэтому оператор должен
+минимизировать ущерб от таких зависаний. В норме мы считаем, что должен
+работать один поток ~op-irc-th~.
+
 Если отсутствуют потоки ~op-irc-th~ оператор будет пытаться создать один,
 и реинициализировать ~watchdog-timer~.
 
 Если хотя бы один поток ~op-irc-th~ существует, но ~watchdog-timer~
-слишком большой - он будет убит, т.к. вероятно он завис. На следующей
-итерации запуска ~operator~ будет убит следующий поток, и так далее, пока
-потоков не останется (или кто-то не обнулит watchdog - например при
-приходе сообщения) - и тогда можно будет создавать новые потоки. Так мы
-обеспечиваем попытки перезапуска, избегая ситуации, когда в канале
-одновременно больше одного независшего потока. Но это не точно, надо
-проверить.
+слишком большой - он будет убит, т.к. вероятно он завис. Ведь независший
+поток сбрасывал бы ~watchdog-timer~ каждый раз выполняя какую-либо
+операцию.
+
+На следующей итерации запуска ~operator~ будет убит следующий поток, и
+так далее, пока потоков ~op-irc-th~ не останется (или один из оживших
+потоков ~op-irc-th~ не обнулит таймер - например при приходе
+сообщения). Когда все потоки будут уничтожены оператор будет пытаться
+создавать новые, сводя задачу к известной.
+
+Так мы обеспечиваем попытки перезапуска, уничтожая все потоки когда
+~watchdog-timer~ перестает обновляться и избегая ситуации, когда в канале
+одновременно больше одного независшего потока.
 
 #+NAME: operator
 #+BEGIN_SRC lisp :noweb yes
@@ -1697,16 +1716,20 @@ irc-канал.
               (kill-op-irc it)))))))
 #+END_SRC
 
-Теперь оператор подключается к IRC.
+** Operator's Irc Thread Function
+
+Когда оператор создает новый поток в качестве функции потока он указывает
+~op-irc~. Задачи этой функции:
+- создать соединение с IRC-сервером
+- обнулить ~watchdog-timer~
+- запустить ~op-loop~ для обработки сообщений IRC
 
 Если нет подключения к сети мы получим ошибку
 ~USOCKET:NS-TRY-AGAIN-CONDITION~, которая будет проигнорирована, но
 записана в лог, как и любые другие ошибки подключения. В этих случаях
-функция ~irc-loop~ не будет вызвана, произойдет выход их функции потока и
+функция ~op-loop~ не будет вызвана, произойдет выход их функции потока и
 поток будет завершен. Обнаружив отсутствие потока супервизор перезапустит
 его и это приведет к следующей попытке подключения.
-
-Если подключение произошло успешно - мы вызываем ~op-loop~.
 
 #+NAME: op_irc
 #+BEGIN_SRC lisp :noweb yes
@@ -1738,12 +1761,15 @@ irc-канал.
       (op-loop)))
 #+END_SRC
 
+** Operator's Loop
+
 На этом месте текущий поток должен запустить поток-помошник, который
 инжектирует хук, подключитья к каналу и установит
 ~op-connection-established-flag~.
 
 Запустив этот поток, можно сразу же зациклиться читая сообщения - дальше
-будут работать установленные хуки.
+будут работать установленные хуки. Они будут вызываться в контексте
+текущего потока, асинхронно, из функции пакета ~cl-irc~.
 
 #+NAME: op_loop
 #+BEGIN_SRC lisp :noweb yes
@@ -1767,6 +1793,8 @@ irc-канал.
       ;;   (dbg "::op-loop error: ~A~%" (type-of err)))
       ))
 #+END_SRC
+
+*** Operator's helper thread
 
 Поток-помошник занимается только тем, что устанавливает хук, джоинится в
 канал и отправляет приветственное сообщение о том что он в канале.
@@ -1792,6 +1820,8 @@ irc-канал.
     (sendmsg "op here"))
 #+END_SRC
 
+** Operator's Message Hook
+
 Собственно хук, который обрабатывает приходящие в канал сообщения. Он
 вынесен в глобальную переменную для удобства замены на лету.
 
@@ -1809,13 +1839,20 @@ irc-канал.
     t)
 #+END_SRC
 
+** Rule-based Command Processor
+
 Ну вот, теперь осталось правильно реагировать на команды. Чтобы
 распознать команду мы будем применять диспетчер, работающий как система
 правил. Он опирается на список правил, каждая из которых представляет
 пару (условие . действие).
 
+Правила должны иметь возможность делать что-то асинхронно, для этого мы
+подключаем механизм очередей.
+
 #+NAME: op_cmd_proc
 #+BEGIN_SRC lisp :noweb yes
+  <<queues>>
+
   <<shot_rule>>
 
   (defparameter *op-rules*
@@ -1846,9 +1883,17 @@ irc-канал.
           ))))
 #+END_SRC
 
+** Shot Rule
+
 Правило для скриншотов просто проверяет сообщение на соответствие
-регулярному выражению. Если есть совпадение мы начинаем работу по
-скачиванию и сохранению данных
+регулярному выражению. Если есть совпадение - мы должны как минимум
+скачать и сохранить данные.
+
+Однако, скачивание может наткнуться на сбой сети и зависнуть, и в этом
+случае хук никогда не завершиться и соответственно зависнет цикл чтения
+IRC-сообщений, потому что хук выполняется в его контексте. Поэтому вместо
+того, чтобы начать скачивание и обработку - мы делаем отложенную задачу и
+помещаем её в очередь.
 
 #+NAME: shot_rule
 #+BEGIN_SRC lisp :noweb yes
@@ -1856,6 +1901,82 @@ irc-канал.
     (declare (ignore src))
     (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" str))
 
+  <<shot_downloader>>
+
+  (defun shot-rule-consequent (str src)
+    (ins-task (make-task :class 'shot-task
+                         :data (list str src)
+                         :code #'shot-downloader)))
+
+  ;; (shot-rule-consequent "/pe3bM7E9n5/3785062633" "b3785062627")
+#+END_SRC
+
+** Queues
+
+Когда мы скачиваем файл с файлообменника - это может окончиться
+неудачей. В этом случае удобно обрабатывать такие сбои в CPS-стиле,
+особенно когда мы хотим запускать скачку паралельно, в несколько
+потоков.
+
+Чтобы отвязать запуск потоков от системы правил мы будем использовать
+очередь, в которую будем добавлять задания на обработку. Преимуществом
+такого подхода может быть возможность ссылаться на ранее выполнявшиеся
+задания.
+
+Структуру задания определим так:
+
+#+NAME: task
+#+BEGIN_SRC lisp
+  (defstruct task
+    class
+    data
+    code)
+#+END_SRC
+
+Для обслуживания очереди нам понадобится сама очередь и блокировка на
+ней:
+
+#+NAME: task_queue
+#+BEGIN_SRC lisp
+  (defparameter *task-queue* nil)
+  (defparameter *task-queue-lock* (bt:make-lock "task-queue-lock"))
+#+END_SRC
+
+Теперь можно добавить операции для добавления и удаления из очереди
+заданий.
+
+#+NAME: task_queue_ops
+#+BEGIN_SRC lisp
+  (defun ins-task (task)
+    (bt:with-lock-held (*task-queue-lock*)
+      (setf *task-queue*
+            (append *task-queue*
+                    (list task)))))
+
+  (defun pop-task ()
+    (bt:with-lock-held (*task-queue-lock*)
+      (pop *task-queue*)))
+#+END_SRC
+
+Теперь соединим все вместе
+
+[TODO:gmm] Надо еще добавить менеджер очередей в отдельном потоке,
+который разбирает и выполняет задачи.
+
+#+NAME: queues
+#+BEGIN_SRC lisp :noweb yes
+  <<task>>
+  <<task_queue>>
+  <<task_queue_ops>>
+#+END_SRC
+
+** Shot Downloader
+
+Однако, необходимо описать операцию, которая будет вызываться из таска и
+выполнять всю грязную работу.
+
+#+NAME: shot_downloader
+#+BEGIN_SRC lisp
   ;; anon_file_download
   <<anon_file_download>>
 
@@ -1868,10 +1989,10 @@ irc-канал.
   ;; unpack_img
   <<unpack_img>>
 
-  (defun shot-rule-consequent (str src)
+  (defun shot-downloader (param)
     (let* ((key (parse-integer (subseq src 1)))
            (enc (anon-file-download str))
-           (dec  (decrypt enc key))
+           (dec (decrypt enc key))
            (png (let ((png-read::*png-file* "fake-file"))
                   (flex:with-input-from-sequence (stream dec)
                     (png-read:read-png-datastream stream))))
@@ -1890,12 +2011,20 @@ irc-канал.
                   (setf (aref result y x)
                         (aref image-data x y))))
               result))
+           ;; (dif (ppcre:scan-to-strings "/(.*)/([0-9]*)_([0-9]*)" str))
+           ;; (img (if (not dif)
+           ;;          (setf prev image)
+           ;;          ;; else
+           ;;          (setf prev (get-img-diff dims prev image))))
+           (img image)
            ;; unpacking
-           (unpack (unpack-img image))
+           (unpack (unpack-img img))
            (unpack-dims (array-dimensions unpack))
            (new-width (cadr unpack-dims))
-           (pathname-str "~/Documents/unpack-big.png")
-           )
+           (fname-str (multiple-value-bind (match-p result)
+                          (ppcre:scan-to-strings "/.*/(.*)" str)
+                        (elt result 0))))
+      (format t "~%~A" fname-str)
       (let* ((png (make-instance 'zpng:png
                                  :width new-width
                                  :height height
@@ -1910,10 +2039,9 @@ irc-канал.
         ;; который мы хотим передать как данные и при этом
         ;; избежать создания для этого временного объекта
         (setf (zpng::%image-data png) (copy-seq vector))
-        (zpng:write-png png pathname-str :if-exists :supersede)))
-    t)
+        (zpng:write-png png (format nil "~~/Documents/~A" fname-str)))
+      t))
 #+END_SRC
-
 ** Anon File Download
 
 #+NAME: anon_file_download
@@ -2026,173 +2154,6 @@ irc-канал.
     `(bt:with-recursive-lock-held (*outlock*)
        (format t ,msg ,@params)
        (finish-output)))
-#+END_SRC
-
-* Analysis
-
-Когда мы скачиваем файл с файлообменника - это может окончиться
-неудачей. В этом случае удобно обрабатывать такие сбои в CPS-стиле,
-особенно когда мы хотим запускать скачку паралельно, в несколько
-потоков.
-
-Чтобы отвязать запуск потоков от системы правил мы будем использовать
-очередь, в которую будем добавлять задания на обработку. Преимуществом
-такого подхода может быть возможность ссылаться на ранее выполнявшиеся
-задания.
-
-Структуру задания определим так:
-
-#+NAME: task
-#+BEGIN_SRC lisp
-  (defstruct task
-    class
-    data
-    code)
-#+END_SRC
-
-Для обслуживания очереди нам понадобится сама очередь и блокировка на
-ней:
-
-#+NAME: task_queue
-#+BEGIN_SRC lisp
-  (defparameter *task-queue* nil)
-  (defparameter *task-queue-lock* (bt:make-lock "task-queue-lock"))
-#+END_SRC
-
-Теперь можно добавить операции для добавления и удаления из очереди
-заданий.
-
-#+NAME: task_queue_ops
-#+BEGIN_SRC lisp
-  (defun ins-task (task)
-    (bt:with-lock-held (*task-queue-lock*)
-      (setf *task-queue*
-            (append *task-queue*
-                    (list task)))))
-
-  (defun pop-task ()
-    (bt:with-lock-held (*task-queue-lock*)
-      (pop *task-queue*)))
-#+END_SRC
-
-Таким образом, теперь consequent правила, получив сообщение, может просто
-добавить его в очередь и больше ни о чем не думать:
-
-#+NAME: shot_rule_consequent
-#+BEGIN_SRC lisp
-  <<shot_downloader>>
-
-  (defun shot-rule-consequent (str src)
-    (ins-task (make-task :class 'shot-task
-                         :data (list str src)
-                         :code #'shot-downloader)))
-
-  (shot-rule-consequent "/pe3bM7E9n5/3785062633" "b3785062627")
-#+END_SRC
-
-Однако, необходимо описать операцию, которая будет вызываться из таска и
-выполнять всю грязную работу.
-
-#+NAME: shot_downloader
-#+BEGIN_SRC lisp
-  (defun shot-downloader (param)
-    (let* ((key (parse-integer (subseq src 1)))
-           (enc (anon-file-download str))
-           (dec (decrypt enc key))
-           (png (let ((png-read::*png-file* "fake-file"))
-                  (flex:with-input-from-sequence (stream dec)
-                    (png-read:read-png-datastream stream))))
-           (image-data (png-read:image-data png))
-           ;; reverse
-           (dims   (subseq (array-dimensions image-data) 0 2))
-           (height (cadr dims))
-           (width  (car  dims))
-           (image ;; меняем размерности X и Y местами
-            (let ((result (make-array (list height width)
-                                      :element-type '(unsigned-byte 8))))
-              (do ((y 0 (incf y)))
-                  ((= y height))
-                (do ((x 0 (incf x)))
-                    ((= x width))
-                  (setf (aref result y x)
-                        (aref image-data x y))))
-              result))
-           ;; (dif (ppcre:scan-to-strings "/(.*)/([0-9]*)_([0-9]*)" str))
-           ;; (img (if (not dif)
-           ;;          (setf prev image)
-           ;;          ;; else
-           ;;          (setf prev (get-img-diff dims prev image))))
-           (img image)
-           ;; unpacking
-           (unpack (unpack-img img))
-           (unpack-dims (array-dimensions unpack))
-           (new-width (cadr unpack-dims))
-           (fname-str (multiple-value-bind (match-p result)
-                          (ppcre:scan-to-strings "/.*/(.*)" str)
-                        (elt result 0))))
-      (format t "~%~A" fname-str)
-      (let* ((png (make-instance 'zpng:png
-                                 :width new-width
-                                 :height height
-                                 :color-type :grayscale))
-             (vector (make-array ;; displaced vector - need copy for save
-                      (* height new-width (zpng:samples-per-pixel png))
-                      :displaced-to unpack :element-type '(unsigned-byte 8))))
-        ;; Тут применен потенциально опасный трюк, когда мы создаем
-        ;; объект PNG без данных, а потом добавляем в него данные,
-        ;; используя неэкспортируемый writer.
-        ;; Это нужно чтобы получить третью размерность массива,
-        ;; который мы хотим передать как данные и при этом
-        ;; избежать создания для этого временного объекта
-        (setf (zpng::%image-data png) (copy-seq vector))
-        (zpng:write-png png (format nil "~~/Documents/~A" fname-str)))
-      t))
-#+END_SRC
-
-[TODO:gmm] Конечно же нужен диспетчер, который будет проходить по очереди
-запускать таски. Этот диспетчер должен запускаться в отдельном потоке.
-
-#+NAME:
-#+BEGIN_SRC lisp
-  TODO
-#+END_SRC
-
-
-
-
-#+NAME:
-#+BEGIN_SRC lisp
-  (defun get-img-diff (dims prev snap)
-    (format t "~% diff: dims ~A" dims)
-    ;; (let ((diff (make-array dims :element-type '(unsigned-byte 8))))
-    ;;   (do ((qy 0 (incf qy)))
-    ;;       ((= qy (car dims)))
-    ;;     (declare (type fixnum qy))
-    ;;     (do ((qx 0 (incf qx)))
-    ;;         ((= qx (cadr dims)))
-    ;;       (declare (type fixnum qx))
-    ;;       (setf (aref diff qy qx)
-    ;;             (logxor (aref prev qy qx)
-    ;;                     (aref snap qy qx)))))
-    ;;   diff)
-    snap
-    )
-
-  (let ((prev))
-    (defun shot-rule-consequent (str src)
-      (format t "~%~A:~A" str src)
-      (finish-output)
-
-  (loop :for item :in (subseq *log* 2)
-     :do
-       (progn
-         (sleep (random 5))
-         (bt:make-thread #'(lambda ()
-                             (destructuring-bind (src str) item
-                               (shot-rule-consequent str src))))))
-
-  (length *log*)
-  (car *log*)
 #+END_SRC
 
 * Old
