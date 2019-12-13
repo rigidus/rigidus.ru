@@ -169,7 +169,7 @@
           (clear)
           (when *connection-established-flag*
             (let ((bindings `((*standard-output* . ,*standard-output*)
-                              (*shot-thread-stop-flag* . ,*shot-th-stop-flag*)
+                              (*shot-th-stop-flag* . ,*shot-th-stop-flag*)
                               (*irc-sess* . ,*irc-sess*)
                               (*irc-user* . ,*irc-user*)
                               (*irc-serv* . ,*irc-serv*)
@@ -1652,27 +1652,27 @@ irc-канал.
 минимизировать ущерб от таких зависаний. В норме мы считаем, что должен
 работать один поток ~op-irc-th~.
 
-Если отсутствуют потоки ~op-irc-th~ оператор будет пытаться создать один,
-и реинициализировать ~watchdog-timer~.
+Вторая задача оператора - осуществлять управление потоками, которые
+выполняют задачи. Эти задачи возникают, когда из IRC-канала приходят
+сообщения. В общем случае в для обработки каждого сообщения может
+создаваться свой поток, при этом в силу (возможно) нестабильной работы
+сети, часть из этих потоков может зависать. Это не должно сказываться на
+роботоспособности всей программы.
 
-Если хотя бы один поток ~op-irc-th~ существует, но ~watchdog-timer~
-слишком большой - он будет убит, т.к. вероятно он завис. Ведь независший
-поток сбрасывал бы ~watchdog-timer~ каждый раз выполняя какую-либо
-операцию.
+Оператору для работы потребуются вспомогательные функции, которые:
+- ищут потоки по их именам
+- завершают поток
+- очищают список потоков от тех, что уже завершены
 
-На следующей итерации запуска ~operator~ будет убит следующий поток, и
-так далее, пока потоков ~op-irc-th~ не останется (или один из оживших
-потоков ~op-irc-th~ не обнулит таймер - например при приходе
-сообщения). Когда все потоки будут уничтожены оператор будет пытаться
-создавать новые, сводя задачу к известной.
-
-Так мы обеспечиваем попытки перезапуска, уничтожая все потоки когда
-~watchdog-timer~ перестает обновляться и избегая ситуации, когда в канале
-одновременно больше одного независшего потока.
+Поэтому мы можем определить рамочную функцию здесь, а куски кода, которые
+выполняют логику работы с разными типами потоков доопределить ниже в этом
+же разделе.
 
 #+NAME: operator
 #+BEGIN_SRC lisp :noweb yes
-  (defparameter *watchdog-timer-max* 10000)
+  (defparameter *watchdog-timer-max* 100)
+
+  (defparameter *task-th-stop-flag* nil)
 
   (defparameter *op-irc-th-stop-flag* nil)
 
@@ -1680,7 +1680,20 @@ irc-канал.
 
   (defparameter *op-irc-threads* nil)
 
+  (defparameter *max-task-thread-cnt* 30)
+
+  (defparameter *task-threads* nil)
+
+  (defparameter *max-task-thread-life-time* 5)
+
+  (defparameter *thread-operations-lock*
+    (bt:make-recursive-lock "thread-operations-lock"))
+
+  <<queues>>
+
   <<op_irc>>
+
+  <<task_function>>
 
   (defparameter *operator*
     (lambda ()
@@ -1694,26 +1707,130 @@ irc-канал.
                  (kill-op-irc (th)
                    (kill th)
                    (setf *watchdog-timer* 0)
-                   (setf *op-connection-established-flag* nil)))
-          ;; if there is no irs-thread then start it
-          (when (and (null (fnd "op-irc-th"))       ;; no op-irc-th
-                     (null *op-irc-th-stop-flag*))  ;; no op-irc-th stop flag
-            (dbg "::operator lambda: start irc-th~%")
-            (setf *watchdog-timer* 0)
-            (bt:make-thread
-             #'op-irc :name "op-irc-th"
-             :initial-bindings
-             `((*standard-output* . ,*standard-output*)
-               (*op-irc-thread-stop-flag* . ,*op-irc-th-stop-flag*))))
-          ;; if there is irc-thread, but the watchdog-timer exceeds
-          ;; or the flag is set - then kill it.
-          (awhen (fnd "op-irc-th")
-            (when (> *watchdog-timer*  *watchdog-timer-max*)
-              (dbg "::operator-lambda: kill op-irc-th by WDG~%")
-              (kill-op-irc it))
-            (when *op-irc-th-stop-flag*
-              (dbg "::operator-lambda: kill op-irc-th by FLAG~%")
-              (kill-op-irc it)))))))
+                   (setf *op-connection-established-flag* nil))
+                 (clear ()
+                   (bt:with-recursive-lock-held (*thread-operations-lock*)
+                     (setf *task-threads*
+                           (remove-if-not #'(lambda (pair)
+                                              (bt:thread-alive-p (car pair)))
+                                          ,*task-threads*)))))
+          <<op_irc_th_management>>
+          <<tasks_th_management>>
+          ))))
+#+END_SRC
+
+*** op-irc-th management
+
+Если отсутствуют потоки ~op-irc-th~ оператор будет пытаться создать один,
+и реинициализировать ~watchdog-timer~.
+
+Если хотя бы один поток ~op-irc-th~ существует, но значение
+~watchdog-timer~ слишком велико - он будет убит, потому что, вероятно, он
+завис. Ведь независший поток сбрасывал бы ~watchdog-timer~ каждый раз
+выполняя какую-либо операцию, например, получая сообщение.
+
+Если значение ~watchdog-timer~ продолжает оставаться слишком большим,
+т.е. никакой из зависший потоков не подал признаки жизни, то при
+следующем запуске ~operator~ будет убит следующий поток.
+
+И так далее, пока потоков ~op-irc-th~ не останется (или один из оживших
+потоков ~op-irc-th~ не обнулит таймер - например при приходе
+сообщения).
+
+Когда все потоки будут уничтожены оператор будет пытаться создавать
+новые, сводя задачу к известной.
+
+Так мы обеспечиваем попытки перезапуска, уничтожая все потоки когда
+~watchdog-timer~ перестает обновляться и избегая ситуации, когда в канале
+одновременно больше одного независшего потока.
+
+#+NAME: op_irc_th_management
+#+BEGIN_SRC lisp :noweb yes
+  ;; if there is no irs-thread then start it
+  (when (and (null (fnd "op-irc-th"))       ;; no op-irc-th
+             (null *op-irc-th-stop-flag*))  ;; no op-irc-th stop flag
+    (dbg "::operator lambda: start irc-th~%")
+    (setf *watchdog-timer* 0)
+    (bt:make-thread
+     #'op-irc :name "op-irc-th"
+     :initial-bindings
+     `((*standard-output* . ,*standard-output*)
+       (*op-irc-thread-stop-flag* . ,*op-irc-th-stop-flag*))))
+  ;; if there is irc-thread, but the watchdog-timer exceeds
+  ;; or the flag is set - then kill it.
+  (awhen (fnd "op-irc-th")
+    (when (> *watchdog-timer*  *watchdog-timer-max*)
+      (dbg "::operator-lambda: kill op-irc-th by WDG~%")
+      (kill-op-irc it))
+    (when *op-irc-th-stop-flag*
+      (dbg "::operator-lambda: kill op-irc-th by FLAG~%")
+      (kill-op-irc it)))
+#+END_SRC
+
+*** Task's threads management
+
+Мы получаем задачи из очереди, которая будет определена в одном из
+разделов ниже. В первую очередь, необходимо следить, чтобы количество
+рабочих потоков не было слишком большим, убивая потоки, которые дольше
+всех работают. Мы считаем, что никакой поток не должен работать более
+~max-task-thread-life-time~ секунд. Если он работает дольше - мы можем
+это позволить только если система не перегружена, т.е. общее количество
+потоков меньше ~max-task-thread-cnt~.
+
+#+NAME: kill_slow_task_threads
+#+BEGIN_SRC lisp :noweb yes
+  (when (> (length *task-threads*) *max-task-thread-cnt*)
+    (dbg "::operator-lambda: many task threads~%")
+    (loop :for (task-th . time) :in *task-threads* :do
+         (dbg "~A . ~A~%" task-th time)
+         (when (> (- (get-universal-time) time)
+                  ,*max-task-thread-life-time*)
+           (dbg "::operator-lambda: kill task-th by lifetime exceed~%")
+           (kill task-th)))
+    (clear))
+#+END_SRC
+
+Кроме того, по идее, необходимо следить, [TODO:gmm] чтобы очередь не
+переполнялась, но я пока не решил, как именно лучше делать - прекратить
+ли принимать новые задачи или удалять старые: по идее все приходящие
+задачи для нас одинаково важны.
+
+Переходим к выполнению задач.
+
+Если очередь не пуста, то было бы неплохо вынуть из нее несколько задач и
+для каждой из них запустить поток. [TODO:gmm] Но пока я запускаю по одной
+задаче на итерацию.
+
+#+NAME: start_task_thread
+#+BEGIN_SRC lisp :noweb yes
+  (when (< 0 (length-of-queue))
+    (let* ((current-task (pop-task))
+           (bindings `((*standard-output* . ,*standard-output*)
+                       (*task-thread-stop-flag* . ,*task-th-stop-flag*)
+                       (*current-task* . ,current-task)
+                       (*op-sess* . ,*op-sess*)
+                       (*op-user* . ,*op-user*)
+                       (*op-serv* . ,*op-serv*)
+                       (*op-chan* . ,*op-chan*)
+                       (*op-lock* . ,*op-lock*)
+                       (*op-conn* . ,*op-conn*)
+                       (*watchdog-timer* . ,*watchdog-timer*))))
+      (bt:with-recursive-lock-held (*thread-operations-lock*)
+        (push (cons (bt:make-thread #'task :name "task-th"
+                                    :initial-bindings bindings)
+                    (get-universal-time))
+              ,*task-threads*))))
+#+END_SRC
+
+Собственно функция ~TASK~, которая выполняет задачу, будет описана в
+соответствуюшщем разделе.
+
+Собираем все вместе:
+
+#+NAME: tasks_th_management
+#+BEGIN_SRC lisp :noweb yes
+  <<kill_slow_task_threads>>
+  <<start_task_thread>>
 #+END_SRC
 
 ** Operator's Irc Thread Function
@@ -1745,7 +1862,7 @@ irc-канал.
   (defun op-irc ()
     "operator's irc thread func"
     (setf *op-sess* (get-universal-time))
-    (setf *op-user* (format nil "b~A" *op-sess*))
+    (setf *op-user* (format nil "op~A" *op-sess*))
     (setf *op-conn*
           (handler-case
               (cl-irc:connect :nickname *op-user* :server *op-serv*)
@@ -1851,8 +1968,6 @@ irc-канал.
 
 #+NAME: op_cmd_proc
 #+BEGIN_SRC lisp :noweb yes
-  <<queues>>
-
   <<shot_rule>>
 
   (defparameter *op-rules*
@@ -1901,12 +2016,12 @@ IRC-сообщений, потому что хук выполняется в е�
     (declare (ignore src))
     (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" str))
 
-  <<shot_downloader>>
-
   (defun shot-rule-consequent (str src)
-    (ins-task (make-task :class 'shot-task
+    (dbg ":: (~A)ins-task ~A | ~A~%"
+         (length-of-queue) str src)
+    (ins-task (make-task :class 'task
                          :data (list str src)
-                         :code #'shot-downloader)))
+                         :code #'identity)))
 
   ;; (shot-rule-consequent "/pe3bM7E9n5/3785062633" "b3785062627")
 #+END_SRC
@@ -1956,6 +2071,10 @@ IRC-сообщений, потому что хук выполняется в е�
   (defun pop-task ()
     (bt:with-lock-held (*task-queue-lock*)
       (pop *task-queue*)))
+
+  (defun length-of-queue ()
+    (bt:with-lock-held (*task-queue-lock*)
+      (length *task-queue*)))
 #+END_SRC
 
 Теперь соединим все вместе
@@ -1970,13 +2089,32 @@ IRC-сообщений, потому что хук выполняется в е�
   <<task_queue_ops>>
 #+END_SRC
 
+** Task Function
+
+Эта функция вызывается каждый раз, когда нужно обработать задачу из
+очереди. Она получает задачу в переменной ~current-task~.
+
+Сейчас ей остается только вызвать ~shot-downloader~, передав ему
+параметры из задачи.
+
+#+NAME: task_function
+#+BEGIN_SRC lisp :noweb yes
+  <<shot_downloader>>
+
+  (defun task ()
+    (destructuring-bind (str src)
+        (task-data *current-task*)
+      (dbg ":: TASK FUNCTION (~A): ~A | ~A~%"
+           (length-of-queue) str src)))
+#+END_SRC
+
 ** Shot Downloader
 
 Однако, необходимо описать операцию, которая будет вызываться из таска и
 выполнять всю грязную работу.
 
 #+NAME: shot_downloader
-#+BEGIN_SRC lisp
+#+BEGIN_SRC lisp :noweb yes
   ;; anon_file_download
   <<anon_file_download>>
 
