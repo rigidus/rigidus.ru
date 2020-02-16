@@ -1,294 +1,293 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title></title>
-<meta  charset="utf-8">
-<meta  name="generator" content="Org-mode">
-<meta  name="author" content="rigidus">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>&lrm;</title>
+<meta name="generator" content="Org mode">
+<meta name="author" content="rigidus">
 <link href="/css/style.css" rel="stylesheet" type="text/css" />
 </head>
 <body>
 <div id="content">
-<h1 class="title"></h1>
 <div id="table-of-contents">
 <h2>Table of Contents</h2>
 <div id="text-table-of-contents">
 <ul>
-<li><a href="#unnumbered-1">Операции со скриншотами</a></li>
-<li><a href="#unnumbered-2">Сегментация клеточным автоматом</a></li>
-<li><a href="#unnumbered-3">Склейка</a></li>
-<li><a href="#unnumbered-4">Нахождение различий</a></li>
-<li><a href="#unnumbered-5">Упаковка</a></li>
+<li><a href="#org364f03a">Операции со скриншотами</a></li>
+<li><a href="#org6081e5b">Сегментация клеточным автоматом</a></li>
+<li><a href="#org28abf92">Склейка</a></li>
+<li><a href="#org450a65e">Нахождение различий</a></li>
+<li><a href="#orgb401db0">Упаковка</a></li>
 </ul>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-1" class="outline-2">
-<h2 id="unnumbered-1">Операции со скриншотами</h2>
-<div class="outline-text-2" id="text-unnumbered-1">
+<div id="outline-container-org364f03a" class="outline-2">
+<h2 id="org364f03a">Операции со скриншотами</h2>
+<div class="outline-text-2" id="text-org364f03a">
 <div class="org-src-container">
+<pre class="src src-lisp">(ql:quickload "clx")
+(ql:quickload "zpng")
+(ql:quickload "png-read")
 
-<pre class="src src-lisp">(ql:quickload <span style="color: #ffa07a;">"clx"</span>)
-(ql:quickload <span style="color: #ffa07a;">"zpng"</span>)
-(ql:quickload <span style="color: #ffa07a;">"png-read"</span>)
-
-(<span style="color: #00ffff;">defmacro</span> <span style="color: #87cefa;">with-display</span> (host (display screen root-window) <span style="color: #98fb98;">&amp;body</span> body)
-  `(<span style="color: #00ffff;">let*</span> ((,display (xlib:open-display ,host))
+(defmacro with-display (host (display screen root-window) &amp;body body)
+  `(let* ((,display (xlib:open-display ,host))
           (,screen (first (xlib:display-roots ,display)))
           (,root-window (xlib:screen-root ,screen)))
-     (<span style="color: #00ffff;">unwind-protect</span> (<span style="color: #00ffff;">progn</span> ,@body)
+     (unwind-protect (progn ,@body)
        (xlib:close-display ,display))))
 
-(<span style="color: #00ffff;">defmacro</span> <span style="color: #87cefa;">with-default-display</span> ((display <span style="color: #98fb98;">&amp;key</span> (force nil)) <span style="color: #98fb98;">&amp;body</span> body)
-  `(<span style="color: #00ffff;">let</span> ((,display (xlib:open-default-display)))
-     (<span style="color: #00ffff;">unwind-protect</span>
-          (<span style="color: #00ffff;">unwind-protect</span>
+(defmacro with-default-display ((display &amp;key (force nil)) &amp;body body)
+  `(let ((,display (xlib:open-default-display)))
+     (unwind-protect
+          (unwind-protect
                ,@body
-            (<span style="color: #00ffff;">when</span> ,force
+            (when ,force
               (xlib:display-force-output ,display)))
        (xlib:close-display ,display))))
 
-(<span style="color: #00ffff;">defmacro</span> <span style="color: #87cefa;">with-default-display-force</span> ((display) <span style="color: #98fb98;">&amp;body</span> body)
-  `(with-default-display (,display <span style="color: #b0c4de;">:force</span> t) ,@body))
+(defmacro with-default-display-force ((display) &amp;body body)
+  `(with-default-display (,display :force t) ,@body))
 
-(<span style="color: #00ffff;">defmacro</span> <span style="color: #87cefa;">with-default-screen</span> ((screen) <span style="color: #98fb98;">&amp;body</span> body)
-  (<span style="color: #00ffff;">let</span> ((display (gensym)))
+(defmacro with-default-screen ((screen) &amp;body body)
+  (let ((display (gensym)))
     `(with-default-display (,display)
-       (<span style="color: #00ffff;">let</span> ((,screen (xlib:display-default-screen ,display)))
+       (let ((,screen (xlib:display-default-screen ,display)))
          ,@body))))
 
-(<span style="color: #00ffff;">defmacro</span> <span style="color: #87cefa;">with-default-window</span> ((window) <span style="color: #98fb98;">&amp;body</span> body)
-  (<span style="color: #00ffff;">let</span> ((screen (gensym)))
+(defmacro with-default-window ((window) &amp;body body)
+  (let ((screen (gensym)))
     `(with-default-screen (,screen)
-       (<span style="color: #00ffff;">let</span> ((,window (xlib:screen-root ,screen)))
+       (let ((,window (xlib:screen-root ,screen)))
          ,@body))))
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">x-size</span> ()
+(defun x-size ()
   (with-default-screen (s)
     (values
      (xlib:screen-width s)
      (xlib:screen-height s))))
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">raw-image-&gt;png</span> (data width height)
-  (<span style="color: #00ffff;">let*</span> ((png (make-instance 'zpng:png <span style="color: #b0c4de;">:width</span> width <span style="color: #b0c4de;">:height</span> height
-                             <span style="color: #b0c4de;">:color-type</span> <span style="color: #b0c4de;">:truecolor-alpha</span>
-                             <span style="color: #b0c4de;">:image-data</span> data))
+(defun raw-image-&gt;png (data width height)
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type :truecolor-alpha
+                             :image-data data))
          (data (zpng:data-array png)))
-    (<span style="color: #00ffff;">dotimes</span> (y height)
-      (<span style="color: #00ffff;">dotimes</span> (x width)
-        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">BGR -&gt; RGB, ref code: https://goo.gl/slubfW</span>
-        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">diffs between RGB and BGR: https://goo.gl/si1Ft5</span>
+    (dotimes (y height)
+      (dotimes (x width)
+        ;; BGR -&gt; RGB, ref code: https://goo.gl/slubfW
+        ;; diffs between RGB and BGR: https://goo.gl/si1Ft5
         (rotatef (aref data y x 0) (aref data y x 2))
         (setf (aref data y x 3) 255)))
         png))
 
-(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*default-x*</span> 70)
-(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*default-y*</span> 0)
-(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*default-width*</span> 600)
-(<span style="color: #00ffff;">defparameter</span> <span style="color: #eedd82;">*default-heght*</span> 300)
+(defparameter *default-x* 70)
+(defparameter *default-y* 0)
+(defparameter *default-width* 600)
+(defparameter *default-heght* 300)
 
-(<span style="color: #00ffff;">multiple-value-bind</span> (default-width default-height) (x-size)
-  (<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">x-snapshot</span> (<span style="color: #98fb98;">&amp;key</span> (x *default-x*) (y *default-y*)
+(multiple-value-bind (default-width default-height) (x-size)
+  (defun x-snapshot (&amp;key (x *default-x*) (y *default-y*)
                        (width  *default-width*) (height *default-heght*)
                        path)
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">"Return RGB data array (The dimensions correspond to the height, width,</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">and pixel components, see comments in x-snapsearch for more details),</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">or write to file (PNG only), depend on if you provide the path keyword"</span>
+    ;; "Return RGB data array (The dimensions correspond to the height, width,
+    ;; and pixel components, see comments in x-snapsearch for more details),
+    ;; or write to file (PNG only), depend on if you provide the path keyword"
     (with-default-window (w)
-      (<span style="color: #00ffff;">let</span> ((image
+      (let ((image
              (raw-image-&gt;png
-              (xlib:get-raw-image w <span style="color: #b0c4de;">:x</span> x <span style="color: #b0c4de;">:y</span> y
-                             <span style="color: #b0c4de;">:width</span> width <span style="color: #b0c4de;">:height</span> height
-                             <span style="color: #b0c4de;">:format</span> <span style="color: #b0c4de;">:z-pixmap</span>)
+              (xlib:get-raw-image w :x x :y y
+                             :width width :height height
+                             :format :z-pixmap)
               width height)))
-        (<span style="color: #00ffff;">if</span> path
-            (<span style="color: #00ffff;">let*</span> ((ext (pathname-type path))
+        (if path
+            (let* ((ext (pathname-type path))
                    (path
-                    (<span style="color: #00ffff;">if</span> ext
+                    (if ext
                         path
-                        (concatenate 'string path <span style="color: #ffa07a;">".png"</span>)))
-                   (png? (or (null ext) (equal ext <span style="color: #ffa07a;">"png"</span>))))
-              (<span style="color: #00ffff;">cond</span>
+                        (concatenate 'string path ".png")))
+                   (png? (or (null ext) (equal ext "png"))))
+              (cond
                 (png? (zpng:write-png image path))
-                (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> <span style="color: #ffa07a;">"Only PNG file is supported"</span>))))
+                (t (error "Only PNG file is supported"))))
             (zpng:data-array image))))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: save screenshot</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(x-snapshot :path "~/Pictures/snap1.png")</span>
+;; ;; TEST: save screenshot
+;; (x-snapshot :path "~/Pictures/snap1.png")
 
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1054;&#1096;&#1080;&#1073;&#1082;&#1072;, &#1074;&#1086;&#1079;&#1085;&#1080;&#1082;&#1072;&#1102;&#1097;&#1072;&#1103; &#1082;&#1086;&#1075;&#1076;&#1072; &#1084;&#1099; &#1087;&#1099;&#1090;&#1072;&#1077;&#1084;&#1089;&#1103; &#1087;&#1088;&#1086;&#1095;&#1080;&#1090;&#1072;&#1090;&#1100; png</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1074; &#1082;&#1086;&#1090;&#1086;&#1088;&#1086;&#1084; &#1085;&#1077;&#1080;&#1079;&#1074;&#1077;&#1089;&#1090;&#1085;&#1086; &#1089;&#1082;&#1086;&#1083;&#1100;&#1082;&#1086; &#1073;&#1072;&#1081;&#1090; &#1085;&#1072; &#1090;&#1086;&#1095;&#1082;&#1091;</span>
-(<span style="color: #00ffff;">define-condition</span> <span style="color: #87cefa;">unk-png-color-type</span> (<span style="color: #ffc0cb; font-weight: bold;">error</span>)
-  ((color <span style="color: #b0c4de;">:initarg</span> <span style="color: #b0c4de;">:color</span> <span style="color: #b0c4de;">:reader</span> color))
-  (<span style="color: #b0c4de;">:report</span>
-   (<span style="color: #00ffff;">lambda</span> (condition stream)
-     (format stream <span style="color: #ffa07a;">"Error in LOAD-PNG: unknown color type: ~A"</span>
+;; Ошибка, возникающая когда мы пытаемся прочитать png
+;; в котором неизвестно сколько байт на точку
+(define-condition unk-png-color-type (error)
+  ((color :initarg :color :reader color))
+  (:report
+   (lambda (condition stream)
+     (format stream "Error in LOAD-PNG: unknown color type: ~A"
              (color condition)))))
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">load-png</span> (pathname-str)
-  <span style="color: #ffa07a;">"&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074; size-X &#1089;&#1090;&#1086;&#1083;&#1073;&#1094;&#1086;&#1074; &#1087;&#1086; size-Y &#1090;&#1086;&#1095;&#1077;&#1082;,</span>
-<span style="color: #ffa07a;">   &#1075;&#1076;&#1077; &#1089;&#1090;&#1086;&#1083;&#1073;&#1094;&#1099; &#1080;&#1076;&#1091;&#1090; &#1089;&#1083;&#1077;&#1074;&#1072;-&#1085;&#1072;&#1087;&#1088;&#1072;&#1074;&#1086;, &#1072; &#1090;&#1086;&#1095;&#1082;&#1080; &#1074; &#1085;&#1080;&#1093; - &#1089;&#1074;&#1077;&#1088;&#1093;&#1091;-&#1074;&#1085;&#1080;&#1079;</span>
-<span style="color: #ffa07a;">   ----</span>
-<span style="color: #ffa07a;">   &#1042; zpng &#1077;&#1089;&#1090;&#1100; &#1091;&#1082;&#1072;&#1079;&#1072;&#1085;&#1080;&#1077; &#1085;&#1072; &#1074;&#1086;&#1079;&#1084;&#1086;&#1078;&#1085;&#1099;&#1077; &#1074;&#1072;&#1088;&#1080;&#1072;&#1085;&#1090;&#1099; COLOR:</span>
-<span style="color: #ffa07a;">   ----</span>
-<span style="color: #ffa07a;">         (defmethod samples-per-pixel (png)</span>
-<span style="color: #ffa07a;">           (ecase (color-type png)</span>
-<span style="color: #ffa07a;">             (:grayscale 1)</span>
-<span style="color: #ffa07a;">             (:truecolor 3)</span>
-<span style="color: #ffa07a;">             (:indexed-color 1)</span>
-<span style="color: #ffa07a;">             (:grayscale-alpha 2)</span>
-<span style="color: #ffa07a;">             (:truecolor-alpha 4)))</span>
-<span style="color: #ffa07a;">  "</span>
-  (<span style="color: #00ffff;">let*</span> ((png (png-read:read-png-file pathname-str))
+(defun load-png (pathname-str)
+  "Возвращает массив size-X столбцов по size-Y точек,
+   где столбцы идут слева-направо, а точки в них - сверху-вниз
+   ----
+   В zpng есть указание на возможные варианты COLOR:
+   ----
+         (defmethod samples-per-pixel (png)
+           (ecase (color-type png)
+             (:grayscale 1)
+             (:truecolor 3)
+             (:indexed-color 1)
+             (:grayscale-alpha 2)
+             (:truecolor-alpha 4)))
+  "
+  (let* ((png (png-read:read-png-file pathname-str))
          (image-data (png-read:image-data png))
          (color (png-read:colour-type png))
-         (dims (<span style="color: #00ffff;">cond</span> ((or (equal color <span style="color: #b0c4de;">:truecolor-alpha</span>)
-                          (equal color <span style="color: #b0c4de;">:truecolor</span>))
+         (dims (cond ((or (equal color :truecolor-alpha)
+                          (equal color :truecolor))
                       (list (array-dimension image-data 1)
                             (array-dimension image-data 0)
                             (array-dimension image-data 2)))
-                     ((or (equal color <span style="color: #b0c4de;">:grayscale</span>)
-                          (equal color <span style="color: #b0c4de;">:greyscale</span>))
+                     ((or (equal color :grayscale)
+                          (equal color :greyscale))
                       (list (array-dimension image-data 1)
                             (array-dimension image-data 0)))
-                     (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'unk-png-color-type <span style="color: #b0c4de;">:color</span> color))))
-         (result <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1077;&#1085;&#1103;&#1077;&#1084; &#1088;&#1072;&#1079;&#1084;&#1077;&#1088;&#1085;&#1086;&#1089;&#1090;&#1080; X &#1080; Y &#1084;&#1077;&#1089;&#1090;&#1072;&#1084;&#1080;</span>
-          (make-array dims <span style="color: #b0c4de;">:element-type</span> '(unsigned-byte 8))))
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(format t "~% new-arr ~A "(array-dimensions result))</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1096;&#1080;&#1088;&#1080;&#1085;&#1072;, &#1074;&#1099;&#1089;&#1086;&#1090;&#1072;, &#1094;&#1074;&#1077;&#1090; =&gt; &#1074;&#1099;&#1089;&#1086;&#1090;&#1072;, &#1096;&#1080;&#1088;&#1080;&#1085;&#1072;, &#1094;&#1074;&#1077;&#1090;</span>
-    (<span style="color: #00ffff;">macrolet</span> ((cycle (<span style="color: #98fb98;">&amp;body</span> body)
-                 `(<span style="color: #00ffff;">do</span> ((y 0 (incf y)))
+                     (t (error 'unk-png-color-type :color color))))
+         (result ;; меняем размерности X и Y местами
+          (make-array dims :element-type '(unsigned-byte 8))))
+    ;; (format t "~% new-arr ~A "(array-dimensions result))
+    ;; ширина, высота, цвет =&gt; высота, ширина, цвет
+    (macrolet ((cycle (&amp;body body)
+                 `(do ((y 0 (incf y)))
                       ((= y (array-dimension result 0)))
-                    (<span style="color: #00ffff;">do</span> ((x 0 (incf x)))
+                    (do ((x 0 (incf x)))
                         ((= x (array-dimension result 1)))
                       ,@body))))
-      (<span style="color: #00ffff;">cond</span> ((or (equal color <span style="color: #b0c4de;">:truecolor-alpha</span>)
-                 (equal color <span style="color: #b0c4de;">:truecolor</span>))
-             (cycle (<span style="color: #00ffff;">do</span> ((z 0 (incf z)))
+      (cond ((or (equal color :truecolor-alpha)
+                 (equal color :truecolor))
+             (cycle (do ((z 0 (incf z)))
                         ((= z (array-dimension result 2)))
                       (setf (aref result y x z)
                             (aref image-data x y z)))))
-            ((or (equal color <span style="color: #b0c4de;">:grayscale</span>)
-                 (equal color <span style="color: #b0c4de;">:greyscale</span>))
+            ((or (equal color :grayscale)
+                 (equal color :greyscale))
              (cycle (setf (aref result y x)
                           (aref image-data x y))))
-            (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'unk-png-color-type <span style="color: #b0c4de;">:color</span> color)))
+            (t (error 'unk-png-color-type :color color)))
       result)))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: equality screenshot and load-file-data</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(assert (equalp (progn</span>
-<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">(x-snapshot :path "~/Pictures/snap2.png")</span>
-<span style="color: #ff7f24;">;;                   </span><span style="color: #ff7f24;">(load-png "~/Pictures/snap2.png"))</span>
-<span style="color: #ff7f24;">;;                 </span><span style="color: #ff7f24;">(x-snapshot)))</span>
+;; ;; TEST: equality screenshot and load-file-data
+;; (assert (equalp (progn
+;;                   (x-snapshot :path "~/Pictures/snap2.png")
+;;                   (load-png "~/Pictures/snap2.png"))
+;;                 (x-snapshot)))
 
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">save-png</span> (width height pathname-str image
-                 <span style="color: #98fb98;">&amp;optional</span> (color-type <span style="color: #b0c4de;">:truecolor-alpha</span>))
-  (<span style="color: #00ffff;">let*</span> ((png (make-instance 'zpng:png <span style="color: #b0c4de;">:width</span> width <span style="color: #b0c4de;">:height</span> height
-                             <span style="color: #b0c4de;">:color-type</span> color-type))
-         (vector (make-array <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">displaced vector - need copy for save</span>
+(defun save-png (width height pathname-str image
+                 &amp;optional (color-type :truecolor-alpha))
+  (let* ((png (make-instance 'zpng:png :width width :height height
+                             :color-type color-type))
+         (vector (make-array ;; displaced vector - need copy for save
                   (* height width (zpng:samples-per-pixel png))
-                  <span style="color: #b0c4de;">:displaced-to</span> image <span style="color: #b0c4de;">:element-type</span> '(unsigned-byte 8))))
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1058;&#1091;&#1090; &#1087;&#1088;&#1080;&#1084;&#1077;&#1085;&#1077;&#1085; &#1087;&#1086;&#1090;&#1077;&#1085;&#1094;&#1080;&#1072;&#1083;&#1100;&#1085;&#1086; &#1086;&#1087;&#1072;&#1089;&#1085;&#1099;&#1081; &#1090;&#1088;&#1102;&#1082;, &#1082;&#1086;&#1075;&#1076;&#1072; &#1084;&#1099; &#1089;&#1086;&#1079;&#1076;&#1072;&#1077;&#1084;</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1073;&#1098;&#1077;&#1082;&#1090; PNG &#1073;&#1077;&#1079; &#1076;&#1072;&#1085;&#1085;&#1099;&#1093;, &#1072; &#1087;&#1086;&#1090;&#1086;&#1084; &#1076;&#1086;&#1073;&#1072;&#1074;&#1083;&#1103;&#1077;&#1084; &#1074; &#1085;&#1077;&#1075;&#1086; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077;,</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1080;&#1089;&#1087;&#1086;&#1083;&#1100;&#1079;&#1091;&#1103; &#1085;&#1077;&#1101;&#1082;&#1089;&#1087;&#1086;&#1088;&#1090;&#1080;&#1088;&#1091;&#1077;&#1084;&#1099;&#1081; writer.</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1069;&#1090;&#1086; &#1085;&#1091;&#1078;&#1085;&#1086; &#1095;&#1090;&#1086;&#1073;&#1099; &#1087;&#1086;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100; &#1090;&#1088;&#1077;&#1090;&#1100;&#1102; &#1088;&#1072;&#1079;&#1084;&#1077;&#1088;&#1085;&#1086;&#1089;&#1090;&#1100; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;&#1072;,</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1082;&#1086;&#1090;&#1086;&#1088;&#1099;&#1081; &#1084;&#1099; &#1093;&#1086;&#1090;&#1080;&#1084; &#1087;&#1077;&#1088;&#1077;&#1076;&#1072;&#1090;&#1100; &#1082;&#1072;&#1082; &#1076;&#1072;&#1085;&#1085;&#1099;&#1077; &#1080; &#1087;&#1088;&#1080; &#1101;&#1090;&#1086;&#1084;</span>
-    <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1080;&#1079;&#1073;&#1077;&#1078;&#1072;&#1090;&#1100; &#1089;&#1086;&#1079;&#1076;&#1072;&#1085;&#1080;&#1103; &#1076;&#1083;&#1103; &#1101;&#1090;&#1086;&#1075;&#1086; &#1074;&#1088;&#1077;&#1084;&#1077;&#1085;&#1085;&#1086;&#1075;&#1086; &#1086;&#1073;&#1098;&#1077;&#1082;&#1090;&#1072;</span>
+                  :displaced-to image :element-type '(unsigned-byte 8))))
+    ;; Тут применен потенциально опасный трюк, когда мы создаем
+    ;; объект PNG без данных, а потом добавляем в него данные,
+    ;; используя неэкспортируемый writer.
+    ;; Это нужно чтобы получить третью размерность массива,
+    ;; который мы хотим передать как данные и при этом
+    ;; избежать создания для этого временного объекта
     (setf (zpng::%image-data png) (copy-seq vector))
     (zpng:write-png png pathname-str)))
 
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: saving loaded data</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((from "~/Pictures/snap2.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(to   "~/Pictures/snap3.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (load-png from)))</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width depth)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data)))</span>
+;; ;; TEST: saving loaded data
+;; (let* ((from "~/Pictures/snap2.png")
+;;        (to   "~/Pictures/snap3.png")
+;;        (image-data (load-png from)))
+;;   (destructuring-bind (height width depth)
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data)))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: saving screenshot data</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((to   "~/Pictures/snap4.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (x-snapshot)))</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width depth)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data)))</span>
+;; ;; TEST: saving screenshot data
+;; (let* ((to   "~/Pictures/snap4.png")
+;;        (image-data (x-snapshot)))
+;;   (destructuring-bind (height width depth)
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data)))
 
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">binarization</span> (image <span style="color: #98fb98;">&amp;optional</span> threshold)
-  (<span style="color: #00ffff;">let*</span> ((dims (array-dimensions image))
-         (new-dims (<span style="color: #00ffff;">cond</span> ((equal 3 (length dims))  (butlast dims))
+(defun binarization (image &amp;optional threshold)
+  (let* ((dims (array-dimensions image))
+         (new-dims (cond ((equal 3 (length dims))  (butlast dims))
                          ((equal 2 (length dims))  dims)
-                         (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'binarization-error))))
-         (result (make-array new-dims <span style="color: #b0c4de;">:element-type</span> '(unsigned-byte 8))))
-    (<span style="color: #00ffff;">macrolet</span> ((cycle (<span style="color: #98fb98;">&amp;body</span> body)
-                 `(<span style="color: #00ffff;">do</span> ((y 0 (incf y)))
+                         (t (error 'binarization-error))))
+         (result (make-array new-dims :element-type '(unsigned-byte 8))))
+    (macrolet ((cycle (&amp;body body)
+                 `(do ((y 0 (incf y)))
                       ((= y (array-dimension image 0)))
-                    (<span style="color: #00ffff;">do</span> ((x 0 (incf x)))
+                    (do ((x 0 (incf x)))
                         ((= x (array-dimension image 1)))
                       ,@body))))
-      (<span style="color: #00ffff;">cond</span> ((equal 3 (length dims))
-             (cycle (<span style="color: #00ffff;">do</span> ((z 0 (incf z)))
+      (cond ((equal 3 (length dims))
+             (cycle (do ((z 0 (incf z)))
                         ((= z (array-dimension image 2)))
-                      (<span style="color: #00ffff;">let</span> ((avg (floor (+ (aref image y x 0)
+                      (let ((avg (floor (+ (aref image y x 0)
                                            (aref image y x 1)
                                            (aref image y x 2))
                                         3)))
-                        (<span style="color: #00ffff;">when</span> threshold
-                          (<span style="color: #00ffff;">if</span> (&lt; threshold avg)
+                        (when threshold
+                          (if (&lt; threshold avg)
                               (setf avg 255)
                               (setf avg 0)))
                         (setf (aref result y x) avg)))))
             ((equal 2 (length dims))
-             (cycle (<span style="color: #00ffff;">let</span> ((avg (aref image y x)))
-                      (<span style="color: #00ffff;">when</span> threshold
-                        (<span style="color: #00ffff;">if</span> (&lt; threshold avg)
+             (cycle (let ((avg (aref image y x)))
+                      (when threshold
+                        (if (&lt; threshold avg)
                             (setf avg 255)
                             (setf avg 0)))
                       (setf (aref result y x) avg))))
-            (t (<span style="color: #ffc0cb; font-weight: bold;">error</span> 'binarization-error))))
+            (t (error 'binarization-error))))
     result))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: load file and translate it to grayscale and save</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((from "~/Pictures/snap4.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(to   "~/Pictures/snap5.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (binarization (load-png from))))</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width) ;; NB: no depth!</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data :grayscale))) ;; NB: grayscale!</span>
+;; ;; TEST: load file and translate it to grayscale and save
+;; (let* ((from "~/Pictures/snap4.png")
+;;        (to   "~/Pictures/snap5.png")
+;;        (image-data (binarization (load-png from))))
+;;   (destructuring-bind (height width) ;; NB: no depth!
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: binarize and save screenshot</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((to   "~/Pictures/snap6.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width) ;; NB: no depth!</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data :grayscale))) ;; NB: grayscale!</span>
+;; ;; TEST: binarize and save screenshot
+;; (let* ((to   "~/Pictures/snap6.png")
+;;        (image-data (binarization (x-snapshot) 127))) ;; NEW: threshold!
+;;   (destructuring-bind (height width) ;; NB: no depth!
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data :grayscale))) ;; NB: grayscale!
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: try to load grayscale image and save it</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((from "~/Pictures/snap6.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(to   "~/Pictures/snap7.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (load-png from)))</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data :grayscale)))</span>
+;; ;; TEST: try to load grayscale image and save it
+;; (let* ((from "~/Pictures/snap6.png")
+;;        (to   "~/Pictures/snap7.png")
+;;        (image-data (load-png from)))
+;;   (destructuring-bind (height width)
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data :grayscale)))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;; TEST: try to load grayscale image, binarize and save it</span>
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(let* ((from "~/Pictures/snap7.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(to   "~/Pictures/snap8.png")</span>
-<span style="color: #ff7f24;">;;        </span><span style="color: #ff7f24;">(image-data (binarization (load-png from) 127)))</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(destructuring-bind (height width) ;; NB: no depth!</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(array-dimensions image-data)</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(save-png width height to image-data :grayscale)))</span>
+;; ;; TEST: try to load grayscale image, binarize and save it
+;; (let* ((from "~/Pictures/snap7.png")
+;;        (to   "~/Pictures/snap8.png")
+;;        (image-data (binarization (load-png from) 127)))
+;;   (destructuring-bind (height width) ;; NB: no depth!
+;;       (array-dimensions image-data)
+;;     (save-png width height to image-data :grayscale)))
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-2" class="outline-2">
-<h2 id="unnumbered-2">Сегментация клеточным автоматом</h2>
-<div class="outline-text-2" id="text-unnumbered-2">
+<div id="outline-container-org6081e5b" class="outline-2">
+<h2 id="org6081e5b">Сегментация клеточным автоматом</h2>
+<div class="outline-text-2" id="text-org6081e5b">
 <p>
 Все обрабатываемые точки изображения можно разделить на точки фона и точки
 объектов. Наша задача - выделить замкнутые объекты на фоне и определить прямоугольники,
@@ -299,16 +298,11 @@
 Разделим все обрабатываемые точки объекта на классы:
 </p>
 <ul class="org-ul">
-<li>точка фона (белая точка)
-</li>
-<li>необработанная точка объекта (черная точка)
-</li>
-<li>точка фронта волны (красная точка)
-</li>
-<li>точка шлейфа (зеленая точка)
-</li>
-<li>обработанная точка (серая точка)
-</li>
+<li>точка фона (белая точка)</li>
+<li>необработанная точка объекта (черная точка)</li>
+<li>точка фронта волны (красная точка)</li>
+<li>точка шлейфа (зеленая точка)</li>
+<li>обработанная точка (серая точка)</li>
 </ul>
 
 <p>
@@ -323,62 +317,55 @@
 
 <ul class="org-ul">
 <li>Для каждого клеточного автомата на изображении находится первая точка объекта. Это
-первая найденная при сканировании строки пикселей точка черного цвета.
-</li>
+первая найденная при сканировании строки пикселей точка черного цвета.</li>
 <li><p>
 Для всех красных точек мы повторяем этот шаг, пока красные точки не
 закончатся. Сканируем ближайших соседей:
 </p>
 <ul class="org-ul">
-<li>Если это точка фона - ничего не делаем
-</li>
+<li>Если это точка фона - ничего не делаем</li>
 <li>Если это черная точка, то делаем ее красной (и записываем в список красных
 точек. Этот список представляет собой "фронт волны" и нужен чтобы не обрабатывать
-одну точку дважды.)
-</li>
-<li>Если это красная точка - мы видим обработанную точку, ничего не делаем
-</li>
+одну точку дважды.)</li>
+<li>Если это красная точка - мы видим обработанную точку, ничего не делаем</li>
 </ul>
 <p>
 После того как все ближайшие соседи просканированы, мы переносим текущую точку из
 списка красных точек (списка "фронта волны") в список обработанных точек
-</p>
-</li>
+</p></li>
 <li>Если красных точек больше нет - мы можем вычислить углы прямоугольника в который
-попали все красные точки
-</li>
+попали все красные точки</li>
 </ul>
 
 <div class="org-src-container">
+<pre class="src src-lisp">(defconstant +foreground+ 0)
+(defconstant +mark+ 127)
+(defconstant +box+ 1)
 
-<pre class="src src-lisp">(<span style="color: #00ffff;">defconstant</span> <span style="color: #eedd82;">+foreground+</span> 0)
-(<span style="color: #00ffff;">defconstant</span> <span style="color: #eedd82;">+mark+</span> 127)
-(<span style="color: #00ffff;">defconstant</span> <span style="color: #eedd82;">+box+</span> 1)
-
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">gramma-lookup</span> (image)
-  (<span style="color: #00ffff;">let</span> ((boxes))
-    (<span style="color: #00ffff;">do</span> ((qy 0 (incf qy)))
+(defun gramma-lookup (image)
+  (let ((boxes))
+    (do ((qy 0 (incf qy)))
         ((= qy (array-dimension image 0)))
-    (<span style="color: #00ffff;">do</span> ((qx 0 (incf qx)))
+    (do ((qx 0 (incf qx)))
         ((= qx (array-dimension image 1)))
-        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">when we found foreground point</span>
-        (<span style="color: #00ffff;">when</span> (equal +foreground+ (aref image qy qx))
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(format t "~%SCAN: ~A.~A = ~A" qy qx (aref image qy qx))</span>
-          (<span style="color: #00ffff;">let</span> ((mark-points (list (cons qy qx)))
+        ;; when we found foreground point
+        (when (equal +foreground+ (aref image qy qx))
+          ;; (format t "~%SCAN: ~A.~A = ~A" qy qx (aref image qy qx))
+          (let ((mark-points (list (cons qy qx)))
                 (bucket))
-            (<span style="color: #00ffff;">tagbody</span>
+            (tagbody
              gramma
-               (<span style="color: #00ffff;">let</span> ((curr (pop mark-points)))
-                 <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">save current point in bucket</span>
+               (let ((curr (pop mark-points)))
+                 ;; save current point in bucket
                  (push curr bucket)
-                 <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;;;; dbg-out current point</span>
-                 <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(format t "~%:CURR:~A" curr)</span>
-                 (<span style="color: #00ffff;">destructuring-bind</span> (curr-x . curr-y)
+                 ;; ;;;; dbg-out current point
+                 ;; (format t "~%:CURR:~A" curr)
+                 (destructuring-bind (curr-x . curr-y)
                      curr
-                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">mark current point</span>
+                   ;; mark current point
                    (setf (aref image curr-x curr-y) +mark+)
-                   <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">lookup foreground-colored neighbors</span>
-                   (<span style="color: #00ffff;">let</span> ((new-points)
+                   ;; lookup foreground-colored neighbors
+                   (let ((new-points)
                          (neighbors (list (cons (- curr-x 1) (- curr-y 1))
                                           (cons curr-x       (- curr-y 1))
                                           (cons (+ curr-x 1) (- curr-y 1))
@@ -387,148 +374,147 @@
                                           (cons (- curr-x 1) (+ curr-y 1))
                                           (cons curr-x       (+ curr-y 1))
                                           (cons (+ curr-x 1) (+ curr-y 1)))))
-                     (<span style="color: #00ffff;">loop</span> <span style="color: #b0c4de;">:for</span> (dx . dy) <span style="color: #b0c4de;">:in</span> neighbors
-                        <span style="color: #b0c4de;">:when</span> (equal +foreground+ (aref image dx dy))
-                        <span style="color: #b0c4de;">:do</span> (push (cons dx dy) new-points))
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">mark neighbors</span>
-                     (<span style="color: #00ffff;">loop</span> for (dx . dy) in new-points do
+                     (loop :for (dx . dy) :in neighbors
+                        :when (equal +foreground+ (aref image dx dy))
+                        :do (push (cons dx dy) new-points))
+                     ;; mark neighbors
+                     (loop for (dx . dy) in new-points do
                           (setf (aref image dx dy) +mark+))
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">add new-points (current poped yet)</span>
+                     ;; add new-points (current poped yet)
                      (setf mark-points (append mark-points new-points))
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;;;; dbg-out new points</span>
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(format t "~%:PNTS:~A" new-points)</span>
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">;;;; save png file</span>
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(destructuring-bind (dw dh)</span>
-                     <span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(array-dimensions image)</span>
-                     <span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(save-png-gray</span>
-                     <span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">dw dh</span>
-                     <span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">(format nil "cell~4,'0d.png" pic)</span>
-                     <span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">(vectorize-image-gray image))</span>
-                     <span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(incf pic))</span>
-                     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">---------------------</span>
-                     (<span style="color: #00ffff;">unless</span> (null mark-points)
-                       (<span style="color: #00ffff;">go</span> gramma))
+                     ;; ;;;; dbg-out new points
+                     ;; (format t "~%:PNTS:~A" new-points)
+                     ;; ;;;; save png file
+                     ;; (destructuring-bind (dw dh)
+                     ;;     (array-dimensions image)
+                     ;;   (save-png-gray
+                     ;;    dw dh
+                     ;;    (format nil "cell~4,'0d.png" pic)
+                     ;;    (vectorize-image-gray image))
+                     ;;   (incf pic))
+                     ;; ---------------------
+                     (unless (null mark-points)
+                       (go gramma))
                      ))))
-            <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">build bounding box</span>
-            (<span style="color: #00ffff;">let</span> ((left-up     (cons (reduce #'min (mapcar #'car bucket))
+            ;; build bounding box
+            (let ((left-up     (cons (reduce #'min (mapcar #'car bucket))
                                      (reduce #'min (mapcar #'cdr bucket))))
                   (right-down  (cons (reduce #'max (mapcar #'car bucket))
                                      (reduce #'max (mapcar #'cdr bucket)))))
-              <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(format t "~%:BOX: ~A" (list left-up right-down))</span>
+              ;; (format t "~%:BOX: ~A" (list left-up right-down))
               (push (list left-up right-down) boxes)
               )))))
     boxes))
 
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">TEST: lookup symbols</span>
-(<span style="color: #00ffff;">let*</span> ((from <span style="color: #ffa07a;">"/home/rigidus/repo/rigidus.ru/org/prj/text.png"</span>)
-       (to   <span style="color: #ffa07a;">"/home/rigidus/repo/rigidus.ru/org/prj/cell1.png"</span>)
+;; TEST: lookup symbols
+(let* ((from "/home/rigidus/repo/rigidus.ru/org/prj/text.png")
+       (to   "/home/rigidus/repo/rigidus.ru/org/prj/cell1.png")
        (image-data (binarization (load-png from) 127))
        (boxes (gramma-lookup image-data)))
-  (<span style="color: #00ffff;">loop</span> <span style="color: #b0c4de;">:for</span> (left-up right-down) <span style="color: #b0c4de;">:in</span> boxes <span style="color: #b0c4de;">:do</span>
-     <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">draw box</span>
-     (<span style="color: #00ffff;">loop</span> <span style="color: #b0c4de;">:for</span> dx <span style="color: #b0c4de;">:from</span> (car left-up) <span style="color: #b0c4de;">:to</span> (car right-down)
-        <span style="color: #b0c4de;">:with</span> top = (cdr left-up) and bottom = (cdr right-down) <span style="color: #b0c4de;">:do</span>
+  (loop :for (left-up right-down) :in boxes :do
+     ;; draw box
+     (loop :for dx :from (car left-up) :to (car right-down)
+        :with top = (cdr left-up) and bottom = (cdr right-down) :do
         (setf (aref image-data dx top) +box+)
         (setf (aref image-data dx bottom) +box+))
-     (<span style="color: #00ffff;">loop</span> <span style="color: #b0c4de;">:for</span> dy <span style="color: #b0c4de;">:from</span> (cdr left-up) <span style="color: #b0c4de;">:to</span> (cdr right-down)
-        <span style="color: #b0c4de;">:with</span> left = (car right-down) <span style="color: #b0c4de;">:and</span> right = (car left-up) <span style="color: #b0c4de;">:do</span>
+     (loop :for dy :from (cdr left-up) :to (cdr right-down)
+        :with left = (car right-down) :and right = (car left-up) :do
         (setf (aref image-data left dy) +box+)
         (setf (aref image-data right dy) +box+)))
-  (<span style="color: #00ffff;">destructuring-bind</span> (height width)
+  (destructuring-bind (height width)
       (array-dimensions image-data)
-    (save-png width height to image-data <span style="color: #b0c4de;">:grayscale</span>)))
+    (save-png width height to image-data :grayscale)))
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-3" class="outline-2">
-<h2 id="unnumbered-3">Склейка</h2>
-<div class="outline-text-2" id="text-unnumbered-3">
+<div id="outline-container-org28abf92" class="outline-2">
+<h2 id="org28abf92">Склейка</h2>
+<div class="outline-text-2" id="text-org28abf92">
 <div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">append-image</span> (image-up image-down y-point)
-  <span style="color: #ffa07a;">"&#1055;&#1088;&#1080;&#1085;&#1080;&#1084;&#1072;&#1077;&#1090; 2 &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;&#1072; &#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1081; &#1080; &#1074;&#1099;&#1089;&#1086;&#1090;&#1091;,</span>
-<span style="color: #ffa07a;">   &#1075;&#1076;&#1077; &#1074;&#1090;&#1086;&#1088;&#1086;&#1077; &#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1077; &#1073;&#1091;&#1076;&#1077;&#1090; &#1085;&#1072;&#1083;&#1086;&#1078;&#1077;&#1085;&#1086; &#1085;&#1072; &#1087;&#1077;&#1088;&#1074;&#1086;&#1077;.</span>
-<span style="color: #ffa07a;">   &#1048;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1103; &#1076;&#1086;&#1083;&#1078;&#1085;&#1099; &#1073;&#1099;&#1090;&#1100; &#1086;&#1076;&#1080;&#1085;&#1072;&#1082;&#1086;&#1074;&#1086;&#1081; &#1096;&#1080;&#1088;&#1080;&#1085;&#1099;</span>
-<span style="color: #ffa07a;">   &#1080; &#1080;&#1084;&#1077;&#1090;&#1100; &#1086;&#1076;&#1080;&#1085;&#1072;&#1082;&#1086;&#1074;&#1086;&#1077; &#1082;&#1086;&#1083;&#1080;&#1095;&#1077;&#1089;&#1090;&#1074;&#1086; &#1073;&#1072;&#1081;&#1090; &#1085;&#1072; &#1087;&#1080;&#1082;&#1089;&#1077;&#1083;&#1100;.</span>
-<span style="color: #ffa07a;">   &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1089;&#1082;&#1083;&#1077;&#1077;&#1085;&#1085;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;"</span>
-  (<span style="color: #00ffff;">destructuring-bind</span> (height-up width-up <span style="color: #98fb98;">&amp;optional</span> colors-up)
+<pre class="src src-lisp">(defun append-image (image-up image-down y-point)
+  "Принимает 2 массива изображений и высоту,
+   где второе изображение будет наложено на первое.
+   Изображения должны быть одинаковой ширины
+   и иметь одинаковое количество байт на пиксель.
+   Возвращает склеенный массив"
+  (destructuring-bind (height-up width-up &amp;optional colors-up)
       (array-dimensions image-up)
-    (<span style="color: #00ffff;">destructuring-bind</span> (height-down width-down <span style="color: #98fb98;">&amp;optional</span> colors-down)
+    (destructuring-bind (height-down width-down &amp;optional colors-down)
         (array-dimensions image-down)
-      (<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal width-up width-down))
-      (<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal colors-up colors-down))
-      (<span style="color: #00ffff;">let*</span> ((new-height (+ height-down y-point))
-             (new-dims (<span style="color: #00ffff;">if</span> (null colors-down)
+      (assert (equal width-up width-down))
+      (assert (equal colors-up colors-down))
+      (let* ((new-height (+ height-down y-point))
+             (new-dims (if (null colors-down)
                            (list new-height width-down)
                            (list new-height width-down colors-down)))
-             (image-new (make-array new-dims <span style="color: #b0c4de;">:element-type</span> '(unsigned-byte 8))))
-        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1072;&#1082;&#1088;&#1086;&#1089; &#1076;&#1083;&#1103; &#1087;&#1088;&#1086;&#1093;&#1086;&#1076;&#1072; &#1087;&#1086; &#1073;&#1083;&#1086;&#1082;&#1091; &#1090;&#1086;&#1095;&#1077;&#1082;</span>
-        (<span style="color: #00ffff;">macrolet</span> ((cycle ((py px height width <span style="color: #98fb98;">&amp;optional</span> <span style="color: #98fb98;">&amp;body</span> newline)
-                           <span style="color: #98fb98;">&amp;body</span> body)
-                     `(<span style="color: #00ffff;">do</span> ((qy ,py (incf qy)))
+             (image-new (make-array new-dims :element-type '(unsigned-byte 8))))
+        ;; макрос для прохода по блоку точек
+        (macrolet ((cycle ((py px height width &amp;optional &amp;body newline)
+                           &amp;body body)
+                     `(do ((qy ,py (incf qy)))
                           ((= qy ,height))
-                        (<span style="color: #00ffff;">do</span> ((qx ,px (incf qx)))
+                        (do ((qx ,px (incf qx)))
                             ((= qx ,width))
                           ,@body)
                         ,@newline)))
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1087;&#1077;&#1088;&#1074;&#1091;&#1102; &#1082;&#1072;&#1088;&#1090;&#1080;&#1085;&#1082;&#1091; &#1074; &#1085;&#1086;&#1074;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1090; &#1077;&#1077; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1076;&#1086; &#1090;&#1086;&#1095;&#1082;&#1080; &#1089;&#1082;&#1083;&#1077;&#1081;&#1082;&#1080;, &#1080;&#1083;&#1080; &#1076;&#1086; &#1077;&#1077; &#1082;&#1086;&#1085;&#1094;&#1072;,</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1089;&#1084;&#1086;&#1090;&#1088;&#1103; &#1095;&#1090;&#1086; &#1089;&#1083;&#1091;&#1095;&#1080;&#1090;&#1100;&#1089;&#1103; &#1088;&#1072;&#1085;&#1100;&#1096;&#1077;.</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1045;&#1089;&#1083;&#1080; &#1082;&#1086;&#1085;&#1077;&#1094; &#1082;&#1072;&#1088;&#1090;&#1080;&#1085;&#1082;&#1080; &#1089;&#1083;&#1091;&#1095;&#1080;&#1090;&#1089;&#1103; &#1088;&#1072;&#1085;&#1100;&#1096;&#1077;, &#1090;&#1086; &#1084;&#1077;&#1078;&#1076;&#1091;</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1103;&#1084;&#1080; &#1073;&#1091;&#1076;&#1077;&#1090; &#1087;&#1091;&#1089;&#1090;&#1086;&#1081; &#1073;&#1083;&#1086;&#1082;</span>
-          (<span style="color: #00ffff;">if</span> (null colors-up)
+          ;; копируем первую картинку в новый массив
+          ;; от ее начала до точки склейки, или до ее конца,
+          ;; смотря что случиться раньше.
+          ;; Если конец картинки случится раньше, то между
+          ;; изображениями будет пустой блок
+          (if (null colors-up)
               (cycle (0 0 (min height-up y-point) width-up)
                      (setf (aref image-new qy qx)
                            (aref image-up qy qx)))
-              <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">else</span>
+              ;; else
               (cycle (0 0 (min height-up y-point) width-up)
-                     (<span style="color: #00ffff;">do</span> ((qz 0 (incf qz)))
+                     (do ((qz 0 (incf qz)))
                          ((= qz colors-up))
                        (setf (aref image-new qy qx qz)
                              (aref image-up qy qx qz)))))
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1074;&#1090;&#1086;&#1088;&#1091;&#1102; &#1082;&#1072;&#1088;&#1090;&#1080;&#1085;&#1082;&#1091; &#1074; &#1085;&#1086;&#1074;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1090; &#1077;&#1077; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1076;&#1086; &#1082;&#1086;&#1085;&#1094;&#1072;</span>
-          (<span style="color: #00ffff;">if</span> (null colors-down)
-              (<span style="color: #00ffff;">let</span> ((new-y y-point))
+          ;; копируем вторую картинку в новый массив
+          ;; от ее начала до конца
+          (if (null colors-down)
+              (let ((new-y y-point))
                 (cycle (0 0 height-down width-down (incf new-y))
                        (setf (aref image-new new-y qx)
                              (aref image-up qy qx))))
-              <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">else</span>
-              (<span style="color: #00ffff;">let</span> ((new-y y-point))
+              ;; else
+              (let ((new-y y-point))
                 (cycle (0 0 height-down width-down (incf new-y))
-                       (<span style="color: #00ffff;">do</span> ((rz 0 (incf rz)))
+                       (do ((rz 0 (incf rz)))
                            ((= rz colors-down))
                          (setf (aref image-new new-y qx rz)
                                (aref image-up qy qx rz)))))))
         image-new))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-append-image-fullcolor</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(array (append-image arr1 arr2 400)))</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(destructuring-bind (height width  &amp;rest rest)</span>
-<span style="color: #ff7f24;">;;         </span><span style="color: #ff7f24;">(array-dimensions array)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(save-png width height "~/Pictures/result.png" array))))</span>
+;; (block test-append-image-fullcolor
+;;   (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+;;          (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+;;          (array (append-image arr1 arr2 400)))
+;;     (destructuring-bind (height width  &amp;rest rest)
+;;         (array-dimensions array)
+;;       (save-png width height "~/Pictures/result.png" array))))
 
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-append-image-grayscale</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(array (append-image arr1 arr2 200)))</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(destructuring-bind (height width  &amp;rest rest)</span>
-<span style="color: #ff7f24;">;;         </span><span style="color: #ff7f24;">(array-dimensions array)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(save-png width height "~/Pictures/result.png" array :grayscale))))</span>
+;; (block test-append-image-grayscale
+;;   (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+;;          (arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+;;          (array (append-image arr1 arr2 200)))
+;;     (destructuring-bind (height width  &amp;rest rest)
+;;         (array-dimensions array)
+;;       (save-png width height "~/Pictures/result.png" array :grayscale))))
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-4" class="outline-2">
-<h2 id="unnumbered-4">Нахождение различий</h2>
-<div class="outline-text-2" id="text-unnumbered-4">
+<div id="outline-container-org450a65e" class="outline-2">
+<h2 id="org450a65e">Нахождение различий</h2>
+<div class="outline-text-2" id="text-org450a65e">
 <p>
 Нахождение различий структурно очень похоже на append-image за тем исключением, что
 первое изображение копируется в результат до своего конца, а второе - накладывается на
@@ -536,92 +522,91 @@
 </p>
 
 <div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">append-xor</span> (image-up image-down y-point)
-  <span style="color: #ffa07a;">"&#1055;&#1088;&#1080;&#1085;&#1080;&#1084;&#1072;&#1077;&#1090; 2 &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;&#1072; &#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1081; &#1080; &#1074;&#1099;&#1089;&#1086;&#1090;&#1091;,</span>
-<span style="color: #ffa07a;">   &#1075;&#1076;&#1077; &#1074;&#1090;&#1086;&#1088;&#1086;&#1077; &#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1077; &#1073;&#1091;&#1076;&#1077;&#1090; &#1085;&#1072;&#1083;&#1086;&#1078;&#1077;&#1085;&#1086; &#1085;&#1072; &#1087;&#1077;&#1088;&#1074;&#1086;&#1077;</span>
-<span style="color: #ffa07a;">   &#1089; &#1087;&#1086;&#1084;&#1086;&#1097;&#1100;&#1102; XOR.</span>
-<span style="color: #ffa07a;">   &#1048;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1103; &#1076;&#1086;&#1083;&#1078;&#1085;&#1099; &#1073;&#1099;&#1090;&#1100; &#1086;&#1076;&#1080;&#1085;&#1072;&#1082;&#1086;&#1074;&#1086;&#1081; &#1096;&#1080;&#1088;&#1080;&#1085;&#1099;</span>
-<span style="color: #ffa07a;">   &#1080; &#1080;&#1084;&#1077;&#1090;&#1100; &#1086;&#1076;&#1080;&#1085;&#1072;&#1082;&#1086;&#1074;&#1086;&#1077; &#1082;&#1086;&#1083;&#1080;&#1095;&#1077;&#1089;&#1090;&#1074;&#1086; &#1073;&#1072;&#1081;&#1090; &#1085;&#1072; &#1087;&#1080;&#1082;&#1089;&#1077;&#1083;&#1100;.</span>
-<span style="color: #ffa07a;">   &#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1097;&#1072;&#1077;&#1090; &#1089;&#1082;&#1083;&#1077;&#1077;&#1085;&#1085;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;"</span>
-  (<span style="color: #00ffff;">destructuring-bind</span> (height-up width-up <span style="color: #98fb98;">&amp;optional</span> colors-up)
+<pre class="src src-lisp">(defun append-xor (image-up image-down y-point)
+  "Принимает 2 массива изображений и высоту,
+   где второе изображение будет наложено на первое
+   с помощью XOR.
+   Изображения должны быть одинаковой ширины
+   и иметь одинаковое количество байт на пиксель.
+   Возвращает склеенный массив"
+  (destructuring-bind (height-up width-up &amp;optional colors-up)
       (array-dimensions image-up)
-    (<span style="color: #00ffff;">destructuring-bind</span> (height-down width-down <span style="color: #98fb98;">&amp;optional</span> colors-down)
+    (destructuring-bind (height-down width-down &amp;optional colors-down)
         (array-dimensions image-down)
-      (<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal width-up width-down))
-      (<span style="color: #ffc0cb; font-weight: bold;">assert</span> (equal colors-up colors-down))
-      (<span style="color: #00ffff;">let*</span> ((new-height (+ height-down y-point))
-             (new-dims (<span style="color: #00ffff;">if</span> (null colors-down)
+      (assert (equal width-up width-down))
+      (assert (equal colors-up colors-down))
+      (let* ((new-height (+ height-down y-point))
+             (new-dims (if (null colors-down)
                            (list new-height width-down)
                            (list new-height width-down colors-down)))
-             (image-new (make-array new-dims <span style="color: #b0c4de;">:element-type</span> '(unsigned-byte 8))))
-        <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1072;&#1082;&#1088;&#1086;&#1089; &#1076;&#1083;&#1103; &#1087;&#1088;&#1086;&#1093;&#1086;&#1076;&#1072; &#1087;&#1086; &#1073;&#1083;&#1086;&#1082;&#1091; &#1090;&#1086;&#1095;&#1077;&#1082;</span>
-        (<span style="color: #00ffff;">macrolet</span> ((cycle ((py px height width <span style="color: #98fb98;">&amp;optional</span> <span style="color: #98fb98;">&amp;body</span> newline)
-                           <span style="color: #98fb98;">&amp;body</span> body)
-                     `(<span style="color: #00ffff;">do</span> ((qy ,py (incf qy)))
+             (image-new (make-array new-dims :element-type '(unsigned-byte 8))))
+        ;; макрос для прохода по блоку точек
+        (macrolet ((cycle ((py px height width &amp;optional &amp;body newline)
+                           &amp;body body)
+                     `(do ((qy ,py (incf qy)))
                           ((= qy ,height))
-                        (<span style="color: #00ffff;">do</span> ((qx ,px (incf qx)))
+                        (do ((qx ,px (incf qx)))
                             ((= qx ,width))
                           ,@body)
                         ,@newline)))
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1082;&#1086;&#1087;&#1080;&#1088;&#1091;&#1077;&#1084; &#1087;&#1077;&#1088;&#1074;&#1091;&#1102; &#1082;&#1072;&#1088;&#1090;&#1080;&#1085;&#1082;&#1091; &#1074; &#1085;&#1086;&#1074;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1090; &#1077;&#1077; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1076;&#1086; &#1076;&#1086; &#1077;&#1077; &#1082;&#1086;&#1085;&#1094;&#1072; (NB: &#1090;&#1091;&#1090; &#1086;&#1090;&#1083;&#1080;&#1095;&#1080;&#1077; &#1086;&#1090; append-image)</span>
-          (<span style="color: #00ffff;">if</span> (null colors-up)
+          ;; копируем первую картинку в новый массив
+          ;; от ее начала до до ее конца (NB: тут отличие от append-image)
+          (if (null colors-up)
               (cycle (0 0 height-up width-up)
                      (setf (aref image-new qy qx)
                            (aref image-up qy qx)))
-              <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">else</span>
+              ;; else
               (cycle (0 0 height-up width-up)
-                     (<span style="color: #00ffff;">do</span> ((qz 0 (incf qz)))
+                     (do ((qz 0 (incf qz)))
                          ((= qz colors-up))
                        (setf (aref image-new qy qx qz)
                              (aref image-up qy qx qz)))))
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">xor-&#1080;&#1084; &#1074;&#1090;&#1086;&#1088;&#1091;&#1102; &#1082;&#1072;&#1088;&#1090;&#1080;&#1085;&#1082;&#1091; &#1074; &#1085;&#1086;&#1074;&#1099;&#1081; &#1084;&#1072;&#1089;&#1089;&#1080;&#1074;</span>
-          <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1086;&#1090; &#1077;&#1077; &#1085;&#1072;&#1095;&#1072;&#1083;&#1072; &#1076;&#1086; &#1082;&#1086;&#1085;&#1094;&#1072;</span>
-          (<span style="color: #00ffff;">if</span> (null colors-down)
-              (<span style="color: #00ffff;">let</span> ((new-y y-point))
+          ;; xor-им вторую картинку в новый массив
+          ;; от ее начала до конца
+          (if (null colors-down)
+              (let ((new-y y-point))
                 (cycle (0 0 height-down width-down (incf new-y))
                        (setf (aref image-new new-y qx)
                              (logxor (aref image-new new-y qx)
                                      (aref image-up qy qx)))))
-              <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">else</span>
-              (<span style="color: #00ffff;">let</span> ((new-y y-point))
+              ;; else
+              (let ((new-y y-point))
                 (cycle (0 0 height-down width-down (incf new-y))
-                       (<span style="color: #00ffff;">do</span> ((rz 0 (incf rz)))
+                       (do ((rz 0 (incf rz)))
                            ((= rz colors-down))
                          (setf (aref image-new new-y qx rz)
                                (logxor (aref image-new new-y qx rz)
                                        (aref image-up qy qx rz)))))
-                <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1086;&#1087;&#1088;&#1072;&#1074;&#1080;&#1084; &#1080;&#1079;&#1083;&#1080;&#1096;&#1085;&#1077; &#1087;&#1086;&#1082;&#1089;&#1086;&#1088;&#1077;&#1085;&#1085;&#1099;&#1081; &#1072;&#1083;&#1100;&#1092;&#1072;-&#1082;&#1072;&#1085;&#1072;&#1083; (&#1077;&#1089;&#1083;&#1080; &#1086;&#1085; &#1077;&#1089;&#1090;&#1100;)</span>
-                <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1085;&#1086; &#1090;&#1086;&#1083;&#1100;&#1082;&#1086; &#1090;&#1072;&#1084; &#1075;&#1076;&#1077; &#1080;&#1079;&#1086;&#1073;&#1088;&#1072;&#1078;&#1077;&#1085;&#1080;&#1103; &#1087;&#1077;&#1088;&#1077;&#1082;&#1088;&#1099;&#1074;&#1072;&#1102;&#1090;&#1089;&#1103; (!)</span>
-                (<span style="color: #00ffff;">when</span> (equal 4 colors-down)
-                  (<span style="color: #00ffff;">let</span> ((new-y y-point))
+                ;; поправим излишне поксоренный альфа-канал (если он есть)
+                ;; но только там где изображения перекрываются (!)
+                (when (equal 4 colors-down)
+                  (let ((new-y y-point))
                     (cycle (0 0 (- height-up y-point) width-up (incf new-y))
-                           (<span style="color: #00ffff;">do</span> ((rz 0 (+ colors-down rz)))
+                           (do ((rz 0 (+ colors-down rz)))
                                ((= rz colors-down))
-                             <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(setf (aref image-new new-y qx (+ 3 rz))</span>
-                             <span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">#xFF)</span>
-                             <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1087;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1072; &#1087;&#1088;&#1072;&#1074;&#1080;&#1083;&#1100;&#1085;&#1086;&#1089;&#1090;&#1080; &#1079;&#1072;&#1082;&#1089;&#1086;&#1088;&#1080;&#1074;&#1072;&#1085;&#1080;&#1103; -</span>
-                             <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1084;&#1086;&#1078;&#1085;&#1086; &#1091;&#1073;&#1088;&#1072;&#1090;&#1100; &#1087;&#1086;&#1089;&#1083;&#1077; &#1086;&#1090;&#1083;&#1072;&#1076;&#1082;&#1080;</span>
-                             <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(setf (aref image-new new-y qx (+ 2 rz)) #xFF)</span>
+                             ;; (setf (aref image-new new-y qx (+ 3 rz))
+                             ;;       #xFF)
+                             ;; проверка правильности заксоривания -
+                             ;; можно убрать после отладки
+                             ;; (setf (aref image-new new-y qx (+ 2 rz)) #xFF)
                              )))))))
         image-new))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-append-xor-fullcolor</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(array (append-xor arr1 arr2 200)))</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(destructuring-bind (height width  &amp;rest rest)</span>
-<span style="color: #ff7f24;">;;         </span><span style="color: #ff7f24;">(array-dimensions array)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(save-png width height "~/Pictures/result.png" array))))</span>
+;; (block test-append-xor-fullcolor
+;;   (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+;;          (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+;;          (array (append-xor arr1 arr2 200)))
+;;     (destructuring-bind (height width  &amp;rest rest)
+;;         (array-dimensions array)
+;;       (save-png width height "~/Pictures/result.png" array))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-append-xor-grayscale</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))</span>
-<span style="color: #ff7f24;">;;          </span><span style="color: #ff7f24;">(array (append-xor arr1 arr2 200)))</span>
-<span style="color: #ff7f24;">;;     </span><span style="color: #ff7f24;">(destructuring-bind (height width  &amp;rest rest)</span>
-<span style="color: #ff7f24;">;;         </span><span style="color: #ff7f24;">(array-dimensions array)</span>
-<span style="color: #ff7f24;">;;       </span><span style="color: #ff7f24;">(save-png width height "~/Pictures/result.png" array :grayscale))))</span>
+;; (block test-append-xor-grayscale
+;;   (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+;;          (arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+;;          (array (append-xor arr1 arr2 200)))
+;;     (destructuring-bind (height width  &amp;rest rest)
+;;         (array-dimensions array)
+;;       (save-png width height "~/Pictures/result.png" array :grayscale))))
 </pre>
 </div>
 
@@ -630,81 +615,79 @@
 </p>
 
 <div class="org-src-container">
-
-<pre class="src src-lisp">(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">analysis</span> (xored-image y-point)
-  (<span style="color: #00ffff;">destructuring-bind</span> (height width <span style="color: #98fb98;">&amp;optional</span> colors)
+<pre class="src src-lisp">(defun analysis (xored-image y-point)
+  (destructuring-bind (height width &amp;optional colors)
       (array-dimensions xored-image)
-    (<span style="color: #00ffff;">let</span> ((intesect-height (- height y-point)) <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">&#1074;&#1099;&#1089;&#1086;&#1090;&#1072; &#1087;&#1077;&#1088;&#1077;&#1089;&#1077;&#1095;&#1077;&#1085;&#1080;&#1103;</span>
+    (let ((intesect-height (- height y-point)) ;; высота пересечения
           (black 0))
-      (<span style="color: #00ffff;">macrolet</span> ((cycle ((py px height width)
-                         <span style="color: #98fb98;">&amp;body</span> body)
-                   `(<span style="color: #00ffff;">do</span> ((qy ,py (incf qy)))
+      (macrolet ((cycle ((py px height width)
+                         &amp;body body)
+                   `(do ((qy ,py (incf qy)))
                         ((= qy ,height))
-                      (<span style="color: #00ffff;">do</span> ((qx ,px (incf qx)))
+                      (do ((qx ,px (incf qx)))
                           ((= qx ,width))
                         ,@body))))
-        (<span style="color: #00ffff;">if</span> colors
+        (if colors
             (cycle (y-point 0 height width)
-                   (<span style="color: #00ffff;">when</span> (and (eql (aref xored-image qy qx 0) 0)
+                   (when (and (eql (aref xored-image qy qx 0) 0)
                               (eql (aref xored-image qy qx 1) 0)
                               (eql (aref xored-image qy qx 2) 0))
                      (incf black)))
-            <span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">else</span>
+            ;; else
             (cycle (y-point 0 height width)
-                   (<span style="color: #00ffff;">when</span> (eql (aref xored-image qy qx) 0)
+                   (when (eql (aref xored-image qy qx) 0)
                      (incf black))))
-      (<span style="color: #00ffff;">let*</span> ((pix-amount (* intesect-height width))
+      (let* ((pix-amount (* intesect-height width))
              (result (float (/ black pix-amount))))
         result)))))
 
-(<span style="color: #00ffff;">defun</span> <span style="color: #87cefa;">get-merge-results</span> (image-up image-down)
-  (<span style="color: #00ffff;">do</span> ((vy 0 (incf vy)))
+(defun get-merge-results (image-up image-down)
+  (do ((vy 0 (incf vy)))
       ((= vy (+ (array-dimension image-up 0)
                 (array-dimension image-down 0))))
-    (format t <span style="color: #ffa07a;">"~%: =vy: ~A = ~A"</span>
+    (format t "~%: =vy: ~A = ~A"
             vy
             (analysis
              (append-xor image-up image-down vy)
              vy))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-merge-results-fullcolor</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(time</span>
-<span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">(let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))</span>
-<span style="color: #ff7f24;">;;           </span><span style="color: #ff7f24;">(arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))</span>
-<span style="color: #ff7f24;">;;      </span><span style="color: #ff7f24;">(get-merge-results arr1 arr2))))</span>
+;; (block test-merge-results-fullcolor
+;;   (time
+;;    (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
+;;           (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
+;;      (get-merge-results arr1 arr2))))
 
-<span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">(block test-merge-results-grayscale</span>
-<span style="color: #ff7f24;">;;   </span><span style="color: #ff7f24;">(time</span>
-<span style="color: #ff7f24;">;;    </span><span style="color: #ff7f24;">(let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))</span>
-<span style="color: #ff7f24;">;;           </span><span style="color: #ff7f24;">(arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300))))</span>
-<span style="color: #ff7f24;">;;      </span><span style="color: #ff7f24;">(get-merge-results arr1 arr2))))</span>
+;; (block test-merge-results-grayscale
+;;   (time
+;;    (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
+;;           (arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300))))
+;;      (get-merge-results arr1 arr2))))
 </pre>
 </div>
 </div>
 </div>
-<div id="outline-container-unnumbered-5" class="outline-2">
-<h2 id="unnumbered-5">Упаковка</h2>
-<div class="outline-text-2" id="text-unnumbered-5">
+<div id="outline-container-orgb401db0" class="outline-2">
+<h2 id="orgb401db0">Упаковка</h2>
+<div class="outline-text-2" id="text-orgb401db0">
 <div class="org-src-container">
+<pre class="src src-lisp">;; "~v,'~B" : https://stackoverflow.com/questions/34408146/explaination-about-a-statement-in-lisp-about-format-function/34413466
 
-<pre class="src src-lisp"><span style="color: #ff7f24;">;; </span><span style="color: #ff7f24;">"~v,'~B" : https://stackoverflow.com/questions/34408146/explaination-about-a-statement-in-lisp-about-format-function/34413466</span>
-
-(<span style="color: #00ffff;">let*</span> ((image-data (binarization (x-snapshot <span style="color: #b0c4de;">:y</span> 0 <span style="color: #b0c4de;">:x</span> 0 <span style="color: #b0c4de;">:height</span> 21 <span style="color: #b0c4de;">:width</span> 47) 100)))
-  (<span style="color: #00ffff;">destructuring-bind</span> (height width)
+(let* ((image-data (binarization (x-snapshot :y 0 :x 0 :height 21 :width 47) 100)))
+  (destructuring-bind (height width)
       (array-dimensions image-data)
-    (<span style="color: #00ffff;">let</span> ((new-width (+ 1 (logior width 7))))
-      (<span style="color: #00ffff;">do</span> ((qy 0 (incf qy)))
+    (let ((new-width (+ 1 (logior width 7))))
+      (do ((qy 0 (incf qy)))
           ((= qy height))
-        (<span style="color: #00ffff;">let</span> ((bv (make-array new-width <span style="color: #b0c4de;">:element-type</span> 'bit)))
-          (<span style="color: #00ffff;">do</span> ((qx 0 (incf qx)))
+        (let ((bv (make-array new-width :element-type 'bit)))
+          (do ((qx 0 (incf qx)))
               ((= qx width))
-            (<span style="color: #00ffff;">unless</span> (equal 0 (aref image-data qy qx))
+            (unless (equal 0 (aref image-data qy qx))
               (setf (bit bv qx) 1)))
-          (format t <span style="color: #ffa07a;">"~% ~2,'0d - ~A"</span> qy (format nil <span style="color: #ffa07a;">"~v,'~B"</span> new-width bv))
-          (<span style="color: #00ffff;">do</span> ((pd 0 (+ 8 pd)))
+          (format t "~% ~2,'0d - ~A" qy (format nil "~v,'~B" new-width bv))
+          (do ((pd 0 (+ 8 pd)))
               ((= pd new-width))
-            (format t <span style="color: #ffa07a;">"|~2,'0x"</span>
-                    (reduce #'(<span style="color: #00ffff;">lambda</span> (a b)
+            (format t "|~2,'0x"
+                    (reduce #'(lambda (a b)
                                 (+ (ash a 1) b))
                             (subseq bv pd (+ pd 8))))))))))
 </pre>
