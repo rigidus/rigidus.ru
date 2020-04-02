@@ -1,0 +1,124 @@
+#+STARTUP: showall indent hidestars
+
+* How to change directory
+
+Fast answer:
+
+#+BEGIN_SRC lisp
+  ,* (sb-posix:getcwd)
+  "/home/rigidus/src/in-solar/org"
+  ,* (sb-posix:chdir "./test")
+  0
+  ,* (sb-posix:getcwd)
+  "/home/rigidus/src/in-solar/org/test"
+  ,* (uiop:directory-files "./")
+  (#P"/home/rigidus/src/in-solar/org/a2.go"
+     #P"/home/rigidus/src/in-solar/org/analyse.go"
+     #P"/home/rigidus/src/in-solar/org/analyse.org"
+     #P"/home/rigidus/src/in-solar/org/conveyor.org"
+     #P"/home/rigidus/src/in-solar/org/index.org")
+  ,* (setf *default-pathname-defaults*
+          (sb-ext:native-pathname (format nil "~A~A" (sb-posix:getcwd) "/")))
+  #P"/home/rigidus/src/in-solar/org/test/"
+  ,* (uiop:directory-files "./")
+  (#P"/home/rigidus/src/in-solar/org/test/test.org")
+
+  (setf default-pathname-defaults (sb-ext:native-pathname (format nil "~A~A" (sb-posix:getcwd) "/")))
+#+END_SRC
+
+Long answer:
+
+Common Lisp doesn't have a notion of "current directory", although most
+implementations on OS'es that have such a notion provide an extension that
+lets you query/change it.
+
+Common Lisp has the variable *DEFAULT-PATHNAME-DEFAULTS*, which is a
+pathname that is merged into pathnames that the user enters.  It serves a
+purpose similar to that of the current directory.  If this is a relative
+pathname (as I suspect many systems initialize it to) then the OS's current
+directory will be applied after merging.
+
+--
+Barry Margolin
+
+
+
+https://savannah.gnu.org/support/?109250
+
+Cool if it is actually ''si::chdir'' that makes it simpler; having no
+Debian-testing version around, thus I was just guessing from the patches.
+
+	Martin Saturka <kvutza>
+
+Tue 05 Sep 2017 05:09:07 AM UTC, comment #2:
+
+Thanks a lot! About this function I didn't know.
+
+In the meantime I have also found out that si::chdir solves the problem,
+currently => currently I can provide a wxMaxima that works with gcl. Feel
+free to close this support request as I don't see an obvious way to close
+it myself.
+
+Thanks again, Gunter.
+	Gunter Königsmann <peterpall>
+Mon 04 Sep 2017 11:28:39 PM UTC, comment #1:
+
+Hi Gunter, Debian/Ubuntu systems use amounts of patches to GCL (and I am
+not able to reasonably compile GCL without them); let us be grateful to
+the maintainers for that.
+
+Looking at those patches ("patches" subdirectory of the respective
+Debian-related tar), it seems that the "pathnames1.2" patch puts "chdir"
+out of "si" package (the removed ''-  make_si_function("CHDIR",
+siLchdir);'' line and related stuff) into a top-level function (the added
+''+(defun chdir (s)'' line and related stuff).
+
+AFAIK one way of finding whether a function symbol is defined is to use the "fboundp" function, like:
+(fboundp 'si:chdir)
+(fboundp 'chdir)
+
+	Martin Saturka <kvutza>
+Tue 07 Feb 2017 08:13:56 PM UTC, original submission:
+
+In order to make maxima do its file I/O relative to the directory the
+currently opened worksheet is in wxMaxima uses the following function to
+change maxima's current directory:
+
+
+#+BEGIN_SRC lisp
+  (defun wx-cd (dir)
+    (when $wxchangedir
+      (let ((dir (cond ((pathnamep dir) dir)
+                       ((stringp dir)
+                        (make-pathname :directory (pathname-directory dir)
+                                       :host (pathname-host dir)
+                                       :device (pathname-device dir)))
+                       (t (error "cd(dir): dir must be a string or pathname.")))))
+        ,#+allegro (excl:chdir dir)
+        ,#+clisp (ext:cd dir)
+        ,#+cmu (setf (ext:default-directory) dir)
+        ,#+cormanlisp (ccl:set-current-directory dir)
+        ,#+gcl (si:chdir dir)
+        ,#+lispworks (hcl:change-directory dir)
+        ,#+lucid (lcl:working-directory dir)
+        ,#+sbcl (sb-posix:chdir dir)
+        ,#+sbcl (setf default-pathname-defaults (sb-ext:native-pathname (format nil "~A~A" (sb-posix:getcwd) "/")))
+        ,#+ccl (ccl:cwd dir)
+        ,#+ecl (si:chdir dir)
+
+        (namestring dir))))
+#+END_SRC
+
+This works good on many computers. On debian-testing unfortunately I get
+a message saying that the file cannot be loaded, instead. My guess is
+that chdir has been moved to si from a different package. But I am not
+sure about this.
+
+Is there a way to change gcl's working directory without breaking things
+for one version of gcl or the other?
+
+I've set the priority of this ticket to "important" as it affects
+multiple users. I hoe that is OK. If not please re-assign the severity at
+will.
+
+Thanks a lot, Gunter.
