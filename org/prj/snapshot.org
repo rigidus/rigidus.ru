@@ -359,8 +359,8 @@
          (to   "cell1.png")
          (image-data (binarization (load-png from) 127))
          (boxes (gramma-lookup image-data)))
+    ;; draw box
     (loop :for (left-up right-down) :in boxes :do
-       ;; draw box
        (loop :for dx :from (car left-up) :to (car right-down)
           :with top = (cdr left-up) and bottom = (cdr right-down) :do
           (setf (aref image-data dx top) +box+)
@@ -368,7 +368,15 @@
        (loop :for dy :from (cdr left-up) :to (cdr right-down)
           :with left = (car right-down) :and right = (car left-up) :do
           (setf (aref image-data left dy) +box+)
-          (setf (aref image-data right dy) +box+)))
+            (setf (aref image-data right dy) +box+)))
+    ;; draw center
+    (loop :for (left-up right-down) :in boxes :do
+         (let* ((diff (cons (- (car right-down) (car left-up))
+                            (- (cdr right-down) (cdr left-up))))
+                (center (cons (+ (car left-up) (ash (car diff) -1))
+                              (+ (cdr left-up) (ash (cdr diff) -1)))))
+           (setf (aref image-data (car center) (cdr center)) 0)
+           ))
     (destructuring-bind (height width)
         (array-dimensions image-data)
       (save-png width height to image-data :grayscale)))
@@ -452,7 +460,7 @@
   ;;       (save-png width height "~/Pictures/result.png" array :grayscale))))
 #+END_SRC
 
-* Нахождение различий
+* TODO Нахождение различий
 
 Нахождение различий структурно очень похоже на append-image за тем исключением, что
 первое изображение копируется в результат до своего конца, а второе - накладывается на
@@ -521,21 +529,21 @@
                       (cycle (0 0 (- height-up y-point) width-up (incf new-y))
                              (do ((rz 0 (+ colors-down rz)))
                                  ((= rz colors-down))
-                               ;; (setf (aref image-new new-y qx (+ 3 rz))
-                               ;;       #xFF)
+                               (setf (aref image-new new-y qx (+ 3 rz))
+                                     #xFF)
                                ;; проверка правильности заксоривания -
                                ;; можно убрать после отладки
-                               ;; (setf (aref image-new new-y qx (+ 2 rz)) #xFF)
+                               (setf (aref image-new new-y qx (+ 2 rz)) #xFF)
                                )))))))
           image-new))))
 
-  ;; (block test-append-xor-fullcolor
-  ;;   (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
-  ;;          (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
-  ;;          (array (append-xor arr1 arr2 200)))
-  ;;     (destructuring-bind (height width  &rest rest)
-  ;;         (array-dimensions array)
-  ;;       (save-png width height "~/Pictures/result.png" array))))
+  (block test-append-xor-fullcolor
+    (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+           (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+           (array (append-xor arr1 arr2 100)))
+      (destructuring-bind (height width  &rest rest)
+          (array-dimensions array)
+        (save-png width height "~/Pictures/result.png" array))))
 
   ;; (block test-append-xor-grayscale
   ;;   (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
@@ -585,11 +593,11 @@
                (append-xor image-up image-down vy)
                vy))))
 
-  ;; (block test-merge-results-fullcolor
-  ;;   (time
-  ;;    (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
-  ;;           (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
-  ;;      (get-merge-results arr1 arr2))))
+  (block test-merge-results-fullcolor
+    (time
+     (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
+            (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
+       (get-merge-results arr1 arr2))))
 
   ;; (block test-merge-results-grayscale
   ;;   (time
@@ -597,6 +605,7 @@
   ;;           (arr2 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300))))
   ;;      (get-merge-results arr1 arr2))))
 #+END_SRC
+
 * Упаковка
 
 #+BEGIN_SRC lisp
