@@ -354,32 +354,75 @@
       boxes))
 
 
+  (defun draw-box (image-data left-up right-down)
+    (loop :for dx :from (car left-up) :to (car right-down)
+       :with top = (cdr left-up) and bottom = (cdr right-down) :do
+         (setf (aref image-data dx top) +box+)
+         (setf (aref image-data dx bottom) +box+))
+    (loop :for dy :from (cdr left-up) :to (cdr right-down)
+       :with left = (car right-down) :and right = (car left-up) :do
+         (setf (aref image-data left dy) +box+)
+         (setf (aref image-data right dy) +box+))
+    image-data)
+
   ;; TEST: lookup symbols
   (let* ((from "text.png")
          (to   "cell1.png")
          (image-data (binarization (load-png from) 127))
          (boxes (gramma-lookup image-data)))
     ;; draw box
-    (loop :for (left-up right-down) :in boxes :do
-       (loop :for dx :from (car left-up) :to (car right-down)
-          :with top = (cdr left-up) and bottom = (cdr right-down) :do
-          (setf (aref image-data dx top) +box+)
-          (setf (aref image-data dx bottom) +box+))
-       (loop :for dy :from (cdr left-up) :to (cdr right-down)
-          :with left = (car right-down) :and right = (car left-up) :do
-          (setf (aref image-data left dy) +box+)
-            (setf (aref image-data right dy) +box+)))
+    ;; (loop :for (left-up right-down) :in boxes :do
+    ;;      (setf image-data (draw-box image-data left-up right-down)))
+    ;;
     ;; draw center
-    (loop :for (left-up right-down) :in boxes :do
-         (let* ((diff (cons (- (car right-down) (car left-up))
-                            (- (cdr right-down) (cdr left-up))))
-                (center (cons (+ (car left-up) (ash (car diff) -1))
-                              (+ (cdr left-up) (ash (cdr diff) -1)))))
-           (setf (aref image-data (car center) (cdr center)) 0)
-           ))
+    (setf boxes
+          (loop :for (left-up right-down) :in boxes :collect
+               (let* ((diff (cons (- (car right-down) (car left-up))
+                                  (- (cdr right-down) (cdr left-up))))
+                      (center (cons (+ (car left-up) (ash (car diff) -1))
+                                    (+ (cdr left-up) (ash (cdr diff) -1)))))
+                 ;; draw point
+                 (setf (aref image-data (car center) (cdr center)) 0)
+                 (list left-up right-down center)
+                 )))
+    ;; reverse boxes for reading order
+    (setf boxes (reverse boxes))
+    ;; for all boxes to find nearest neighbour
+    (loop
+       :for box :in boxes
+       :for idx :from 3 :to 5
+       :do (setf image-data
+                 (nearest-neighbour image-data
+                                    (nth idx boxes)
+                                    (nthcdr (+ 1 idx) boxes) 15)))
+    ;; draw picture
     (destructuring-bind (height width)
         (array-dimensions image-data)
       (save-png width height to image-data :grayscale)))
+
+  (defun nearest-neighbour (image-data box tail threshold)
+    (destructuring-bind ((blu-x . blu-y) (brd-x . brd-y) (bcc-x . bcc-y))
+        box
+      (print (list (cons blu-x blu-y)
+                   (cons brd-x brd-y)
+                   'a))
+      (block neighbour
+        (loop :for ((tlu-x . tlu-y) (trd-x . trd-y) (tcc-x . tcc-y)) :in tail :do
+             (when t
+               ;; (and (> tcc-x bcc-x)
+               ;;      (> tcc-x (+ bcc-x threshold))
+               ;;      (< (abs (- bcc-y tcc-y)) threshold))
+               (return-from neighbour
+                 (progn
+                   (print (list (cons tlu-x tlu-y)
+                                (cons trd-x trd-y)
+                                'b))
+                   (setf image-data
+                         (draw-box image-data
+                                   (cons blu-x blu-y)
+                                   (cons trd-x trd-y)
+                                   )))))))
+      image-data))
 #+END_SRC
 
 * Склейка
