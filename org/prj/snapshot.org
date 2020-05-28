@@ -382,7 +382,7 @@
                       (center (cons (+ (car left-up) (ash (car diff) -1))
                                     (+ (cdr left-up) (ash (cdr diff) -1)))))
                  ;; draw point
-                 (setf (aref image-data (car center) (cdr center)) 0)
+                 ;; (setf (aref image-data (car center) (cdr center)) 0)
                  (list left-up right-down center)
                  )))
     ;; reverse boxes for reading order
@@ -390,37 +390,43 @@
     ;; for all boxes to find nearest neighbour
     (loop
        :for box :in boxes
-       :for idx :from 3 :to 5
-       :do (setf image-data
-                 (nearest-neighbour image-data
-                                    (nth idx boxes)
-                                    (nthcdr (+ 1 idx) boxes) 15)))
+       :for idx :from 0 :to (length boxes) :by 2
+       :do (let ((threshold-y 10)
+                 (threshold-x 20))
+             (setf image-data
+                   (nearest-neighbour image-data
+                                      (nth idx boxes)
+                                      (nthcdr (+ 1 idx) boxes)
+                                      threshold-y
+                                      threshold-x))))
     ;; draw picture
     (destructuring-bind (height width)
         (array-dimensions image-data)
       (save-png width height to image-data :grayscale)))
 
-  (defun nearest-neighbour (image-data box tail threshold)
-    (destructuring-bind ((blu-x . blu-y) (brd-x . brd-y) (bcc-x . bcc-y))
+  (defun nearest-neighbour (image-data box tail threshold-y threshold-x)
+    (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x))
         box
-      (print (list (cons blu-x blu-y)
-                   (cons brd-x brd-y)
+      (print (list (cons bcc-y bcc-x)
                    'a))
       (block neighbour
-        (loop :for ((tlu-x . tlu-y) (trd-x . trd-y) (tcc-x . tcc-y)) :in tail :do
-             (when t
-               ;; (and (> tcc-x bcc-x)
-               ;;      (> tcc-x (+ bcc-x threshold))
-               ;;      (< (abs (- bcc-y tcc-y)) threshold))
+        (loop :for ((tlu-y . tlu-x) (trd-y . trd-x) (tcc-y . tcc-x)) :in tail :do
+             (print (list (cons tcc-y tcc-x)
+                          (- tcc-x bcc-x)
+                          (abs (- bcc-y tcc-y))
+                          tcc-y
+                          ))
+             (when (and (> tcc-x bcc-x)
+                        (< tcc-x (+ bcc-x threshold-x))
+                        (< tcc-y (abs (+ bcc-y threshold-y)))
+                        )
                (return-from neighbour
                  (progn
-                   (print (list (cons tlu-x tlu-y)
-                                (cons trd-x trd-y)
-                                'b))
+                   (print 'x)
                    (setf image-data
                          (draw-box image-data
-                                   (cons blu-x blu-y)
-                                   (cons trd-x trd-y)
+                                   (cons blu-y blu-x)
+                                   (cons trd-y trd-x)
                                    )))))))
       image-data))
 #+END_SRC
