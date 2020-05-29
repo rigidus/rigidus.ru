@@ -387,18 +387,24 @@
                  )))
     ;; reverse boxes for reading order
     (setf boxes (reverse boxes))
-    ;; for all boxes to find nearest neighbour
+    ;; for all boxes
     (loop
        :for box :in boxes
-       :for idx :from 0 :to (length boxes) :by 2
-       :do (let ((threshold-y 10)
-                 (threshold-x 20))
-             (setf image-data
-                   (nearest-neighbour image-data
-                                      (nth idx boxes)
-                                      (nthcdr (+ 1 idx) boxes)
-                                      threshold-y
-                                      threshold-x))))
+       :with prev-box
+       :for idx :from 0 :to (length boxes)
+       :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
+             (let ((threshold-y 10)
+                   (threshold-x 20))
+               (setf image-data
+                     (nearest-neighbour image-data
+                                        (nth idx boxes)
+                                        (nthcdr (+ 1 idx) boxes)
+                                        threshold-y
+                                        threshold-x))
+               (when prev-box
+                 (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
+                   (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
+               (setf prev-box box))))
     ;; draw picture
     (destructuring-bind (height width)
         (array-dimensions image-data)
@@ -407,8 +413,6 @@
   (defun nearest-neighbour (image-data box tail threshold-y threshold-x)
     (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x))
         box
-      (print (list (cons bcc-y bcc-x)
-                   'a))
       (block neighbour
         (loop :for ((tlu-y . tlu-x) (trd-y . trd-x) (tcc-y . tcc-x)) :in tail :do
              (print (list (cons tcc-y tcc-x)
@@ -416,18 +420,48 @@
                           (abs (- bcc-y tcc-y))
                           tcc-y
                           ))
-             (when (and (> tcc-x bcc-x)
-                        (< tcc-x (+ bcc-x threshold-x))
-                        (< tcc-y (abs (+ bcc-y threshold-y)))
+             (when (and (> tcc-x bcc-x) ;; центр должен быть правее
+                        (< tcc-x (+ bcc-x threshold-x)) ;; и не слишком далеко
+                        (> tcc-y blu-y) ;; центр должен быть ниже верхнего угла
+                        (< tcc-y trd-y) ;; и выше нижнего
+                        (< tcc-y (abs (+ bcc-y threshold-y))) ;; и недалеко по высоте
                         )
                (return-from neighbour
                  (progn
-                   (print 'x)
                    (setf image-data
                          (draw-box image-data
                                    (cons blu-y blu-x)
                                    (cons trd-y trd-x)
                                    )))))))
+      image-data))
+
+
+  (defun draw-line (image-data x1 y1 x2 y2)
+    (declare (type integer x1 y1 x2 y2))
+    (let* ((dist-x (abs (- x1 x2)))
+           (dist-y (abs (- y1 y2)))
+           (steep (> dist-y dist-x)))
+      (when steep
+        (psetf x1 y1 y1 x1
+               x2 y2 y2 x2))
+      (when (> x1 x2)
+        (psetf x1 x2 x2 x1
+               y1 y2 y2 y1))
+      (let* ((delta-x (- x2 x1))
+             (delta-y (abs (- y1 y2)))
+             (error (floor delta-x 2))
+             (y-step (if (< y1 y2) 1 -1))
+             (y y1))
+        (loop
+           :for x :upfrom x1 :to x2
+           :do (if steep
+                   (setf (aref image-data y x) 0)
+                   (setf (aref image-data x y) 0)
+                   )
+             (setf error (- error delta-y))
+             (when (< error 0)
+               (incf y y-step)
+               (incf error delta-x))))
       image-data))
 #+END_SRC
 
