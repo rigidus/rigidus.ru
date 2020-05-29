@@ -291,6 +291,8 @@
   (defconstant +mark+ 127)
   (defconstant +box+ 1)
 
+  (ql:quickload "skippy")
+
   (defun gramma-lookup (image)
     (let ((boxes))
       (do ((qy 0 (incf qy)))
@@ -353,7 +355,6 @@
                 (push (list left-up right-down) boxes))))))
       boxes))
 
-
   (defun draw-box (image-data left-up right-down)
     (loop :for dx :from (car left-up) :to (car right-down)
        :with top = (cdr left-up) and bottom = (cdr right-down) :do
@@ -365,46 +366,109 @@
          (setf (aref image-data right dy) +box+))
     image-data)
 
+  (defun convert (image-data)
+    (destructuring-bind (height width)
+        (array-dimensions image-data)
+      (let ((result (make-array (* width height)
+                                :element-type '(unsigned-byte) :initial-element 100))
+            (idx 0))
+        (dotimes (y height)
+          (dotimes (x width)
+            (setf (aref result idx) (aref image-data y x))
+            (incf idx)))
+        result)))
+
   ;; TEST: lookup symbols
   (let* ((from "text.png")
          (to   "cell1.png")
          (image-data (binarization (load-png from) 127))
-         (boxes (gramma-lookup image-data)))
+         (height (array-dimension image-data 0))
+         (width  (array-dimension image-data 1))
+         (gif-image-data (skippy:make-image-data
+                          height width :initial-contents (convert image-data)))
+         (gif-image (skippy:make-image :height height :width width
+                                       :image-data gif-image-data))
+         (color-count 256)
+         (colors (loop :for clr :from 0 :to 255 :collect (skippy:rgb-color clr clr clr)))
+         (color-table (skippy:make-color-table :initial-contents colors))
+         (data-stream (skippy:make-data-stream :color-table color-table
+                                               :loopingp t :height height :width width))
+         (boxes))
+    ;; save image to gif before all additionals
+    (skippy:add-image gif-image data-stream)
+    ;; draw center
+    (loop :for (left-up right-down) :in (gramma-lookup image-data) :do
+         (let* ((diff (cons (- (car right-down) (car left-up))
+                            (- (cdr right-down) (cdr left-up))))
+                (center (cons (+ (car left-up) (ash (car diff) -1))
+                              (+ (cdr left-up) (ash (cdr diff) -1)))))
+           ;; draw bounding box
+           (setf image-data (draw-box image-data left-up right-down))
+           ;; draw center point
+           (setf (aref image-data (car center) (cdr center)) 0)
+           ;; save boxes
+           (push (list left-up right-down center) boxes)))
+    ;; make gif animation
+    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
+         (let* ((box-height  (- brd-y blu-y))
+                (box-width   (- brd-x blu-x))
+                (sprite-data (let ((result (make-array
+                                            (list (+ 1 box-width) (+ 1 box-height))
+                                            :element-type '(unsigned-byte)
+                                            :initial-element 100)))
+                               (print (list box-height box-width))
+                               (loop :for dx :from blu-x :to brd-x
+                                  :for nx :from 0 :do
+                                    (loop :for dy :from blu-y :to brd-y
+                                       :for ny :from 0 :do
+                                         (progn
+                                           (format
+                                            t "~%nx:~3,'0D : ny:~3,'0D | dx:~3,'0D : dy:~3,'0D |  ~3,'0D"
+                                            nx ny dx dy (aref image-data nx ny))
+                                           (setf (aref result nx ny)
+                                                 ;; (aref image-data dy dx)
+                                                 1
+                                                 )
+                                         ))
+                                    (print ".")
+                                    )
+                               ;; (convert result)
+                               ))
+         ;;        (image (skippy:make-image
+         ;;                :height height :width width :image-data sprite-data
+         ;;                :delay-time 10 :disposal-method :restore-previous
+         ;;                :transparency-index 255
+                ;;                :top-position (cdr left-up) :left-position (car left-up)))
+                )
+           ;; (add-image gif-image data-stream)
+           )
+         )
+    ;; (setf (skippy:loopingp data-stream) t)
+    ;; (skippy:output-data-stream data-stream #p"test.gif"))
     ;; draw box
     ;; (loop :for (left-up right-down) :in boxes :do
     ;;      (setf image-data (draw-box image-data left-up right-down)))
     ;;
-    ;; draw center
-    (setf boxes
-          (loop :for (left-up right-down) :in boxes :collect
-               (let* ((diff (cons (- (car right-down) (car left-up))
-                                  (- (cdr right-down) (cdr left-up))))
-                      (center (cons (+ (car left-up) (ash (car diff) -1))
-                                    (+ (cdr left-up) (ash (cdr diff) -1)))))
-                 ;; draw point
-                 ;; (setf (aref image-data (car center) (cdr center)) 0)
-                 (list left-up right-down center)
-                 )))
-    ;; reverse boxes for reading order
-    (setf boxes (reverse boxes))
-    ;; for all boxes
-    (loop
-       :for box :in boxes
-       :with prev-box
-       :for idx :from 0 :to (length boxes)
-       :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
-             (let ((threshold-y 10)
-                   (threshold-x 20))
-               (setf image-data
-                     (nearest-neighbour image-data
-                                        (nth idx boxes)
-                                        (nthcdr (+ 1 idx) boxes)
-                                        threshold-y
-                                        threshold-x))
-               (when prev-box
-                 (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
-                   (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
-               (setf prev-box box))))
+    ;; ;; reverse boxes for reading order
+    ;; (setf boxes (reverse boxes))
+    ;; ;; for all boxes
+    ;; (loop
+    ;;    :for box :in boxes
+    ;;    :with prev-box
+    ;;    :for idx :from 0 :to (length boxes)
+    ;;    :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
+    ;;          (let ((threshold-y 10)
+    ;;                (threshold-x 20))
+    ;;            (setf image-data
+    ;;                  (nearest-neighbour image-data
+    ;;                                     (nth idx boxes)
+    ;;                                     (nthcdr (+ 1 idx) boxes)
+    ;;                                     threshold-y
+    ;;                                     threshold-x))
+    ;;            (when prev-box
+    ;;              (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
+    ;;                (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
+    ;;            (setf prev-box box))))
     ;; draw picture
     (destructuring-bind (height width)
         (array-dimensions image-data)
@@ -415,11 +479,11 @@
         box
       (block neighbour
         (loop :for ((tlu-y . tlu-x) (trd-y . trd-x) (tcc-y . tcc-x)) :in tail :do
-             (print (list (cons tcc-y tcc-x)
-                          (- tcc-x bcc-x)
-                          (abs (- bcc-y tcc-y))
-                          tcc-y
-                          ))
+             ;; (print (list (cons tcc-y tcc-x)
+             ;;              (- tcc-x bcc-x)
+             ;;              (abs (- bcc-y tcc-y))
+             ;;              tcc-y
+             ;;              ))
              (when (and (> tcc-x bcc-x) ;; центр должен быть правее
                         (< tcc-x (+ bcc-x threshold-x)) ;; и не слишком далеко
                         (> tcc-y blu-y) ;; центр должен быть ниже верхнего угла
@@ -434,7 +498,6 @@
                                    (cons trd-y trd-x)
                                    )))))))
       image-data))
-
 
   (defun draw-line (image-data x1 y1 x2 y2)
     (declare (type integer x1 y1 x2 y2))
