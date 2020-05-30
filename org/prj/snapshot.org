@@ -410,34 +410,37 @@
            ;; save boxes
            (push (list left-up right-down center) boxes)))
     ;; make gif animation
-    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes
-         ;; :for idx from 0 to 100
-       :do
+    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
          (let* ((box-height  (+ 1 (- brd-y blu-y)))
                 (box-width   (+ 1 (- brd-x blu-x)))
-                (gif-image-data (skippy:make-image-data box-width box-height))
-                (stub (let ((idx 0))
-                        (loop :for dy :from blu-y :to brd-y do
-                             (loop :for dx :from blu-x :to brd-x do
-                                  (setf (aref gif-image-data idx)
-                                        (if (equal 255 (aref image-data dy dx))
-                                            90
-                                            0))
-                                  (incf idx)))
-                        (setf (aref gif-image-data
-                                    (+ (* (ash (- brd-y blu-y) -1)
-                                          box-width)
-                                       (ash (- brd-x blu-x) -1)))
-                              255)))
-                (image (skippy:make-image :height box-height
-                                          :width box-width
-                                          :data-stream data-stream
-                                          :top-position blu-y
-                                          :left-position blu-x
-                                          :image-data gif-image-data
-                                          :delay-time 5)))
-           (skippy:add-image image data-stream)))
+                (gif-image-data (skippy:make-image-data box-width box-height)))
+           (let ((idx 0))
+             ;; draw bounding box
+             (loop :for dy :from blu-y :to brd-y do
+                  (loop :for dx :from blu-x :to brd-x do
+                       (setf (aref gif-image-data idx)
+                             (if (equal 255 (aref image-data dy dx))
+                                 90
+                                 0))
+                       (incf idx)))
+             ;; draw white center
+             (setf (aref gif-image-data
+                         (+ (* (ash (- brd-y blu-y) -1)
+                               box-width)
+                            (ash (- brd-x blu-x) -1)))
+                   255))
+           ;; add gif layer to data-stream
+             (skippy:add-image (skippy:make-image :height box-height
+                                                  :width box-width
+                                                  :data-stream data-stream
+                                                  :top-position blu-y
+                                                  :left-position blu-x
+                                                  :image-data gif-image-data
+                                                  :delay-time 5)
+                               data-stream)))
+    ;; set gif repeat
     (setf (skippy:loopingp data-stream) t)
+    ;; save gif
     (skippy:output-data-stream data-stream #p"test.gif")
     ;; for all boxes
     (loop
