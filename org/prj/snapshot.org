@@ -378,6 +378,7 @@
             (incf idx)))
         result)))
 
+
   ;; TEST: lookup symbols
   (let* ((from "text.png")
          (to   "cell1.png")
@@ -403,72 +404,59 @@
                 (center (cons (+ (car left-up) (ash (car diff) -1))
                               (+ (cdr left-up) (ash (cdr diff) -1)))))
            ;; draw bounding box
-           (setf image-data (draw-box image-data left-up right-down))
+           ;; (setf image-data (draw-box image-data left-up right-down))
            ;; draw center point
-           (setf (aref image-data (car center) (cdr center)) 0)
+           ;; (setf (aref image-data (car center) (cdr center)) 0)
            ;; save boxes
            (push (list left-up right-down center) boxes)))
     ;; make gif animation
-    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
-         (let* ((box-height  (- brd-y blu-y))
-                (box-width   (- brd-x blu-x))
-                (sprite-data (let ((result (make-array
-                                            (list (+ 1 box-width) (+ 1 box-height))
-                                            :element-type '(unsigned-byte)
-                                            :initial-element 100)))
-                               (print (list box-height box-width))
-                               (loop :for dx :from blu-x :to brd-x
-                                  :for nx :from 0 :do
-                                    (loop :for dy :from blu-y :to brd-y
-                                       :for ny :from 0 :do
-                                         (progn
-                                           (format
-                                            t "~%nx:~3,'0D : ny:~3,'0D | dx:~3,'0D : dy:~3,'0D |  ~3,'0D"
-                                            nx ny dx dy (aref image-data nx ny))
-                                           (setf (aref result nx ny)
-                                                 ;; (aref image-data dy dx)
-                                                 1
-                                                 )
-                                         ))
-                                    (print ".")
-                                    )
-                               ;; (convert result)
-                               ))
-         ;;        (image (skippy:make-image
-         ;;                :height height :width width :image-data sprite-data
-         ;;                :delay-time 10 :disposal-method :restore-previous
-         ;;                :transparency-index 255
-                ;;                :top-position (cdr left-up) :left-position (car left-up)))
-                )
-           ;; (add-image gif-image data-stream)
-           )
-         )
-    ;; (setf (skippy:loopingp data-stream) t)
-    ;; (skippy:output-data-stream data-stream #p"test.gif"))
-    ;; draw box
-    ;; (loop :for (left-up right-down) :in boxes :do
-    ;;      (setf image-data (draw-box image-data left-up right-down)))
-    ;;
-    ;; ;; reverse boxes for reading order
-    ;; (setf boxes (reverse boxes))
-    ;; ;; for all boxes
-    ;; (loop
-    ;;    :for box :in boxes
-    ;;    :with prev-box
-    ;;    :for idx :from 0 :to (length boxes)
-    ;;    :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
-    ;;          (let ((threshold-y 10)
-    ;;                (threshold-x 20))
-    ;;            (setf image-data
-    ;;                  (nearest-neighbour image-data
-    ;;                                     (nth idx boxes)
-    ;;                                     (nthcdr (+ 1 idx) boxes)
-    ;;                                     threshold-y
-    ;;                                     threshold-x))
-    ;;            (when prev-box
-    ;;              (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
-    ;;                (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
-    ;;            (setf prev-box box))))
+    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes
+         ;; :for idx from 0 to 100
+       :do
+         (let* ((box-height  (+ 1 (- brd-y blu-y)))
+                (box-width   (+ 1 (- brd-x blu-x)))
+                (gif-image-data (skippy:make-image-data box-width box-height))
+                (stub (let ((idx 0))
+                        (loop :for dy :from blu-y :to brd-y do
+                             (loop :for dx :from blu-x :to brd-x do
+                                  (setf (aref gif-image-data idx)
+                                        (if (equal 255 (aref image-data dy dx))
+                                            90
+                                            0))
+                                  (incf idx)))
+                        (setf (aref gif-image-data
+                                    (+ (* (ash (- brd-y blu-y) -1)
+                                          box-width)
+                                       (ash (- brd-x blu-x) -1)))
+                              255)))
+                (image (skippy:make-image :height box-height
+                                          :width box-width
+                                          :data-stream data-stream
+                                          :top-position blu-y
+                                          :left-position blu-x
+                                          :image-data gif-image-data
+                                          :delay-time 5)))
+           (skippy:add-image image data-stream)))
+    (setf (skippy:loopingp data-stream) t)
+    (skippy:output-data-stream data-stream #p"test.gif")
+    ;; for all boxes
+    (loop
+       :for box :in boxes
+       :with prev-box
+       :for idx :from 0 :to (length boxes)
+       :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
+             (let ((threshold-y 10)
+                   (threshold-x 20))
+               (setf image-data
+                     (nearest-neighbour image-data
+                                        (nth idx boxes)
+                                        (nthcdr (+ 1 idx) boxes)
+                                        threshold-y
+                                        threshold-x))
+               (when prev-box
+                 (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
+                   (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
+               (setf prev-box box))))
     ;; draw picture
     (destructuring-bind (height width)
         (array-dimensions image-data)
