@@ -258,6 +258,44 @@
   ;;     (save-png width height to image-data :grayscale)))
 #+END_SRC
 
+* Работа с анимированными gif-изображениями
+
+Процедура для создания анимированного gif-а с первым кадром. Возвращает
+изображение и data-stream
+
+#+BEGIN_SRC lisp :tangle sn.lisp :noweb tangle :padline no
+  (defun make-gif-image-and-data-stream (height width image-data)
+    (let* ((gif-image-data (skippy:make-image-data
+                            height width :initial-contents (convert image-data)))
+           (gif-image (skippy:make-image :height height :width width
+                                         :image-data gif-image-data))
+           (colors (loop :for clr :from 0 :to 255 :collect (skippy:rgb-color clr clr clr)))
+           (color-table (skippy:make-color-table :initial-contents colors))
+           (data-stream (skippy:make-data-stream :color-table color-table
+                                                 :loopingp t :height height :width width)))
+      (skippy:add-image gif-image data-stream)
+      (values gif-image data-stream)))
+#+END_SRC
+
+В data-stream можно добавлять следующие кадры (box-git-image-data) с помощью:
+
+#+BEGIN_SRC lisp
+  (skippy:add-image (skippy:make-image :height box-height
+                                       :width box-width
+                                       :top-position blu-y
+                                       :left-position blu-x
+                                       :image-data box-gif-image-data
+                                       :delay-time 5)
+                    data-stream)
+#+END_SRC
+
+После всех добавлений чтобы сохранить файл останется только сделать:
+
+#+BEGIN_SRC lisp
+  (setf (skippy:loopingp data-stream) t)
+  (skippy:output-data-stream data-stream #p"test.gif")
+#+END_SRC
+
 * Сегментация клеточным автоматом
 
 Все обрабатываемые точки изображения можно разделить на точки фона и
@@ -379,91 +417,86 @@
         result)))
 
 
+
+
   ;; TEST: lookup symbols
   (let* ((from "text.png")
          (to   "cell1.png")
          (image-data (binarization (load-png from) 127))
          (height (array-dimension image-data 0))
          (width  (array-dimension image-data 1))
-         (gif-image-data (skippy:make-image-data
-                          height width :initial-contents (convert image-data)))
-         (gif-image (skippy:make-image :height height :width width
-                                       :image-data gif-image-data))
-         (color-count 256)
-         (colors (loop :for clr :from 0 :to 255 :collect (skippy:rgb-color clr clr clr)))
-         (color-table (skippy:make-color-table :initial-contents colors))
-         (data-stream (skippy:make-data-stream :color-table color-table
-                                               :loopingp t :height height :width width))
          (boxes))
-    ;; save image to gif before all additionals
-    (skippy:add-image gif-image data-stream)
-    ;; draw center
-    (loop :for (left-up right-down) :in (gramma-lookup image-data) :do
-         (let* ((diff (cons (- (car right-down) (car left-up))
-                            (- (cdr right-down) (cdr left-up))))
-                (center (cons (+ (car left-up) (ash (car diff) -1))
-                              (+ (cdr left-up) (ash (cdr diff) -1)))))
-           ;; draw bounding box
-           ;; (setf image-data (draw-box image-data left-up right-down))
-           ;; draw center point
-           ;; (setf (aref image-data (car center) (cdr center)) 0)
-           ;; save boxes
-           (push (list left-up right-down center) boxes)))
-    ;; make gif animation
-    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
-         (let* ((box-height  (+ 1 (- brd-y blu-y)))
-                (box-width   (+ 1 (- brd-x blu-x)))
-                (gif-image-data (skippy:make-image-data box-width box-height)))
-           (let ((idx 0))
+    (multiple-value-bind (gif-image data-stream)
+        (make-gif-image-and-data-stream height width image-data)
+      ;; save image to gif before all additionals
+      (skippy:add-image gif-image data-stream)
+      ;; draw center
+      (loop :for (left-up right-down) :in (gramma-lookup image-data) :do
+           (let* ((diff (cons (- (car right-down) (car left-up))
+                              (- (cdr right-down) (cdr left-up))))
+                  (center (cons (+ (car left-up) (ash (car diff) -1))
+                                (+ (cdr left-up) (ash (cdr diff) -1)))))
              ;; draw bounding box
-             (loop :for dy :from blu-y :to brd-y do
-                  (loop :for dx :from blu-x :to brd-x do
-                       (setf (aref gif-image-data idx)
-                             (if (equal 255 (aref image-data dy dx))
-                                 90
-                                 0))
-                       (incf idx)))
-             ;; draw white center
-             (setf (aref gif-image-data
-                         (+ (* (ash (- brd-y blu-y) -1)
-                               box-width)
-                            (ash (- brd-x blu-x) -1)))
-                   255))
-           ;; add gif layer to data-stream
+             ;; (setf image-data (draw-box image-data left-up right-down))
+             ;; draw center point
+             ;; (setf (aref image-data (car center) (cdr center)) 0)
+             ;; save boxes
+             (push (list left-up right-down center) boxes)))
+      ;; make gif animation
+      (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
+           (let* ((box-height  (+ 1 (- brd-y blu-y)))
+                  (box-width   (+ 1 (- brd-x blu-x)))
+                  (box-gif-image-data (skippy:make-image-data box-width box-height)))
+             (let ((idx 0))
+               ;; draw bounding box
+               (loop :for dy :from blu-y :to brd-y do
+                    (loop :for dx :from blu-x :to brd-x do
+                         (setf (aref box-gif-image-data idx)
+                               (if (equal 255 (aref image-data dy dx))
+                                   90
+                                   0))
+                         (incf idx)))
+               ;; draw white center
+               (setf (aref box-gif-image-data
+                           (+ (* (ash (- brd-y blu-y) -1)
+                                 box-width)
+                              (ash (- brd-x blu-x) -1)))
+                     255))
+             ;; add gif layer to data-stream
              (skippy:add-image (skippy:make-image :height box-height
                                                   :width box-width
-                                                  :data-stream data-stream
                                                   :top-position blu-y
                                                   :left-position blu-x
-                                                  :image-data gif-image-data
+                                                  :image-data box-gif-image-data
                                                   :delay-time 5)
                                data-stream)))
-    ;; set gif repeat
-    (setf (skippy:loopingp data-stream) t)
-    ;; save gif
-    (skippy:output-data-stream data-stream #p"test.gif")
-    ;; for all boxes
-    (loop
-       :for box :in boxes
-       :with prev-box
-       :for idx :from 0 :to (length boxes)
-       :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
-             (let ((threshold-y 10)
-                   (threshold-x 20))
-               (setf image-data
-                     (nearest-neighbour image-data
-                                        (nth idx boxes)
-                                        (nthcdr (+ 1 idx) boxes)
-                                        threshold-y
-                                        threshold-x))
-               (when prev-box
-                 (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
-                   (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
-               (setf prev-box box))))
-    ;; draw picture
-    (destructuring-bind (height width)
-        (array-dimensions image-data)
-      (save-png width height to image-data :grayscale)))
+      ;; set gif repeat
+      (setf (skippy:loopingp data-stream) t)
+      ;; save gif
+      (skippy:output-data-stream data-stream #p"test.gif")
+      ;; for all boxes
+      (loop
+         :for box :in boxes
+         :with prev-box
+         :for idx :from 0 :to (length boxes)
+         :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
+               (let ((threshold-y 10)
+                     (threshold-x 20))
+                 (setf image-data
+                       (nearest-neighbour image-data
+                                          (nth idx boxes)
+                                          (nthcdr (+ 1 idx) boxes)
+                                          threshold-y
+                                          threshold-x))
+                 (when prev-box
+                   (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
+                     (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
+                 (setf prev-box box))))
+      ;; draw picture
+      (destructuring-bind (height width)
+          (array-dimensions image-data)
+        (save-png width height to image-data :grayscale))))
+
 
   (defun nearest-neighbour (image-data box tail threshold-y threshold-x)
     (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x))
