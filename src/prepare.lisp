@@ -8,6 +8,6 @@
                        (merge-pathnames
                         (make-pathname :directory '(:relative "src"))
                         (merge-pathnames
-                         (make-pathname :directory '(:relative "repo/rigidus.ru"))
+                         (make-pathname :directory '(:relative "src/rigidus.ru"))
                          (user-homedir-pathname)))))
 ;; prepare ends here

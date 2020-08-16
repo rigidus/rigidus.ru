@@ -7,7 +7,7 @@ advances the presentation at the same time."
     (demo-it-presentation-advance))
 
 ;; Order the functions and forms for this presentation:
-(demo-it-create (demo-it-presentation "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/wp.org")
+(demo-it-create (demo-it-presentation "/home/rigidus/src/rigidus.ru/org/lrn/crypto/wp.org")
                 ;; my-demo-step/show-code
                 ;; demo-it-presentation-return ; close file and advance
                 ;; (demo-it-run-in-eshell "python example/example.py")

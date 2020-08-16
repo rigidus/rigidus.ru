@@ -158,7 +158,7 @@
 
 (defparameter *base-dir*
   (merge-pathnames
-   (make-pathname :directory '(:relative "repo/rigidus.ru/org/lrn/crypto"))
+   (make-pathname :directory '(:relative "src/rigidus.ru/org/lrn/crypto"))
    (user-homedir-pathname)))
 
 (defparameter *base-path* (directory-namestring *base-dir*))
@@ -170,13 +170,13 @@
 ;;          ,(concatenate 'string *base-path* "www/*.html"))))
 
 ;; (translate-logical-pathname "org:source;articles;about.txt")
-;; ;; #P"/home/rigidus/repo/rigidus.ru/org/articles/about.org"
+;; ;; #P"/home/rigidus/src/rigidus.ru/org/articles/about.org"
 ;; (translate-logical-pathname "org:source;articles;emacs;about.txt")
-;; ;; #P"/home/rigidus/repo/rigidus.ru/org/articles/emacs/about.org"
+;; ;; #P"/home/rigidus/src/rigidus.ru/org/articles/emacs/about.org"
 ;; (translate-logical-pathname "org:publish;articles;about.txt")
-;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/about.org"
+;; ;; #P"/home/rigidus/src/rigidus.ru/www/articles/about.org"
 ;; (translate-logical-pathname "org:publish;articles;emacs;about.txt")
-;; ;; #P"/home/rigidus/repo/rigidus.ru/www/articles/emacs/about.org"
+;; ;; #P"/home/rigidus/src/rigidus.ru/www/articles/emacs/about.org"
 
 ;; Работа с html tree
 (in-package :mycoin)

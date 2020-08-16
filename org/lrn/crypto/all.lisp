@@ -24,7 +24,7 @@
 (defparameter *tpl-path* (merge-pathnames
                           (make-pathname :directory '(:relative "org/lrn/crypto"))
                           (merge-pathnames
-                           (make-pathname :directory '(:relative "repo/rigidus.ru"))
+                           (make-pathname :directory '(:relative "src/rigidus.ru"))
                            (user-homedir-pathname))))
 
 (closure-template:compile-template
@@ -43,7 +43,7 @@
 
 (defparameter *base-dir*
   (merge-pathnames
-   (make-pathname :directory '(:relative "repo/rigidus.ru"))
+   (make-pathname :directory '(:relative "src/rigidus.ru"))
    (user-homedir-pathname)))
 
 (restas:mount-module -css- (#:restas.directory-publisher)
@@ -77,7 +77,7 @@
 (defparameter *blocks* nil)
 (defparameter *contracts* (make-hash-table :test #'equal))
 (defparameter *storages* (make-hash-table :test #'equal))
-(defparameter *vfm-path* "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src")
+(defparameter *vfm-path* "/home/rigidus/src/rigidus.ru/org/lrn/forth/src")
 (defparameter *vfm-path-lib* "src64/jonesforth64.f")
 
 (defmacro with-run-vfm ((sender amount) &body body)
@@ -312,8 +312,8 @@
         ;; (format nil "~A~%" code))))
         (bprint
          (run-vfm
-          "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-          (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+          "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/forth64"
+          (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
           code ;; ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;"
           '("asd" "qwe") (list (format nil "SENDER=~A" sender) (format nil "AMOUNT=~A" amount))
           call hash)))))
@@ -329,8 +329,8 @@
 ;;        (code (gethash hash *contracts*))
 ;;        (call "ALFA"))
 ;;   (run-vfm
-;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
 ;;    code
 ;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
 ;;    call hash))
@@ -339,17 +339,17 @@
 ;;        (code (gethash hash *contracts*))
 ;;        (call "ADD-AMOUNT"))
 ;;   (run-vfm
-;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/add-amount.f") ;;code
+;;    "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/crypto/add-amount.f") ;;code
 ;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
 ;;    call hash))
 
 
 ;; (run-vfm
-;;  "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-;;  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-;;  (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")
+;;  "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/forth64"
+;;  (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;  (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/crypto/smart-g-nodes.f")
 ;;  '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
 ;;  "ADD-AMOUNT" "843e0047a395e005da8a3af9cf109e36cf2b071df99677068a1510618d50b516")
 
@@ -379,9 +379,9 @@
 ;;        ;; (code (gethash hash *contracts*))
 ;;        (call "RUN"))
 ;;   (run-vfm
-;;    "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/forth64"
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
-;;    (read-file-into-string "/home/rigidus/repo/rigidus.ru/org/lrn/crypto/update-state.f")
+;;    "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/forth64"
+;;    (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/forth/src/src64/jonesforth64.f")
+;;    (read-file-into-string "/home/rigidus/src/rigidus.ru/org/lrn/crypto/update-state.f")
 ;;    '("asd" "qwe") (list (format nil "SENDER=~A" (sha-256 "sender")) (format nil "AMOUNT=~A" 100))
 ;;    call hash))
 
