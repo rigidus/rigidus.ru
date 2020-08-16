@@ -1,0 +1,2355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>&lrm;</title>
+<meta name="generator" content="Org mode">
+<meta name="author" content="rigidus">
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="content">
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#org63cfd93">Цель</a></li>
+<li><a href="#orgbfe15ab">Порядок работы</a></li>
+<li><a href="#org00973c1">Алгоритм</a></li>
+<li><a href="#org74f1ace">Программа</a></li>
+<li><a href="#orgf8ff6aa">Таймеры</a>
+<ul>
+<li><a href="#orgd4f19f1">Режимы работы таймеров</a>
+<ul>
+<li><a href="#org771a3ce">Normal mode</a></li>
+<li><a href="#orgb6981be">Clear Timer on Compare (CTC)</a></li>
+<li><a href="#org42c2bba">FastPWM</a></li>
+<li><a href="#org7c12c1d">Phase Correct PWM Mode</a></li>
+</ul>
+</li>
+<li><a href="#orgde90322">Регистры управления таймером</a>
+<ul>
+<li><a href="#org90967a4">TCCR0A – Timer/Counter Control Register A</a></li>
+<li><a href="#org687f549">TCCR0B Timer/Counter Control Register B</a></li>
+<li><a href="#org3e45e98">OCR0A и OCR0B</a></li>
+<li><a href="#orgefbc4ec">TIMSK – Timer/Counter Interrupt Mask Register</a></li>
+<li><a href="#orgc218c73">TIFR – Timer/Counter Interrupt Flag Register</a></li>
+</ul>
+</li>
+<li><a href="#org37411e3">Настройка таймера-1 (16-bit) в Fast PWM</a>
+<ul>
+<li><a href="#org53085fd">TCCR1A</a></li>
+<li><a href="#orgb600faa">TCCR1B</a></li>
+<li><a href="#orgd153afc">TCCR1C</a></li>
+<li><a href="#org9337ca7">TCNT1H и TCNT1L</a></li>
+<li><a href="#org2707d1c">OCR1AH и OCR1AL а также OCR1BH и OCR1BL</a></li>
+<li><a href="#org8a2e11d">ICR1H and ICR1L – Input Capture Register 1</a></li>
+<li><a href="#orgb5fe1fb">TIFR</a></li>
+</ul>
+</li>
+<li><a href="#org38b46c0">Настройка прерываний таймеров</a></li>
+</ul>
+</li>
+<li><a href="#org34e9e92">Вектора прерываний</a></li>
+<li><a href="#org597f3c3">Инициализация</a></li>
+<li><a href="#org591672f">Мигание светодиодом</a></li>
+<li><a href="#org00d2500">Константы</a></li>
+<li><a href="#org8d9696d">Схема</a></li>
+<li><a href="#org02cbc48">Символические имена</a></li>
+</ul>
+</div>
+</div>
+<p>
+TCNT
+OCR1A
+</p>
+
+<p>
+Периуд:
+8MHz / (scale<sub>factor</sub> * 256) = 50Hz = 20ms
+</p>
+
+<p>
+Крайнее левое - 1ms
+Крайнее правое - 2ms
+</p>
+
+<p>
+// ICR1(TOP) = fclk/(N*f) ; N-Делитель; f-Частота;  1000000/1/50 = 20000
+#define ICR<sub>MAX</sub> F<sub>CPU</sub>/50
+#define OCR<sub>MIN</sub> ICR<sub>MAX</sub>/20
+#define OCR<sub>MAX</sub> ICR<sub>MAX</sub>/10
+#define OCR<sub>CENTER</sub> (ICR<sub>MAX</sub>/4/10)*3
+</p>
+
+<p>
+125KHz - тактовая частота таймера
+2ms - крайнее положениеЗ
+FastPWM
+</p>
+
+
+<div id="outline-container-org63cfd93" class="outline-2">
+<h2 id="org63cfd93">Цель</h2>
+<div class="outline-text-2" id="text-org63cfd93">
+<p>
+Мы хотим собрать устройство, которое может служить таймером выключения
+света, предотвращая ситуацию "забыли выключить".
+</p>
+
+<p>
+Это учебно-тестовый проект, в котором на примере простой схемы
+выключателя с задержкой выключения можно пройти все этапы проектирования
+электронного устройства на микроконтроллере.
+</p>
+
+<p>
+Требуется собрать устройство, управляемое несколькими (в нашем частном
+случае - четырьмя) кнопками по следующему алгоритму:
+</p>
+<ul class="org-ul">
+<li>В состоянии "выключено" нажатие кнопки приводит к включению нагрузки и
+переходу в состояние "включено"</li>
+<li>В состоянии "включено" нажатие кнопки приводит к выключению нагрузки и
+переходу в состояние "выключено"</li>
+<li>В состоянии "включено" через заданное время устройство самостоятельно
+выключает нагрузку и переходит в состояние "выключено"</li>
+</ul>
+
+<p>
+В процессе работы появилась идея о том, что устройство может
+предупреждать звуковым сигналом о том, что заканчивается время выдержки.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgbfe15ab" class="outline-2">
+<h2 id="orgbfe15ab">Порядок работы</h2>
+<div class="outline-text-2" id="text-orgbfe15ab">
+<p>
+Устройство должно отсчитывать время, и одновременно реагировать на
+нажатия кнопок, поэтому нам потребуется использовать таймер и прерывания
+по его переполнению.
+</p>
+
+<p>
+Кроме того нужно независимо обрабатывать нажатия нескольких кнопкок, что
+требует решения проблемы "дребезга контактов". Чтобы сделать это, мы
+будем анализировать удержание кнопки в некотором интервале времени.
+</p>
+
+<p>
+Чтобы воспроизводить звук мы будем использовать второй таймер,
+независимый от первого.
+</p>
+
+<p>
+В используемом микроконтроллере (Attiny2313) есть два таймера:
+</p>
+<ul class="org-ul">
+<li>8-разрядный <code>Timer-0</code> (мы будем использовать его для генерации звука)</li>
+<li>16разрядный <code>Timer-1</code> (мы будем использовать его для подавления
+дребезга и отсчета задержек)</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org00973c1" class="outline-2">
+<h2 id="org00973c1">Алгоритм</h2>
+<div class="outline-text-2" id="text-org00973c1">
+<p>
+Чтобы реализовать нужные виды поведения мы будем использовать формализм
+<code>конечных автоматов</code>. У каждого автомата есть:
+</p>
+<ul class="org-ul">
+<li>текущее состояние из набора его возможных состояний</li>
+<li>входное воздействие (вход)</li>
+<li>выходное воздействие (выход)</li>
+<li>память</li>
+</ul>
+
+<p>
+Выходное воздействие одного автомата может быть входным для другого - так
+осуществляется связь по данным между автоматами.
+</p>
+
+<p>
+Взаимодействующие автоматы связываются в цепочку, где выход предыдущего
+автомата является входом следующего по списку:
+</p>
+<ul class="org-ul">
+<li>автомат подавления дребезга контактов</li>
+<li>автомат отработки временных задержек</li>
+<li>автомат отработки звукового сигнала [TODO:gmm]</li>
+</ul>
+
+<p>
+Первый в цепочке автомат получает на вход текущее состояние привязанной к
+цепочке кнопки, а последний формирует выход, который переключает
+привязаную к цепочке нагрузку.
+</p>
+
+<p>
+Все цепочки автоматов работают в контексте прерывания 16-разрядного
+таймера, а их инициализация должна быть выполнена при старте программы
+</p>
+
+<p>
+Поэтому, первое что нам нужно сделать - это блок кода, который формирует
+цепочку:
+</p>
+
+
+<p>
+Теперь мы можем построить цепочки, связав каждую цепочку с выводом кнопок
+на входе и выводом нагрузки на выходе:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="orgd36a000">    ;; &amp;id
+    lds     tmp0, BEEP_&amp;id
+    cpse    tmp0, r0
+    rjmp    1f
+    &amp;led_OFF
+    rjmp    2f
+1:
+    &amp;led_ON
+2:
+</pre>
+</div>
+
+<p>
+Осталось сформировать переменные каждого из автоматов и код их
+инициализации.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org74f1ace" class="outline-2">
+<h2 id="org74f1ace">Программа</h2>
+<div class="outline-text-2" id="text-org74f1ace">
+<p>
+Программа будет написана для микроконтроллера Attiny2313 на ассемблере
+AVR и содержать типичные блоки инициализации, обработчиков прерываний и
+главного цикла программы.
+</p>
+
+<p>
+Точкой входа можно считать метку <code>_reset</code>. Мы попадаем в нее потому что
+после подачи питания на микроконтроллер исполнение запускается с нулевого
+адреса, а там находится вектор прерывания <code>Reset-Handler</code>, который
+указывает на метку <code>_reset</code>.
+</p>
+
+<p>
+После включения питания:
+</p>
+<ul class="org-ul">
+<li>Проводим инициализацию:
+<ul class="org-ul">
+<li>Настраиваем таймеры</li>
+</ul></li>
+<li>В главном цикле:
+<ul class="org-ul">
+<li>Ничего не деламе</li>
+</ul></li>
+<li>В обработчике переполнения <code>Timer-1</code>
+<ul class="org-ul">
+<li>Получаем нажатия кнопок</li>
+<li>Обрабатываем нажатия кнопок</li>
+<li>Обрабатываем временные интервалы</li>
+<li>Выдаем звук [TODO:gmm]</li>
+</ul></li>
+</ul>
+
+<p>
+Порядок блоков важен, так как после инициализации (reset) мы сразу
+"проваливаемся" в <code>mainloop</code>.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm">;;; b2313 delay switch for 4 buttons
+    #define TRUE 1
+    #define FALSE 0
+    #define MAX 2
+    #define result r16
+    #define tmp0 r17
+    #define tmp1 r18
+    #define freq r19
+
+    #defune FCPU 8000000
+    #define ICR_MAX F_CPU/50
+    #define OCR_MIN ICR_MAX/20
+    #define OCR_MAX ICR_MAX/10
+    #define OCR_CENTER (ICR_MAX/4/10)*3
+
+    .equ DELAY_MAX, 0x0200
+    .equ SIGNAL_TIME, 0x0010
+    .equ START_FREQ, 0xAF
+    .equ END_FREQ, 0x7F
+
+    .equ SPL, 0x3D
+    .equ SREG, 0x3F
+    .equ RAMEND, 0xDF
+    .equ DDRA, 0x1A
+    .equ DDRB, 0x17
+    .equ DDRD, 0x11
+    .equ PORTA, 0x1B
+    .equ PORTB, 0x18
+    .equ PORTD, 0x12
+    .equ PINA, 0x19
+    .equ PINB, 0x16
+    .equ PIND, 0x10
+    .equ TCCR0A, 0x30
+    .equ TCCR0B, 0x33
+    .equ TCCR1B, 0x2E
+    .equ OCR0A, 0x36
+    .equ OCR0B, 0x3C
+    .equ TCNT0, 0x32
+    .equ TCNT1H, 0x2D
+    .equ TCNT1L, 0x2C
+    .equ TIFR, 0x38
+    .equ TIMSK, 0x39
+    .equ ICR1L, 0x24
+    .equ ICR1H, 0x25
+    .equ TCCR1A, 0x2F
+    .equ OCR1AH, 0x2B
+    .equ OCR1AL, 0x2A
+
+
+
+    .text
+    .global main
+main:
+
+_vectors:
+    rjmp    _reset              ; Reset Handler
+    rjmp    _infloop            ; External Interrupt0 Handler
+    rjmp    _infloop            ; External Interrupt1 Handler
+    rjmp    _infloop            ; Timer1 Capture Handler
+    rjmp    _infloop            ; Timer1 CompareA Handler
+    rjmp    _infloop            ; Timer1 Overflow Handler
+    rjmp    _infloop            ; Timer0 Overflow Handler
+    rjmp    _infloop            ; USART0 RX Complete Handler
+    rjmp    _infloop            ; USART0,UDR Empty Handler
+    rjmp    _infloop            ; USART0 TX Complete Handler
+    rjmp    _infloop            ; Analog Comparator Handler
+    rjmp    _infloop            ; Pin Change Interrupt
+    rjmp    _infloop            ; Timer1 Compare B Handler
+    rjmp    _infloop            ; Timer0 Compare A Handler
+    rjmp    _infloop            ; Timer0 Compare B Handler
+    rjmp    _infloop            ; USI Start Handler
+    rjmp    _infloop            ; USI Overflow Handler
+    rjmp    _infloop            ; EEPROM Ready Handler
+    rjmp    _infloop            ; Watchdog Overflow Handler
+
+_timer_0_compare_A:
+
+
+_reset:
+_init:
+    ;; Выделяем регистр r0 под значение нуля и r1 под значение единицы
+    clr     r0
+    mov     r1, r0
+    inc     r1
+
+    ;; Запретить прерывания
+    out     SREG, r0
+
+    ;; Настроить Stack
+    ldi     tmp0, RAMEND
+    out     SPL, tmp0
+
+    ;; Инициализируем выводы
+_init_pins:
+    ;; Настроить PB7:PB0 на выход
+    ;;              76543210
+    ldi     tmp0, 0b11111111
+    out     DDRB, tmp0
+    ;; Настроить на выход
+    ;; BLUE:pd1, WHITE:pd0,
+    ;; OUT-IP:pd4, OUT-PP:pd5
+    ;; OUT-PM:pd6
+    ;; остальные - на вход
+    ;;              76543210
+    ldi     tmp0, 0b01110011
+    out     DDRD, tmp0
+    ;; Настроить A1
+
+
+    ;; Инициализация таймера-1
+    ;; Fast PWM с очисткой по достижении значения регистра сравнения
+    ;; WGM = 1110
+    ldi     tmp0, 0b10000010
+    out     TCCR1A, tmp0
+    ;; Выставляем предделитель
+    ldi     tmp0, 0b00011010
+    out     TCCR1B, tmp0
+    ;; Частота ШИМ считается как:
+    ;; Fpwm = Fcpu / (N*(1+TOP)) = 1000000 / (8*(1+2499)) = 50 Гц
+    .equ ICR_VAL, 2499
+    ldi     tmp0, hi8(ICR_VAL)
+    out     ICR1H, tmp0
+    ldi     tmp0, lo8(ICR_VAL)
+    out     ICR1L, tmp0
+    ; Устанавливаем начальный коэффициент заполнения - 50%
+    .equ PWM_MIN, 75
+    .equ PWM_MIDDLE, 165
+    .equ PWM_MAX, 300
+    LDI 	tmp0, hi8(PWM_MIN)
+    OUT 	OCR1AH, tmp0
+    LDI 	tmp0, lo8(PWM_MIN)
+    OUT 	OCR1AL, tmp0
+      ; Обнуление счетчика таймера 1
+      OUT 	TCNT1H, r0
+      OUT 	TCNT1L, r0
+
+    ;; Инициализация таймера-0
+
+
+    ;; Настройка прерываний таймеров
+    ;; TOEI1(ovfl-1) &amp; OCIE0A(cmpA-0)
+    ldi     tmp0, 0b00000000
+    out     TIMSK, tmp0
+
+    ;; Начальное значение
+    ldi     freq, START_FREQ
+
+    ;; Разрешить прерывания
+    sei
+
+
+_mainloop:
+    rjmp    _mainloop
+
+_infloop:
+    rjmp    _infloop
+
+_blink_green:
+    sbic    PORTB, 1
+    rjmp    _bg_clean
+    sbi     PORTB, 1
+_bg_ret:
+    ret
+_bg_clean:
+    cbi     PORTB, 1
+    rjmp    _bg_ret
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgf8ff6aa" class="outline-2">
+<h2 id="orgf8ff6aa">Таймеры</h2>
+<div class="outline-text-2" id="text-orgf8ff6aa">
+<p>
+Attiny2313 имеет 2 таймера, каждый из которых имеет 4 режима работы. Мы
+будем использовать 8-разрядный <code>Timer-0</code> для звуковых эффектов, и
+16-разрядный <code>Timer-1</code> для отсчета времени.
+</p>
+
+<p>
+Для того чтобы настроить таймеры в нужные режимы мы дожны записать
+правильные значения в их регистры управления.
+</p>
+
+<p>
+Один из регистров управления <code>TIMSK</code>, который управляет разрешением
+прерывний, является общим для обоих таймеров. Поэтому его мы настравиваем
+отдельно после инициализации обоих таймеров в подразделе
+<a href="#org38b46c0">Настройка прерываний таймеров</a>
+</p>
+
+<p>
+Разберем режимы работы таймеров и их управляющие регистры, после чего мы
+сможем настроить таймеры в разных режимах.
+</p>
+</div>
+
+<div id="outline-container-orgd4f19f1" class="outline-3">
+<h3 id="orgd4f19f1">Режимы работы таймеров</h3>
+<div class="outline-text-3" id="text-orgd4f19f1">
+</div>
+<div id="outline-container-org771a3ce" class="outline-4">
+<h4 id="org771a3ce">Normal mode</h4>
+<div class="outline-text-4" id="text-org771a3ce">
+<p>
+Простейшим режимом работы является <code>Normal</code>. В этом режиме частота
+тактового генератора проходит через предделитель, который может оставить
+ее без изменений, а может уменьшить в 8, 16, 256 или 1024 раза.
+</p>
+
+<p>
+Полученное значение частоты каждый тик увеличивает восьмиразрядный
+счетный регистр таймера <code>TCNTn</code>. Здесь маленькая буква <code>n</code>, может
+означать <code>0</code> или <code>1</code> в зависимости от того, какой из таймеров мы
+используем.
+</p>
+
+<p>
+Когда <code>TCNTn</code> переполняется возникает прерывание переполнения таймера,
+которую надо специальным образом разрешить.
+</p>
+
+<p>
+Процедура обработки прерывания может перезаписать <code>TCNTn</code>, если она хочет
+сократить время до следующего переполнения, тогда счет начнется не с
+нуля, а с записанного значения.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgb6981be" class="outline-4">
+<h4 id="orgb6981be">Clear Timer on Compare (CTC)</h4>
+<div class="outline-text-4" id="text-orgb6981be">
+<p>
+В более сложном режиме <code>Clear-Timer-on-Compare</code> (<code>(CTC)</code>) значение
+счетного регистра <code>TCNTn</code> каждый такт сравнивается со значением в
+специальном регистре <code>Output-Compare-Register</code>.
+</p>
+
+<p>
+Мы можем настроить разные действия, которые будут происходить когда
+сравнение успешно, например:
+</p>
+<ul class="org-ul">
+<li>Возникновение прерывания</li>
+<li>Изменения состояния пина микроконтроллера</li>
+</ul>
+
+<p>
+Для каждого из двух таймеров существует по 2 OCR-регистра (<code>A</code> и <code>B</code>),
+поэтому мы будем именовать их так <code>OCRnx</code>, где <code>N</code> может быть <code>0</code> или
+<code>1</code>, а <code>X</code> - <code>A</code> или <code>B</code>. Например, регистр <code>OCR1A</code>.
+</p>
+
+<p>
+В режиме <code>CTC</code> счетный регистр будет считать от нуля до значения в
+регистре сравнения, потом будет снова сброшен на ноль. Поэтому мы можем
+управлять этими интервалами изменя значение регистра сравнения.
+</p>
+
+<p>
+Для генерации выходного сигнала на пине микроконтроллера в режиме <code>CTC</code>
+выход <code>OC0A</code> может быть настроен на переключение своего логического
+уровня при каждом совпадении. Таким образом можно выводить звук без
+необходимости программно переключать биты в портах.
+</p>
+
+<p>
+Обработчик прерывания по совпадению (когда он разрешен) может
+манипулировать частотой сигнала путем записи в <code>TCNT0</code> и <code>OCR0A</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org42c2bba" class="outline-4">
+<h4 id="org42c2bba">FastPWM</h4>
+<div class="outline-text-4" id="text-org42c2bba">
+<p>
+<code>FastPWM</code> режим обеспечивает генерацию ШИМ-сигнала высокой частоты.
+</p>
+
+<p>
+Счетчик считает от <code>BOTTOM</code> до <code>TOP</code>, затем перезапускается снова с
+<code>BOTTOM. =TOP</code> можно определить как <code>0xFF</code> (установив <code>WGM2:0</code> = <code>3</code>) или
+<code>OCR0A</code> (установив <code>WGM2:0</code> = <code>7</code>). Таким образом мы можем изменять
+<code>период</code>.
+</p>
+
+<p>
+Модуль сравнения позволяет генерировать ШИМ-сигнал на пинах <code>OCnx</code>. Для
+этого у <code>Compare-Output-Mode</code> существуют два под-режима: <code>инвертируеющий</code>
+и <code>неинвертирующий</code>.
+</p>
+
+<p>
+В неинвертирующем под-режиме пин <code>Output-Compare</code> (<code>OCnx</code>) обнуляется при
+совпадении между <code>TCNTn</code> и <code>OCRnx</code> и устанавливается в единицу когда
+<code>TCNTn</code> проходит BOTTOM. Таким образом, изменяя <code>OCRnx</code> мы можем изменять
+<code>скважность</code>. В инвертируещем соответственно все наоборот.
+</p>
+
+<p>
+Установка битов <code>COMnx1:0</code> = <code>2</code> приведет к получению неинвертированного
+под-режима, а инвертированный можно получить установив <code>COMnx1:0</code> = <code>3</code>.
+</p>
+
+<p>
+Установка битов <code>COM0A1:0</code> = <code>1</code> позволяет пину <code>AC0A</code> переключаться при
+совпадении, если установлен бит <code>WGM02</code>. Эта опция недоступна для пина
+<code>OC0B</code>. Фактическое значение <code>OC0x</code> будет наблюдаться на пине только
+если в <code>DDRB</code> он установлен как output-пин.
+</p>
+
+<p>
+Благодаря работе "в одну сторону", рабочая частота в режиме <code>FastPWN</code> может
+быть в два раза выше, чем в режиме <code>Phase correct PWM</code>. Высокая частота
+позволяет получить физически небольшие по размеру внешние компоненты
+(катушки, конденсаторы) и, следовательно, снижает общую стоимость системы.
+</p>
+
+<p>
+Флаг <code>Timer/Counter Overflow Flag</code> (<code>TOVn</code>) устанавливается каждый раз,
+когда счетчик достигает значения <code>TOP</code>. Если прерывание включено,
+подпрограмма обработчика прерывания может использоваться для обновления
+значения сравнения.
+</p>
+
+<p>
+Сигнал ШИМ генерируется путем установки (или очистки) регистра OC0x в
+момент совпадения между <code>OCR0x</code> и <code>TCNT0</code> и очистки (или установки)
+регистра <code>OC0x</code> в тактовом цикле таймера, в котором счетчик очищается
+(изменяется с TOP на BOTTOM).
+</p>
+
+<p>
+Частота ШИМ для выхода может быть рассчитана по следующему уравнению:
+</p>
+
+<p>
+f = f<sub>clk</sub> / (scale<sub>factor</sub> * 256)
+</p>
+
+<p>
+Экстремальные значения для регистра OCR0A представляют особые случаи при
+генерации выходного сигнала ШИМ в режиме <code>FastPWN</code>. Если значение OCR0A
+установлено равным <code>BOTTOM</code>, выходной сигнал будет иметь узкий пик каждый
+MAX + 1 цикл таймера. Установка <code>OCR0A</code> равной <code>MAX</code> приведет к постоянно
+высокому или низкому выходу (в зависимости от полярности выхода,
+установленной COM0A1:0 битами)
+</p>
+
+<p>
+Частотный (с коэффициентом заполнения 50%) выходной сигнал в режиме
+FastPWM может быть достигнут путем настройки <code>OC0x</code> на переключение
+своего логического уровня при каждом сопоставлении сравнения (<code>COM0x1:0</code>
+= <code>1</code>). Сгенерированная форма сигнала будет иметь максимальную частоту
+f=clk/2, когда OCR0A=0. Эта функция аналогична переключению <code>OC0A</code> в
+режиме <code>CTC</code>, за исключением того, что двойная буферизация
+Output-Compare-unit включена в режиме FastPWM.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org7c12c1d" class="outline-4">
+<h4 id="org7c12c1d">Phase Correct PWM Mode</h4>
+<div class="outline-text-4" id="text-org7c12c1d">
+<p>
+В режиме <code>Phase-Correct-PWM</code> счетчик увеличивается до тех пор, пока
+значение счетчика не совпадет с <code>TOP</code>.  Когда счетчик достигает <code>TOP</code>, он
+меняет направление счета. Значение <code>TCNTn</code> будет равно <code>TOP</code> за один
+период таймера. <code>TOP</code> можно определить как <code>0xFF</code> (<code>WGM2:0</code> = <code>1</code>) или
+<code>OCR0A</code> (<code>WGM2:0</code> = <code>5</code>).
+</p>
+
+<p>
+В неинвертирующем <code>Compare-Output-Mode</code> пин <code>Output-Compare</code> (<code>OCnx</code>)
+обнуляется на совпадениии между <code>TCNTn</code> и <code>OCRnx</code> при счете вверх и
+устанавливается в единицу на совпадении при счете вниз. В инвертируещем -
+наоборот.
+</p>
+
+<p>
+Работа "в обе стороны" имеет более низкую максимальную рабочую частоту,
+чем "в одну сторону". Однако из-за симметрии двухшаговых режимов ШИМ, эти
+режимы предпочтительны для приложений управления двигателями.
+</p>
+
+<p>
+Флаг <code>Timer/Counter Overflow Flag</code> (<code>TOVn</code>) устанавливается каждый раз,
+когда счетчик достигает <code>BOTTOM</code>. Этот флаг может использоваться для
+генерирования прерывания каждый раз, когда это происходит.
+</p>
+
+<p>
+Также как и для режима <code>FastPWM</code> установка битов <code>COM0x1:0</code> = <code>2</code>
+приведет к получению неинвертированного PWM, а инвертированный вывод
+можно получить установив <code>COM0x1:0</code> = <code>3</code>. Установка битов <code>COM0A1:0</code> =
+<code>1</code> позволяет пину <code>AC0A</code> переключаться при совпадении, если установлен
+бит <code>WGM02</code>. Эта опция недоступна для пина <code>OC0B</code>. Фактическое значение
+<code>OC0x</code> будет видно только на выводе порта, если направление данных для
+вывода порта установлено в output.
+</p>
+
+<p>
+Частота ШИМ для выхода может быть рассчитана по следующему уравнению:
+</p>
+
+<p>
+f = f<sub>clk</sub> / (scale<sub>factor</sub> * 510)
+</p>
+
+<p>
+Экстремальные значения для регистра <code>OCR0A</code> представляют собой особые
+случаи при генерации выходного сигнала ШИМ в режиме <code>Phase Correct PWM
+Mode</code>. Если <code>OCR0A</code> установлен равным <code>BOTTOM</code>, выход будет постоянно
+низким, а если установлен равным <code>MAX</code>, выход будет постоянно высоким для
+неинвертированного режима. Для инвертированного выход будет иметь
+противоположные логические значения.
+</p>
+
+<p>
+В самом начале периода <code>OCn</code> имеет переход от высокого к низкому уровню,
+даже если нет сравнения совпадений. Смысл этого перехода состоит в том,
+чтобы гарантировать симметрию вокруг BOTTOM. Есть два случая, которые
+дают переход без сравнения совпадений:
+</p>
+<ul class="org-ul">
+<li><code>OCR0A</code> меняет свое значение с <code>MAX</code>. Когда значение <code>OCR0A</code> равно
+<code>MAX</code>, значение вывода <code>OCn</code> совпадает с результатом сравнения при
+обратном отсчете. Чтобы обеспечить симметрию вокруг <code>BOTTOM</code>, значение
+<code>OCn</code> в MAX должно соответствовать результату повышающего сравнения.</li>
+<li>Таймер начинает отсчет со значения, превышающего значение в <code>OCR0A</code>, и по
+этой причине пропускает сравнения и, следовательно, изменение <code>OCn</code>,
+которое могло бы произойти по пути вверх.</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgde90322" class="outline-3">
+<h3 id="orgde90322">Регистры управления таймером</h3>
+<div class="outline-text-3" id="text-orgde90322">
+<p>
+Мы рассмотрим регистры управления на примере таймера-0, который часто
+используется и имеет 8 разрядов. 16-разрядный таймер незначительно
+отличается, но имеет большую сложность, которой можно избежать на первом
+этапе.
+</p>
+</div>
+
+<div id="outline-container-org90967a4" class="outline-4">
+<h4 id="org90967a4">TCCR0A – Timer/Counter Control Register A</h4>
+<div class="outline-text-4" id="text-org90967a4">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">COM0A1</td>
+<td class="org-right">COM0A0</td>
+<td class="org-right">COM0B1</td>
+<td class="org-right">COM0B0</td>
+<td class="org-right">–</td>
+<td class="org-right">–</td>
+<td class="org-right">WGM01</td>
+<td class="org-right">WGM00</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul">
+<li><a id="org36c5549"></a>Bits 7:6 – COM0A1:0: Compare Match Output A Mode<br>
+<div class="outline-text-5" id="text-org36c5549">
+<p>
+Эти биты управляют поведением пина Compare-Match-Output <code>OC0A</code>. Если хотя
+бы один из них установлен, выход OC0A переопределяет нормальную
+функциональность порта пина ввода-вывода, к которому он подключен. Однако
+это будет заметно только если соответствующий бит в DDR включит этот пин
+на <code>выход</code>.
+</p>
+
+<p>
+Когда <code>OC0A</code> подключен к пину, функции рассматриваемых битов <code>7:6</code>
+зависят от установки битов <code>WGM02:0</code>.
+</p>
+
+<p>
+Таблица ниже показывает функциональность битов <code>7:6</code> когда <code>WGM02:0</code>
+выставлены в <code>Normal</code> или <code>CTC</code> (но не в <code>FastPWM</code> или
+<code>Phase-Correct-PWM</code>, о которых будет ниже еще две таблицы).
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">COM0A1</th>
+<th scope="col" class="org-right">COM0A0</th>
+<th scope="col" class="org-left">Описание</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">OC0A работает как порт в обычном режиме</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">Переключить OCOA когда произойдет match</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">Очистить OCOA когда произойдет match</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Установить OCOA когда произойдет match</td>
+</tr>
+</tbody>
+</table>
+
+
+<p>
+Если же биты <code>WGM02:0</code> задают режим <code>FastPWM</code>, то функциональность будет
+такой:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">COM0A1</th>
+<th scope="col" class="org-right">COM0A0</th>
+<th scope="col" class="org-left">Описание</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">OC0A disconnected</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">WGM02 = 0: Normal Port Operation, OC0A Disconnected</td>
+</tr>
+
+<tr>
+<td class="org-right">&#xa0;</td>
+<td class="org-right">&#xa0;</td>
+<td class="org-left">WGM02 = 1: Toggle OC0A on Compare Match</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">Clear OC0A on Compare Match, set OC0A at TOP</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Set OC0A on Compare Match, clear OC0A at TOP</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Особый случай возникает когда <code>OCR0A</code> равен TOP и <code>COM0A1</code> установлен. В
+этом случае Compare-Match игнорируется но установка и очистка делается
+когда значение счетчика становится равным TOP.
+</p>
+
+<p>
+Наконец, когда биты <code>WGM02:0</code> задают режим <code>Phase-Correct-PWM</code>:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">COM0A1</th>
+<th scope="col" class="org-right">COM0A0</th>
+<th scope="col" class="org-left">Описание</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">OC0A disconnected</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">WGM02 = 0: Normal Port Operation, OC0A Disconnected</td>
+</tr>
+
+<tr>
+<td class="org-right">&#xa0;</td>
+<td class="org-right">&#xa0;</td>
+<td class="org-left">WGM02 = 1: Toggle OC0A on Compare Match</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">Clear OC0A on Compare Match when up-counting</td>
+</tr>
+
+<tr>
+<td class="org-right">&#xa0;</td>
+<td class="org-right">&#xa0;</td>
+<td class="org-left">Set OC0A on Compare Match when down-counting</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Set OC0A on Compare Match when up-counting</td>
+</tr>
+
+<tr>
+<td class="org-right">&#xa0;</td>
+<td class="org-right">&#xa0;</td>
+<td class="org-left">Clear OC0A on Compare Match when down-counting</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+1:0 - прямой ШИМ (сброс при совпадении и установка при обнулении счета)
+1:1 - обратный ШИМ (сброс при обнулении и установка при совпадении)
+</p>
+</div>
+</li>
+
+<li><a id="org2bfdf01"></a>Bits 5:4 – COM0B1:0: Compare Match Output B Mode<br>
+<div class="outline-text-5" id="text-org2bfdf01">
+<p>
+То же самое но для вывода <code>OC0B</code> за исключением одного нюанса:
+</p>
+
+<p>
+в <code>Fast-PWM</code> если биты COM0B1:COM0B1 заданы как "0:1", то это установка ни
+к чему не приведет (в таблице указано что это зарезервированное
+значение). Аналогия действует и для <code>Phase-Correct-PWM</code>.
+</p>
+</div>
+</li>
+
+<li><a id="org0e436f3"></a>Bits 3, 2 – Res: Reserved Bits<br></li>
+<li><a id="orgc7b9617"></a>Bits 1:0 – WGM01:0: Waveform Generation Mode<br>
+<div class="outline-text-5" id="text-orgc7b9617">
+<p>
+В сочетании с битом <code>WGM02</code>, из регистра <code>TCCR0B</code>, эти биты управляют:
+</p>
+<ul class="org-ul">
+<li>последовательностью подсчета счетчика,</li>
+<li>источником максимального значения (TOP) счетчика и</li>
+<li>типом генерируемого сигнала, который будет использоваться</li>
+</ul>
+
+<table id="orga253bce">
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+
+<col  class="org-left">
+
+<col  class="org-left">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">WGM2</th>
+<th scope="col" class="org-right">WGM1</th>
+<th scope="col" class="org-right">WGM0</th>
+<th scope="col" class="org-left">Mode</th>
+<th scope="col" class="org-left">TOP</th>
+<th scope="col" class="org-left">Update of OCRx</th>
+<th scope="col" class="org-left">TOV Flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">Normal</td>
+<td class="org-left">0xFF</td>
+<td class="org-left">Immediate</td>
+<td class="org-left">MAX</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">PWM, PC</td>
+<td class="org-left">0xFF</td>
+<td class="org-left">TOP</td>
+<td class="org-left">BOTTOM</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">CTC</td>
+<td class="org-left">OCR0A</td>
+<td class="org-left">Immediate</td>
+<td class="org-left">MAX</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Fast PWM</td>
+<td class="org-left">0xFF</td>
+<td class="org-left">TOP</td>
+<td class="org-left">MAX</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">Reserved</td>
+<td class="org-left">–</td>
+<td class="org-left">–</td>
+<td class="org-left">–</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">PWM, PC</td>
+<td class="org-left">OCR0A</td>
+<td class="org-left">TOP</td>
+<td class="org-left">BOTTOM</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">Reserved</td>
+<td class="org-left">–</td>
+<td class="org-left">–</td>
+<td class="org-left">–</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Fast PWM</td>
+<td class="org-left">OCR0A</td>
+<td class="org-left">TOP</td>
+<td class="org-left">TOP</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+PC = Phase Correct
+MAX = 0xFF
+BOTTOM = 0x00
+</p>
+</div>
+</li>
+</ul>
+</div>
+
+<div id="outline-container-org687f549" class="outline-4">
+<h4 id="org687f549">TCCR0B Timer/Counter Control Register B</h4>
+<div class="outline-text-4" id="text-org687f549">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">FOC0A</td>
+<td class="org-right">FOC0B</td>
+<td class="org-right">–</td>
+<td class="org-right">–</td>
+<td class="org-right">WGM02</td>
+<td class="org-right">CS02</td>
+<td class="org-right">CS01</td>
+<td class="org-right">CS00</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul">
+<li><a id="org7f360e7"></a>Bit 7 – FOC0A: Force Output Compare A<br>
+<div class="outline-text-5" id="text-org7f360e7">
+<p>
+Бит активен только когда WGM-биты задают не-PWM режим. В PWM-режиме
+должен быть сброшен в ноль, по соображениям совместимости.
+</p>
+
+<p>
+Когда в него записывается логическая единица, немедленно вызывается
+<code>Compare-Match</code> в <code>Waveform-Generation-Unit</code>. Пин <code>OC0A</code> переключается в
+соответствии с настройкой в битах <code>COM0A1:0</code>. NB: Бит <code>FOC0A</code> реализован
+как строб. Поэтому именно значение, присутствующее в битах <code>COM0A1:0</code>
+определяет эффект Force-Output-Compare.
+</p>
+
+<p>
+Строб <code>F0C0A</code> не будет генерировать никаких прерываний и не будет очищать
+таймер в режиме <code>CTC</code> используя <code>OCR0A</code> как TOP.
+</p>
+
+<p>
+Бит <code>FOC0A</code> всегда читается как ноль.
+</p>
+</div>
+</li>
+
+<li><a id="org0309973"></a>Bit 6 – FOC0B: Force Output Compare B<br>
+<div class="outline-text-5" id="text-org0309973">
+<p>
+Аналогично предыдущему
+</p>
+</div>
+</li>
+
+<li><a id="org0a3502b"></a>Bits 5:4 – Res: Reserved Bits<br>
+<div class="outline-text-5" id="text-org0a3502b">
+<p>
+Reserved
+</p>
+</div>
+</li>
+
+<li><a id="orgf882d89"></a>Bit 3 – WGM02: Waveform Generation Mode<br>
+<div class="outline-text-5" id="text-orgf882d89">
+<p>
+Этот бит является частью WGM-битов, которые детально описаны в таблице
+<code>wgm_tbl</code> в разделе <a href="#org90967a4">TCCR0A – Timer/Counter Control Register A</a>
+</p>
+</div>
+</li>
+
+<li><a id="orga158141"></a>Bits 2:0 – CS02:0: Clock Select<br>
+<div class="outline-text-5" id="text-orga158141">
+<p>
+Эти биты управляют предделителем частоты таймера:
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">CS02</th>
+<th scope="col" class="org-right">CS01</th>
+<th scope="col" class="org-right">CS00</th>
+<th scope="col" class="org-left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">No clock source (Timer/Counter stopped)</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">clk I/O /(No prescaling)</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">clk I/O /8 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">clk I/O /64 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">clk I/O /256 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">clk I/O /1024 (From prescaler)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">External clock source on T0 pin on falling edge.</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">External clock source on T0 pin on rising edge.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</li>
+</ul>
+</div>
+
+<div id="outline-container-org3e45e98" class="outline-4">
+<h4 id="org3e45e98">OCR0A и OCR0B</h4>
+<div class="outline-text-4" id="text-org3e45e98">
+<p>
+Содержит 8-бит значения, которое постоянно сравнивается со значением в
+регистре счетчика (<code>TCNT0</code>). Совпадение может использоваться для
+генерации прерывания или генерировать выходной сигнал на пине <code>OCOA</code>.
+</p>
+
+<p>
+<code>OCR0B</code> полностью аналогичен для пина <code>OCOB</code>.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgefbc4ec" class="outline-4">
+<h4 id="orgefbc4ec">TIMSK – Timer/Counter Interrupt Mask Register</h4>
+<div class="outline-text-4" id="text-orgefbc4ec">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">TOIE1</td>
+<td class="org-right">OCIE1A</td>
+<td class="org-right">OCIE1B</td>
+<td class="org-right">–</td>
+<td class="org-right">ICIE1</td>
+<td class="org-right">OCIE0B</td>
+<td class="org-right">TOIE0</td>
+<td class="org-right">OCIE0A</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul">
+<li><a id="orgb3c03ff"></a>Bit 0 – OCIE0A: Timer/Counter0 Output Compare Match A Interrupt Enable<br>
+<div class="outline-text-5" id="text-orgb3c03ff">
+<p>
+Когда бит OCIE0A установлен в единицу, и бит <code>I</code> в <code>Status-Register</code>
+установлен, разрешается прерывание <code>Compare-Match</code>.
+</p>
+
+<p>
+Оно возникает, если происходит совпадение значения счетчика таймера,
+т.е. когда бит <code>OCF0A</code> установлен в <code>TIFR</code>. 8-битный компаратор
+непрерывно сравнивает <code>TCNT0</code> с <code>Output-Compare-Register</code> (<code>OCR0A</code> и
+<code>OCR0B</code>). Всякий раз, когда <code>TCNT0</code> равен <code>OCR0A</code> или <code>OCR0B</code>, компаратор
+сигнализирует о совпадении.
+</p>
+
+<p>
+Совпадение установит <code>Output-Compare-Flag</code> (<code>OCF0A</code> или <code>OCF0B</code>) в
+следующем тактовом цикле таймера. Если соответствующее прерывание
+включено, <code>Output-Compare-Flag</code> генерирует прерывание
+<code>Output-Compare-interrupt</code>.  <code>Output-Compare-Flag</code> автоматически
+сбрасывается при выполнении прерывания.
+</p>
+</div>
+</li>
+
+<li><a id="org83ff927"></a>Bit 1 – TOIE0: Timer/Counter0 Overflow Interrupt Enable<br>
+<div class="outline-text-5" id="text-org83ff927">
+<p>
+Когда бит <code>TOIE0</code> установлен и бит <code>I</code> в <code>Status-Register</code> установлен,
+прерывание <code>Timer/Counter0-Overflow</code> разрешается.
+</p>
+
+<p>
+Соответствующее прерывание выполняется, если происходит переполнение
+счетчика таймера, то есть когда бит <code>TOV0</code> установлен в регистре флагов
+таймера (<code>TIFR</code>).  В режиме <code>Normal</code> <code>TOV0</code> будет установлен в том же
+тактовом цикле таймера, когда <code>TCNT0</code> становится равным нулю.
+</p>
+</div>
+</li>
+
+<li><a id="orgb6f52cb"></a>Bit 2 – OCIE0B: Timer/Counter0 Output Compare Match B Interrupt Enable<br>
+<div class="outline-text-5" id="text-orgb6f52cb">
+<p>
+Полностью аналогично биту OCIE0A но для прерывания
+<code>Timer-Counter-Compare-Match-B</code>
+</p>
+</div>
+</li>
+
+<li><a id="org451f3bb"></a>Bit 3 – ICIE1: Timer/Counter1, Input Capture Interrupt Enable<br>
+<div class="outline-text-5" id="text-org451f3bb">
+<p>
+Когда этот бит установлен в единицу и установлен флаг <code>I</code> в
+<code>Status-Register</code> прерывание <code>Timer/Counter1--Input-Capture-interrupt</code>
+разрешено.
+</p>
+
+<p>
+Соответствующий вектор прерывания выполняется, если установлен
+флаг <code>ICF1</code>, расположенный в <code>TIFR</code>.
+</p>
+</div>
+</li>
+
+<li><a id="org863a7e7"></a>Bit 4 – Res: Reserved Bit<br></li>
+
+<li><a id="org1f0f4e2"></a>Bit 5 – OCIE1B: Timer/Counter1, Output Compare B Match Interrupt Enable<br>
+<div class="outline-text-5" id="text-org1f0f4e2">
+<p>
+Аналог <code>OCIE0B</code>
+</p>
+</div>
+</li>
+
+<li><a id="org30db448"></a>Bit 7 – TOIE1: Timer/Counter1, Overflow Interrupt Enable<br>
+<div class="outline-text-5" id="text-org30db448">
+<p>
+Аналог <code>TOIE0</code>
+</p>
+</div>
+</li>
+</ul>
+</div>
+
+<div id="outline-container-orgc218c73" class="outline-4">
+<h4 id="orgc218c73">TIFR – Timer/Counter Interrupt Flag Register</h4>
+<div class="outline-text-4" id="text-orgc218c73">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">TOV1</td>
+<td class="org-right">OCF1A</td>
+<td class="org-right">OCF1B</td>
+<td class="org-right">–</td>
+<td class="org-right">ICF1</td>
+<td class="org-right">OCF0B</td>
+<td class="org-right">TOV0</td>
+<td class="org-right">OCF0A</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<ul class="org-ul">
+<li><a id="org647c79c"></a>Bit 0 – OCF0A: Output Compare Flag 0 A<br>
+<div class="outline-text-5" id="text-org647c79c">
+<p>
+Бит <code>OCF0A</code> устанавливается, когда происходит <code>Compare-Match</code>
+между <code>Timer/Counter0</code> и содержимым <code>OCR0A</code>.
+</p>
+
+<p>
+Он сбрасывается аппаратно при выполнении соответствующего
+вектора обработки прерываний (или можно вручную).
+</p>
+
+<p>
+Когда бит <code>I</code> в <code>Status-Register</code>, <code>OCIE0A</code>
+(<code>Timer/Counter0-Compare-Match-Interrupt-Enable</code>), и <code>OCF0A</code> установлены,
+выполняется прерывание <code>Timer/Counter0-Compare-Match-Interrupt</code>.
+</p>
+</div>
+</li>
+
+<li><a id="orga88972a"></a>Bit 1 – TOV0: Timer/Counter0 Overflow Flag<br>
+<div class="outline-text-5" id="text-orga88972a">
+<p>
+Бит <code>TOV0</code> устанавливается при переполнении <code>Timer/Counter0</code>. <code>TOV0</code>
+очищается аппаратно при выполнении соответствующего вектора обработки
+прерываний (или вручную). Когда бит <code>I</code> в <code>Status-Register</code>, <code>TOIE0</code>
+(<code>Timer/Counter0-Overflow-Interrupt-Enable</code>) и <code>TOV0</code> установлены,
+выполняется прерывание <code>Timer/Counter0-Overflow-interrupt</code>
+</p>
+</div>
+</li>
+
+<li><a id="orge394fe7"></a>Bit 2 – OCF0B: Output Compare Flag 0 B<br>
+<div class="outline-text-5" id="text-orge394fe7">
+<p>
+Аналог <code>OCF0A</code>
+</p>
+</div>
+</li>
+
+<li><a id="org93b7ee4"></a>Bit 3 - Input Capture Flag<br>
+<div class="outline-text-5" id="text-org93b7ee4">
+<p>
+Когда происходит изменение логического уровня (событие) на выводе
+<code>Input-Capture-pin</code> (<code>ICP1</code>) или на выходе аналогового компаратора
+<code>Analog-Comparator-output</code> (<code>ACO</code>), и это изменение подтверждается
+настройкой детектора фронта, захват будет инициирован.
+</p>
+
+<p>
+Когда происходит захват, 16-битное значение счетчика (<code>TCNT1</code>) записывается
+в регистр ввода ввода (<code>ICR1</code>).
+</p>
+
+<p>
+<code>Input-Capture-Flag</code> (<code>ICF1</code>) устанавливается в том же такте что и значение
+<code>TCNT1</code>, которое копируется в регистр <code>ICR1</code>.
+</p>
+
+<p>
+Если включено (ICIE1=1), <code>Input-Capture-Flag</code> генерирует прерывание
+<code>Input-Capture-interrupt</code>.
+</p>
+
+<p>
+Флаг <code>ICF1</code> автоматически сбрасывается при выполнении прерывания, и может
+быть сброшен программно
+</p>
+</div>
+</li>
+
+<li><a id="org0a7b441"></a>Bit 4 – Res: Reserved Bit<br></li>
+
+<li><a id="org52d3f4e"></a>Bits 5-6: OCF1A и OCF1B<br>
+<div class="outline-text-5" id="text-org52d3f4e">
+<p>
+см аналог <code>OCF0A</code>
+</p>
+</div>
+</li>
+
+<li><a id="orgad1600e"></a>Bit 7: TOV1<br>
+<div class="outline-text-5" id="text-orgad1600e">
+<p>
+см аналог <code>TOV0</code>
+</p>
+</div>
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org37411e3" class="outline-3">
+<h3 id="org37411e3">Настройка таймера-1 (16-bit) в Fast PWM</h3>
+<div class="outline-text-3" id="text-org37411e3">
+<p>
+Для управления сервомашинкой мы воспользуемся таймером-1. Так как он
+16-разрядный - мы должны использовать специальную процедуру доступа к
+16-битным регистрам по 8-битной шине.
+</p>
+
+<p>
+Записывать следует сначала старший байт, потом младший.
+</p>
+
+<p>
+Считывать следует сначала младший байт, потом старший
+</p>
+
+<p>
+Если процедуры обработки прерываний могут осуществлять доступ к этим
+регистрам, то на время чтения/записи прерывания следует отключать.
+</p>
+
+<p>
+Если запись выполняется в более чем один 16-разрядный регистр за раз и
+при этом старший байт одинаков для всех записываемых регистров, то
+старший байт можно записать только один раз.
+</p>
+</div>
+
+<div id="outline-container-org53085fd" class="outline-4">
+<h4 id="org53085fd">TCCR1A</h4>
+<div class="outline-text-4" id="text-org53085fd">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">COM1A1</td>
+<td class="org-right">COM1A0</td>
+<td class="org-right">COM1B1</td>
+<td class="org-right">COM1B0</td>
+<td class="org-right">–</td>
+<td class="org-right">–</td>
+<td class="org-right">WGM11</td>
+<td class="org-right">WGM10</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Для режима <code>FastPWM</code>, в котором TOP задается регистром сравнения <code>ICR1</code>,
+биты WGM должны быть установлены как <code>1110</code> (надо не забыть что биты
+<code>WGM12:WGM13</code> находятся в следующем регистре - <code>TCR1B</code>).
+</p>
+
+<p>
+Мы хотим использовать внешний пин <code>OC1A</code> (надо не забыть включить его в
+DDR - он соответствует <code>PB3</code> 15-ой ножке микроконтроллера). Мы хотим,
+чтобы он включался при переходе через TOP и выключался по достижении
+значения в регистре сравнения <code>OCR1A</code>. Это соответствует значениям
+<code>COM1A1:COM1A0</code> равным <code>1:0</code> (прямой PWM).
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm">;; Fast PWM с очисткой по достижении значения регистра сравнения
+;; WGM = 1110
+ldi     tmp0, 0b10000010
+out     TCCR1A, tmp0
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgb600faa" class="outline-4">
+<h4 id="orgb600faa">TCCR1B</h4>
+<div class="outline-text-4" id="text-orgb600faa">
+<p>
+Регистр <code>TCCR1B</code> отличается от ранее рассмотренного <code>TCCR0B</code> тем, что
+4-ый бит теперь не Reserved, а 7 и 6 биты отвечают за захват ввода:
+</p>
+
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">ICNC1</td>
+<td class="org-right">ICES1</td>
+<td class="org-right">–</td>
+<td class="org-right">WGM13</td>
+<td class="org-right">WGM12</td>
+<td class="org-right">CS12</td>
+<td class="org-right">CS11</td>
+<td class="org-right">CS10</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+
+<ul class="org-ul">
+<li><a id="org667b6e5"></a>Bit 7 – ICNC1: Input Capture Noise Canceler.<br>
+<div class="outline-text-5" id="text-org667b6e5">
+<p>
+Установка этого бита в лог. 1 активирует входной подавитель шума, при
+этом будет фильтроваться входной сигнал <code>Input Capture Pin</code>
+(<code>ICP1</code>). Функция фильтрации требует 4 последовательных одинаковых
+значений, поступивших на вывод <code>ICP1</code>, чтобы было зарегистрировано
+изменение уровня сигнала. Таким образом, захват входных импульсов (Input
+Capture) будет задержан на 4 такта генератора микроконтроллера, когда
+возможность фильтрации разрешена.
+</p>
+</div>
+</li>
+
+<li><a id="org5d9aa15"></a>Bit 6 – ICES1: Input Capture Edge Select.<br>
+<div class="outline-text-5" id="text-org5d9aa15">
+<p>
+Этот бит выбирает тип среза (фронт или спад) на входе <code>ICP1</code>, который
+вызовет событие захвата импульса. Когда в <code>ICES1</code> записан <code>0</code>, то спад
+вызовет срабатывание триггера, и когда в <code>ICES1</code> записан 1, срабатывание
+триггера вызовет уже фронт сигнала.
+</p>
+
+<p>
+Когда срабатывает триггер захвата события по входу в соответствии с
+установкой <code>ICES1</code>, значение счетчика (<code>TCNT1</code>, регистры <code>TCNT1H</code> и
+<code>TCNT1L</code>) копируется в регистр захвата <code>Input-Capture-Register</code>
+(<code>ICR1</code>). Событие также вызовет установку флага <code>Input-Capture-Flag</code>
+(<code>ICF1</code>), и это может использоваться для срабатывания прерывания
+<code>Input-Capture-Interrupt</code>, если оно разрешено.
+</p>
+
+<p>
+Так как мы не используем захват ввода, то оставляем биты <code>ICNC1</code> и
+<code>ICES1</code> нулевыми.
+</p>
+</div>
+</li>
+
+<li><a id="orgea2dedd"></a>Bit 2:0 – CS12:10: Clock Select.<br>
+<div class="outline-text-5" id="text-orgea2dedd">
+<p>
+Эти 3 бита задают источник тактового сигнала для счетчика.
+</p>
+
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-left">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">CS12</th>
+<th scope="col" class="org-right">CS11</th>
+<th scope="col" class="org-right">CS10</th>
+<th scope="col" class="org-left">Описание</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">Источник тактов не задан (таймер остановлен).</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">clkI/O (без делителя частоты)</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">clkI/O / 8 (с выхода делителя)</td>
+</tr>
+
+<tr>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">clkI/O / 64 (с выхода делителя)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">0</td>
+<td class="org-left">clkI/O / 256 (с выхода делителя)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-right">1</td>
+<td class="org-left">clkI/O / 1024 (с выхода делителя)</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">0</td>
+<td class="org-left">Внешний сигнал на входе T1 по спаду</td>
+</tr>
+
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-right">1</td>
+<td class="org-left">Внешний сигнал на входе T1 по фронту</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+Для подсчета импульсов (НЕ наш случай) на входе <code>T1</code> можно выбрать
+последние 2 варианта в таблице. Если для подсчета выбрана ножка <code>T1</code>,
+Импульсы будут подсчитываться даже тогда, когда порт T1 настроен как
+выход. Эта возможность позволяет программно управлять счетом.
+</p>
+
+<p>
+Для наших целей нам нужно только настроить частоту.
+</p>
+
+<p>
+Частота внутреннего генератора Attiny2313 - <code>8MHz</code>, т.е. 8.000.000 Герц.
+</p>
+
+<p>
+По-умолчанию, также может быть включен FUSE-бит делителя частоты на 8
+[CKDIV8], это видно из вывода avrdude в момент прошивки:
+</p>
+
+<pre class="example">
+avrdude: safemode: lfuse reads as 64
+avrdude: safemode: hfuse reads as DF
+avrdude: safemode: efuse reads as FF
+</pre>
+
+<p>
+Бит <code>CKDIV8</code> - это 7-ой бит lfuse, который у нас равен 0x64=0b1100100 и
+мы видим что он равен единице. Это значит что он НЕ установлен. Если бы
+он был равен нулю, микроконтроллер работал бы на частоте 1Mhz.
+</p>
+
+<p>
+NB: Возможно я ошибаюсь, и микроконтроллер как раз и работает на 1Mhz.
+</p>
+
+<p>
+Мы включим предделитель на 8 (0x010) и заполним оставшиеся WGM-биты
+(<code>единицами</code>). А потом закинем значение TOP в <code>ICR1</code>.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm">;; Выставляем предделитель
+ldi     tmp0, 0b00011010
+out     TCCR1B, tmp0
+;; Частота ШИМ считается как:
+;; Fpwm = Fcpu / (N*(1+TOP)) = 1000000 / (8*(1+2499)) = 50 Гц
+.equ ICR_VAL, 2499
+ldi     tmp0, hi8(ICR_VAL)
+out     ICR1H, tmp0
+ldi     tmp0, lo8(ICR_VAL)
+out     ICR1L, tmp0
+</pre>
+</div>
+</div>
+</li>
+</ul>
+</div>
+
+<div id="outline-container-orgd153afc" class="outline-4">
+<h4 id="orgd153afc">TCCR1C</h4>
+<div class="outline-text-4" id="text-orgd153afc">
+<p>
+Не требует изменений
+</p>
+</div>
+</div>
+
+<div id="outline-container-org9337ca7" class="outline-4">
+<h4 id="org9337ca7">TCNT1H и TCNT1L</h4>
+<div class="outline-text-4" id="text-org9337ca7">
+<p>
+Не требует изменений
+</p>
+</div>
+</div>
+
+<div id="outline-container-org2707d1c" class="outline-4">
+<h4 id="org2707d1c">OCR1AH и OCR1AL а также OCR1BH и OCR1BL</h4>
+<div class="outline-text-4" id="text-org2707d1c">
+<div class="org-src-container">
+<pre class="src src-asm">; Устанавливаем начальный коэффициент заполнения - 50%
+.equ PWM_MIN, 75
+.equ PWM_MIDDLE, 165
+.equ PWM_MAX, 300
+LDI 	tmp0, hi8(PWM_MIN)
+OUT 	OCR1AH, tmp0
+LDI 	tmp0, lo8(PWM_MIN)
+OUT 	OCR1AL, tmp0
+  ; Обнуление счетчика таймера 1
+  OUT 	TCNT1H, r0
+  OUT 	TCNT1L, r0
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org8a2e11d" class="outline-4">
+<h4 id="org8a2e11d">ICR1H and ICR1L – Input Capture Register 1</h4>
+<div class="outline-text-4" id="text-org8a2e11d">
+<p>
+Не требует изменений
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgb5fe1fb" class="outline-4">
+<h4 id="orgb5fe1fb">TIFR</h4>
+<div class="outline-text-4" id="text-orgb5fe1fb">
+<p>
+Не требует изменений
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org38b46c0" class="outline-3">
+<h3 id="org38b46c0">Настройка прерываний таймеров</h3>
+<div class="outline-text-3" id="text-org38b46c0">
+<table>
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">7</th>
+<th scope="col" class="org-right">6</th>
+<th scope="col" class="org-right">5</th>
+<th scope="col" class="org-right">4</th>
+<th scope="col" class="org-right">3</th>
+<th scope="col" class="org-right">2</th>
+<th scope="col" class="org-right">1</th>
+<th scope="col" class="org-right">0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">TOIE1</td>
+<td class="org-right">OCIE1A</td>
+<td class="org-right">OCIE1B</td>
+<td class="org-right">–</td>
+<td class="org-right">ICIE1</td>
+<td class="org-right">OCIE0B</td>
+<td class="org-right">TOIE0</td>
+<td class="org-right">OCIE0A</td>
+</tr>
+</tbody>
+</table>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="org1a4f35f">;; TOEI1(ovfl-1) &amp; OCIE0A(cmpA-0)
+ldi     tmp0, 0b00000000
+out     TIMSK, tmp0
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org34e9e92" class="outline-2">
+<h2 id="org34e9e92">Вектора прерываний</h2>
+<div class="outline-text-2" id="text-org34e9e92">
+<div class="org-src-container">
+<pre class="src src-asm" id="org1584858">rjmp    _reset              ; Reset Handler
+rjmp    _infloop            ; External Interrupt0 Handler
+rjmp    _infloop            ; External Interrupt1 Handler
+rjmp    _infloop            ; Timer1 Capture Handler
+rjmp    _infloop            ; Timer1 CompareA Handler
+rjmp    _infloop            ; Timer1 Overflow Handler
+rjmp    _infloop            ; Timer0 Overflow Handler
+rjmp    _infloop            ; USART0 RX Complete Handler
+rjmp    _infloop            ; USART0,UDR Empty Handler
+rjmp    _infloop            ; USART0 TX Complete Handler
+rjmp    _infloop            ; Analog Comparator Handler
+rjmp    _infloop            ; Pin Change Interrupt
+rjmp    _infloop            ; Timer1 Compare B Handler
+rjmp    _infloop            ; Timer0 Compare A Handler
+rjmp    _infloop            ; Timer0 Compare B Handler
+rjmp    _infloop            ; USI Start Handler
+rjmp    _infloop            ; USI Overflow Handler
+rjmp    _infloop            ; EEPROM Ready Handler
+rjmp    _infloop            ; Watchdog Overflow Handler
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org597f3c3" class="outline-2">
+<h2 id="org597f3c3">Инициализация</h2>
+<div class="outline-text-2" id="text-org597f3c3">
+<p>
+До окончания инициализации прерывания должны быть запрещены:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="org70fc924">_init:
+    ;; Выделяем регистр r0 под значение нуля и r1 под значение единицы
+    clr     r0
+    mov     r1, r0
+    inc     r1
+
+    ;; Запретить прерывания
+    out     SREG, r0
+
+    ;; Настроить Stack
+    ldi     tmp0, RAMEND
+    out     SPL, tmp0
+
+    ;; Инициализируем выводы
+_init_pins:
+    ;; Настроить PB7:PB0 на выход
+    ;;              76543210
+    ldi     tmp0, 0b11111111
+    out     DDRB, tmp0
+    ;; Настроить на выход
+    ;; BLUE:pd1, WHITE:pd0,
+    ;; OUT-IP:pd4, OUT-PP:pd5
+    ;; OUT-PM:pd6
+    ;; остальные - на вход
+    ;;              76543210
+    ldi     tmp0, 0b01110011
+    out     DDRD, tmp0
+    ;; Настроить A1
+
+
+    ;; Инициализация таймера-1
+    ;; Fast PWM с очисткой по достижении значения регистра сравнения
+    ;; WGM = 1110
+    ldi     tmp0, 0b10000010
+    out     TCCR1A, tmp0
+    ;; Выставляем предделитель
+    ldi     tmp0, 0b00011010
+    out     TCCR1B, tmp0
+    ;; Частота ШИМ считается как:
+    ;; Fpwm = Fcpu / (N*(1+TOP)) = 1000000 / (8*(1+2499)) = 50 Гц
+    .equ ICR_VAL, 2499
+    ldi     tmp0, hi8(ICR_VAL)
+    out     ICR1H, tmp0
+    ldi     tmp0, lo8(ICR_VAL)
+    out     ICR1L, tmp0
+    ; Устанавливаем начальный коэффициент заполнения - 50%
+    .equ PWM_MIN, 75
+    .equ PWM_MIDDLE, 165
+    .equ PWM_MAX, 300
+    LDI 	tmp0, hi8(PWM_MIN)
+    OUT 	OCR1AH, tmp0
+    LDI 	tmp0, lo8(PWM_MIN)
+    OUT 	OCR1AL, tmp0
+      ; Обнуление счетчика таймера 1
+      OUT 	TCNT1H, r0
+      OUT 	TCNT1L, r0
+
+    ;; Инициализация таймера-0
+
+
+    ;; Настройка прерываний таймеров
+    ;; TOEI1(ovfl-1) &amp; OCIE0A(cmpA-0)
+    ldi     tmp0, 0b00000000
+    out     TIMSK, tmp0
+
+    ;; Начальное значение
+    ldi     freq, START_FREQ
+
+    ;; Разрешить прерывания
+    sei
+
+</pre>
+</div>
+
+<p>
+Первым делом настроим стек:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="orgac721ef">ldi     tmp0, RAMEND
+out     SPL, tmp0
+</pre>
+</div>
+
+<p>
+Потом настроим порты на вход и выход:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="orgd8044c0">_init_pins:
+    ;; Настроить PB7:PB0 на выход
+    ;;              76543210
+    ldi     tmp0, 0b11111111
+    out     DDRB, tmp0
+    ;; Настроить на выход
+    ;; BLUE:pd1, WHITE:pd0,
+    ;; OUT-IP:pd4, OUT-PP:pd5
+    ;; OUT-PM:pd6
+    ;; остальные - на вход
+    ;;              76543210
+    ldi     tmp0, 0b01110011
+    out     DDRD, tmp0
+    ;; Настроить A1
+
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org591672f" class="outline-2">
+<h2 id="org591672f">Мигание светодиодом</h2>
+<div class="outline-text-2" id="text-org591672f">
+<div class="org-src-container">
+<pre class="src src-asm" id="org9c96d44">_blink_green:
+    sbic    PORTB, 1
+    rjmp    _bg_clean
+    sbi     PORTB, 1
+_bg_ret:
+    ret
+_bg_clean:
+    cbi     PORTB, 1
+    rjmp    _bg_ret
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org00d2500" class="outline-2">
+<h2 id="org00d2500">Константы</h2>
+<div class="outline-text-2" id="text-org00d2500">
+<p>
+Нам нужны:
+</p>
+<ul class="org-ul">
+<li>минимум два временных регистра</li>
+<li>счетчик</li>
+</ul>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="org3a3c1e5">#define TRUE 1
+#define FALSE 0
+#define MAX 2
+#define result r16
+#define tmp0 r17
+#define tmp1 r18
+#define freq r19
+
+#defune FCPU 8000000
+#define ICR_MAX F_CPU/50
+#define OCR_MIN ICR_MAX/20
+#define OCR_MAX ICR_MAX/10
+#define OCR_CENTER (ICR_MAX/4/10)*3
+
+.equ DELAY_MAX, 0x0200
+.equ SIGNAL_TIME, 0x0010
+.equ START_FREQ, 0xAF
+.equ END_FREQ, 0x7F
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org8d9696d" class="outline-2">
+<h2 id="org8d9696d">Схема</h2>
+<div class="outline-text-2" id="text-org8d9696d">
+<pre class="example">
+                          +--------------------vcc---------------+-------------+
+                          |                                      |             |
+              +-------------------------+                        |             |
+              |           |             |                        |             |
+            +-------------------------+ |                        |             |
+            | |           |           | |   +-------OC1A-----------+           |
+          +-------------------------+ | |   |                    | |           |
+          | | | +------+  |         | | |   |                    | | +---------|-&gt;to_servo
+          v v v v      |  +--vcc--+ | | |   |                    | | |         |
+/=+=+=+=+=+=+=+=+=+=   |  |       | | | |   |                    | | |         +3,4-enable
+|     ^ ^ ^ ^ ^ ^  /   |  |       v v v v   v                    V V V         V
+|     | | | | | |  \   |  |   /===+=+=+=+=+=+=+=+=+=+===\    /===+=+=+=+=+=+=+=+===\
+| aref+ | | | | |  /   |  |   |   ^ ^ ^ ^               |    |   ^ ^ ^ ^ ^ ^ ^     |
+|    gnd+ | | | |  \   |  |   |   | | | |               |    |   | | | | | | |     |
+|     (13)+ | | |  /   |  |   |vcc+ | | |               |    |vcc+ | | | | | +3A   |
+|       (12)+ | |  \   |  |   |  sck+ | |               |    |   4A+ | | | +3Y     |
+|         (11)+ |  /   |  |   |   miso+ |               |    |     4Y+ | |         |
+|           (10)+  \   |  |   |     mosi+               |    |      gnd+ +gnd      |
+|                  /   |  |   |                         |    |                     |
+|                  \   |  |   |    --------------       |    |      -----          |
+|                  /   |  |   |    ATTINY2313A-PU       |    |      L293D          |
+|        (gnd)+    \   |  |   |    --------------       |    |      -----          |
+|      (gnd)+ |    /   |  |   |      IN-PM:pd3+         |    |                     |
+|     (5v)+ | |    \   |  |   |    IN-SP:pd2+ |         |    |                     |
+| (3.3v)+ | | |    /   |  |   |  IN-PP:pa0+ | |         |    |      gnd+ +gnd      |
+|reset+ | | | |    \   |  |   |IN-IP:pa1+ | | |         |    |         | |         |
+|     | | | | |    /   |  |   |         | | | |     +gnd|    |         | |         |
+|     v v v v v    \   |  |   |         | | | |     |   |    |         | |         |
+\=+=+=+=+=+=+=+=+=+=   |  |   |         V V V V     v   |    |         V V         |
+      ^   ^ ^ ^        |  |   \===+=+=+=+=+=+=+=+=+=+===/    \===+=+=+=+=+=+=+=+===/
+      |   | | |        |  |       ^                 ^            ^ ^ ^ ^ ^ ^ ^ ^
+      |   +------vcc------+       |                 |       1,2en+ | | | | | | +---pwr-vcc
+      |     | |        |    reset |                 |            1A+ | | | | +2A
+      +[10]-|-+        +----------+                 |              1Y+ | | +2Y
+       [uF] +------------------------------&gt;gnd-----+------------------+ +---------pwr-gnd
+</pre>
+</div>
+</div>
+
+<div id="outline-container-org02cbc48" class="outline-2">
+<h2 id="org02cbc48">Символические имена</h2>
+<div class="outline-text-2" id="text-org02cbc48">
+<p>
+Необходимые символические имена взяты из даташита
+<a href="attiny2313datasheet.pdf">attiny2313datasheet</a>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm" id="org9bc236c">.equ SPL, 0x3D
+.equ SREG, 0x3F
+.equ RAMEND, 0xDF
+.equ DDRA, 0x1A
+.equ DDRB, 0x17
+.equ DDRD, 0x11
+.equ PORTA, 0x1B
+.equ PORTB, 0x18
+.equ PORTD, 0x12
+.equ PINA, 0x19
+.equ PINB, 0x16
+.equ PIND, 0x10
+.equ TCCR0A, 0x30
+.equ TCCR0B, 0x33
+.equ TCCR1B, 0x2E
+.equ OCR0A, 0x36
+.equ OCR0B, 0x3C
+.equ TCNT0, 0x32
+.equ TCNT1H, 0x2D
+.equ TCNT1L, 0x2C
+.equ TIFR, 0x38
+.equ TIMSK, 0x39
+.equ ICR1L, 0x24
+.equ ICR1H, 0x25
+.equ TCCR1A, 0x2F
+.equ OCR1AH, 0x2B
+.equ OCR1AL, 0x2A
+</pre>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

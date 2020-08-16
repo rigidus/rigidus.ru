@@ -14,18 +14,19 @@
 <h2>Table of Contents</h2>
 <div id="text-table-of-contents">
 <ul>
-<li><a href="#org364f03a">Операции со скриншотами</a></li>
-<li><a href="#org6081e5b">Сегментация клеточным автоматом</a></li>
-<li><a href="#org28abf92">Склейка</a></li>
-<li><a href="#org450a65e">Нахождение различий</a></li>
-<li><a href="#orgb401db0">Упаковка</a></li>
+<li><a href="#org5fd3612">Операции со скриншотами</a></li>
+<li><a href="#org601be3f">Работа с анимированными gif-изображениями</a></li>
+<li><a href="#org65625df">Сегментация клеточным автоматом</a></li>
+<li><a href="#org11c2db2">Склейка</a></li>
+<li><a href="#org11247b0"><span class="todo TODO">TODO</span> Нахождение различий</a></li>
+<li><a href="#org119a51e">Упаковка</a></li>
 </ul>
 </div>
 </div>
 
-<div id="outline-container-org364f03a" class="outline-2">
-<h2 id="org364f03a">Операции со скриншотами</h2>
-<div class="outline-text-2" id="text-org364f03a">
+<div id="outline-container-org5fd3612" class="outline-2">
+<h2 id="org5fd3612">Операции со скриншотами</h2>
+<div class="outline-text-2" id="text-org5fd3612">
 <div class="org-src-container">
 <pre class="src src-lisp">(ql:quickload "clx")
 (ql:quickload "zpng")
@@ -285,62 +286,103 @@
 </div>
 </div>
 
-<div id="outline-container-org6081e5b" class="outline-2">
-<h2 id="org6081e5b">Сегментация клеточным автоматом</h2>
-<div class="outline-text-2" id="text-org6081e5b">
+<div id="outline-container-org601be3f" class="outline-2">
+<h2 id="org601be3f">Работа с анимированными gif-изображениями</h2>
+<div class="outline-text-2" id="text-org601be3f">
 <p>
-Все обрабатываемые точки изображения можно разделить на точки фона и точки
-объектов. Наша задача - выделить замкнутые объекты на фоне и определить прямоугольники,
-в которых они лежат (bounding boxes). Для этого будем использовать клеточные автоматы.
+Процедура для создания анимированного gif-а с первым кадром. Возвращает
+изображение и data-stream
+</p>
+
+<div class="org-src-container">
+<pre class="src src-lisp">(defun make-gif-image-and-data-stream (height width image-data)
+  (let* ((gif-image-data (skippy:make-image-data
+                          height width :initial-contents (convert image-data)))
+         (gif-image (skippy:make-image :height height :width width
+                                       :image-data gif-image-data))
+         (colors (loop :for clr :from 0 :to 255 :collect (skippy:rgb-color clr clr clr)))
+         (color-table (skippy:make-color-table :initial-contents colors))
+         (data-stream (skippy:make-data-stream :color-table color-table
+                                               :loopingp t :height height :width width)))
+    (skippy:add-image gif-image data-stream)
+    (values gif-image data-stream)))
+</pre>
+</div>
+
+<p>
+В data-stream можно добавлять следующие кадры (box-git-image-data) с помощью:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-lisp">(skippy:add-image (skippy:make-image :height box-height
+                                     :width box-width
+                                     :top-position blu-y
+                                     :left-position blu-x
+                                     :image-data box-gif-image-data
+                                     :delay-time 5)
+                  data-stream)
+</pre>
+</div>
+
+<p>
+После всех добавлений чтобы сохранить файл останется только сделать:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-lisp">(setf (skippy:loopingp data-stream) t)
+(skippy:output-data-stream data-stream #p"test.gif")
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org65625df" class="outline-2">
+<h2 id="org65625df">Сегментация клеточным автоматом</h2>
+<div class="outline-text-2" id="text-org65625df">
+<p>
+Все обрабатываемые точки изображения можно разделить на точки фона и
+точки объектов. Наша задача - выделить замкнутые объекты на фоне и
+определить прямоугольники, в которых они лежат (bounding boxes). Для
+этого будем использовать клеточные автоматы.
 </p>
 
 <p>
-Разделим все обрабатываемые точки объекта на классы:
+Разделим все обрабатываемые точки объекта на условные цветные классы:
 </p>
 <ul class="org-ul">
 <li>точка фона (белая точка)</li>
-<li>необработанная точка объекта (черная точка)</li>
-<li>точка фронта волны (красная точка)</li>
-<li>точка шлейфа (зеленая точка)</li>
+<li>необработанная точка принадлежащая букве (черная точка)</li>
 <li>обработанная точка (серая точка)</li>
 </ul>
 
 <p>
-Задача алгоритма - распространять фронт волны по всем точкам объекта, до тех пор, пока
-точки объекта не закончатся. За фронтом волны следует шлейф волны, который нужен для
-того, чтобы предотвратить распространение волны в обратную сторону.
-</p>
-
-<p>
-Сам алгоритм выглядит так:
+Сам алгоритм:
 </p>
 
 <ul class="org-ul">
-<li>Для каждого клеточного автомата на изображении находится первая точка объекта. Это
-первая найденная при сканировании строки пикселей точка черного цвета.</li>
-<li><p>
-Для всех красных точек мы повторяем этот шаг, пока красные точки не
-закончатся. Сканируем ближайших соседей:
-</p>
+<li>Находим следующую по порядку точку с цветом <del>foreground</del></li>
+<li>Запоминаем её координаты в стек mark-points</li>
+<li>Дальше следует цикл:
 <ul class="org-ul">
-<li>Если это точка фона - ничего не делаем</li>
-<li>Если это черная точка, то делаем ее красной (и записываем в список красных
-точек. Этот список представляет собой "фронт волны" и нужен чтобы не обрабатывать
-одну точку дважды.)</li>
-<li>Если это красная точка - мы видим обработанную точку, ничего не делаем</li>
-</ul>
-<p>
-После того как все ближайшие соседи просканированы, мы переносим текущую точку из
-списка красных точек (списка "фронта волны") в список обработанных точек
-</p></li>
-<li>Если красных точек больше нет - мы можем вычислить углы прямоугольника в который
-попали все красные точки</li>
+<li>Снимаем одну точку из mark-points</li>
+<li>Помечаем её как обработанную, записывая в нее цвет <del>mark</del></li>
+<li>Формируем массив её соседей</li>
+<li>Отфильтровываем из него все не <del>foreground</del> точки</li>
+<li>Помечаем их как обработанные, записывая в них цвет <del>mark</del></li>
+<li>Повторяем этот цикл пока не останется <del>foreground</del> точек прилежащих
+друг к другу, т.е. пока не покроем всю букву.</li>
+</ul></li>
+<li>Для всех обработанных точек контура обработанной циклом буквы вычисляем
+bounding box и сохраняем его, чтобы вернуть</li>
+<li>Ищем следующую точку, пока не обработаем все изображение</li>
 </ul>
 
 <div class="org-src-container">
 <pre class="src src-lisp">(defconstant +foreground+ 0)
 (defconstant +mark+ 127)
 (defconstant +box+ 1)
+
+(ql:quickload "skippy")
 
 (defun gramma-lookup (image)
   (let ((boxes))
@@ -365,21 +407,21 @@
                    ;; mark current point
                    (setf (aref image curr-x curr-y) +mark+)
                    ;; lookup foreground-colored neighbors
-                   (let ((new-points)
-                         (neighbors (list (cons (- curr-x 1) (- curr-y 1))
-                                          (cons curr-x       (- curr-y 1))
-                                          (cons (+ curr-x 1) (- curr-y 1))
-                                          (cons (- curr-x 1) curr-y)
-                                          (cons (+ curr-x 1) curr-y)
-                                          (cons (- curr-x 1) (+ curr-y 1))
-                                          (cons curr-x       (+ curr-y 1))
-                                          (cons (+ curr-x 1) (+ curr-y 1)))))
-                     (loop :for (dx . dy) :in neighbors
-                        :when (equal +foreground+ (aref image dx dy))
-                        :do (push (cons dx dy) new-points))
-                     ;; mark neighbors
-                     (loop for (dx . dy) in new-points do
-                          (setf (aref image dx dy) +mark+))
+                   (let* ((neighbors (list (cons (- curr-x 1) (- curr-y 1))
+                                           (cons curr-x       (- curr-y 1))
+                                           (cons (+ curr-x 1) (- curr-y 1))
+                                           (cons (- curr-x 1) curr-y)
+                                           (cons (+ curr-x 1) curr-y)
+                                           (cons (- curr-x 1) (+ curr-y 1))
+                                           (cons curr-x       (+ curr-y 1))
+                                           (cons (+ curr-x 1) (+ curr-y 1))))
+                          (new-points (loop
+                                         :for (dx . dy) :in neighbors
+                                         :when (equal +foreground+ (aref image dx dy))
+                                         :collect (progn
+                                                    ;; mark neighbors
+                                                    (setf (aref image dx dy) +mark+)
+                                                    (cons dx dy)))))
                      ;; add new-points (current poped yet)
                      (setf mark-points (append mark-points new-points))
                      ;; ;;;; dbg-out new points
@@ -394,45 +436,181 @@
                      ;;   (incf pic))
                      ;; ---------------------
                      (unless (null mark-points)
-                       (go gramma))
-                     ))))
+                       (go gramma))))))
             ;; build bounding box
             (let ((left-up     (cons (reduce #'min (mapcar #'car bucket))
                                      (reduce #'min (mapcar #'cdr bucket))))
                   (right-down  (cons (reduce #'max (mapcar #'car bucket))
                                      (reduce #'max (mapcar #'cdr bucket)))))
               ;; (format t "~%:BOX: ~A" (list left-up right-down))
-              (push (list left-up right-down) boxes)
-              )))))
+              (push (list left-up right-down) boxes))))))
     boxes))
+
+(defun draw-box (image-data left-up right-down)
+  (loop :for dx :from (car left-up) :to (car right-down)
+     :with top = (cdr left-up) and bottom = (cdr right-down) :do
+       (setf (aref image-data dx top) +box+)
+       (setf (aref image-data dx bottom) +box+))
+  (loop :for dy :from (cdr left-up) :to (cdr right-down)
+     :with left = (car right-down) :and right = (car left-up) :do
+       (setf (aref image-data left dy) +box+)
+       (setf (aref image-data right dy) +box+))
+  image-data)
+
+(defun convert (image-data)
+  (destructuring-bind (height width)
+      (array-dimensions image-data)
+    (let ((result (make-array (* width height)
+                              :element-type '(unsigned-byte) :initial-element 100))
+          (idx 0))
+      (dotimes (y height)
+        (dotimes (x width)
+          (setf (aref result idx) (aref image-data y x))
+          (incf idx)))
+      result)))
+
+
 
 
 ;; TEST: lookup symbols
-(let* ((from "/home/rigidus/repo/rigidus.ru/org/prj/text.png")
-       (to   "/home/rigidus/repo/rigidus.ru/org/prj/cell1.png")
+(let* ((from "text.png")
+       (to   "cell1.png")
        (image-data (binarization (load-png from) 127))
-       (boxes (gramma-lookup image-data)))
-  (loop :for (left-up right-down) :in boxes :do
-     ;; draw box
-     (loop :for dx :from (car left-up) :to (car right-down)
-        :with top = (cdr left-up) and bottom = (cdr right-down) :do
-        (setf (aref image-data dx top) +box+)
-        (setf (aref image-data dx bottom) +box+))
-     (loop :for dy :from (cdr left-up) :to (cdr right-down)
-        :with left = (car right-down) :and right = (car left-up) :do
-        (setf (aref image-data left dy) +box+)
-        (setf (aref image-data right dy) +box+)))
-  (destructuring-bind (height width)
-      (array-dimensions image-data)
-    (save-png width height to image-data :grayscale)))
+       (height (array-dimension image-data 0))
+       (width  (array-dimension image-data 1))
+       (boxes))
+  (multiple-value-bind (gif-image data-stream)
+      (make-gif-image-and-data-stream height width image-data)
+    ;; save image to gif before all additionals
+    (skippy:add-image gif-image data-stream)
+    ;; draw center
+    (loop :for (left-up right-down) :in (gramma-lookup image-data) :do
+         (let* ((diff (cons (- (car right-down) (car left-up))
+                            (- (cdr right-down) (cdr left-up))))
+                (center (cons (+ (car left-up) (ash (car diff) -1))
+                              (+ (cdr left-up) (ash (cdr diff) -1)))))
+           ;; draw bounding box
+           ;; (setf image-data (draw-box image-data left-up right-down))
+           ;; draw center point
+           ;; (setf (aref image-data (car center) (cdr center)) 0)
+           ;; save boxes
+           (push (list left-up right-down center) boxes)))
+    ;; make gif animation
+    (loop :for ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) :in boxes :do
+         (let* ((box-height  (+ 1 (- brd-y blu-y)))
+                (box-width   (+ 1 (- brd-x blu-x)))
+                (box-gif-image-data (skippy:make-image-data box-width box-height)))
+           (let ((idx 0))
+             ;; draw bounding box
+             (loop :for dy :from blu-y :to brd-y do
+                  (loop :for dx :from blu-x :to brd-x do
+                       (setf (aref box-gif-image-data idx)
+                             (if (equal 255 (aref image-data dy dx))
+                                 90
+                                 0))
+                       (incf idx)))
+             ;; draw white center
+             (setf (aref box-gif-image-data
+                         (+ (* (ash (- brd-y blu-y) -1)
+                               box-width)
+                            (ash (- brd-x blu-x) -1)))
+                   255))
+           ;; add gif layer to data-stream
+           (skippy:add-image (skippy:make-image :height box-height
+                                                :width box-width
+                                                :top-position blu-y
+                                                :left-position blu-x
+                                                :image-data box-gif-image-data
+                                                :delay-time 5)
+                             data-stream)))
+    ;; set gif repeat
+    (setf (skippy:loopingp data-stream) t)
+    ;; save gif
+    (skippy:output-data-stream data-stream #p"test.gif")
+    ;; for all boxes
+    (loop
+       :for box :in boxes
+       :with prev-box
+       :for idx :from 0 :to (length boxes)
+       :do (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x)) box
+             (let ((threshold-y 10)
+                   (threshold-x 20))
+               (setf image-data
+                     (nearest-neighbour image-data
+                                        (nth idx boxes)
+                                        (nthcdr (+ 1 idx) boxes)
+                                        threshold-y
+                                        threshold-x))
+               (when prev-box
+                 (destructuring-bind ((plu-y . plu-x) (prd-y . prd-x) (pcc-y . pcc-x)) prev-box
+                   (setf image-data (draw-line image-data pcc-y pcc-x bcc-y bcc-x))))
+               (setf prev-box box))))
+    ;; draw picture
+    (destructuring-bind (height width)
+        (array-dimensions image-data)
+      (save-png width height to image-data :grayscale))))
+
+
+(defun nearest-neighbour (image-data box tail threshold-y threshold-x)
+  (destructuring-bind ((blu-y . blu-x) (brd-y . brd-x) (bcc-y . bcc-x))
+      box
+    (block neighbour
+      (loop :for ((tlu-y . tlu-x) (trd-y . trd-x) (tcc-y . tcc-x)) :in tail :do
+           ;; (print (list (cons tcc-y tcc-x)
+           ;;              (- tcc-x bcc-x)
+           ;;              (abs (- bcc-y tcc-y))
+           ;;              tcc-y
+           ;;              ))
+           (when (and (&gt; tcc-x bcc-x) ;; центр должен быть правее
+                      (&lt; tcc-x (+ bcc-x threshold-x)) ;; и не слишком далеко
+                      (&gt; tcc-y blu-y) ;; центр должен быть ниже верхнего угла
+                      (&lt; tcc-y trd-y) ;; и выше нижнего
+                      (&lt; tcc-y (abs (+ bcc-y threshold-y))) ;; и недалеко по высоте
+                      )
+             (return-from neighbour
+               (progn
+                 (setf image-data
+                       (draw-box image-data
+                                 (cons blu-y blu-x)
+                                 (cons trd-y trd-x)
+                                 )))))))
+    image-data))
+
+(defun draw-line (image-data x1 y1 x2 y2)
+  (declare (type integer x1 y1 x2 y2))
+  (let* ((dist-x (abs (- x1 x2)))
+         (dist-y (abs (- y1 y2)))
+         (steep (&gt; dist-y dist-x)))
+    (when steep
+      (psetf x1 y1 y1 x1
+             x2 y2 y2 x2))
+    (when (&gt; x1 x2)
+      (psetf x1 x2 x2 x1
+             y1 y2 y2 y1))
+    (let* ((delta-x (- x2 x1))
+           (delta-y (abs (- y1 y2)))
+           (error (floor delta-x 2))
+           (y-step (if (&lt; y1 y2) 1 -1))
+           (y y1))
+      (loop
+         :for x :upfrom x1 :to x2
+         :do (if steep
+                 (setf (aref image-data y x) 0)
+                 (setf (aref image-data x y) 0)
+                 )
+           (setf error (- error delta-y))
+           (when (&lt; error 0)
+             (incf y y-step)
+             (incf error delta-x))))
+    image-data))
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-org28abf92" class="outline-2">
-<h2 id="org28abf92">Склейка</h2>
-<div class="outline-text-2" id="text-org28abf92">
+<div id="outline-container-org11c2db2" class="outline-2">
+<h2 id="org11c2db2">Склейка</h2>
+<div class="outline-text-2" id="text-org11c2db2">
 <div class="org-src-container">
 <pre class="src src-lisp">(defun append-image (image-up image-down y-point)
   "Принимает 2 массива изображений и высоту,
@@ -512,9 +690,9 @@
 </div>
 </div>
 
-<div id="outline-container-org450a65e" class="outline-2">
-<h2 id="org450a65e">Нахождение различий</h2>
-<div class="outline-text-2" id="text-org450a65e">
+<div id="outline-container-org11247b0" class="outline-2">
+<h2 id="org11247b0"><span class="todo TODO">TODO</span> Нахождение различий</h2>
+<div class="outline-text-2" id="text-org11247b0">
 <p>
 Нахождение различий структурно очень похоже на append-image за тем исключением, что
 первое изображение копируется в результат до своего конца, а второе - накладывается на
@@ -584,21 +762,21 @@
                     (cycle (0 0 (- height-up y-point) width-up (incf new-y))
                            (do ((rz 0 (+ colors-down rz)))
                                ((= rz colors-down))
-                             ;; (setf (aref image-new new-y qx (+ 3 rz))
-                             ;;       #xFF)
+                             (setf (aref image-new new-y qx (+ 3 rz))
+                                   #xFF)
                              ;; проверка правильности заксоривания -
                              ;; можно убрать после отладки
-                             ;; (setf (aref image-new new-y qx (+ 2 rz)) #xFF)
+                             (setf (aref image-new new-y qx (+ 2 rz)) #xFF)
                              )))))))
         image-new))))
 
-;; (block test-append-xor-fullcolor
-;;   (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
-;;          (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
-;;          (array (append-xor arr1 arr2 200)))
-;;     (destructuring-bind (height width  &amp;rest rest)
-;;         (array-dimensions array)
-;;       (save-png width height "~/Pictures/result.png" array))))
+(block test-append-xor-fullcolor
+  (let* ((arr1 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+         (arr2 (x-snapshot :x 0 :y 0 :width 755 :height 300))
+         (array (append-xor arr1 arr2 100)))
+    (destructuring-bind (height width  &amp;rest rest)
+        (array-dimensions array)
+      (save-png width height "~/Pictures/result.png" array))))
 
 ;; (block test-append-xor-grayscale
 ;;   (let* ((arr1 (binarization (x-snapshot :x 0 :y 0 :width 755 :height 300)))
@@ -651,11 +829,11 @@
              (append-xor image-up image-down vy)
              vy))))
 
-;; (block test-merge-results-fullcolor
-;;   (time
-;;    (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
-;;           (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
-;;      (get-merge-results arr1 arr2))))
+(block test-merge-results-fullcolor
+  (time
+   (let* ((arr1 (x-snapshot :x 0 :y 0 :width 192 :height 108))
+          (arr2 (x-snapshot :x 0 :y 0 :width 192 :height 108)))
+     (get-merge-results arr1 arr2))))
 
 ;; (block test-merge-results-grayscale
 ;;   (time
@@ -666,9 +844,10 @@
 </div>
 </div>
 </div>
-<div id="outline-container-orgb401db0" class="outline-2">
-<h2 id="orgb401db0">Упаковка</h2>
-<div class="outline-text-2" id="text-orgb401db0">
+
+<div id="outline-container-org119a51e" class="outline-2">
+<h2 id="org119a51e">Упаковка</h2>
+<div class="outline-text-2" id="text-org119a51e">
 <div class="org-src-container">
 <pre class="src src-lisp">;; "~v,'~B" : https://stackoverflow.com/questions/34408146/explaination-about-a-statement-in-lisp-about-format-function/34413466
 

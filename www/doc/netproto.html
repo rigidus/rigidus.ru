@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Разработка сетевого протокола</title>
-<meta  charset="utf-8">
-<meta  name="generator" content="Org-mode">
-<meta  name="author" content="rigidus">
+<meta name="generator" content="Org mode">
+<meta name="author" content="rigidus">
 <link href="/css/style.css" rel="stylesheet" type="text/css" />
 </head>
 <body>
@@ -14,39 +15,39 @@
 <h2>Table of Contents</h2>
 <div id="text-table-of-contents">
 <ul>
-<li><a href="#unnumbered-1">Интро</a></li>
-<li><a href="#unnumbered-2">Требования к протоколу</a></li>
-<li><a href="#unnumbered-3">Простая UDP-отсылка</a></li>
-<li><a href="#unnumbered-4">Pacer</a></li>
-<li><a href="#unnumbered-5">Retransmit</a>
+<li><a href="#orgd9d20fb">Интро</a></li>
+<li><a href="#orgbd02a8a">Требования к протоколу</a></li>
+<li><a href="#org741cfb3">Простая UDP-отсылка</a></li>
+<li><a href="#orgbb5e14a">Pacer</a></li>
+<li><a href="#orga5e1a94">Retransmit</a>
 <ul>
-<li><a href="#unnumbered-6">Fast Retransmit</a></li>
-<li><a href="#unnumbered-7">Retransmit period: jitter</a></li>
+<li><a href="#org7f7b3b6">Fast Retransmit</a></li>
+<li><a href="#orgc5e1ff0">Retransmit period: jitter</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-8">Forward error correction (FEC)</a></li>
-<li><a href="#unnumbered-9">Nack</a></li>
-<li><a href="#unnumbered-10">Packet Gap</a></li>
-<li><a href="#unnumbered-11">FEC+NACK vs Fast Retransmit</a>
+<li><a href="#org7057b0d">Forward error correction (FEC)</a></li>
+<li><a href="#orgb5ce116">Nack</a></li>
+<li><a href="#orge82087c">Packet Gap</a></li>
+<li><a href="#org706d61d">FEC+NACK vs Fast Retransmit</a>
 <ul>
-<li><a href="#unnumbered-12">FEC+NACK</a></li>
-<li><a href="#unnumbered-13">Fast Retransmit</a></li>
+<li><a href="#org8856b59">FEC+NACK</a></li>
+<li><a href="#orgddb3854">Fast Retransmit</a></li>
 </ul>
 </li>
-<li><a href="#unnumbered-14">Дополнительно</a></li>
-<li><a href="#unnumbered-15">MTU</a></li>
-<li><a href="#unnumbered-16">Шифрование</a></li>
-<li><a href="#unnumbered-17">Приоритезация</a></li>
-<li><a href="#unnumbered-18">Дополнительная особенности UDP</a></li>
-<li><a href="#unnumbered-19">Доступность ГВЗ на мобильных устройствах в мире</a></li>
-<li><a href="#unnumbered-20">Итоги</a></li>
+<li><a href="#orgeb049a4">Дополнительно</a></li>
+<li><a href="#orgc9a04c1">MTU</a></li>
+<li><a href="#org62a4266">Шифрование</a></li>
+<li><a href="#org381c0fc">Приоритезация</a></li>
+<li><a href="#org33a97d6">Дополнительная особенности UDP</a></li>
+<li><a href="#orgcc8f95f">Доступность ГВЗ на мобильных устройствах в мире</a></li>
+<li><a href="#org52e080d">Итоги</a></li>
 </ul>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-1" class="outline-2">
-<h2 id="unnumbered-1">Интро</h2>
-<div class="outline-text-2" id="text-unnumbered-1">
+<div id="outline-container-orgd9d20fb" class="outline-2">
+<h2 id="orgd9d20fb">Интро</h2>
+<div class="outline-text-2" id="text-orgd9d20fb">
 <p>
 Мы хотим разработать многофункциональный протокол для трансляции видео и аудио на базе
 UDP, способный устойчиво работать в сетях с плохой пропускной способностью, таких как,
@@ -55,91 +56,77 @@ UDP, способный устойчиво работать в сетях с п�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-2" class="outline-2">
-<h2 id="unnumbered-2">Требования к протоколу</h2>
-<div class="outline-text-2" id="text-unnumbered-2">
+<div id="outline-container-orgbd02a8a" class="outline-2">
+<h2 id="orgbd02a8a">Требования к протоколу</h2>
+<div class="outline-text-2" id="text-orgbd02a8a">
 <ul class="org-ul">
 <li>Многопоточность, то есть поддержка нескольких потоков:
 <ul class="org-ul">
-<li>управляющий
-</li>
-<li>видео
-</li>
-<li>аудио
-</li>
-</ul>
-</li>
+<li>управляющий</li>
+<li>видео</li>
+<li>аудио</li>
+</ul></li>
 <li>Опциональная гарантия доставки — управляющий поток имеет 100% гарантию, видео нам
-нужно меньше всего — мы там можем дропать фрейм, аудио нам все-таки бы хотелось.
-</li>
-<li>Приоритезация потоков — чтобы аудио уходило вперед, а управляющий вообще летал.
-</li>
-<li>Опциональное шифрование: или все данные, или только заголовки и критичные данные.
-</li>
+нужно меньше всего — мы там можем дропать фрейм, аудио нам все-таки бы хотелось.</li>
+<li>Приоритезация потоков — чтобы аудио уходило вперед, а управляющий вообще летал.</li>
+<li>Опциональное шифрование: или все данные, или только заголовки и критичные данные.</li>
 </ul>
 </div>
 </div>
 
-<div id="outline-container-unnumbered-3" class="outline-2">
-<h2 id="unnumbered-3">Простая UDP-отсылка</h2>
-<div class="outline-text-2" id="text-unnumbered-3">
+<div id="outline-container-org741cfb3" class="outline-2">
+<h2 id="org741cfb3">Простая UDP-отсылка</h2>
+<div class="outline-text-2" id="text-org741cfb3">
 <p>
 Открываем UDP-соединение, забираем данные, упаковываем и отправляем. Соответствующий
 код будет выглядеть так:
 </p>
 
 <div class="org-src-container">
+<pre class="src src-c">#define SERVER "127.0.0.1"
+#define BUFLEN 512  // Max length of buffer
+#define PORT 8888   // The port on which to send data
 
-<pre class="src src-c"><span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">SERVER</span> <span style="color: #ffa07a;">"127.0.0.1"</span>
-<span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">BUFLEN</span> 512  <span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">Max length of buffer</span>
-<span style="color: #7fffd4;">#define</span> <span style="color: #eedd82;">PORT</span> 8888   <span style="color: #ff7f24;">// </span><span style="color: #ff7f24;">The port on which to send data</span>
-
-<span style="color: #98fb98;">int</span> <span style="color: #87cefa;">main</span>(<span style="color: #98fb98;">void</span>)
+int main(void)
 {
-    <span style="color: #00ffff;">struct</span> <span style="color: #98fb98;">sockaddr_in</span> <span style="color: #eedd82;">si</span>;
-    <span style="color: #98fb98;">int</span> <span style="color: #eedd82;">s</span>, <span style="color: #eedd82;">i</span>, <span style="color: #eedd82;">slen</span>=<span style="color: #00ffff;">sizeof</span>(si);
-    <span style="color: #98fb98;">char</span> <span style="color: #eedd82;">buf</span>[BUFLEN];
-    <span style="color: #98fb98;">char</span> <span style="color: #eedd82;">message</span>[BUFLEN];
+    struct sockaddr_in si;
+    int s, i, slen=sizeof(si);
+    char buf[BUFLEN];
+    char message[BUFLEN];
 
-    <span style="color: #00ffff;">if</span> ( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    if ( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
     {
-        fprintf(stderr, <span style="color: #ffa07a;">"socket() failed\n"</span>);
+        fprintf(stderr, "socket() failed\n");
         exit(1);
     }
 
-    memset((<span style="color: #98fb98;">char</span> *) &amp;si, 0, <span style="color: #00ffff;">sizeof</span>(si));
+    memset((char *) &amp;si, 0, sizeof(si));
     si.sin_family = AF_INET;
     si.sin_port = htons(PORT);
 
-    <span style="color: #00ffff;">if</span> (inet_aton(SERVER , &amp;si.sin_addr) == 0)
+    if (inet_aton(SERVER , &amp;si.sin_addr) == 0)
     {
-        fprintf(stderr, <span style="color: #ffa07a;">"inet_aton() failed\n"</span>);
+        fprintf(stderr, "inet_aton() failed\n");
         exit(1);
     }
 
     message = get_new_data();
 
-    <span style="color: #00ffff;">if</span> (sendto(s, message, strlen(message) , 0 , (<span style="color: #00ffff;">struct</span> <span style="color: #98fb98;">sockaddr</span> *) &amp;si, slen)==-1)
+    if (sendto(s, message, strlen(message) , 0 , (struct sockaddr *) &amp;si, slen)==-1)
     {
-        fprintf(stderr, <span style="color: #ffa07a;">"sendto() failed\n"</span>);
+        fprintf(stderr, "sendto() failed\n");
         exit(1);
     }
 
     message = get_new_data();
 
-    <span style="color: #00ffff;">if</span> (sendto(s, message, strlen(message) , 0 , (<span style="color: #00ffff;">struct</span> <span style="color: #98fb98;">sockaddr</span> *) &amp;si, slen)==-1)
+    if (sendto(s, message, strlen(message) , 0 , (struct sockaddr *) &amp;si, slen)==-1)
     {
-        fprintf(stderr, <span style="color: #ffa07a;">"sendto() failed\n"</span>);
+        fprintf(stderr, "sendto() failed\n");
         exit(1);
     }
 }
 </pre>
-</div>
-
-
-<div class="figure">
-<p><img src="../../img/netproto-01.png" alt="netproto-01.png">
-</p>
 </div>
 
 <p>
@@ -150,9 +137,9 @@ UDP, способный устойчиво работать в сетях с п�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-4" class="outline-2">
-<h2 id="unnumbered-4">Pacer</h2>
-<div class="outline-text-2" id="text-unnumbered-4">
+<div id="outline-container-orgbb5e14a" class="outline-2">
+<h2 id="orgbb5e14a">Pacer</h2>
+<div class="outline-text-2" id="text-orgbb5e14a">
 <p>
 Для дальнейшего обсуждения важно заметить, что мы получаем "с той стороны"
 подтверждения о приходе пакетов. По ним мы можем определить процент потерянных пакетов
@@ -177,6 +164,88 @@ Pacer — это такая штука, которая раздвигает па
 </p>
 
 
+<table id="orge67c96d">
+
+
+<colgroup>
+<col  class="org-right">
+
+<col  class="org-right">
+
+<col  class="org-right">
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">x</th>
+<th scope="col" class="org-right">y1</th>
+<th scope="col" class="org-right">y2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">1</td>
+<td class="org-right">100</td>
+<td class="org-right">100</td>
+</tr>
+
+<tr>
+<td class="org-right">3</td>
+<td class="org-right">99.55</td>
+<td class="org-right">99.85</td>
+</tr>
+
+<tr>
+<td class="org-right">5</td>
+<td class="org-right">99.00</td>
+<td class="org-right">99.50</td>
+</tr>
+
+<tr>
+<td class="org-right">7</td>
+<td class="org-right">98.25</td>
+<td class="org-right">99.25</td>
+</tr>
+
+<tr>
+<td class="org-right">10</td>
+<td class="org-right">97.45</td>
+<td class="org-right">99.00</td>
+</tr>
+
+<tr>
+<td class="org-right">13</td>
+<td class="org-right">96.35</td>
+<td class="org-right">98.75</td>
+</tr>
+
+<tr>
+<td class="org-right">15</td>
+<td class="org-right">95.10</td>
+<td class="org-right">98.50</td>
+</tr>
+
+<tr>
+<td class="org-right">17</td>
+<td class="org-right">94.00</td>
+<td class="org-right">98.25</td>
+</tr>
+
+<tr>
+<td class="org-right">20</td>
+<td class="org-right">90.00</td>
+<td class="org-right">98.00</td>
+</tr>
+
+<tr>
+<td class="org-right">21</td>
+<td class="org-right">85.00</td>
+<td class="org-right">97.95</td>
+</tr>
+</tbody>
+</table>
+
+
+
 <div class="figure">
 <p><img src="../../img/netproto-03.png" alt="netproto-03.png">
 </p>
@@ -184,12 +253,13 @@ Pacer — это такая штука, которая раздвигает па
 </div>
 </div>
 
-<div id="outline-container-unnumbered-5" class="outline-2">
-<h2 id="unnumbered-5">Retransmit</h2>
-<div class="outline-text-2" id="text-unnumbered-5">
-</div><div id="outline-container-unnumbered-6" class="outline-3">
-<h3 id="unnumbered-6">Fast Retransmit</h3>
-<div class="outline-text-3" id="text-unnumbered-6">
+<div id="outline-container-orga5e1a94" class="outline-2">
+<h2 id="orga5e1a94">Retransmit</h2>
+<div class="outline-text-2" id="text-orga5e1a94">
+</div>
+<div id="outline-container-org7f7b3b6" class="outline-3">
+<h3 id="org7f7b3b6">Fast Retransmit</h3>
+<div class="outline-text-3" id="text-org7f7b3b6">
 <p>
 В TCP, как известно, есть алгоритм fast retransmit: мы отправляем один пакет, второй,
 если пакет потеряли, то через некоторое время (retransmit period) отправляем этот же
@@ -227,9 +297,9 @@ RTT (round-trip delay time), - это время затраченное на о�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-7" class="outline-3">
-<h3 id="unnumbered-7">Retransmit period: jitter</h3>
-<div class="outline-text-3" id="text-unnumbered-7">
+<div id="outline-container-orgc5e1ff0" class="outline-3">
+<h3 id="orgc5e1ff0">Retransmit period: jitter</h3>
+<div class="outline-text-3" id="text-orgc5e1ff0">
 <p>
 Для того, чтобы это оценить, как может изменяться задержка можно использовать
 <code>jitter</code>. Джиттер описывает максимальное различие времени задержек передачи от пакета к
@@ -278,9 +348,9 @@ retransmit period отправили пакет, и он еще раз не до
 </div>
 </div>
 
-<div id="outline-container-unnumbered-8" class="outline-2">
-<h2 id="unnumbered-8">Forward error correction (FEC)</h2>
-<div class="outline-text-2" id="text-unnumbered-8">
+<div id="outline-container-org7057b0d" class="outline-2">
+<h2 id="org7057b0d">Forward error correction (FEC)</h2>
+<div class="outline-text-2" id="text-org7057b0d">
 <p>
 А что если добавить Forward Error Correction?  Давайте просто все наши пакеты снабдим,
 например, XOR. Если мы точно знаем, что в мобильных сетях все так печально, то давайте
@@ -301,9 +371,9 @@ K пакетов, можно добавить к ним N пакетов так,
 </div>
 </div>
 
-<div id="outline-container-unnumbered-9" class="outline-2">
-<h2 id="unnumbered-9">Nack</h2>
-<div class="outline-text-2" id="text-unnumbered-9">
+<div id="outline-container-orgb5ce116" class="outline-2">
+<h2 id="orgb5ce116">Nack</h2>
+<div class="outline-text-2" id="text-orgb5ce116">
 <p>
 Хорошо, если у нас такая плохая сеть, что пропали просто все пакеты, то к нашему
 Forward Error Correction очень удобно добавляется negative acknowledgement.
@@ -325,10 +395,8 @@ Forward Error Correction очень удобно добавляется negative
 </p>
 <ul class="org-ul">
 <li>простой в реализации, правда можно потерять и сам negative acknowledgement, но это
-мелкая проблема.
-</li>
-<li>хорошо совместим с FEC.
-</li>
+мелкая проблема.</li>
+<li>хорошо совместим с FEC.</li>
 </ul>
 
 <p>
@@ -342,9 +410,9 @@ Forward Error Correction очень удобно добавляется negative
 </div>
 </div>
 
-<div id="outline-container-unnumbered-10" class="outline-2">
-<h2 id="unnumbered-10">Packet Gap</h2>
-<div class="outline-text-2" id="text-unnumbered-10">
+<div id="outline-container-orge82087c" class="outline-2">
+<h2 id="orge82087c">Packet Gap</h2>
+<div class="outline-text-2" id="text-orge82087c">
 <p>
 Посмотрим, как распределены потери пакетов.
 </p>
@@ -363,65 +431,60 @@ Forward Error Correction очень удобно добавляется negative
 </p>
 
 <ul class="org-ul">
-<li>1 Мб/с сеть;
-</li>
-<li>1% packet loss;
-</li>
-<li>300 мс RTT;
-</li>
-<li>1 000 байт — размер пересылаемых пакетов;
-</li>
-<li>1 000 пакетов в секунду уходит.
-</li>
+<li>1 Мб/с сеть;</li>
+<li>1% packet loss;</li>
+<li>300 мс RTT;</li>
+<li>1 000 байт — размер пересылаемых пакетов;</li>
+<li>1 000 пакетов в секунду уходит.</li>
 </ul>
 
 <table>
 
 
 <colgroup>
-<col  class="right">
+<col  class="org-right">
 
-<col  class="right">
+<col  class="org-right">
 
-<col  class="right">
+<col  class="org-right">
 
-<col  class="left">
+<col  class="org-left">
 </colgroup>
 <thead>
 <tr>
-<th scope="col" class="right">Gap size</th>
-<th scope="col" class="right">Packet loss, %</th>
-<th scope="col" class="right">Gap duration, ms</th>
-<th scope="col" class="left">Network type</th>
+<th scope="col" class="org-right">Gap size</th>
+<th scope="col" class="org-right">Packet loss, %</th>
+<th scope="col" class="org-right">Gap duration, ms</th>
+<th scope="col" class="org-left">Network type</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td class="right">17</td>
-<td class="right">2.5</td>
-<td class="right">105</td>
-<td class="left">EDGE</td>
+<td class="org-right">17</td>
+<td class="org-right">2.5</td>
+<td class="org-right">105</td>
+<td class="org-left">EDGE</td>
 </tr>
 
 <tr>
-<td class="right">8</td>
-<td class="right">0.5</td>
-<td class="right">34</td>
-<td class="left">3G</td>
+<td class="org-right">8</td>
+<td class="org-right">0.5</td>
+<td class="org-right">34</td>
+<td class="org-left">3G</td>
 </tr>
 
 <tr>
-<td class="right">7</td>
-<td class="right">0.7</td>
-<td class="right">29</td>
-<td class="left">LTE</td>
+<td class="org-right">7</td>
+<td class="org-right">0.7</td>
+<td class="org-right">29</td>
+<td class="org-left">LTE</td>
 </tr>
 
 <tr>
-<td class="right">5</td>
-<td class="right">0.5</td>
-<td class="right">22</td>
-<td class="left">WiFi</td>
+<td class="org-right">5</td>
+<td class="org-right">0.5</td>
+<td class="org-right">22</td>
+<td class="org-left">WiFi</td>
 </tr>
 </tbody>
 </table>
@@ -434,9 +497,9 @@ Forward Error Correction очень удобно добавляется negative
 </div>
 </div>
 
-<div id="outline-container-unnumbered-11" class="outline-2">
-<h2 id="unnumbered-11">FEC+NACK vs Fast Retransmit</h2>
-<div class="outline-text-2" id="text-unnumbered-11">
+<div id="outline-container-org706d61d" class="outline-2">
+<h2 id="org706d61d">FEC+NACK vs Fast Retransmit</h2>
+<div class="outline-text-2" id="text-org706d61d">
 <p>
 Если мы знаем, что у нас 90% packet loss на портале укладывается в 10 пакетов, и при
 этом средний <code>gap</code> равен 25 мс, что будет работать лучше — <code>FEC+NACK</code> или <code>Fast
@@ -444,9 +507,9 @@ retransmit</code>?
 </p>
 </div>
 
-<div id="outline-container-unnumbered-12" class="outline-3">
-<h3 id="unnumbered-12">FEC+NACK</h3>
-<div class="outline-text-3" id="text-unnumbered-12">
+<div id="outline-container-org8856b59" class="outline-3">
+<h3 id="org8856b59">FEC+NACK</h3>
+<div class="outline-text-3" id="text-org8856b59">
 <p>
 В такой ситуации логично добавлять в <code>FEC</code> 10 пакетов избыточных данных к каждым 1000,
 чтобы справляться с 1% packet loss. Почему нельзя к 100 пакетам добавлять 1 — потому
@@ -464,12 +527,10 @@ retransmit</code>?
 <ul class="org-ul">
 <li>Дождаться оставшиеся 500 пакетов и восстановить данные через Forward Error
 Correction. Но на это у нас потратится примерно полсекунды, а пользователь эти данные
-ждет.
-</li>
+ждет.</li>
 <li>Можно воспользоваться NACK, причем это дешевле, чем дожидаться кодов коррекции.  А
 еще можно просто взять Fast Retransmit, не добавлять никаких кодов коррекции и
-получить тот же самый результат.
-</li>
+получить тот же самый результат.</li>
 </ul>
 
 <p>
@@ -480,9 +541,9 @@ Correction. Но на это у нас потратится примерно п�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-13" class="outline-3">
-<h3 id="unnumbered-13">Fast Retransmit</h3>
-<div class="outline-text-3" id="text-unnumbered-13">
+<div id="outline-container-orgddb3854" class="outline-3">
+<h3 id="orgddb3854">Fast Retransmit</h3>
+<div class="outline-text-3" id="text-orgddb3854">
 <p>
 Это работает так: после того, как мы потеряли пачку в 10 пакетов, отправив пока другие
 пакеты, понимаем, что у нас <code>retransmit period</code> прошел, и отправляем эти пакеты заново.
@@ -504,9 +565,9 @@ Correction. Но на это у нас потратится примерно п�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-14" class="outline-2">
-<h2 id="unnumbered-14">Дополнительно</h2>
-<div class="outline-text-2" id="text-unnumbered-14">
+<div id="outline-container-orgeb049a4" class="outline-2">
+<h2 id="orgeb049a4">Дополнительно</h2>
+<div class="outline-text-2" id="text-orgeb049a4">
 <p>
 Когда вы пишете свой протокол поверх UDP и у вас есть возможность отправки пакетов, вы
 получаете дополнительные плюшки.
@@ -531,9 +592,9 @@ Correction. Но на это у нас потратится примерно п�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-15" class="outline-2">
-<h2 id="unnumbered-15">MTU</h2>
-<div class="outline-text-2" id="text-unnumbered-15">
+<div id="outline-container-orgc9a04c1" class="outline-2">
+<h2 id="orgc9a04c1">MTU</h2>
+<div class="outline-text-2" id="text-orgc9a04c1">
 <p>
 Так как мы сами пишем протокол, то придется столкнуться с IP fragmentation.
 </p>
@@ -585,9 +646,9 @@ ICMP вам отправит, что есть проблемы, но скоре�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-16" class="outline-2">
-<h2 id="unnumbered-16">Шифрование</h2>
-<div class="outline-text-2" id="text-unnumbered-16">
+<div id="outline-container-org62a4266" class="outline-2">
+<h2 id="org62a4266">Шифрование</h2>
+<div class="outline-text-2" id="text-org62a4266">
 <p>
 Мы говорили, что мы хотим опционально управлять шифрованием. Делаем самый простой
 вариант — Diffie-Hellman на эллиптических кривых. Делаем его опционально — шифруем
@@ -606,9 +667,9 @@ ICMP вам отправит, что есть проблемы, но скоре�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-17" class="outline-2">
-<h2 id="unnumbered-17">Приоритезация</h2>
-<div class="outline-text-2" id="text-unnumbered-17">
+<div id="outline-container-org381c0fc" class="outline-2">
+<h2 id="org381c0fc">Приоритезация</h2>
+<div class="outline-text-2" id="text-org381c0fc">
 <p>
 У нас есть метаданные, аудио и видеофреймы, мы их успешно отправляем в сеть. Потом наша
 сеть долго не работает — мы понимаем, что нам нужно дропать пакеты.
@@ -622,9 +683,9 @@ ICMP вам отправит, что есть проблемы, но скоре�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-18" class="outline-2">
-<h2 id="unnumbered-18">Дополнительная особенности UDP</h2>
-<div class="outline-text-2" id="text-unnumbered-18">
+<div id="outline-container-org33a97d6" class="outline-2">
+<h2 id="org33a97d6">Дополнительная особенности UDP</h2>
+<div class="outline-text-2" id="text-org33a97d6">
 <p>
 Если вы будете писать свой UDP протокол, например, с двухсторонней связью, то нужно
 понимать, что есть NAT Unbinding и шанс, что вы не сможете обратно с сервера найти
@@ -639,9 +700,9 @@ ICMP вам отправит, что есть проблемы, но скоре�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-19" class="outline-2">
-<h2 id="unnumbered-19">Доступность ГВЗ на мобильных устройствах в мире</h2>
-<div class="outline-text-2" id="text-unnumbered-19">
+<div id="outline-container-orgcc8f95f" class="outline-2">
+<h2 id="orgcc8f95f">Доступность ГВЗ на мобильных устройствах в мире</h2>
+<div class="outline-text-2" id="text-orgcc8f95f">
 <p>
 7% мобильных пользователей не могут пользоваться UDP. В этом случае мы оставляем наш
 протокол с приоритезацией, шифрованием и всем, только на TCP.
@@ -654,21 +715,17 @@ UDP. Поэтому верить, что UDP на мобильных устро�
 </div>
 </div>
 
-<div id="outline-container-unnumbered-20" class="outline-2">
-<h2 id="unnumbered-20">Итоги</h2>
-<div class="outline-text-2" id="text-unnumbered-20">
+<div id="outline-container-org52e080d" class="outline-2">
+<h2 id="org52e080d">Итоги</h2>
+<div class="outline-text-2" id="text-org52e080d">
 <p>
 В итоге мы:
 </p>
 <ul class="org-ul">
-<li>Снизили задержку между стримером и смотрящим до 1 с.
-</li>
-<li>Избавились от накопительного эффекта в буферах, то есть трансляция не отстает.
-</li>
-<li>Снизилось количество stall’ов у зрителей.
-</li>
-<li>Смогли поддержать на мобильных устройствах FullHD стриминг.
-</li>
+<li>Снизили задержку между стримером и смотрящим до 1 с.</li>
+<li>Избавились от накопительного эффекта в буферах, то есть трансляция не отстает.</li>
+<li>Снизилось количество stall’ов у зрителей.</li>
+<li>Смогли поддержать на мобильных устройствах FullHD стриминг.</li>
 </ul>
 </div>
 </div>
