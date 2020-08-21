@@ -41,7 +41,7 @@ U 1 1 5F3F86B4
 P 4400 5000
 F 0 "R7" V 4400 5050 50  0000 C CNN
 F 1 "R" V 4400 4950 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4330 5000 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4330 5000 50  0001 C CNN
 F 3 "~" H 4400 5000 50  0001 C CNN
 	1    4400 5000
 	0    1    1    0   
@@ -52,7 +52,7 @@ U 1 1 5F3FC201
 P 4400 4600
 F 0 "R5" V 4400 4650 50  0000 C CNN
 F 1 "R" V 4400 4550 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4330 4600 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4330 4600 50  0001 C CNN
 F 3 "~" H 4400 4600 50  0001 C CNN
 	1    4400 4600
 	0    1    1    0   
@@ -93,7 +93,7 @@ U 1 1 5F4141F1
 P 4150 4700
 F 0 "R2" V 4150 4750 50  0000 C CNN
 F 1 "R" V 4150 4650 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4080 4700 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4080 4700 50  0001 C CNN
 F 3 "~" H 4150 4700 50  0001 C CNN
 	1    4150 4700
 	0    1    1    0   
@@ -104,7 +104,7 @@ U 1 1 5F3F3B44
 P 4150 4500
 F 0 "R1" V 4150 4550 50  0000 C CNN
 F 1 "R" V 4150 4450 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4080 4500 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4080 4500 50  0001 C CNN
 F 3 "~" H 4150 4500 50  0001 C CNN
 	1    4150 4500
 	0    1    1    0   
@@ -125,7 +125,7 @@ U 1 1 5F425E22
 P 4400 4800
 F 0 "R6" V 4400 4850 50  0000 C CNN
 F 1 "R" V 4400 4750 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4330 4800 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4330 4800 50  0001 C CNN
 F 3 "~" H 4400 4800 50  0001 C CNN
 	1    4400 4800
 	0    1    1    0   
@@ -146,7 +146,7 @@ U 1 1 5F42B82D
 P 4150 4900
 F 0 "R3" V 4150 4950 50  0000 C CNN
 F 1 "R" V 4150 4850 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4080 4900 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4080 4900 50  0001 C CNN
 F 3 "~" H 4150 4900 50  0001 C CNN
 	1    4150 4900
 	0    1    1    0   
@@ -161,7 +161,7 @@ U 1 1 5F43077A
 P 4150 5100
 F 0 "R4" V 4150 5150 50  0000 C CNN
 F 1 "R" V 4150 5050 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4080 5100 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4080 5100 50  0001 C CNN
 F 3 "~" H 4150 5100 50  0001 C CNN
 	1    4150 5100
 	0    1    1    0   
@@ -176,7 +176,7 @@ U 1 1 5F436A2A
 P 4400 5200
 F 0 "R8" V 4400 5250 50  0000 C CNN
 F 1 "R" V 4400 5150 50  0000 C CNN
-F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4330 5200 50  0001 C CNN
+F 2 "apollo:R__Horizontal" V 4330 5200 50  0001 C CNN
 F 3 "~" H 4400 5200 50  0001 C CNN
 	1    4400 5200
 	0    1    1    0   
@@ -207,7 +207,7 @@ U 1 1 5F447704
 P 5200 2050
 F 0 "Q2" H 5390 2096 50  0000 L CNN
 F 1 "PN2222A" H 5390 2005 50  0000 L CNN
-F 2 "Package_TO_SOT_THT:TO-92_Wide" H 5400 1975 50  0001 L CIN
+F 2 "apollo:2N222A-TO-92_Wide" H 5400 1975 50  0001 L CIN
 F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 5200 2050 50  0001 L CNN
 	1    5200 2050
 	1    0    0    -1  
@@ -218,7 +218,7 @@ U 1 1 5F461F07
 P 5550 2650
 F 0 "Q3" H 5740 2696 50  0000 L CNN
 F 1 "PN2222A" H 5740 2605 50  0000 L CNN
-F 2 "Package_TO_SOT_THT:TO-92_Wide" H 5750 2575 50  0001 L CIN
+F 2 "apollo:2N222A-TO-92_Wide" H 5750 2575 50  0001 L CIN
 F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 5550 2650 50  0001 L CNN
 	1    5550 2650
 	1    0    0    -1  
@@ -229,7 +229,7 @@ U 1 1 5F462FFD
 P 5900 3150
 F 0 "Q4" H 6090 3196 50  0000 L CNN
 F 1 "PN2222A" H 6090 3105 50  0000 L CNN
-F 2 "Package_TO_SOT_THT:TO-92_Wide" H 6100 3075 50  0001 L CIN
+F 2 "apollo:2N222A-TO-92_Wide" H 6100 3075 50  0001 L CIN
 F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 5900 3150 50  0001 L CNN
 	1    5900 3150
 	1    0    0    -1  
@@ -264,7 +264,7 @@ U 1 1 5F497894
 P 4850 1500
 F 0 "Q1" H 5040 1546 50  0000 L CNN
 F 1 "PN2222A" H 5040 1455 50  0000 L CNN
-F 2 "Package_TO_SOT_THT:TO-92_Wide" H 5050 1425 50  0001 L CIN
+F 2 "apollo:2N222A-TO-92_Wide" H 5050 1425 50  0001 L CIN
 F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 4850 1500 50  0001 L CNN
 	1    4850 1500
 	1    0    0    -1  
@@ -351,8 +351,6 @@ F 3 "~" H 2550 2650 50  0001 C CNN
 	1    2550 2650
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	5350 2650 2750 2650
 $Comp
 L Connector:Conn_01x01_Male J2
 U 1 1 5F4D6C66
@@ -364,8 +362,6 @@ F 3 "~" H 2550 2050 50  0001 C CNN
 	1    2550 2050
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	2750 2050 5000 2050
 $Comp
 L Connector:Conn_01x01_Male J1
 U 1 1 5F4DE0C6
@@ -377,8 +373,6 @@ F 3 "~" H 2550 1500 50  0001 C CNN
 	1    2550 1500
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	2750 1500 4650 1500
 Connection ~ 4150 3700
 Wire Wire Line
 	4150 3700 4150 5850
@@ -453,9 +447,96 @@ F 3 "~" H 2550 3150 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
-	5700 3150 2750 3150
-Wire Wire Line
 	2750 5000 3100 5000
 Wire Wire Line
 	5600 3800 5600 4400
+$Comp
+L Device:R Rb1
+U 1 1 5F5EB03E
+P 3750 1500
+F 0 "Rb1" V 3543 1500 50  0000 C CNN
+F 1 "R" V 3634 1500 50  0000 C CNN
+F 2 "apollo:R__Horizontal" V 3680 1500 50  0001 C CNN
+F 3 "~" H 3750 1500 50  0001 C CNN
+	1    3750 1500
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R Rb2
+U 1 1 5F5EB7B3
+P 3750 2050
+F 0 "Rb2" V 3543 2050 50  0000 C CNN
+F 1 "R" V 3634 2050 50  0000 C CNN
+F 2 "apollo:R__Horizontal" V 3680 2050 50  0001 C CNN
+F 3 "~" H 3750 2050 50  0001 C CNN
+	1    3750 2050
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R Rb3
+U 1 1 5F5EBD6A
+P 3750 2650
+F 0 "Rb3" V 3543 2650 50  0000 C CNN
+F 1 "R" V 3634 2650 50  0000 C CNN
+F 2 "apollo:R__Horizontal" V 3680 2650 50  0001 C CNN
+F 3 "~" H 3750 2650 50  0001 C CNN
+	1    3750 2650
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R Rb4
+U 1 1 5F5EC2EE
+P 3750 3150
+F 0 "Rb4" V 3543 3150 50  0000 C CNN
+F 1 "R" V 3634 3150 50  0000 C CNN
+F 2 "apollo:R__Horizontal" V 3680 3150 50  0001 C CNN
+F 3 "~" H 3750 3150 50  0001 C CNN
+	1    3750 3150
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	2750 3150 3600 3150
+Wire Wire Line
+	2750 2650 3600 2650
+Wire Wire Line
+	2750 2050 3600 2050
+Wire Wire Line
+	2750 1500 3600 1500
+Wire Wire Line
+	3900 1500 4650 1500
+Wire Wire Line
+	3900 2050 5000 2050
+Wire Wire Line
+	3900 2650 5350 2650
+Wire Wire Line
+	3900 3150 5700 3150
+$Comp
+L power:VCC #PWR0101
+U 1 1 5F60A86A
+P 2950 4000
+F 0 "#PWR0101" H 2950 3850 50  0001 C CNN
+F 1 "VCC" H 2967 4173 50  0000 C CNN
+F 2 "" H 2950 4000 50  0001 C CNN
+F 3 "" H 2950 4000 50  0001 C CNN
+	1    2950 4000
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2950 4000 2950 4150
+$Comp
+L power:GND #PWR0102
+U 1 1 5F60E32A
+P 3500 6050
+F 0 "#PWR0102" H 3500 5800 50  0001 C CNN
+F 1 "GND" H 3505 5877 50  0000 C CNN
+F 2 "" H 3500 6050 50  0001 C CNN
+F 3 "" H 3500 6050 50  0001 C CNN
+	1    3500 6050
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3500 6050 3500 5850
+Connection ~ 3500 5850
+Connection ~ 2950 4000
+Connection ~ 3500 5600
 $EndSCHEMATC
