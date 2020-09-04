@@ -18,9 +18,9 @@ int PinOut[rows_cnt] {5,4,3,2}; // выходы
 int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы
 
 const char value[rows_cnt][cols_cnt]
-{ {' ', '0', ',', '+', '*', '='},
+{ {'X', '0', ',', '+', '*', '='},
   {'1', '2', '3', '-', '1', '~'},
-  {'4', '5', '6', '*', '^', ' '},
+  {'4', '5', '6', '*', '^', 'B'},
   {'7', '8', '9', '/', '%', 'C'}
 };
 
@@ -48,32 +48,40 @@ byte table[]= {
 
 byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };  // pins to turn off-&-on digits
 
-void matrix ()
+char matrix ()
 {
-  for (int i = 0; i < rows_cnt; i++) // цикл, передающий 0 по всем столбцам
-  {
-    digitalWrite(PinOut[i], LOW);
-    //Serial.print(i);
-    //Serial.println("");
-    for (int j = 0; j < cols_cnt; j++) // цикл, принимающих 0 по строкам
-    {
-      //Serial.print(" ");
-      //Serial.print(j);
-      //Serial.print(" out:");
-      //Serial.print(PinOut[i]);
-      //Serial.print(" in:");
-      //Serial.print(PinIn[j]);
-      if (digitalRead(PinIn[j]) == LOW) // если один из указанных портов входа равен 0, то..
-      {
-        //Serial.print(" ["); Serial.print(i); Serial.print(" "); Serial.print(j); Serial.print("]");
-        Serial.println(value[i][j]);
-        delay(200);
-      }
-      //Serial.println("");
-      //delay(200);
+    char result = 'X';
+    /* цикл, передающий 0 по всем столбцам */
+    for (int i = 0; i < rows_cnt; i++) {
+        digitalWrite(PinOut[i], LOW);
+        /* Serial.print(i); */
+        /* Serial.println(""); */
+        /* цикл, принимающих 0 по строкам */
+        for (int j = 0; j < cols_cnt; j++)  {
+            /* Serial.print(" "); */
+            /* Serial.print(j); */
+            /* Serial.print(" out:"); */
+            /* Serial.print(PinOut[i]); */
+            /* Serial.print(" in:"); */
+            /* Serial.print(PinIn[j]); */
+            /* если один из указанных портов входа равен 0, то.. */
+            if (digitalRead(PinIn[j]) == LOW) {
+                /* Serial.print(" [ "); */
+                /* Serial.print(i); */
+                /* Serial.print(" "); */
+                /* Serial.print(j); ; */
+                result = value[i][j];
+                /* Serial.print(value[i][j]); */
+                /* Serial.print(" ]"); */
+                /* Serial.println(" "); */
+                /* delay(200); */
+            }
+            /* Serial.println(""); */
+            /* delay(200); */
+        }
+        digitalWrite(PinOut[i], HIGH);
     }
-    digitalWrite(PinOut[i], HIGH);
-  }
+    return result;
 }
 
 void display_off () { // turn off digits
@@ -126,8 +134,19 @@ void int_to_time_str (int param, byte result[4]) {
 
 int countdown_base = 90*60+21;
 volatile int countdown;
+unsigned long time = 0;
 
 void loop() {
+    /* time cycle */
+    unsigned long new_time = millis();
+    if ((new_time > (time + 200))) {
+        time = new_time;
+        /* Serial.println(time); */
+        char symbol = matrix();
+        if ('X' != symbol) {
+            Serial.println(symbol);
+        }
+    }
     byte displayDigits[] = { 0b00111111, 0b00111000,
                              0b01110111, 0b01110110 };
     //hex2disp( countdown, displayDigits );
