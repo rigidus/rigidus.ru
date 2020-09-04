@@ -8,8 +8,8 @@ const int digit1   = 15;   // 7-Segment pin D3 J4
 const int digit2   = 16;   // 7-Segment pin D2 J3
 const int digit3   = 17;   // 7-Segment pin D1 J2
 const int clockPin = 18;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
-const int dataPin  = 19;  // 74HC595 pin 14 DS J_SER1 (4)
-const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
+const int dataPin  = 19;   // 74HC595 pin 14 DS J_SER1 (4)
+const int latchPin = 13;   // 74HC595 pin 12 STCP J_CLK1 (2)
 
 #define rows_cnt 4
 #define cols_cnt 6
@@ -50,7 +50,7 @@ byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };  // pins to turn
 
 /* Each array value holds digit values as table array index,  */
 /* or raw byte parameters: digit0, digit1, digit2, digit3  */
-byte displayDigits[] = { 0,0,0,0 };
+byte displayDigits[] = { 0, 0, 0, 0 };
 
 /* output_method: */
 /*     the four least significant bits controls data handling, */
@@ -250,11 +250,11 @@ void setup() {
     digitalWrite(control_digit_pins[x],LOW);  // Turns off the digit
   }
 
-
   for (int i = 0; i < rows_cnt; i++) {
     // инициализируем порты на выход (подают нули на столбцы)
     pinMode (PinOut[i], OUTPUT);
   }
+
   for (int i = 0; i < cols_cnt; i++) {
     // инициализируем порты на вход с подтяжкой к плюсу (принимают нули на строках)
     pinMode (PinIn[i], INPUT);
