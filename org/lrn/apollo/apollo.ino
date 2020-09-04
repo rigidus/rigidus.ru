@@ -48,34 +48,6 @@ byte table[]= {
 
 byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };  // pins to turn off-&-on digits
 
-/* output_method: */
-/*     the four least significant bits controls data handling, */
-/*     each bit controls associated digit starting with least-significant bit 0, */
-/*     i.e. B1010, digit1 & digit3 are raw, digit0 & digit2 use table array */
-/*   1 = raw byte */
-/*   0 = table array index */
-const byte base_output_method = 0b1000;
-byte output_method = base_output_method;
-
-/* tracks time */
-unsigned long onTime = 0;
-
-/* switch between HexCounter (table array) and RawDisplay (raw bytes) */
-/*    false = HexCounter */
-/*     true = RawDisplay */
-bool switchView = false;
-
-/* RawDisplay counter */
-unsigned int counter = 0;
-
-int digitDelay = 50;                  // delay between incrementing digits (ms)
-int brightness = 90;                  // valid range of 0-100, 100=brightest
-unsigned int ShowSegCount = 250;      // number of RawDisplay loops before switching again
-
-/* ***************************************************
- *                   Functions                       *
- *************************************************** */
-
 void matrix ()
 {
   for (int i = 0; i < rows_cnt; i++) // цикл, передающий 0 по всем столбцам
@@ -122,73 +94,6 @@ void DisplaySegments(byte displayDigits[4]) {
     display_off();
 }
 
-/* void HexCounter() { */
-/*     /\* Increments values stored in displayDigits array to */
-/*      * creates a Hex counter from the table array. */
-/*      * Uses mixed display types: */
-/*      *    Digit3 | Digit2 | Digit1 | Digit0 */
-/*      *    --------------------------------- */
-/*      *       C   |   0    |   0    |    0 */
-/*      *\/ */
-
-/*     //increment values for digits 0-2 */
-/*     bool incrementValue = true; */
-/*     for (int d = 0; d < 3; d++){ */
-/*         int x = int(displayDigits[d]); */
-/*         if (incrementValue == true) { */
-/*             x++; */
-/*             incrementValue = false; */
-/*             if (x > 15) { */
-/*                 displayDigits[d] = 0; */
-/*                 incrementValue = true; */
-/*             } else { */
-/*                 displayDigits[d] = byte(x); */
-/*             } */
-/*         } */
-/*     } */
-
-/*     // Set digit3 value */
-/*     displayDigits[3] = 0b01001001; */
-/*     // Set digitSwitch option */
-/*     output_method = 0b1000; */
-
-/*     if ( (displayDigits[0] == 0) && */
-/*          (displayDigits[1] == 0) && */
-/*          (displayDigits[2] == 0) ) { */
-/*         switchView = !switchView; */
-/*         // Reset array */
-/*         for (int x = 0; x < 5; x++) { */
-/*           displayDigits[x]=0; */
-/*         } */
-/*         output_method = 0b0000; */
-/*     } */
-/* } */
-
-/* void RawDisplay(){ */
-
-/*     // HALO */
-/*     displayDigits[0] = 0b00111111;  // 0 */
-/*     displayDigits[1] = 0b00111000;  // L */
-/*     displayDigits[2] = 0b01110111;  // A */
-/*     displayDigits[3] = 0b01110110;  // H */
-
-/*      // Set digitSwitch option */
-/*     output_method = 0b1111; */
-
-/*     if (counter < ShowSegCount){ */
-/*         counter++; */
-/*     } else { */
-/*         // Reset everything */
-/*         counter = 0; */
-/*         switchView = !switchView; */
-/*         // Reset array */
-/*         for (int x =0; x<5; x++) { */
-/*             displayDigits[x]=0; */
-/*         } */
-/*         output_method = base_output_method; */
-/*     } */
-/* } */
-
 void hex2disp (int param, byte result[4]) {
     int temp = param;
     int mask = 0xF;
@@ -198,30 +103,36 @@ void hex2disp (int param, byte result[4]) {
     }
 }
 
-void loop() {
+unsigned char hex2bcd (unsigned char x)
+{
+    unsigned char y;
+    y = (x / 10) << 4;
+    y = y | (x % 10);
+    return (y);
+}
 
+void int_to_time_str (int param, byte result[4]) {
+    int minutes = param / 60;
+    int seconds = param % 60;
+    int minute_hi = minutes / 10;
+    int minute_lo = minutes % 10;
+    int second_hi = seconds / 10;
+    int second_lo = seconds % 10;
+    result[0] = table[second_lo];
+    result[1] = table[second_hi];
+    result[2] = table[minute_lo];
+    result[3] = table[minute_hi];
+}
+
+int countdown_base = 90*60+21;
+volatile int countdown;
+
+void loop() {
     byte displayDigits[] = { 0b00111111, 0b00111000,
                              0b01110111, 0b01110110 };
-    hex2disp( 0xDEAD, displayDigits );
+    //hex2disp( countdown, displayDigits );
+    int_to_time_str( countdown, displayDigits );
     DisplaySegments(displayDigits);
-
-    /* *************************************
-     *         Control Brightness          *
-     * *********************************** */
-    delayMicroseconds(1638*((100-brightness)/10));  // largest value 16383
-
-    /* /\* ************************************* */
-    /*  *        Selects Display Type         * */
-    /*  * *********************************** *\/ */
-    /* unsigned long nowValue = millis() - onTime; */
-    /* if (nowValue >= long(digitDelay)){ */
-    /*     onTime = millis(); */
-    /*     if (switchView == true) { */
-    /*       RawDisplay(); */
-    /*     } else { */
-    /*       HexCounter(); */
-    /*     } */
-    /* } */
 }
 
 void setup() {
@@ -232,16 +143,36 @@ void setup() {
     pinMode(control_digit_pins[x],OUTPUT);
     digitalWrite(control_digit_pins[x],LOW);  // Turns off the digit
   }
-
+  // инициализируем порты на выход (подают нули на столбцы)
   for (int i = 0; i < rows_cnt; i++) {
-    // инициализируем порты на выход (подают нули на столбцы)
     pinMode (PinOut[i], OUTPUT);
   }
+  // инициализируем порты на вход с подтяжкой к плюсу
+  // (принимают нули на строках)
   for (int i = 0; i < cols_cnt; i++) {
-    // инициализируем порты на вход с подтяжкой к плюсу (принимают нули на строках)
     pinMode (PinIn[i], INPUT);
     digitalWrite (PinIn[i], HIGH);
   }
-
+  // обратный отсчет
+  countdown = countdown_base;
+  // инициализация Timer1 на 1 сек
+  cli(); // отключить глобальные прерывания
+  TCCR1A = 0; // установить TCCR1A регистр в 0
+  TCCR1B = 0;
+  OCR1A = 15624; // установка регистра совпадения
+  TCCR1B |= (1 << WGM12); // включение в CTC режим
+  // Установка битов CS10 и CS12 на коэффициент деления 1024
+  TCCR1B |= (1 << CS10);
+  TCCR1B |= (1 << CS12);
+  TIMSK1 |= (1 << OCIE1A);  // включение прерываний по совпадению
+  sei(); // включить глобальные прерывания
+  // Инициализация Serial
   Serial.begin(9600);
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+    if (0 == countdown--) {
+        countdown = countdown_base;
+    }
 }
