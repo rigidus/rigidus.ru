@@ -8,8 +8,8 @@ const int digit1   = 15;   // 7-Segment pin D3 J4
 const int digit2   = 16;   // 7-Segment pin D2 J3
 const int digit3   = 17;   // 7-Segment pin D1 J2
 const int clockPin = 18;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
-const int dataPin  = 19;   // 74HC595 pin 14 DS J_SER1 (4)
-const int latchPin = 13;   // 74HC595 pin 12 STCP J_CLK1 (2)
+const int dataPin  = 19;  // 74HC595 pin 14 DS J_SER1 (4)
+const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
 
 #define rows_cnt 4
 #define cols_cnt 6
@@ -47,10 +47,6 @@ byte table[]= {
     };
 
 byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };  // pins to turn off-&-on digits
-
-/* Each array value holds digit values as table array index,  */
-/* or raw byte parameters: digit0, digit1, digit2, digit3  */
-byte displayDigits[] = { 0, 0, 0, 0 };
 
 /* output_method: */
 /*     the four least significant bits controls data handling, */
@@ -114,131 +110,118 @@ void display_off () { // turn off digits
     }
 }
 
-void DisplaySegments() {
-
-    /* Display will send out all four digits one at a time
-     *   output_method = the right nibble controls output type
-     *                      1 = raw,
-     *                      0 = table array
-     *                  upper (left) nibble ignored
-     *                  starting with 0, the least-significant (rightmost) bit
-     */
-
+void DisplaySegments(byte displayDigits[4]) {
     for (int x=0; x<4; x++) { // for all four digit
-
         display_off();
-
         digitalWrite(latchPin,LOW);  // [=latch down=]
-
-        if ( 1 == bitRead(output_method, x) ) {
-            // raw byte value is sent to shift register
-            shiftOut(dataPin, clockPin, MSBFIRST, (displayDigits[x] /*| 0b10000000*/));
-        } else {
-            // table array value is sent to the shift register
-            shiftOut(dataPin, clockPin, MSBFIRST, ((table[displayDigits[x]]) /*| 0b00000000*/));
-        }
-
+        shiftOut(dataPin, clockPin, MSBFIRST, (displayDigits[x]));
         digitalWrite(latchPin,HIGH); // [=latch up=]
-
         digitalWrite(control_digit_pins[x], HIGH); // turn on one digit
-
         delay(1); // 1 or 2 is ok
     }
-
     display_off();
 }
 
-void HexCounter() {
-    /* Increments values stored in displayDigits array to
-     * creates a Hex counter from the table array.
-     * Uses mixed display types:
-     *    Digit3 | Digit2 | Digit1 | Digit0
-     *    ---------------------------------
-     *       C   |   0    |   0    |    0
-     */
+/* void HexCounter() { */
+/*     /\* Increments values stored in displayDigits array to */
+/*      * creates a Hex counter from the table array. */
+/*      * Uses mixed display types: */
+/*      *    Digit3 | Digit2 | Digit1 | Digit0 */
+/*      *    --------------------------------- */
+/*      *       C   |   0    |   0    |    0 */
+/*      *\/ */
 
-    //increment values for digits 0-2
-    bool incrementValue = true;
-    for (int d = 0; d < 3; d++){
-        int x = int(displayDigits[d]);
-        if (incrementValue == true) {
-            x++;
-            incrementValue = false;
-            if (x > 15) {
-                displayDigits[d] = 0;
-                incrementValue = true;
-            } else {
-                displayDigits[d] = byte(x);
-            }
-        }
-    }
+/*     //increment values for digits 0-2 */
+/*     bool incrementValue = true; */
+/*     for (int d = 0; d < 3; d++){ */
+/*         int x = int(displayDigits[d]); */
+/*         if (incrementValue == true) { */
+/*             x++; */
+/*             incrementValue = false; */
+/*             if (x > 15) { */
+/*                 displayDigits[d] = 0; */
+/*                 incrementValue = true; */
+/*             } else { */
+/*                 displayDigits[d] = byte(x); */
+/*             } */
+/*         } */
+/*     } */
 
-    // Set digit3 value
-    displayDigits[3] = 0b01001001;
-    // Set digitSwitch option
-    output_method = 0b1000;
+/*     // Set digit3 value */
+/*     displayDigits[3] = 0b01001001; */
+/*     // Set digitSwitch option */
+/*     output_method = 0b1000; */
 
-    if ( (displayDigits[0] == 0) &&
-         (displayDigits[1] == 0) &&
-         (displayDigits[2] == 0) ) {
-        switchView = !switchView;
-        // Reset array
-        for (int x = 0; x < 5; x++) {
-          displayDigits[x]=0;
-        }
-        output_method = 0b0000;
+/*     if ( (displayDigits[0] == 0) && */
+/*          (displayDigits[1] == 0) && */
+/*          (displayDigits[2] == 0) ) { */
+/*         switchView = !switchView; */
+/*         // Reset array */
+/*         for (int x = 0; x < 5; x++) { */
+/*           displayDigits[x]=0; */
+/*         } */
+/*         output_method = 0b0000; */
+/*     } */
+/* } */
+
+/* void RawDisplay(){ */
+
+/*     // HALO */
+/*     displayDigits[0] = 0b00111111;  // 0 */
+/*     displayDigits[1] = 0b00111000;  // L */
+/*     displayDigits[2] = 0b01110111;  // A */
+/*     displayDigits[3] = 0b01110110;  // H */
+
+/*      // Set digitSwitch option */
+/*     output_method = 0b1111; */
+
+/*     if (counter < ShowSegCount){ */
+/*         counter++; */
+/*     } else { */
+/*         // Reset everything */
+/*         counter = 0; */
+/*         switchView = !switchView; */
+/*         // Reset array */
+/*         for (int x =0; x<5; x++) { */
+/*             displayDigits[x]=0; */
+/*         } */
+/*         output_method = base_output_method; */
+/*     } */
+/* } */
+
+void hex2disp (int param, byte result[4]) {
+    int temp = param;
+    int mask = 0xF;
+    for (int x=0; x<4; x++) {
+        result[x] = table[(temp & mask)];
+        temp = temp >> 4;
     }
 }
 
-void RawDisplay(){
-
-    // HALO
-    displayDigits[0] = 0b00111111;  // 0
-    displayDigits[1] = 0b00111000;  // L
-    displayDigits[2] = 0b01110111;  // A
-    displayDigits[3] = 0b01110110;  // H
-
-     // Set digitSwitch option
-    output_method = 0b1111;
-
-    if (counter < ShowSegCount){
-        counter++;
-    } else {
-        // Reset everything
-        counter = 0;
-        switchView = !switchView;
-        // Reset array
-        for (int x =0; x<5; x++) {
-            displayDigits[x]=0;
-        }
-        output_method = base_output_method;
-    }
-}
-
-/* ***************************************************
- *                   Void Loop                       *
- *************************************************** */
 void loop() {
 
-    DisplaySegments();                              // Caution: Avoid extra delays
+    byte displayDigits[] = { 0b00111111, 0b00111000,
+                             0b01110111, 0b01110110 };
+    hex2disp( 0xDEAD, displayDigits );
+    DisplaySegments(displayDigits);
 
     /* *************************************
      *         Control Brightness          *
      * *********************************** */
     delayMicroseconds(1638*((100-brightness)/10));  // largest value 16383
 
-    /* *************************************
-     *        Selects Display Type         *
-     * *********************************** */
-    unsigned long nowValue = millis() - onTime;
-    if (nowValue >= long(digitDelay)){
-        onTime = millis();
-        if (switchView == true) {
-          RawDisplay();
-        } else {
-          HexCounter();
-        }
-    }
+    /* /\* ************************************* */
+    /*  *        Selects Display Type         * */
+    /*  * *********************************** *\/ */
+    /* unsigned long nowValue = millis() - onTime; */
+    /* if (nowValue >= long(digitDelay)){ */
+    /*     onTime = millis(); */
+    /*     if (switchView == true) { */
+    /*       RawDisplay(); */
+    /*     } else { */
+    /*       HexCounter(); */
+    /*     } */
+    /* } */
 }
 
 void setup() {
@@ -254,7 +237,6 @@ void setup() {
     // инициализируем порты на выход (подают нули на столбцы)
     pinMode (PinOut[i], OUTPUT);
   }
-
   for (int i = 0; i < cols_cnt; i++) {
     // инициализируем порты на вход с подтяжкой к плюсу (принимают нули на строках)
     pinMode (PinIn[i], INPUT);
