@@ -3,14 +3,13 @@
 /*          one four digit seven segment display - common cathode (5461AS-1) */
 /*          four 2N2222A transistors */
 
-
-const int clockPin = 9;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
-const int latchPin = 11;  // 74HC595 pin 12 STCP J_CLK1 (2)
-const int dataPin  = 12;  // 74HC595 pin 14 DS J_SER1 (4)
-const int digit0   = 7;   // 7-Segment pin D4 J1
-const int digit1   = 6;   // 7-Segment pin D3 J4
-const int digit2   = 5;   // 7-Segment pin D2 J3
-const int digit3   = 4;   // 7-Segment pin D1 J2
+const int digit0   = 14;   // 7-Segment pin D4 J1
+const int digit1   = 15;   // 7-Segment pin D3 J4
+const int digit2   = 16;   // 7-Segment pin D2 J3
+const int digit3   = 17;   // 7-Segment pin D1 J2
+const int clockPin = 18;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
+const int dataPin  = 19;  // 74HC595 pin 14 DS J_SER1 (4)
+const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
 
 // Hex values reference which LED segments are turned on
 // and may vary from circuit to circuit.  Note the mapping above.
