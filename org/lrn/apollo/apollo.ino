@@ -7,6 +7,7 @@ const int digit0   = 14;   // 7-Segment pin D4 J1
 const int digit1   = 15;   // 7-Segment pin D3 J4
 const int digit2   = 16;   // 7-Segment pin D2 J3
 const int digit3   = 17;   // 7-Segment pin D1 J2
+byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };
 const int clockPin = 18;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
 const int dataPin  = 19;  // 74HC595 pin 14 DS J_SER1 (4)
 const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
@@ -14,13 +15,21 @@ const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
 #define rows_cnt 4
 #define cols_cnt 6
 
-int PinOut[rows_cnt] {5,4,3,2}; // выходы
-int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы
+int PinOut[rows_cnt] {5,4,3,2}; // выходы клавиатуры
+int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы клавиатуры
+
+int countdown_base = 90*60+21;
+volatile int countdown;
+byte time_bcd[4];
+unsigned long time = 0;
+bool pulse = 0;
+bool mode = 0; // 0 = standart; 1 = edit
+int submode = 3;
 
 const char value[rows_cnt][cols_cnt]
 { {'X', '0', ',', '+', '*', '='},
-  {'1', '2', '3', '-', '1', '~'},
-  {'4', '5', '6', '*', '^', 'B'},
+  {'1', '2', '3', '-', 'Y', '~'},
+  {'4', '5', '6', '*', '^', 'Z'},
   {'7', '8', '9', '/', '%', 'C'}
 };
 
@@ -46,7 +55,6 @@ byte table[]= {
       0b00000000   // blank
     };
 
-byte control_digit_pins[] = { digit0, digit1, digit2, digit3 };  // pins to turn off-&-on digits
 
 char matrix ()
 {
@@ -96,62 +104,153 @@ void DisplaySegments(byte displayDigits[4]) {
         digitalWrite(latchPin,LOW);  // [=latch down=]
         shiftOut(dataPin, clockPin, MSBFIRST, (displayDigits[x]));
         digitalWrite(latchPin,HIGH); // [=latch up=]
-        digitalWrite(control_digit_pins[x], HIGH); // turn on one digit
+        if (pulse && mode) {
+            if (submode == x) {
+                digitalWrite(control_digit_pins[x], LOW); // turn off
+            } else {
+                digitalWrite(control_digit_pins[x], HIGH); // turn on
+            }
+        } else {
+            digitalWrite(control_digit_pins[x], HIGH); // turn on
+        }
         delay(1); // 1 or 2 is ok
     }
     display_off();
 }
 
-void hex2disp (int param, byte result[4]) {
-    int temp = param;
-    int mask = 0xF;
-    for (int x=0; x<4; x++) {
-        result[x] = table[(temp & mask)];
-        temp = temp >> 4;
-    }
+/* void hex2disp (int param, byte result[4]) { */
+/*     int temp = param; */
+/*     int mask = 0xF; */
+/*     for (int x=0; x<4; x++) { */
+/*         result[x] = table[(temp & mask)]; */
+/*         temp = temp >> 4; */
+/*     } */
+/* } */
+
+/* unsigned char hex2bcd (unsigned char x) */
+/* { */
+/*     unsigned char y; */
+/*     y = (x / 10) << 4; */
+/*     y = y | (x % 10); */
+/*     return (y); */
+/* } */
+
+int time_bcd_to_int (byte param[4]) {
+    int minute_hi = param[3];
+    int minute_lo = param[2];
+    int second_hi = param[1];
+    int second_lo = param[0];
+    int minutes = minute_hi * 10 + minute_lo;
+    int seconds = second_hi * 10 + second_lo;
+    return minutes * 60 + seconds;
 }
 
-unsigned char hex2bcd (unsigned char x)
-{
-    unsigned char y;
-    y = (x / 10) << 4;
-    y = y | (x % 10);
-    return (y);
-}
-
-void int_to_time_str (int param, byte result[4]) {
+void int_to_time_bcd (int param, byte result[4]) {
     int minutes = param / 60;
     int seconds = param % 60;
     int minute_hi = minutes / 10;
     int minute_lo = minutes % 10;
     int second_hi = seconds / 10;
     int second_lo = seconds % 10;
-    result[0] = table[second_lo];
-    result[1] = table[second_hi];
-    result[2] = table[minute_lo];
-    result[3] = table[minute_hi];
+    result[0] = second_lo;
+    result[1] = second_hi;
+    result[2] = minute_lo;
+    result[3] = minute_hi;
 }
 
-int countdown_base = 90*60+21;
-volatile int countdown;
-unsigned long time = 0;
+void time_bcd_to_time_str (byte param[4], byte result[4]) {
+    result[0] = table[param[0]];
+    result[1] = table[param[1]];
+    result[2] = table[param[2]];
+    result[3] = table[param[3]];
+}
 
+
+void submode_inc() {
+    submode++;
+    if (submode > 3) { submode = 3; }
+}
+
+
+void submode_dec() {
+    submode--;
+    if (submode < 0) { submode = 0; }
+}
+
+
+/* MAIN LOOP */
 void loop() {
     /* time cycle */
     unsigned long new_time = millis();
     if ((new_time > (time + 200))) {
+        pulse = !pulse;
         time = new_time;
         /* Serial.println(time); */
         char symbol = matrix();
         if ('X' != symbol) {
             Serial.println(symbol);
         }
+        byte input = 0xF;
+        switch (symbol) {
+        case 'C':
+            mode = 1;
+            submode = 3;
+            break;
+        case '=':
+            mode = 0;
+            break;
+        case '-':
+            submode_inc();
+            break;
+        case '+':
+            submode_dec();
+            break;
+        case '0':
+            input = 0;
+        case '1':
+            input = 1;
+            break;
+        case '2':
+            input = 2;
+            break;
+        case '3':
+            input = 3;
+            break;
+        case '4':
+            input = 4;
+            break;
+        case '5':
+            input = 5;
+            break;
+        case '6':
+            input = 6;
+            break;
+        case '7':
+            input = 7;
+            break;
+        case '8':
+            input = 8;
+            break;
+        case '9':
+            input = 9;
+            break;
+        }
+        if (mode && (input != 0xF)) {
+            time_bcd[submode] = input;
+            submode_inc();
+            countdown = time_bcd_to_int( time_bcd );
+        }
     }
     byte displayDigits[] = { 0b00111111, 0b00111000,
                              0b01110111, 0b01110110 };
-    //hex2disp( countdown, displayDigits );
-    int_to_time_str( countdown, displayDigits );
-    DisplaySegments(displayDigits);
+    /* time_bcd is a countdown */
+    int_to_time_bcd( countdown, time_bcd );
+    /* displayDigits is a time_bcd */
+    time_bcd_to_time_str( time_bcd, displayDigits );
+    /* show DisplayDigits */
+    DisplaySegments( displayDigits );
+
+    /* countdown = time_bcd_to_int( time_bcd ); */
 }
 
 void setup() {
@@ -191,7 +290,9 @@ void setup() {
 
 ISR(TIMER1_COMPA_vect)
 {
-    if (0 == countdown--) {
-        countdown = countdown_base;
+    if (!mode) {
+        if (0 == countdown--) {
+            countdown = countdown_base;
+        }
     }
 }
