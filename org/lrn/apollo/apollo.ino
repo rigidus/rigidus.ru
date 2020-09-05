@@ -207,6 +207,7 @@ void loop() {
             break;
         case '0':
             input = 0;
+            break;
         case '1':
             input = 1;
             break;
