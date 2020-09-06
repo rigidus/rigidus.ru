@@ -50,20 +50,21 @@ int pinOut [cols_cnt] {6,7,8,9,10,11};  // выходы клавиатуры
 
 const char value[rows_cnt][cols_cnt] {
     {'X', '0', ',', '+', '*', '='},
-        {'1', '2', '3', '-', 'Y', '~'},
-            {'4', '5', '6', '*', '^', 'Z'},
-                {'7', '8', '9', '/', '%', 'C'}
+    {'1', '2', '3', '-', 'Y', '~'},
+    {'4', '5', '6', '*', '^', 'Z'},
+    {'7', '8', '9', '/', '%', 'C'}
 };
+
 
 char matrix ()
 {
     char result = 'X';
-    /* цикл, передающий 0 по всем столбцам */
+    /* цикл, передающий LOW по каждому столбцу */
     for (int i = 0; i < cols_cnt; i++) {
         digitalWrite(pinOut[i], LOW);
         /* Serial.print(i); */
         /* Serial.println(""); */
-        /* цикл, принимающих 0 по строкам */
+        /* цикл, принимающих LOW по строкам */
         for (int j = 0; j < rows_cnt; j++)  {
             /* Serial.print(" "); */
             /* Serial.print(j); */
@@ -71,7 +72,7 @@ char matrix ()
             /* Serial.print(pinOut[i]); */
             /* Serial.print(" in:"); */
             /* Serial.print(pinIn[j]); */
-            /* если один из указанных портов входа равен 0, то.. */
+            /* если один из указанных портов входа равен LOW, то.. */
             if (digitalRead(pinIn[j]) == LOW) {
                 /* Serial.print(" [ "); */
                 /* Serial.print(i); */
@@ -82,13 +83,15 @@ char matrix ()
                 /* Serial.print(" ]"); */
                 /* Serial.println(" "); */
                 /* delay(200); */
+                digitalWrite(pinOut[i], HIGH);  /* set before return */
+                return result;
             }
             /* Serial.println(""); */
             /* delay(200); */
         }
         digitalWrite(pinOut[i], HIGH);
     }
-    return result;
+    return result; // 'X' = no buttons pressed
 }
 
 void display_off () { // turn off digits
@@ -237,7 +240,7 @@ void loop() {
         }
         if (mode && (input != 0xF)) {
             time_bcd[submode] = input;
-            submode_inc();
+            submode_dec(); // reverse becouse shematic
             countdown = time_bcd_to_int( time_bcd );
         }
     }
