@@ -23,61 +23,61 @@ int submode = 3;
 // Hex values reference which LED segments are turned on
 // and may vary from circuit to circuit.  Note the mapping above.
 byte table[]= {
-      0b00111111,  // = 0
-      0b00000110,  // = 1
-      0b01011011,  // = 2
-      0b01001111,  // = 3
-      0b01100110,  // = 4
-      0b01101101,  // = 5
-      0b01111101,  // = 6
-      0b00000111,  // = 7
-      0b01111111,  // = 8
-      0b01101111,  // = 9
-      0b01110111,  // = A
-      0b01111100,  // = b
-      0b00111001,  // = C
-      0b01011110,  // = d
-      0b01111001,  // = E
-      0b01110001,  // = F
-      0b00000000   // blank
+               0b00111111,  // = 0
+               0b00000110,  // = 1
+               0b01011011,  // = 2
+               0b01001111,  // = 3
+               0b01100110,  // = 4
+               0b01101101,  // = 5
+               0b01111101,  // = 6
+               0b00000111,  // = 7
+               0b01111111,  // = 8
+               0b01101111,  // = 9
+               0b01110111,  // = A
+               0b01111100,  // = b
+               0b00111001,  // = C
+               0b01011110,  // = d
+               0b01111001,  // = E
+               0b01110001,  // = F
+               0b00000000   // blank
 };
 
 #define rows_cnt 4
 #define cols_cnt 6
 
-int PinOut[rows_cnt] {5,4,3,2}; // выходы клавиатуры
-int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы клавиатуры
+int pinIn  [rows_cnt] {5,4,3,2};        // входы клавиатуры
+int pinOut [cols_cnt] {6,7,8,9,10,11};  // выходы клавиатуры
 
 const char value[rows_cnt][cols_cnt] {
     {'X', '0', ',', '+', '*', '='},
-    {'1', '2', '3', '-', 'Y', '~'},
-    {'4', '5', '6', '*', '^', 'Z'},
-    {'7', '8', '9', '/', '%', 'C'}
+        {'1', '2', '3', '-', 'Y', '~'},
+            {'4', '5', '6', '*', '^', 'Z'},
+                {'7', '8', '9', '/', '%', 'C'}
 };
 
 char matrix ()
 {
     char result = 'X';
     /* цикл, передающий 0 по всем столбцам */
-    for (int i = 0; i < rows_cnt; i++) {
-        digitalWrite(PinOut[i], LOW);
+    for (int i = 0; i < cols_cnt; i++) {
+        digitalWrite(pinOut[i], LOW);
         /* Serial.print(i); */
         /* Serial.println(""); */
         /* цикл, принимающих 0 по строкам */
-        for (int j = 0; j < cols_cnt; j++)  {
+        for (int j = 0; j < rows_cnt; j++)  {
             /* Serial.print(" "); */
             /* Serial.print(j); */
             /* Serial.print(" out:"); */
-            /* Serial.print(PinOut[i]); */
+            /* Serial.print(pinOut[i]); */
             /* Serial.print(" in:"); */
-            /* Serial.print(PinIn[j]); */
+            /* Serial.print(pinIn[j]); */
             /* если один из указанных портов входа равен 0, то.. */
-            if (digitalRead(PinIn[j]) == LOW) {
+            if (digitalRead(pinIn[j]) == LOW) {
                 /* Serial.print(" [ "); */
                 /* Serial.print(i); */
                 /* Serial.print(" "); */
                 /* Serial.print(j); ; */
-                result = value[i][j];
+                result = value[j][i];
                 /* Serial.print(value[i][j]); */
                 /* Serial.print(" ]"); */
                 /* Serial.println(" "); */
@@ -86,7 +86,7 @@ char matrix ()
             /* Serial.println(""); */
             /* delay(200); */
         }
-        digitalWrite(PinOut[i], HIGH);
+        digitalWrite(pinOut[i], HIGH);
     }
     return result;
 }
@@ -254,38 +254,38 @@ void loop() {
 }
 
 void setup() {
-  pinMode(latchPin,OUTPUT);
-  pinMode(clockPin,OUTPUT);
-  pinMode(dataPin,OUTPUT);
-  for (int x=0; x<4; x++){
-    pinMode(control_digit_pins[x],OUTPUT);
-    digitalWrite(control_digit_pins[x],LOW);  // Turns off the digit
-  }
-  // инициализируем порты на выход (подают нули на столбцы)
-  for (int i = 0; i < rows_cnt; i++) {
-    pinMode (PinOut[i], OUTPUT);
-  }
-  // инициализируем порты на вход с подтяжкой к плюсу
-  // (принимают нули на строках)
-  for (int i = 0; i < cols_cnt; i++) {
-    pinMode (PinIn[i], INPUT);
-    digitalWrite (PinIn[i], HIGH);
-  }
-  // обратный отсчет
-  countdown = countdown_base;
-  // инициализация Timer1 на 1 сек
-  cli(); // отключить глобальные прерывания
-  TCCR1A = 0; // установить TCCR1A регистр в 0
-  TCCR1B = 0;
-  OCR1A = 15624; // установка регистра совпадения
-  TCCR1B |= (1 << WGM12); // включение в CTC режим
-  // Установка битов CS10 и CS12 на коэффициент деления 1024
-  TCCR1B |= (1 << CS10);
-  TCCR1B |= (1 << CS12);
-  TIMSK1 |= (1 << OCIE1A);  // включение прерываний по совпадению
-  sei(); // включить глобальные прерывания
-  // Инициализация Serial
-  Serial.begin(9600);
+    pinMode(latchPin,OUTPUT);
+    pinMode(clockPin,OUTPUT);
+    pinMode(dataPin,OUTPUT);
+    for (int x=0; x<4; x++){
+        pinMode(control_digit_pins[x],OUTPUT);
+        digitalWrite(control_digit_pins[x],LOW);  // Turns off the digit
+    }
+    // инициализируем порты на выход (подают нули на столбцы)
+    for (int i = 0; i < (sizeof(pinOut)/sizeof(pinOut[0])); i++) {
+        pinMode (pinOut[i], OUTPUT);
+    }
+    // инициализируем порты на вход с подтяжкой к плюсу
+    // (принимают нули на строках)
+    for (int i = 0; i < (sizeof(pinIn)/sizeof(pinIn[0])); i++) {
+        pinMode (pinIn[i], INPUT);
+        digitalWrite (pinIn[i], HIGH);
+    }
+    // обратный отсчет
+    countdown = countdown_base;
+    // инициализация Timer1 на 1 сек
+    cli(); // отключить глобальные прерывания
+    TCCR1A = 0; // установить TCCR1A регистр в 0
+    TCCR1B = 0;
+    OCR1A = 15624; // установка регистра совпадения
+    TCCR1B |= (1 << WGM12); // включение в CTC режим
+    // Установка битов CS10 и CS12 на коэффициент деления 1024
+    TCCR1B |= (1 << CS10);
+    TCCR1B |= (1 << CS12);
+    TIMSK1 |= (1 << OCIE1A);  // включение прерываний по совпадению
+    sei(); // включить глобальные прерывания
+    // Инициализация Serial
+    Serial.begin(9600);
 }
 
 ISR(TIMER1_COMPA_vect)
