@@ -12,12 +12,6 @@ const int clockPin = 18;   // 74HC595 pin 10 MR SRCLR J_CLR1 (1)
 const int dataPin  = 19;  // 74HC595 pin 14 DS J_SER1 (4)
 const int latchPin = 13;  // 74HC595 pin 12 STCP J_CLK1 (2)
 
-#define rows_cnt 4
-#define cols_cnt 6
-
-int PinOut[rows_cnt] {5,4,3,2}; // выходы клавиатуры
-int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы клавиатуры
-
 int countdown_base = 90*60+21;
 volatile int countdown;
 byte time_bcd[4];
@@ -25,13 +19,6 @@ unsigned long time = 0;
 bool pulse = 0;
 bool mode = 0; // 0 = standart; 1 = edit
 int submode = 3;
-
-const char value[rows_cnt][cols_cnt]
-{ {'X', '0', ',', '+', '*', '='},
-  {'1', '2', '3', '-', 'Y', '~'},
-  {'4', '5', '6', '*', '^', 'Z'},
-  {'7', '8', '9', '/', '%', 'C'}
-};
 
 // Hex values reference which LED segments are turned on
 // and may vary from circuit to circuit.  Note the mapping above.
@@ -53,8 +40,20 @@ byte table[]= {
       0b01111001,  // = E
       0b01110001,  // = F
       0b00000000   // blank
-    };
+};
 
+#define rows_cnt 4
+#define cols_cnt 6
+
+int PinOut[rows_cnt] {5,4,3,2}; // выходы клавиатуры
+int PinIn [cols_cnt] {6,7,8,9,10,11}; // входы клавиатуры
+
+const char value[rows_cnt][cols_cnt] {
+    {'X', '0', ',', '+', '*', '='},
+    {'1', '2', '3', '-', 'Y', '~'},
+    {'4', '5', '6', '*', '^', 'Z'},
+    {'7', '8', '9', '/', '%', 'C'}
+};
 
 char matrix ()
 {
