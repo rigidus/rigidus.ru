@@ -49,50 +49,57 @@ int pinIn  [rows_cnt] {5,4,3,2};        // входы клавиатуры
 int pinOut [cols_cnt] {6,7,8,9,10,11};  // выходы клавиатуры
 
 const char value[rows_cnt][cols_cnt] {
-    {'X', '0', ',', '+', '*', '='},
-    {'1', '2', '3', '-', 'Y', '~'},
-    {'4', '5', '6', '*', '^', 'Z'},
-    {'7', '8', '9', '/', '%', 'C'}
+    {'7', '8', '9', '/', '%', 'C'},
+    {'4', '5', '6', '*', '^', 'X'},
+    {'1', '2', '3', '-', 'X', '_'},
+    {'X', '0', ',', '+', 'X', '='}
 };
 
 
+const int dataPinKeyb  = 12;
+const int clockPinKeyb = 10;
+const int latchPinKeyb = 11;
+
+void printBinary(byte inByte) {
+    for (int b = 7; b >= 0; b--) {  Serial.print(bitRead(inByte, b)); }
+}
+
+void clear_shift_register() {
+    digitalWrite(latchPinKeyb, LOW);
+    shiftOut(dataPinKeyb, clockPinKeyb, MSBFIRST, 0b11111111);
+    digitalWrite(latchPinKeyb, HIGH);
+}
+
 char matrix ()
 {
+    clear_shift_register();
+    /* То, что мы и за символ не считаем */
     char result = 'X';
     /* цикл, передающий LOW по каждому столбцу */
-    for (int i = 0; i < cols_cnt; i++) {
-        digitalWrite(pinOut[i], LOW);
-        /* Serial.print(i); */
-        /* Serial.println(""); */
+    for (int i=cols_cnt-1; i>=0; i--) {
+        digitalWrite(latchPinKeyb, LOW);
+        shiftOut(dataPinKeyb, clockPinKeyb, MSBFIRST, ~(1<<i));
+        digitalWrite(latchPinKeyb, HIGH);
         /* цикл, принимающих LOW по строкам */
-        for (int j = 0; j < rows_cnt; j++)  {
-            /* Serial.print(" "); */
-            /* Serial.print(j); */
-            /* Serial.print(" out:"); */
-            /* Serial.print(pinOut[i]); */
-            /* Serial.print(" in:"); */
-            /* Serial.print(pinIn[j]); */
+        for (int j=0; j<rows_cnt; j++)  {
             /* если один из указанных портов входа равен LOW, то.. */
             if (digitalRead(pinIn[j]) == LOW) {
-                /* Serial.print(" [ "); */
-                /* Serial.print(i); */
-                /* Serial.print(" "); */
-                /* Serial.print(j); ; */
+                /* Serial.print(" [i=");  Serial.print(i); */
+                /* Serial.print(" j=");   Serial.print(j); */
+                /* Serial.print(" out:"); printBinary(~(1<<i)); */
+                /* Serial.print(" in:");  Serial.print(pinIn[j]); */
+                /* Serial.print(" ]");    Serial.print(" "); */
                 result = value[j][i];
-                /* Serial.print(value[i][j]); */
-                /* Serial.print(" ]"); */
-                /* Serial.println(" "); */
-                /* delay(200); */
-                digitalWrite(pinOut[i], HIGH);  /* set before return */
-                return result;
+                Serial.print(value[j][i]);
+                delay(200);
+                Serial.println(" ");
             }
-            /* Serial.println(""); */
-            /* delay(200); */
         }
-        digitalWrite(pinOut[i], HIGH);
     }
-    return result; // 'X' = no buttons pressed
+    clear_shift_register();
+    return result;
 }
+
 
 void display_off () { // turn off digits
     for (int j=0; j<4; j++) {
@@ -257,40 +264,57 @@ void loop() {
 }
 
 void setup() {
+
+    /* Инициализация семисегментного дисплея */
     pinMode(latchPin,OUTPUT);
     pinMode(clockPin,OUTPUT);
     pinMode(dataPin,OUTPUT);
+    /* Turns off the digit */
     for (int x=0; x<4; x++){
         pinMode(control_digit_pins[x],OUTPUT);
-        digitalWrite(control_digit_pins[x],LOW);  // Turns off the digit
+        digitalWrite(control_digit_pins[x],LOW);
     }
-    // инициализируем порты на выход (подают нули на столбцы)
+
+    /* Инициализация клавиатуры */
+    pinMode(latchPinKeyb,OUTPUT);
+    pinMode(clockPinKeyb,OUTPUT);
+    pinMode(dataPinKeyb,OUTPUT);
+    /* инициализируем порты на выход (подают нули на столбцы) */
     for (int i = 0; i < (sizeof(pinOut)/sizeof(pinOut[0])); i++) {
         pinMode (pinOut[i], OUTPUT);
     }
-    // инициализируем порты на вход с подтяжкой к плюсу
-    // (принимают нули на строках)
+    /* инициализируем порты на вход с подтяжкой к плюсу */
+    /* (принимают нули на строках) */
     for (int i = 0; i < (sizeof(pinIn)/sizeof(pinIn[0])); i++) {
         pinMode (pinIn[i], INPUT);
         digitalWrite (pinIn[i], HIGH);
     }
-    // обратный отсчет
+    /* Инициализация клавиатуры единицами */
+    /* на старте, потому что "бегущий ноль"  */
+    digitalWrite(latchPinKeyb, LOW);
+    shiftOut(dataPinKeyb, clockPinKeyb, MSBFIRST, 0b11111111);
+    digitalWrite(latchPinKeyb, HIGH);
+
+    /* обратный отсчет */
     countdown = countdown_base;
-    // инициализация Timer1 на 1 сек
-    cli(); // отключить глобальные прерывания
-    TCCR1A = 0; // установить TCCR1A регистр в 0
+
+    /* инициализация Timer1 на 1 сек */
+    cli(); /* отключить глобальные прерывания/ */
+    TCCR1A = 0; /* установить TCCR1A регистр в 0 */
     TCCR1B = 0;
-    OCR1A = 15624; // установка регистра совпадения
-    TCCR1B |= (1 << WGM12); // включение в CTC режим
-    // Установка битов CS10 и CS12 на коэффициент деления 1024
+    OCR1A = 15624; /* установка регистра совпадения */
+    TCCR1B |= (1 << WGM12); /* включение в CTC режим */
+    /* Установка битов CS10 и CS12 на коэффициент деления 1024 */
     TCCR1B |= (1 << CS10);
     TCCR1B |= (1 << CS12);
-    TIMSK1 |= (1 << OCIE1A);  // включение прерываний по совпадению
-    sei(); // включить глобальные прерывания
-    // Инициализация Serial
+    TIMSK1 |= (1 << OCIE1A);  /* включение прерываний по совпадению */
+    sei(); /* включить глобальные прерывания */
+
+    /* Инициализация Serial */
     Serial.begin(9600);
 }
 
+/* Прерывание по переполнению таймера 1 */
 ISR(TIMER1_COMPA_vect)
 {
     if (!mode) {
