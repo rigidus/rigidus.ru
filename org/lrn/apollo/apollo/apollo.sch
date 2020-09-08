@@ -537,6 +537,193 @@ $EndComp
 Wire Wire Line
 	3500 6050 3500 5850
 Connection ~ 3500 5850
+$Comp
+L 74xx:74HC595 U3
+U 1 1 5F575A47
+P 9800 3300
+F 0 "U3" H 9900 4000 50  0000 C CNN
+F 1 "74HC595" H 10050 3900 50  0000 C CNN
+F 2 "Package_DIP:DIP-16_W7.62mm_LongPads" H 9800 3300 50  0001 C CNN
+F 3 "http://www.ti.com/lit/ds/symlink/sn74hc595.pdf" H 9800 3300 50  0001 C CNN
+	1    9800 3300
+	1    0    0    -1  
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JB_1
+U 1 1 5F5880D1
+P 10850 3000
+F 0 "JB_1" H 10550 3000 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3000 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3000 50  0001 C CNN
+F 3 "~" H 10850 3000 50  0001 C CNN
+	1    10850 3000
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JA_15
+U 1 1 5F580A07
+P 10850 2900
+F 0 "JA_15" H 10550 2900 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 2900 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 2900 50  0001 C CNN
+F 3 "~" H 10850 2900 50  0001 C CNN
+	1    10850 2900
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JC_2
+U 1 1 5F58E8BB
+P 10850 3100
+F 0 "JC_2" H 10550 3100 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3100 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3100 50  0001 C CNN
+F 3 "~" H 10850 3100 50  0001 C CNN
+	1    10850 3100
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JD_3
+U 1 1 5F5915FD
+P 10850 3200
+F 0 "JD_3" H 10550 3200 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3200 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3200 50  0001 C CNN
+F 3 "~" H 10850 3200 50  0001 C CNN
+	1    10850 3200
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JE_4
+U 1 1 5F5944F8
+P 10850 3300
+F 0 "JE_4" H 10550 3300 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3300 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3300 50  0001 C CNN
+F 3 "~" H 10850 3300 50  0001 C CNN
+	1    10850 3300
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JF_5
+U 1 1 5F5974B0
+P 10850 3400
+F 0 "JF_5" H 10550 3400 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3400 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3400 50  0001 C CNN
+F 3 "~" H 10850 3400 50  0001 C CNN
+	1    10850 3400
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JG_6
+U 1 1 5F59A202
+P 10850 3500
+F 0 "JG_6" H 10550 3500 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3500 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3500 50  0001 C CNN
+F 3 "~" H 10850 3500 50  0001 C CNN
+	1    10850 3500
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male JH_7
+U 1 1 5F59CEC9
+P 10850 3600
+F 0 "JH_7" H 10550 3600 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 9800 3600 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 10850 3600 50  0001 C CNN
+F 3 "~" H 10850 3600 50  0001 C CNN
+	1    10850 3600
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	10200 2900 10650 2900
+Wire Wire Line
+	10200 3000 10650 3000
+Wire Wire Line
+	10200 3100 10650 3100
+Wire Wire Line
+	10200 3200 10650 3200
+Wire Wire Line
+	10200 3300 10650 3300
+Wire Wire Line
+	10200 3400 10650 3400
+Wire Wire Line
+	10200 3500 10650 3500
+Wire Wire Line
+	10200 3600 10650 3600
+Wire Wire Line
+	3500 5850 2800 5850
+Wire Wire Line
+	2800 5850 2800 6450
+Wire Wire Line
+	2800 6450 9800 6450
+Wire Wire Line
+	9800 6450 9800 4250
+Wire Wire Line
+	9400 3500 9150 3500
+Wire Wire Line
+	9150 3500 9150 4250
+Wire Wire Line
+	9150 4250 9800 4250
+Connection ~ 9800 4250
+Wire Wire Line
+	9800 4250 9800 4000
+Wire Wire Line
+	2950 4000 750  4000
+Wire Wire Line
+	750  4000 750  800 
+Wire Wire Line
+	750  800  9800 800 
+Wire Wire Line
+	9800 800  9800 2400
 Connection ~ 2950 4000
-Connection ~ 3500 5600
+Wire Wire Line
+	9400 3200 9150 3200
+Wire Wire Line
+	9150 3200 9150 2400
+Wire Wire Line
+	9150 2400 9800 2400
+Connection ~ 9800 2400
+Wire Wire Line
+	9800 2400 9800 2700
+$Comp
+L Connector:Conn_01x01_Male JDS_14
+U 1 1 5F5E2288
+P 8700 2900
+F 0 "JDS_14" H 8400 2900 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 7650 2900 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 8700 2900 50  0001 C CNN
+F 3 "~" H 8700 2900 50  0001 C CNN
+	1    8700 2900
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8900 2900 9400 2900
+$Comp
+L Connector:Conn_01x01_Male JST_CP_RCLK_12
+U 1 1 5F5F78E6
+P 8700 3400
+F 0 "JST_CP_RCLK_12" H 8350 3400 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 7650 3400 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 8700 3400 50  0001 C CNN
+F 3 "~" H 8700 3400 50  0001 C CNN
+	1    8700 3400
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8900 3400 9400 3400
+$Comp
+L Connector:Conn_01x01_Male JSH_CP_SRCLK_11
+U 1 1 5F60047B
+P 8700 3100
+F 0 "JSH_CP_SRCLK_11" H 8350 3100 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 7650 3100 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 8700 3100 50  0001 C CNN
+F 3 "~" H 8700 3100 50  0001 C CNN
+	1    8700 3100
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8900 3100 9400 3100
 $EndSCHEMATC
