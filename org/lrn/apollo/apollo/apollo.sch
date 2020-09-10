@@ -726,4 +726,15 @@ F 3 "~" H 8700 3100 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	8900 3100 9400 3100
+$Comp
+L MCU_Microchip_ATtiny:ATtiny2313A-PU U4
+U 1 1 5F59DBF3
+P 1750 7500
+F 0 "U4" H 1750 8781 50  0000 C CNN
+F 1 "ATtiny2313A-PU" H 1750 8690 50  0000 C CNN
+F 2 "Package_DIP:DIP-20_W7.62mm" H 1750 7500 50  0001 C CIN
+F 3 "http://ww1.microchip.com/downloads/en/DeviceDoc/doc8246.pdf" H 1750 7500 50  0001 C CNN
+	1    1750 7500
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC
