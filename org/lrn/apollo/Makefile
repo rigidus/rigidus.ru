@@ -52,6 +52,32 @@ clean:
 	rm -f *.hexS
 	rm -f *.bin
 
+# c
+
+cflash: $(PROGRAM).hexC
+	avrdude          \
+	$(AVRDUDE_CONF)  \
+	-v               \
+	-p$(MCU)         \
+	-carduino        \
+	-P$(PORT)        \
+	-b$(BAUDRATE)    \
+	-Uflash:w:$(PROGRAM).hexC:i
+
+
+$(PROGRAM).hexC: $(PROGRAM).elfC
+	$(OBJCOPY) -O ihex $< $@
+
+$(PROGRAM).elfC: $(PROGRAM).c
+	$(CC)         \
+	$(CFLAGS)     \
+	$(LDFLAGS)    \
+	-nostartfiles \
+	-g            \
+	$^            \
+	-o $@
+
+# asm
 
 asmflash: $(PROGRAM).hexS
 	avrdude          \
