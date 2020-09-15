@@ -3,6 +3,7 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdbool.h>
+#include <avr/interrupt.h>
 
 typedef unsigned char byte;
 
@@ -74,22 +75,27 @@ const int dataPinKeyb  = 12;
 const int clockPinKeyb = 10;
 const int latchPinKeyb = 11;
 
-
-int main(void)
+/* Прерывание по переполнению таймера 1 */
+ISR(TIMER1_COMPA_vect)
 {
-    /* LEDs are on portD 0 and 1 */
-
-    DDRB = 0x17;
-
-    while(1)
-        {
-            PORTB = 0x01;
-            _delay_ms(500);
-            PORTB = 0x02;
-            _delay_ms(500);
-            PORTB = 0x03;
-            _delay_ms(500);
-            PORTB = 0x00;
-            _delay_ms(500);
+    if (!mode) {
+        if (0 == countdown--) {
+            countdown = countdown_base;
         }
+    }
+}
+
+void setup() {
+    DDRB |= 1<<PB0; /* set PB0 to output */
+}
+
+int main(void) {
+    setup();
+    while(1) {
+        PORTB &= ~(1<<PB0); /* LED on */
+        /* _delay_ms(10); */
+        PORTB |= 1<<PB0; /* LED off */
+        /* _delay_ms(10); */
+    }
+    return 0;
 }

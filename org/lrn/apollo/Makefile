@@ -72,8 +72,6 @@ $(PROGRAM).elfC: $(PROGRAM).c
 	$(CC)         \
 	$(CFLAGS)     \
 	$(LDFLAGS)    \
-	-nostartfiles \
-	-g            \
 	$^            \
 	-o $@
 
@@ -136,6 +134,11 @@ hex2bin: $(PROGRAM).hexbin
 disasm: $(PROGRAM).bin
 	# avrdisas -a1 -o1 -s1 $(PROJECT_PATH)/$(PROGRAM).bin
 	avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
+
+fulldisasm:
+	make extract
+	make hex2bin
+	make disasm
 
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $<
