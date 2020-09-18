@@ -286,7 +286,7 @@ Wire Wire Line
 Wire Wire Line
 	4150 5850 3500 5850
 Wire Wire Line
-	3500 5850 3500 5600
+	3500 5850 3500 5750
 Wire Wire Line
 	6000 3550 4150 3550
 Wire Wire Line
@@ -407,23 +407,6 @@ F 3 "~" H 2550 5000 50  0001 C CNN
 	1    2550 5000
 	1    0    0    -1  
 $EndComp
-$Comp
-L Connector:Conn_01x01_Male J_OE1
-U 1 1 5F510574
-P 2550 5400
-F 0 "J_OE1" H 2350 5400 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 1500 5400 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2550 5400 50  0001 C CNN
-F 3 "~" H 2550 5400 50  0001 C CNN
-	1    2550 5400
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	3100 5100 2950 5100
-Wire Wire Line
-	2950 5100 2950 5400
-Wire Wire Line
-	2950 5400 2750 5400
 $Comp
 L Connector:Conn_01x01_Male J_CLR1
 U 1 1 5F506A6B
@@ -737,4 +720,13 @@ F 3 "http://ww1.microchip.com/downloads/en/DeviceDoc/doc8246.pdf" H 1750 7500 50
 	1    1750 7500
 	1    0    0    -1  
 $EndComp
+Wire Wire Line
+	3100 5100 2800 5100
+Wire Wire Line
+	2800 5100 2800 5750
+Wire Wire Line
+	2800 5750 3500 5750
+Connection ~ 3500 5750
+Wire Wire Line
+	3500 5750 3500 5600
 $EndSCHEMATC
