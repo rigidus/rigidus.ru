@@ -104,9 +104,6 @@ void digitalWrite(uint8_t pin, uint8_t val)
     SREG = oldSREG;
 }
 
-
-
-
 typedef unsigned char byte;
 
 /* /\* 7-Segment pin D4 J1 *\/ */
@@ -178,16 +175,16 @@ int submode = 3;
 
 
 /* 7-Segment pin D4 J1 */
-#define display_digit_0 25
+#define display_digit_0 23
 
 /* 7-Segment pin D3 J4 */
 #define display_digit_1 24
 
 /* 7-Segment pin D2 J3 */
-#define display_digit_2 23
+#define display_digit_2 25
 
 /* 7-Segment pin D1 J2 */
-#define display_digit_3 15
+#define display_digit_3 26
 
 
 const byte control_digit_pins[4] =
@@ -215,13 +212,13 @@ void display_on () {
 
 
 /* 74HC595 pin 12 STCP J_CLK1 (2) */
-#define display_latch_pin 28
+#define display_latch_pin 16
 
 /* 74HC595 pin 10 MR SRCLR J_CLR1 (1) */
-#define display_clock_pin 27
+#define display_clock_pin 28
 
 /* 74HC595 pin 14 DS J_SER1 (4) */
-#define display_data_pin 26
+#define display_data_pin 27
 
 
 void display_shift_out (uint8_t val)
@@ -265,7 +262,7 @@ void DisplaySegments(byte displayDigits[4]) {
 void setup() {
     DDRC = 0b111111;
 
-    DDRB = 0b10;
+    DDRB = 0b111111;
     /* DDRC |= */
     /*     /\* Инициализация пинов семисегментника на PORT_C *\/ */
     /*     (1<<display_clock_pin) && */
