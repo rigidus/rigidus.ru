@@ -138,12 +138,6 @@ byte table[]= {
 /* #define digit3 17 */
 
 
-/* /\* 74HC595 pin 10 MR SRCLR J_CLR1 (1) *\/ */
-/* #define clockPin = 18; */
-/* /\* 74HC595 pin 14 DS J_SER1 (4) *\/ */
-/* #define dataPin  = 19; */
-/* /\* 74HC595 pin 12 STCP J_CLK1 (2) *\/ */
-/* #define latchPin = 13; */
 
 int countdown_base = 00*60+4;
 volatile int countdown;
@@ -153,27 +147,6 @@ bool pulse = 0;
 bool mode = 0; // 0 = standart; 1 = edit
 int submode = 3;
 
-/* // Hex values reference which LED segments are turned on */
-/* // and may vary from circuit to circuit.  Note the mapping above. */
-/* byte table[]= { */
-/*                0b00111111,  // = 0 */
-/*                0b00000110,  // = 1 */
-/*                0b01011011,  // = 2 */
-/*                0b01001111,  // = 3 */
-/*                0b01100110,  // = 4 */
-/*                0b01101101,  // = 5 */
-/*                0b01111101,  // = 6 */
-/*                0b00000111,  // = 7 */
-/*                0b01111111,  // = 8 */
-/*                0b01101111,  // = 9 */
-/*                0b01110111,  // = A */
-/*                0b01111100,  // = b */
-/*                0b00111001,  // = C */
-/*                0b01011110,  // = d */
-/*                0b01111001,  // = E */
-/*                0b01110001,  // = F */
-/*                0b00000000   // blank */
-/* }; */
 
 /* #define rows_cnt 4 */
 /* #define cols_cnt 6 */
@@ -275,13 +248,12 @@ void DisplaySegments(byte displayDigits[4]) {
 
 void setup() {
     DDRC = 0b111111;
-
     DDRB = 0b111111;
 
-    /* Допустим Timer1 в режиме по переполнению */
+    /* Допустим таймер в режиме по переполнению */
     /* и контроллер запущен с тактовой частотой 1 МГц. */
 
-    /* Поскольку таймер 16-битный, он может считать до */
+    /* Если таймер 16-битный, он может считать до */
     /* максимального значения (2^16 – 1), или 65535. */
 
     /* При 1 МГц цикл выполняется 1/(1 * 10^6) секунды */
@@ -290,15 +262,14 @@ void setup() {
     /* 0.065535 сек. */
 
     /* Можно использовать делитель, который позволяет  */
-    /* поделить тактовый сигнал на различные */
-    /* степени двойки и увеличить период таймера. */
+    /* поделить тактовый сигнал на степень двойки. */
 
     /* В регистре TCCR1B есть три бита CS устанавливающие */
     /* наиболее подходящее разрешение. */
     /* Если установить биты CS10 и CS12 используя: */
     /* TCCR1B |= (1 << CS10); */
     /* TCCR1B |= (1 << CS12); */
-    /* то частота тактового источника поделится на 1024. */
+    /* то делитель будет установлен на 1024. */
 
     /* Это дает разрешение */
     /* таймера 1/(1 ∗ 10^6 / 1024) или 0.001024 с. */
@@ -312,7 +283,7 @@ void setup() {
     /* Если коэффициент деления по-прежнему равен 1024 */
 
     /* Расчет будет следующий: */
-    /* (target_time) = (timer_resolution) * (# timer_cnts + 1) */
+    /* (target_time) = (timer_resolution) * (timer_cnts + 1) */
     /* (timer_cnts + 1) = (target_time) / (timer_resolution) */
     /* (timer_cnts + 1) = (1 s) / (0.001024 s) */
     /* (timer_cnts + 1) = 976.5625 */
@@ -320,8 +291,8 @@ void setup() {
 
     /* Нужно добавить дополнительную единицу к числу */
     /* отсчетов, т.к. в CTC при совпадении счетчика */
-    /* он сбросит сам себя в ноль. Сброс занимает */
-    /* один тактовый период: */
+    /* с регистром A он сбросит отсчет в ноль. Сброс */
+    /* занимает один такт: */
     /*
 
        (defun resolution (freq div)
@@ -337,23 +308,42 @@ void setup() {
 
     */
 
-    /* инициализация Timer1 */
+    /* Настройка Timer1 для отсчета секунд */
     /* отключить глобальные прерывания */
     cli();
-    /* установить регистры в 0 */
+    /* установить регистр TCCR1A в 0 */
     TCCR1A = 0;
-    TCCR1B = 0;
-    /* установка регистра совпадения */
+    /* установка регистров совпадения */
     OCR1A = 975;
-    /* включение в CTC режим */
-    TCCR1B |= (1 << WGM12);
-    /* Установка битов CS10 и CS12 на коэффициент деления 1024 */
-    TCCR1B |= (1 << CS10);
-    TCCR1B |= (1 << CS12);
-    /* включение прерываний по совпадению */
-    TIMSK1 |= (1 << OCIE1A);
+    /* включение Timer1 в CTC режим */
+    /* остальные биты равны нулю */
+    TCCR1B =
+        (1 << WGM12) | /* Режим CTC, очистка после совпадения */
+        (1 << CS10 ) | /* коэффициент деления 1024 */
+        (1 << CS12 );
+    /* включение прерывания по совпадению */
+    TIMSK1 |= (1 << OCIE1A) ;
     /* включить глобальные прерывания */
     sei();
+
+    /* Настройка Timer2 для сканирования клавиатуры */
+    /* отключить глобальные прерывания */
+    cli();
+    /* Очистка Timer2 при совпадении */
+    TCCR2A = 0;
+    /* установка регистров совпадения */
+    OCR2A = 3;
+    /* включение Timer1 в CTC режим */
+    /* остальные биты равны нулю */
+    TCCR2B =
+        (1 << WGM12) | /* Режим CTC, очистка после совпадения */
+        (1 << CS10 ) | /* коэффициент деления 1024 */
+        (1 << CS12 );
+    /* включение прерывания по совпадению */
+    TIMSK2 |= (1 << OCIE2A) ;
+    /* включить глобальные прерывания */
+    sei();
+
 }
 
 void int_to_time_bcd (int param, byte result[4]) {
@@ -386,6 +376,24 @@ void time_bcd_to_time_str (byte param[4], byte result[4]) {
     result[3] = table[param[3]];
 }
 
+volatile unsigned long timer0_millis = 0;
+
+unsigned long millis()
+{
+    unsigned long m;
+    uint8_t oldSREG = SREG;
+
+    /* disable interrupts while we read timer0_millis */
+    /* or we might get an inconsistent value */
+    /* (e.g. in the middle of a write to timer0_millis) */
+    cli();
+    m = timer0_millis;
+    SREG = oldSREG;
+
+    return m;
+}
+
+
 int main(void) {
 
     /* Setup */
@@ -413,24 +421,9 @@ int main(void) {
         /* show DisplayDigits */
         DisplaySegments( displayDigits );
 
+        /* time cycle */
+        unsigned long new_time = millis();
 
-
-        /* if (flag) { */
-        /*     /\* LED on *\/ */
-        /*     digitalWrite(15, HIGH); */
-        /* } else { */
-        /*     /\* LED off *\/ */
-        /*     digitalWrite(15, LOW); */
-        /* } */
-
-        /* -------------- */
-
-        /* /\* time_bcd is a countdown *\/ */
-        /* int_to_time_bcd( countdown, time_bcd ); */
-        /* /\* displayDigits is a time_bcd *\/ */
-        /* time_bcd_to_time_str( time_bcd, displayDigits ); */
-
-        /* show DisplayDigits */
 
     }
     return 0;
@@ -446,5 +439,19 @@ ISR(TIMER1_COMPA_vect)
         if (0 == countdown--) {
             countdown = countdown_base;
         }
+    }
+}
+
+bool flag = false;
+
+/* Прерывание по переполнению таймера 2 */
+ISR(TIMER2_COMPA_vect)
+{
+    if (flag) {
+        flag = false;
+        digitalWrite(15, LOW);
+    } else {
+        flag = true;
+        digitalWrite(15, HIGH);
     }
 }
