@@ -65,72 +65,75 @@ const uint8_t pin_to_port_and_mask[] =
     };
 
 
-void pin_write ( uint8_t pin, uint8_t val ) {
-    if (pin > sizeof( pin_to_port_and_mask )) return;
+int8_t pin_write ( uint8_t pin, uint8_t val ) {
+    if (pin > sizeof( pin_to_port_and_mask )) return -1;
 
     uint8_t port = ( pin_to_port_and_mask[pin] >> 4) ;
 
-    if (port == NOT_A_PORT) return;
-
-    volatile uint8_t *out;
+    volatile uint8_t *port_pnt;
 
     switch (port) {
     case PB:
-        out = &PORTB;
+        port_pnt = &PORTB;
         break;
     case PC:
-        out = &PORTC;
+        port_pnt = &PORTC;
         break;
     case PD:
-        out = &PORTD;
+        port_pnt = &PORTD;
         break;
+    default:
+        return -1;
     }
 
-    uint8_t bit = (1 << ( pin_to_port_and_mask[pin] & 0x0F ));
+    uint8_t mask = ( pin_to_port_and_mask[pin] & 0x0F );
+    if (NOT_A_MASK == mask) return -1;
 
-    if (NOT_A_MASK == bit) return;
+    uint8_t bit  = (1 << mask);
 
     uint8_t oldSREG = SREG;
 
     cli();
 
     if (val == LOW) {
-        *out &= ~bit;
+        *port_pnt &= ~bit;
     } else {
-        *out |= bit;
+        *port_pnt |= bit;
     }
 
     SREG = oldSREG;
 }
 
 
-int8_t pin_read  ( uint8_t pin ) {
+int8_t pin_read ( uint8_t pin ) {
     if (pin > sizeof( pin_to_port_and_mask )) return -1;
 
     uint8_t port = ( pin_to_port_and_mask[pin] >> 4) ;
-
-    if (port == NOT_A_PORT) return -1;
-
-    volatile uint8_t *in;
+    uint8_t *port_pnt;
 
     switch (port) {
     case PB:
-        in = &PINB;
+        port_pnt = &PINB;
         break;
     case PC:
-        in = &PINC;
+        port_pnt = &PINC;
         break;
     case PD:
-        in = &PIND;
+        port_pnt = &PIND;
         break;
+    default:
+        return -1;
     }
 
-    uint8_t mask = ( 1 << ( pin_to_port_and_mask[pin] & 0x0F ));
-    uint8_t bit  = ( (*in) & (mask) );
+    uint8_t mask = ( pin_to_port_and_mask[pin] & 0x0F );
+    if (NOT_A_MASK == mask) return -1;
 
-    if ( 0 == bit ) return LOW;
+    if ( 0 == ( (*port_pnt) & ( 1 << mask ) ) ) {
+        return LOW;
+    }
     return HIGH;
 }
+
 
 typedef unsigned char byte;
 
@@ -154,16 +157,6 @@ byte table[]= {
                0b01110001,  // = F
                0b00000000   // blank
 };
-
-/* /\* 7-Segment pin D4 J1 *\/ */
-/* #define digit0 14 */
-/* /\* 7-Segment pin D3 J4 *\/ */
-/* #define digit1 15 */
-/* /\* 7-Segment pin D2 J3 *\/ */
-/* #define digit2 16 */
-/* /\* 7-Segment pin D1 J2 *\/ */
-/* #define digit3 17 */
-
 
 
 int countdown_base = 00*60+4;
@@ -214,7 +207,7 @@ void display_off () {
 #define display_data_pin 27
 
 
-void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin) {
+void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin ) {
     uint8_t i;
     for (i = 0; i < 8; i++)  {
         if (!!(val & (1 << (7 - i)))) {
@@ -348,7 +341,6 @@ void setup () {
     TIMSK2 |= (1 << OCIE2A) ;
     /* включить глобальные прерывания */
     sei();
-
 }
 
 
