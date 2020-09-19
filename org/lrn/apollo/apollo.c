@@ -104,7 +104,29 @@ void digitalWrite(uint8_t pin, uint8_t val)
     SREG = oldSREG;
 }
 
+
 typedef unsigned char byte;
+
+
+byte table[]= {
+               0b00111111,  // = 0
+               0b00000110,  // = 1
+               0b01011011,  // = 2
+               0b01001111,  // = 3
+               0b01100110,  // = 4
+               0b01101101,  // = 5
+               0b01111101,  // = 6
+               0b00000111,  // = 7
+               0b01111111,  // = 8
+               0b01101111,  // = 9
+               0b01110111,  // = A
+               0b01111100,  // = b
+               0b00111001,  // = C
+               0b01011110,  // = d
+               0b01111001,  // = E
+               0b01110001,  // = F
+               0b00000000   // blank
+};
 
 /* /\* 7-Segment pin D4 J1 *\/ */
 /* #define digit0 14 */
@@ -123,9 +145,9 @@ typedef unsigned char byte;
 /* /\* 74HC595 pin 12 STCP J_CLK1 (2) *\/ */
 /* #define latchPin = 13; */
 
-int countdown_base = 90*60+21;
+int countdown_base = 00*60+4;
 volatile int countdown;
-/* byte time_bcd[4]; */
+byte time_bcd[4];
 /* unsigned long time = 0; */
 bool pulse = 0;
 bool mode = 0; // 0 = standart; 1 = edit
@@ -202,14 +224,6 @@ void display_off () {
         digitalWrite(control_digit_pins[x], LOW);
     }
 }
-
-void display_on () {
-    /* turn off all digits */
-    for (int x=0; x<4; x++) { // for all four digit
-        digitalWrite(control_digit_pins[x], HIGH);
-    }
-}
-
 
 /* 74HC595 pin 12 STCP J_CLK1 (2) */
 #define display_latch_pin 16
@@ -305,7 +319,7 @@ void setup() {
     /* (timer_cnts) = 976.5625 - 1 = 975.5625 */
 
     /* Нужно добавить дополнительную единицу к числу */
-`   /* отсчетов, т.к. в CTC при совпадении счетчика */
+    /* отсчетов, т.к. в CTC при совпадении счетчика */
     /* он сбросит сам себя в ноль. Сброс занимает */
     /* один тактовый период: */
     /*
@@ -342,12 +356,65 @@ void setup() {
     sei();
 }
 
-/* bool flag = false; */
+void int_to_time_bcd (int param, byte result[4]) {
+    int minutes = param / 60;
+    int seconds = param % 60;
+    int minute_hi = minutes / 10;
+    int minute_lo = minutes % 10;
+    int second_hi = seconds / 10;
+    int second_lo = seconds % 10;
+    result[0] = second_lo;
+    result[1] = second_hi;
+    result[2] = minute_lo;
+    result[3] = minute_hi;
+}
 
+int time_bcd_to_int (byte param[4]) {
+    int minute_hi = param[3];
+    int minute_lo = param[2];
+    int second_hi = param[1];
+    int second_lo = param[0];
+    int minutes = minute_hi * 10 + minute_lo;
+    int seconds = second_hi * 10 + second_lo;
+    return minutes * 60 + seconds;
+}
+
+void time_bcd_to_time_str (byte param[4], byte result[4]) {
+    result[0] = table[param[0]];
+    result[1] = table[param[1]];
+    result[2] = table[param[2]];
+    result[3] = table[param[3]];
+}
 
 int main(void) {
+
+    /* Setup */
     setup();
+
+    /* Greeting */
+    byte displayDigits[] = { 0b00111111, 0b00111000,
+                             0b01110111, 0b01110110 };
+    countdown = 200;
+    while ( countdown > 199 ) {
+        DisplaySegments( displayDigits );
+    }
+    display_off();
+
+    /* Setup time settings */
+    countdown = countdown_base;
+
+    /* Main Loop */
     while(1) {
+
+        /* time_bcd is a countdown */
+        int_to_time_bcd( countdown, time_bcd );
+        /* displayDigits is a time_bcd */
+        time_bcd_to_time_str( time_bcd, displayDigits );
+        /* show DisplayDigits */
+        DisplaySegments( displayDigits );
+
+
+
         /* if (flag) { */
         /*     /\* LED on *\/ */
         /*     digitalWrite(15, HIGH); */
@@ -357,8 +424,6 @@ int main(void) {
         /* } */
 
         /* -------------- */
-        byte displayDigits[] = { 0b00111111, 0b00111000,
-                                 0b01110111, 0b01110110 };
 
         /* /\* time_bcd is a countdown *\/ */
         /* int_to_time_bcd( countdown, time_bcd ); */
@@ -366,7 +431,7 @@ int main(void) {
         /* time_bcd_to_time_str( time_bcd, displayDigits ); */
 
         /* show DisplayDigits */
-        DisplaySegments( displayDigits );
+
     }
     return 0;
 }
