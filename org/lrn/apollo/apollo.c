@@ -65,8 +65,7 @@ const uint8_t pin_to_port_and_mask[] =
     };
 
 
-void digitalWrite(uint8_t pin, uint8_t val)
-{
+void pin_write ( uint8_t pin, uint8_t val ) {
     if (pin > sizeof( pin_to_port_and_mask )) return;
 
     uint8_t port = ( pin_to_port_and_mask[pin] >> 4) ;
@@ -104,6 +103,34 @@ void digitalWrite(uint8_t pin, uint8_t val)
     SREG = oldSREG;
 }
 
+
+int8_t pin_read  ( uint8_t pin ) {
+    if (pin > sizeof( pin_to_port_and_mask )) return -1;
+
+    uint8_t port = ( pin_to_port_and_mask[pin] >> 4) ;
+
+    if (port == NOT_A_PORT) return -1;
+
+    volatile uint8_t *in;
+
+    switch (port) {
+    case PB:
+        in = &PINB;
+        break;
+    case PC:
+        in = &PINC;
+        break;
+    case PD:
+        in = &PIND;
+        break;
+    }
+
+    uint8_t mask = ( 1 << ( pin_to_port_and_mask[pin] & 0x0F ));
+    uint8_t bit  = ( (*in) & (mask) );
+
+    if ( 0 == bit ) return LOW;
+    return HIGH;
+}
 
 typedef unsigned char byte;
 
@@ -148,27 +175,6 @@ bool mode = 0; // 0 = standart; 1 = edit
 int submode = 3;
 
 
-/* #define rows_cnt 4 */
-/* #define cols_cnt 6 */
-
-/* /\* входы клавиатуры *\/ */
-/* int pinIn  [rows_cnt] = { 5, 4, 3, 2 }; */
-/* /\* выходы клавиатуры *\/ */
-/* int pinOut [cols_cnt] = { 6, 7, 8, 9, 10, 11 }; */
-
-/* const char value[rows_cnt][cols_cnt] = */
-/*     { */
-/*      {'7', '8', '9', '/', '%', 'C'}, */
-/*      {'4', '5', '6', '*', '^', 'X'}, */
-/*      {'1', '2', '3', '-', 'X', '_'}, */
-/*      {'X', '0', ',', '+', 'X', '='} */
-/*     }; */
-
-/* const int dataPinKeyb  = 12; */
-/* const int clockPinKeyb = 10; */
-/* const int latchPinKeyb = 11; */
-
-
 /* 7-Segment pin D4 J1 */
 #define display_digit_0 23
 
@@ -194,7 +200,7 @@ const byte control_digit_pins[4] =
 void display_off () {
     /* turn off all digits */
     for (int x=0; x<4; x++) { // for all four digit
-        digitalWrite(control_digit_pins[x], LOW);
+        pin_write(control_digit_pins[x], LOW);
     }
 }
 
@@ -208,47 +214,46 @@ void display_off () {
 #define display_data_pin 27
 
 
-void display_shift_out (uint8_t val)
-{
+void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin) {
     uint8_t i;
-
     for (i = 0; i < 8; i++)  {
         if (!!(val & (1 << (7 - i)))) {
-            digitalWrite(display_data_pin, HIGH);
+            pin_write(data_pin, HIGH);
         } else {
-            digitalWrite(display_data_pin, LOW);
+            pin_write(data_pin, LOW);
         }
-        digitalWrite(display_clock_pin, HIGH);
-        digitalWrite(display_clock_pin, LOW);
+        pin_write(clock_pin, HIGH);
+        pin_write(clock_pin, LOW);
    }
 }
 
 
-
-void DisplaySegments(byte displayDigits[4]) {
+void DisplaySegments ( byte displayDigits[4] ) {
     for (int x=0; x<4; x++) { // for all four digit
         display_off();
-        digitalWrite(display_latch_pin, LOW);  // [=latch down=]
-        display_shift_out(displayDigits[x]);
-        digitalWrite(display_latch_pin, HIGH); // [=latch up=]
+        pin_write(display_latch_pin, LOW);  // [=latch down=]
+        shift_out(displayDigits[x],
+                  display_data_pin, display_clock_pin);
+        pin_write(display_latch_pin, HIGH); // [=latch up=]
         if (pulse && mode) {
             if (submode == x) {
-                digitalWrite(control_digit_pins[x], LOW); // turn off
+                pin_write(control_digit_pins[x], LOW); // turn off
             } else {
-                digitalWrite(control_digit_pins[x], HIGH); // turn on
+                pin_write(control_digit_pins[x], HIGH); // turn on
             }
         } else {
-            digitalWrite(control_digit_pins[x], HIGH); // turn on
+            pin_write(control_digit_pins[x], HIGH); // turn on
         }
-        _delay_ms(1);
+        /* _delay_ms(1); */
     }
     display_off();
 }
 
 
-void setup() {
+void setup () {
     DDRC = 0b111111;
-    DDRB = 0b111111;
+    DDRB = 0b11111111;
+    DDRD = 0b11111111;
 
     /* Допустим таймер в режиме по переполнению */
     /* и контроллер запущен с тактовой частотой 1 МГц. */
@@ -332,8 +337,8 @@ void setup() {
     /* Очистка Timer2 при совпадении */
     TCCR2A = 0;
     /* установка регистров совпадения */
-    OCR2A = 3;
-    /* включение Timer1 в CTC режим */
+    OCR2A = 1;
+    /* включение Timer2 в CTC режим */
     /* остальные биты равны нулю */
     TCCR2B =
         (1 << WGM12) | /* Режим CTC, очистка после совпадения */
@@ -346,7 +351,8 @@ void setup() {
 
 }
 
-void int_to_time_bcd (int param, byte result[4]) {
+
+void int_to_time_bcd ( int param, byte result[4] ) {
     int minutes = param / 60;
     int seconds = param % 60;
     int minute_hi = minutes / 10;
@@ -359,7 +365,8 @@ void int_to_time_bcd (int param, byte result[4]) {
     result[3] = minute_hi;
 }
 
-int time_bcd_to_int (byte param[4]) {
+
+int time_bcd_to_int ( byte param[4] ) {
     int minute_hi = param[3];
     int minute_lo = param[2];
     int second_hi = param[1];
@@ -369,32 +376,69 @@ int time_bcd_to_int (byte param[4]) {
     return minutes * 60 + seconds;
 }
 
-void time_bcd_to_time_str (byte param[4], byte result[4]) {
+
+void time_bcd_to_time_str ( byte param[4], byte result[4] ) {
     result[0] = table[param[0]];
     result[1] = table[param[1]];
     result[2] = table[param[2]];
     result[3] = table[param[3]];
 }
 
-volatile unsigned long timer0_millis = 0;
 
-unsigned long millis()
+#define rows_cnt 4
+#define cols_cnt 6
+
+
+/* TODO: dbg */
+int pinIn  [rows_cnt] = {5,4,3,2};        // входы клавиатуры
+int pinOut [cols_cnt] = {6,7,8,9,10,11};  // выходы клавиатуры
+
+
+const char value[rows_cnt][cols_cnt] =
 {
-    unsigned long m;
-    uint8_t oldSREG = SREG;
+ {'7', '8', '9', '/', '%', 'C'},
+ {'4', '5', '6', '*', '^', 'X'},
+ {'1', '2', '3', '-', 'X', '_'},
+ {'X', '0', ',', '+', 'X', '='}
+};
 
-    /* disable interrupts while we read timer0_millis */
-    /* or we might get an inconsistent value */
-    /* (e.g. in the middle of a write to timer0_millis) */
-    cli();
-    m = timer0_millis;
-    SREG = oldSREG;
 
-    return m;
+#define keyb_data_pin  12
+#define keyb_clock_pin 10
+#define keyb_latch_pin 11
+
+void clear_shift_register () {
+    pin_write(keyb_latch_pin, LOW);
+    shift_out(0b11111111, keyb_data_pin, keyb_clock_pin);
+    pin_write(keyb_latch_pin, HIGH);
+}
+
+char keyboard_scan () {
+    clear_shift_register();
+    /* То, что мы и за символ не считаем */
+    char result = 'X';
+    /* цикл, передающий LOW по каждому столбцу */
+    for (int i=cols_cnt-1; i>=0; i--) {
+        pin_write(keyb_latch_pin, LOW);
+        shift_out(~(1<<i), keyb_clock_pin, keyb_data_pin);
+        pin_write(keyb_latch_pin, HIGH);
+        /* цикл, принимающих LOW по строкам */
+        for (int j=0; j<rows_cnt; j++)  {
+            /* если один из указанных портов входа равен LOW, то.. */
+            if (pin_read(pinIn[j]) == LOW) {
+                result = value[j][i];
+            }
+        }
+    }
+    clear_shift_register();
+    return result;
 }
 
 
-int main(void) {
+bool need_keyb_scan_flag = false;
+
+
+int main () {
 
     /* Setup */
     setup();
@@ -421,9 +465,20 @@ int main(void) {
         /* show DisplayDigits */
         DisplaySegments( displayDigits );
 
-        /* time cycle */
-        unsigned long new_time = millis();
+        /* keyboard scan */
+        if ( need_keyb_scan_flag ) {
+            pulse = !pulse;
+            char symbol = keyboard_scan();
+            /* ... TODO ... */
+            need_keyb_scan_flag = false;
+        }
 
+        /* Test for pin_read */
+        if ( 0 == pin_read(2) ) {
+            pin_write(15, LOW);
+        } else {
+            pin_write(15, HIGH);
+        }
 
     }
     return 0;
@@ -442,16 +497,8 @@ ISR(TIMER1_COMPA_vect)
     }
 }
 
-bool flag = false;
-
 /* Прерывание по переполнению таймера 2 */
 ISR(TIMER2_COMPA_vect)
 {
-    if (flag) {
-        flag = false;
-        digitalWrite(15, LOW);
-    } else {
-        flag = true;
-        digitalWrite(15, HIGH);
-    }
+    need_keyb_scan_flag = true;
 }
