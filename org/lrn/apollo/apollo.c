@@ -7,7 +7,8 @@
 
 #define LOW 0
 #define HIGH 1
-#define NOT_A_PORT 0
+#define NOT_A_PORT 0xF
+#define NOT_A_MASK 0xF
 #define PB 1
 #define PC 2
 #define PD 3
@@ -29,82 +30,46 @@
  /* PB0 14|    |15  PB1 */
  /*       +----+ */
 
-const uint8_t digital_pin_to_port[] =
+const uint8_t pin_to_port_and_mask[] =
     {
-     NOT_A_PORT, /* (0) */
-     PC, /* PC6 (1) */
-     PD, /* PD0 (2) */
-     PD, /* PD1 (3) */
-     PD, /* PD2 (4) */
-     PD, /* PD3 (5) */
-     PD, /* PD4 (6) */
-     NOT_A_PORT, /* VCC (7) */
-     NOT_A_PORT, /* GND (8) */
-     PB, /* PB6 (9)  */
-     PB, /* PB7 (10) */
-     PD, /* PD5 (11) */
-     PD, /* PD6 (12) */
-     PD, /* PD7 (13) */
-     PB, /* PB0 (14) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* (0) */
+     ((PC << 4) | PC6 ), /* (1) */
+     ((PD << 4) | PD0 ), /* (2) */
+     ((PD << 4) | PD1 ), /* (3) */
+     ((PD << 4) | PD2 ), /* (4) */
+     ((PD << 4) | PD3 ), /* (5) */
+     ((PD << 4) | PD4 ), /* (6) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* VCC (7) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* GND (8) */
+     ((PB << 4) | PB6 ), /* (9) */
+     ((PB << 4) | PB7 ), /* (10) */
+     ((PD << 4) | PD5 ), /* (11) */
+     ((PD << 4) | PD6 ), /* (12) */
+     ((PD << 4) | PD7 ), /* (13) */
+     ((PB << 4) | PB0 ), /* (14) */
      /* --- */
-     PB, /* PB1 (15) */
-     PB, /* PB2 (16) */
-     PB, /* PB3 (17) */
-     PB, /* PB4 (18) */
-     PB, /* PB5 (19) */
-     NOT_A_PORT, /* AVCC (20) */
-     NOT_A_PORT, /* AREF (21) */
-     NOT_A_PORT, /* GND (22)  */
-     PC, /* PC0 (23) */
-     PC, /* PC1 (24) */
-     PC, /* PC2 (25) */
-     PC, /* PC3 (26) */
-     PC, /* PC4 (27) */
-     PC, /* PC5 (28) */
+     ((PB << 4) | PB1 ), /* (15) */
+     ((PB << 4) | PB2 ), /* (16) */
+     ((PB << 4) | PB3 ), /* (17) */
+     ((PB << 4) | PB4 ), /* (18) */
+     ((PB << 4) | PB5 ), /* (19) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* AVCC (20) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* AREF (21) */
+     ((NOT_A_PORT << 4) | NOT_A_MASK), /* GND (22) */
+     ((PC << 4) | PC0 ), /* (23) */
+     ((PC << 4) | PC1 ), /* (24) */
+     ((PC << 4) | PC2 ), /* (25) */
+     ((PC << 4) | PC3 ), /* (26) */
+     ((PC << 4) | PC4 ), /* (27) */
+     ((PC << 4) | PC5 ), /* (28) */
     };
-
-
-const uint8_t digital_pin_to_bit_mask[] =
-    {
-     0xFF, /* (0) */
-     _BV(6), /* (1) */
-     _BV(0), /* (2) */
-     _BV(1), /* (3) */
-     _BV(2), /* (4) */
-     _BV(3), /* (5) */
-     _BV(4), /* (6) */
-     0xFF, /* VCC (7) */
-     0xFF, /* GND (8) */
-     _BV(6), /* (9)  */
-     _BV(7), /* (10) */
-     _BV(5), /* (11) */
-     _BV(6), /* (12) */
-     _BV(7), /* (13) */
-     _BV(0), /* (14) */
-
-     _BV(1), /* (15) */
-     _BV(2), /* (16) */
-     _BV(3), /* (17) */
-     _BV(4), /* (18) */
-     _BV(5), /* (19) */
-     0xFF, /* AVCC (20) */
-     0xFF, /* AREF (21) */
-     0xFF, /* GND (22)  */
-     _BV(0), /* (23) */
-     _BV(1), /* (24) */
-     _BV(2), /* (25) */
-     _BV(3), /* (26) */
-     _BV(4), /* (27) */
-     _BV(5), /* (28) */
-    };
-
 
 
 void digitalWrite(uint8_t pin, uint8_t val)
 {
-    if (pin > 28) return;
+    if (pin > sizeof( pin_to_port_and_mask )) return;
 
-    uint8_t port = digital_pin_to_port[pin];
+    uint8_t port = ( pin_to_port_and_mask[pin] >> 4) ;
 
     if (port == NOT_A_PORT) return;
 
@@ -122,9 +87,9 @@ void digitalWrite(uint8_t pin, uint8_t val)
         break;
     }
 
-    uint8_t bit = digital_pin_to_bit_mask[pin];
+    uint8_t bit = (1 << ( pin_to_port_and_mask[pin] & 0x0F ));
 
-    if (0xFF == bit) return;
+    if (NOT_A_MASK == bit) return;
 
     uint8_t oldSREG = SREG;
 
