@@ -327,8 +327,8 @@ char keyboard_scan () {
     char result = 'Z';
     /* цикл, передающий LOW по каждому столбцу */
     for ( int8_t i=cols_cnt-1; i>=0; i-- ) {
-        pin_write( keyb_latch_pin, LOW );
         shift_out( ~(1<<i), keyb_clock_pin, keyb_data_pin );
+        pin_write( keyb_latch_pin, LOW );
         pin_write( keyb_latch_pin, HIGH );
 
         /* цикл, принимающих LOW по строкам */
@@ -340,6 +340,7 @@ char keyboard_scan () {
                 byte tmp_bcd[4];
                 byte tmp_display[4];
 
+                /* DBG */
                 int_to_bcd( j, tmp_bcd );
                 bcd_to_time_str( tmp_bcd, tmp_display );
                 display[3] = tmp_display[0];
@@ -454,6 +455,7 @@ int main () {
             need_keyb_scan_flag = false;
         }
 
+        /* Test pulse frequency */
         if ( pulse ) {
             /* pin_write(9, LOW); */
         } else {
