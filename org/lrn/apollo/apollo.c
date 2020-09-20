@@ -322,13 +322,13 @@ void clear_shift_register () {
 
 
 char keyboard_scan () {
-    clear_shift_register();
+    /* clear_shift_register(); */
     /* То, что мы и за символ не считаем */
     char result = 'Z';
     /* цикл, передающий LOW по каждому столбцу */
     for ( int8_t i=cols_cnt-1; i>=0; i-- ) {
-        shift_out( ~(1<<i), keyb_clock_pin, keyb_data_pin );
         pin_write( keyb_latch_pin, LOW );
+        shift_out( ~(1<<i), keyb_clock_pin, keyb_data_pin );
         pin_write( keyb_latch_pin, HIGH );
 
         /* цикл, принимающих LOW по строкам */
@@ -336,24 +336,21 @@ char keyboard_scan () {
             /* если один из портов входа = LOW, то.. */
 
             if (pin_read(pinIn[j]) == LOW) {
-
-                byte tmp_bcd[4];
-                byte tmp_display[4];
+                result = value[j][i];
 
                 /* DBG */
+                byte tmp_bcd[4];
+                byte tmp_display[4];
                 int_to_bcd( j, tmp_bcd );
                 bcd_to_time_str( tmp_bcd, tmp_display );
-                display[3] = tmp_display[0];
-
+                display[3] = tmp_display[0]; // J
                 int_to_bcd( i, tmp_bcd );
                 bcd_to_time_str( tmp_bcd, tmp_display );
-                display[2] = tmp_display[0];
-
-                result = value[j][i];
+                display[2] = tmp_display[0]; // I
             }
         }
     }
-    clear_shift_register();
+    /* clear_shift_register(); */
 
     if ( 'Z' == result ) {
         display[2] = 0x0;
