@@ -161,7 +161,10 @@ byte table[] =
     };
 
 
-uint8_t  countdown_base = 00*60+4;
+byte display[4];
+
+
+uint8_t  countdown_base = 00*60+9;
 volatile uint8_t countdown;
 byte     time_bcd[4];
 
@@ -228,12 +231,20 @@ void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin ) {
 }
 
 
-void DisplaySegments ( byte displayDigits[4] ) {
+void Show () {
+    /**
+     * GLOBAL PARAMETERS:
+     * - byte display[4]
+     * GLOBAL CONSTANTS:
+     * - display_latch_pin
+     * - display_data_pin
+     * - byte control_digit_pins[4]
+     */
     for (uint8_t x=0; x<4; x++) {
         /* для всех цифр */
         display_off();
         pin_write(display_latch_pin, LOW);
-        shift_out(displayDigits[x],
+        shift_out(display[x],
                   display_data_pin, display_clock_pin);
         pin_write(display_latch_pin, HIGH);
         if (pulse && mode) {
@@ -248,7 +259,7 @@ void DisplaySegments ( byte displayDigits[4] ) {
             /* включить текущую цифру */
             pin_write(control_digit_pins[x], HIGH);
         }
-        _delay_ms(1);
+        /* _delay_ms(1); */
     }
     display_off();
 }
@@ -311,27 +322,34 @@ void clear_shift_register () {
     pin_write(keyb_latch_pin, HIGH);
 }
 
+
 char keyboard_scan () {
     clear_shift_register();
     /* То, что мы и за символ не считаем */
     char result = 'X';
     /* цикл, передающий LOW по каждому столбцу */
-    for (int8_t i=cols_cnt-1; i>=0; i--) {
-        pin_write(keyb_latch_pin, LOW);
-        shift_out(~(1<<i), keyb_clock_pin, keyb_data_pin);
-        pin_write(keyb_latch_pin, HIGH);
+    for ( int8_t i=cols_cnt-1; i>=0; i-- ) {
+        pin_write( keyb_latch_pin, LOW );
+        shift_out( ~(1<<i), keyb_clock_pin, keyb_data_pin );
+        pin_write( keyb_latch_pin, HIGH );
 
         /* цикл, принимающих LOW по строкам */
-        for (int8_t j=0; j<rows_cnt; j++)  {
+        for ( int8_t j=0; j<rows_cnt; j++ )  {
             /* если один из портов входа = LOW, то.. */
 
-            if ( LOW == pin_read( pinIn[j] ) ) {
-                pin_write ( pinIn[j] + 6, HIGH );
-            } else {
-                pin_write ( pinIn[j] + 6, LOW );
-            }
-
             if (pin_read(pinIn[j]) == LOW) {
+
+                byte tmp_bcd[4];
+                byte tmp_display[4];
+
+                int_to_time_bcd( j, tmp_bcd );
+                time_bcd_to_time_str( tmp_bcd, tmp_display );
+                display[3] = tmp_display[0];
+
+                int_to_time_bcd( i, tmp_bcd );
+                time_bcd_to_time_str( tmp_bcd, tmp_display );
+                display[2] = tmp_display[0];
+
                 result = value[j][i];
             }
         }
@@ -375,7 +393,7 @@ void keyboard_handler ( uint8_t symbol ) {
     case '7': input = 7;  break;
     case '8': input = 8;  break;
     case '9': input = 9;  break;
-    default:  return;
+    default: return;
     }
     if (mode && (input != 0xF)) {
         time_bcd[submode] = input;
@@ -394,27 +412,34 @@ int main () {
     /* Setup */
     setup();
 
-    /* Greeting */
-    byte displayDigits[] = { 0b00111111, 0b00111000,
-                             0b01110111, 0b01110110 };
+    /* Set Greeting */
+    display[0] = 0b00111111;
+    display[1] = 0b00111000;
+    display[2] = 0b01110111;
+    display[3] = 0b01110110;
     countdown = 200;
     while ( countdown > 199 ) {
-        DisplaySegments( displayDigits );
+        /* ...Wait 1 second for show greeting... */
     }
+    display[1] = 0b00000000;
     display_off();
 
-    /* Setup time settings */
+    /* Set countdown */
     countdown = countdown_base;
 
     /* Main Loop */
     while(1) {
 
-        /* time_bcd is a countdown */
+        /* countdown to time_bcd */
         int_to_time_bcd( countdown, time_bcd );
-        /* displayDigits is a time_bcd */
-        time_bcd_to_time_str( time_bcd, displayDigits );
-        /* show DisplayDigits */
-        DisplaySegments( displayDigits );
+        /* time_bcd to shadow_display */
+        byte shadow_display[4];
+        time_bcd_to_time_str( time_bcd, shadow_display );
+
+        /* display[3] = 0b01110110; */
+        /* display[2] = shadow_display[2]; */
+        /* display[1] = shadow_display[1]; */
+        display[0] = shadow_display[0];
 
         /* keyboard scan */
         if ( need_keyb_scan_flag ) {
@@ -422,12 +447,10 @@ int main () {
             need_keyb_scan_flag = false;
         }
 
-        /* Test for pin_read */
-        /* if ( 0 == pin_read(2) ) { */
         if ( pulse ) {
-            /* pin_write(15, LOW); */
+            /* pin_write(9, LOW); */
         } else {
-            /* pin_write(15, HIGH); */
+            /* pin_write(9, HIGH); */
         }
 
     }
@@ -435,7 +458,7 @@ int main () {
 }
 
 
-/* Прерывание по переполнению таймера 1 */
+/* Прерывание по совпадению таймера 1 */
 ISR(TIMER1_COMPA_vect)
 {
     if (!mode) {
@@ -448,12 +471,18 @@ ISR(TIMER1_COMPA_vect)
 
 volatile uint8_t int_cnt = 0;
 
-/* Прерывание по переполнению таймера 2 */
+/* Прерывание по совпадению таймера 2 */
 ISR(TIMER2_COMPA_vect)
 {
-    need_keyb_scan_flag = true;
-    if ( ( int_cnt++ ) > 4 ) {
+    /* Обновим дисплей */
+    Show();
+    /* Не пора ли просканировать клавиатуру? */
+    if ( (int_cnt++) > 4 ) {
+        /* Пора - установим флаг */
+        need_keyb_scan_flag = true;
+        /* Мигание */
         pulse = !pulse;
+        /* Делитель */
         int_cnt = 0;
     }
 }
