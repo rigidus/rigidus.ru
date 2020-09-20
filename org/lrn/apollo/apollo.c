@@ -161,12 +161,10 @@ byte table[] =
     };
 
 
-byte display[4];
+volatile byte display[4];
 
-
-uint8_t  countdown_base = 00*60+9;
+static uint8_t  countdown_base = 00*60+9;
 volatile uint8_t countdown;
-byte     time_bcd[4];
 
 /* blinking state for editable digit */
 volatile bool    pulse   = false;
@@ -265,7 +263,7 @@ void Show () {
 }
 
 
-void int_to_time_bcd ( uint8_t param, byte result[4] ) {
+void int_to_bcd ( uint8_t param, byte result[4] ) {
     uint8_t minutes = param / 60;
     uint8_t seconds = param % 60;
     uint8_t minute_hi = minutes / 10;
@@ -279,7 +277,7 @@ void int_to_time_bcd ( uint8_t param, byte result[4] ) {
 }
 
 
-uint8_t time_bcd_to_int ( byte param[4] ) {
+uint8_t bcd_to_int ( byte param[4] ) {
     uint8_t minute_hi = param[3];
     uint8_t minute_lo = param[2];
     uint8_t second_hi = param[1];
@@ -290,7 +288,7 @@ uint8_t time_bcd_to_int ( byte param[4] ) {
 }
 
 
-void time_bcd_to_time_str ( byte param[4], byte result[4] ) {
+void bcd_to_time_str ( byte param[4], byte result[4] ) {
     result[0] = table[param[0]];
     result[1] = table[param[1]];
     result[2] = table[param[2]];
@@ -342,20 +340,16 @@ char keyboard_scan () {
                 byte tmp_bcd[4];
                 byte tmp_display[4];
 
-                int_to_time_bcd( j, tmp_bcd );
-                time_bcd_to_time_str( tmp_bcd, tmp_display );
+                int_to_bcd( j, tmp_bcd );
+                bcd_to_time_str( tmp_bcd, tmp_display );
                 display[3] = tmp_display[0];
 
-                int_to_time_bcd( i, tmp_bcd );
-                time_bcd_to_time_str( tmp_bcd, tmp_display );
+                int_to_bcd( i, tmp_bcd );
+                bcd_to_time_str( tmp_bcd, tmp_display );
                 display[2] = tmp_display[0];
 
                 result = value[j][i];
-            } else {
-
-
             }
-
         }
     }
     clear_shift_register();
@@ -384,9 +378,10 @@ void submode_dec() {
 void keyboard_handler ( uint8_t symbol ) {
     /**
      * MODIFY GLOBAL VARIABLES:
-     * - time_bcd
      * - countdown
      */
+    byte bcd[4];
+
     byte input = 0xF;
     switch (symbol) {
     case 'C': mode = 1;  submode = 3; break;
@@ -406,9 +401,9 @@ void keyboard_handler ( uint8_t symbol ) {
     default: return;
     }
     if (mode && (input != 0xF)) {
-        time_bcd[submode] = input;
+        bcd[submode] = input;
         submode_dec(); // reverse becouse shematic
-        countdown = time_bcd_to_int( time_bcd );
+        countdown = bcd_to_int( bcd );
     }
 }
 
@@ -437,14 +432,16 @@ int main () {
     /* Set countdown */
     countdown = countdown_base;
 
+    volatile byte bcd[4];
+
     /* Main Loop */
     while(1) {
 
-        /* countdown to time_bcd */
-        int_to_time_bcd( countdown, time_bcd );
-        /* time_bcd to shadow_display */
+        /* countdown to bcd */
+        int_to_bcd( countdown, bcd );
+        /* bcd to shadow_display */
         byte shadow_display[4];
-        time_bcd_to_time_str( time_bcd, shadow_display );
+        bcd_to_time_str( bcd, shadow_display );
 
         /* display[3] = 0b01110110; */
         /* display[2] = shadow_display[2]; */
