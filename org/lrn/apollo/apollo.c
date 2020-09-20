@@ -326,7 +326,7 @@ void clear_shift_register () {
 char keyboard_scan () {
     clear_shift_register();
     /* То, что мы и за символ не считаем */
-    char result = 'X';
+    char result = 'Z';
     /* цикл, передающий LOW по каждому столбцу */
     for ( int8_t i=cols_cnt-1; i>=0; i-- ) {
         pin_write( keyb_latch_pin, LOW );
@@ -351,10 +351,20 @@ char keyboard_scan () {
                 display[2] = tmp_display[0];
 
                 result = value[j][i];
+            } else {
+
+
             }
+
         }
     }
     clear_shift_register();
+
+    if ( 'Z' == result ) {
+        display[2] = 0x0;
+        display[3] = 0x0;
+    }
+
     return result;
 }
 
