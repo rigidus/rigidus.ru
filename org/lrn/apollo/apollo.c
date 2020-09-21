@@ -300,12 +300,12 @@ void bcd_to_time_str ( byte param[4], byte result[4] ) {
 #define cols_cnt 6
 
 const char value[rows_cnt][cols_cnt] =
-{
- {'7', '8', '9', '/', '%', 'C'},
- {'4', '5', '6', '*', '^', 'X'},
- {'1', '2', '3', '-', 'X', '_'},
- {'X', '0', ',', '+', 'X', '='}
-};
+    {
+     {'7', '8', '9', '/', '%', 'C'},
+     {'4', '5', '6', '*', '^', 'X'},
+     {'1', '2', '3', '-', 'X', '_'},
+     {'X', '0', ',', '+', 'X', '='}
+    };
 
 #define keyb_clock_pin 15
 #define keyb_latch_pin 14
@@ -322,42 +322,40 @@ void clear_shift_register () {
 }
 
 
-uint8_t keyboard_read ( uint8_t col ) {
-    /* цикл, принимающих LOW по строкам */
-    for ( int8_t row=0; row<rows_cnt; row++ )  {
-        /* если один из портов входа = LOW, то.. */
-        if (pin_read(pinIn[row]) == LOW) {
-            /* DBG */
-            byte tmp_bcd[4];
-            byte tmp_display[4];
-            int_to_bcd( col, tmp_bcd );
-            bcd_to_time_str( tmp_bcd, tmp_display );
-            display[3] = tmp_display[0]; /* col */
-            int_to_bcd( row, tmp_bcd );
-            bcd_to_time_str( tmp_bcd, tmp_display );
-            display[2] = tmp_display[0]; /* row */
-            /* Return */
-            return (col<<4) & row;
-        }
-    }
-    /* если мы здесь то нет нажатий в этом столбце */
-    display[3] = 0b01001001;
-    display[2] = 0b01001001;
-    return 0xFF;
-}
-
 char keyboard_scan () {
     /* То, что мы и за символ не считаем */
-    char result = 'Z';
+    char result = 'X';
     clear_shift_register();
-    _delay_ms(400);
     for ( int8_t col=0; col<8; col++ ) {
-        _delay_ms(200);
         pin_write( keyb_latch_pin, LOW );
         shift_out( ~(1<<col), keyb_data_pin, keyb_clock_pin );
         pin_write( keyb_latch_pin, HIGH );
-        result = keyboard_read( col );
-        _delay_ms(200);
+        /* цикл, принимающих LOW по строкам */
+        for ( int8_t row=0; row<rows_cnt; row++ )  {
+            /* если один из портов входа = LOW, то.. */
+            if ( pin_read( pinIn[row] ) == LOW ) {
+                /* DBG */
+                byte tmp_bcd[4];
+                byte tmp_display[4];
+                int_to_bcd( col, tmp_bcd );
+                bcd_to_time_str( tmp_bcd, tmp_display );
+                display[3] = tmp_display[0]; /* col */
+                int_to_bcd( row, tmp_bcd );
+                bcd_to_time_str( tmp_bcd, tmp_display );
+                display[2] = tmp_display[0]; /* row */
+                /* получение символа */
+                /* коррекция -2 по схеме подключения */
+                result = value[row][col-2];
+            }
+        }
+        /* если мы здесь то нет нажатий в этом столбце */
+    }
+    if ('X' != result) {
+        /* есть символ */
+    } else {
+        display[3] = 0b10000000;
+        display[2] = 0b10000000;
+        display[1] = 0b10000000;
     }
     return result;
 }
@@ -384,20 +382,26 @@ void keyboard_handler ( uint8_t symbol ) {
 
     byte input = 0xF;
     switch (symbol) {
-    case 'C': mode = 1;  submode = 3; break;
-    case '=': mode = 0;  break;
-    case '-': submode_inc();  break;
-    case '+': submode_dec();  break;
-    case '0': input = 0;  break;
-    case '1': input = 1;  break;
-    case '2': input = 2;  break;
-    case '3': input = 3;  break;
-    case '4': input = 4;  break;
-    case '5': input = 5;  break;
-    case '6': input = 6;  break;
-    case '7': input = 7;  break;
-    case '8': input = 8;  break;
-    case '9': input = 9;  break;
+    case 'C': display[1]=table[0xC]; mode = 1;  submode = 3; break;
+    case '=': display[1]=0b01000001; mode = 0;  break;
+    case '-': display[1]=0b01000000; submode_inc();  break;
+    case '+': display[1]=0b01110011; submode_dec();  break;
+    case '*': display[1]=0b01001001;  break;
+    case ',': display[1]=0b10000000;  break;
+    case '%': display[1]=0b00010010;  break;
+    case '/': display[1]=0b01010010;  break;
+    case '^': display[1]=0b00000001;  break;
+    case '_': display[1]=0b00001000;  break;
+    case '0': display[1]=table[0]; input = 0;  break;
+    case '1': display[1]=table[1]; input = 1;  break;
+    case '2': display[1]=table[2]; input = 2;  break;
+    case '3': display[1]=table[3]; input = 3;  break;
+    case '4': display[1]=table[4]; input = 4;  break;
+    case '5': display[1]=table[5]; input = 5;  break;
+    case '6': display[1]=table[6]; input = 6;  break;
+    case '7': display[1]=table[7]; input = 7;  break;
+    case '8': display[1]=table[8]; input = 8;  break;
+    case '9': display[1]=table[9]; input = 9;  break;
     default: return;
     }
     if (mode && (input != 0xF)) {
@@ -437,9 +441,7 @@ int main () {
 
         /* keyboard scan */
         if ( need_keyb_scan_flag ) {
-            /* keyboard_handler( */
-                             keyboard_scan();
-                             /* ); */
+            keyboard_handler( keyboard_scan() );
             need_keyb_scan_flag = false;
         }
 
