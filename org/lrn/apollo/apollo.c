@@ -312,7 +312,7 @@ const char value[rows_cnt][cols_cnt] =
 #define keyb_data_pin  13
 
 /* входы клавиатуры */
-uint8_t pinIn  [rows_cnt] = { 6, 5, 4, 3 };
+uint8_t pinIn [rows_cnt] = { 6, 5, 4, 3 };
 
 
 void clear_shift_register () {
@@ -323,105 +323,42 @@ void clear_shift_register () {
 
 
 uint8_t keyboard_read ( uint8_t col ) {
-    /* /\* цикл, принимающих LOW по строкам *\/ */
-    /* for ( int8_t row=0; row<rows_cnt; row++ )  { */
-    /*     /\* если один из портов входа = LOW, то.. *\/ */
-    /*     if (pin_read(pinIn[row]) == LOW) { */
-    /*         /\* DBG *\/ */
-    /*         byte tmp_bcd[4]; */
-    /*         byte tmp_display[4]; */
-    /*         int_to_bcd( col, tmp_bcd ); */
-    /*         bcd_to_time_str( tmp_bcd, tmp_display ); */
-    /*         display[3] = tmp_display[0]; /\* col *\/ */
-    /*         int_to_bcd( row, tmp_bcd ); */
-    /*         bcd_to_time_str( tmp_bcd, tmp_display ); */
-    /*         display[2] = tmp_display[0]; /\* row *\/ */
-    /*         /\* Return *\/ */
-    /*         return (col<<4) & row; */
-    /*     } */
-    /* } */
+    /* цикл, принимающих LOW по строкам */
+    for ( int8_t row=0; row<rows_cnt; row++ )  {
+        /* если один из портов входа = LOW, то.. */
+        if (pin_read(pinIn[row]) == LOW) {
+            /* DBG */
+            byte tmp_bcd[4];
+            byte tmp_display[4];
+            int_to_bcd( col, tmp_bcd );
+            bcd_to_time_str( tmp_bcd, tmp_display );
+            display[3] = tmp_display[0]; /* col */
+            int_to_bcd( row, tmp_bcd );
+            bcd_to_time_str( tmp_bcd, tmp_display );
+            display[2] = tmp_display[0]; /* row */
+            /* Return */
+            return (col<<4) & row;
+        }
+    }
+    /* если мы здесь то нет нажатий в этом столбце */
+    display[3] = 0b01001001;
+    display[2] = 0b01001001;
     return 0xFF;
 }
 
 char keyboard_scan () {
     /* То, что мы и за символ не считаем */
     char result = 'Z';
-
-    pin_write(keyb_latch_pin, LOW);
-    /* shift_out(0b11000001, keyb_data_pin, keyb_clock_pin); */
-    shift_out(0b00000011, keyb_data_pin, keyb_clock_pin);
-    pin_write(keyb_latch_pin, HIGH);
-    _delay_ms(10);
-
-    /* pin_write( keyb_data_pin, HIGH );   /\* high *\/ */
-    /* for ( int8_t i=0; i<8; i++ ) {      /\* 7 bit high *\/ */
-    /*     pin_write( keyb_latch_pin, LOW );   /\* latch down *\/ */
-    /*     pin_write(keyb_clock_pin, LOW); pin_write(keyb_clock_pin, HIGH); */
-    /*     pin_write( keyb_latch_pin, HIGH );   /\* latch up : 1111.1110 *\/ */
-    /*     _delay_ms(1); */
-    /* } */
-    /* pin_write( keyb_data_pin, LOW );    /\* 1 bit low *\/ */
-    /* for ( int8_t i=0; i<8; i++ ) {      /\* 7 bit high *\/ */
-    /*     pin_write( keyb_latch_pin, LOW );   /\* latch down *\/ */
-    /*     pin_write(keyb_clock_pin, LOW); pin_write(keyb_clock_pin, HIGH); */
-    /*     pin_write( keyb_latch_pin, HIGH );   /\* latch up : 1111.1110 *\/ */
-    /*     _delay_ms(1); */
-    /* } */
-
-
-
-
-
-    /* pin_write(keyb_clock_pin, LOW); pin_write(keyb_clock_pin, HIGH); */
-    /* /\* uint8_t read_result = keyboard_read(1); *\/ */
-
-    /* pin_write( keyb_data_pin, LOW ); */
-    /* for ( int8_t i=0; i<2; i++ ) {      /\* 7 bit high *\/ */
-    /*     pin_write( keyb_clock_pin, LOW ); */
-    /*     pin_write( keyb_clock_pin, HIGH ); */
-    /*     /\* uint8_t read_result = keyboard_read(1); *\/ */
-    /* } */
-
-
-    /* pin_write( keyb_data_pin, HIGH );   /\* high *\/ */
-    /* for ( int8_t i=0; i<7; i++ ) {      /\* 7 bit high shift *\/ */
-    /*     pin_write( keyb_clock_pin, LOW ); */
-    /*     pin_write( keyb_clock_pin, HIGH ); */
-    /* } */
-
-
-
-    /* for ( int8_t i=cols_cnt-1; i>=0; i-- ) { */
-    /*     pin_write( keyb_latch_pin, LOW ); */
-    /*     shift_out( ~(1<<i), keyb_clock_pin, keyb_data_pin ); */
-    /*     pin_write( keyb_latch_pin, HIGH ); */
-
-    /*     /\* цикл, принимающих LOW по строкам *\/ */
-    /*     for ( int8_t j=0; j<rows_cnt; j++ )  { */
-    /*         /\* если один из портов входа = LOW, то.. *\/ */
-
-    /*         if (pin_read(pinIn[j]) == LOW) { */
-    /*             result = value[j][i]; */
-
-    /*             /\* DBG *\/ */
-    /*             byte tmp_bcd[4]; */
-    /*             byte tmp_display[4]; */
-    /*             int_to_bcd( j, tmp_bcd ); */
-    /*             bcd_to_time_str( tmp_bcd, tmp_display ); */
-    /*             display[3] = tmp_display[0]; // J */
-    /*             int_to_bcd( i, tmp_bcd ); */
-    /*             bcd_to_time_str( tmp_bcd, tmp_display ); */
-    /*             display[2] = tmp_display[0]; // I */
-    /*         } */
-    /*     } */
-    /* } */
-    /* /\* clear_shift_register(); *\/ */
-
-    /* if ( 'Z' == result ) { */
-    /*     display[2] = 0x0; */
-    /*     display[3] = 0x0; */
-    /* } */
-
+    clear_shift_register();
+    _delay_ms(400);
+    for ( int8_t col=0; col<8; col++ ) {
+        _delay_ms(200);
+        pin_write( keyb_latch_pin, LOW );
+        shift_out( ~(1<<col), keyb_data_pin, keyb_clock_pin );
+        pin_write( keyb_latch_pin, HIGH );
+        result = keyboard_read( col );
+        _delay_ms(200);
+    }
     return result;
 }
 
@@ -495,25 +432,14 @@ int main () {
     /* Set countdown */
     countdown = countdown_base;
 
-    byte bcd[4];
-
     /* Main Loop */
     while(1) {
 
-        /* countdown to bcd */
-        int_to_bcd( countdown, bcd );
-        /* bcd to shadow_display */
-        byte shadow_display[4];
-        bcd_to_time_str( bcd, shadow_display );
-
-        /* display[3] = 0b01110110; */
-        /* display[2] = shadow_display[2]; */
-        /* display[1] = shadow_display[1]; */
-        display[0] = shadow_display[0];
-
         /* keyboard scan */
         if ( need_keyb_scan_flag ) {
-            keyboard_handler( keyboard_scan() );
+            /* keyboard_handler( */
+                             keyboard_scan();
+                             /* ); */
             need_keyb_scan_flag = false;
         }
 
@@ -537,6 +463,16 @@ ISR(TIMER1_COMPA_vect)
             countdown = countdown_base;
         }
     }
+    /* countdown to bcd */
+    byte bcd[4];
+    int_to_bcd( countdown, bcd );
+    /* bcd to shadow_display */
+    byte shadow_display[4];
+    bcd_to_time_str( bcd, shadow_display );
+    /* display[3] = 0b01110110; */
+    /* display[2] = shadow_display[2]; */
+    /* display[1] = shadow_display[1]; */
+    display[0] = shadow_display[0];
 }
 
 
