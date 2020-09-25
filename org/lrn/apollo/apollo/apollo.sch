@@ -864,4 +864,23 @@ Wire Wire Line
 	1950 5650 2800 5650
 Wire Wire Line
 	2800 1500 2800 5650
+$Comp
+L Device:Buzzer BZ1
+U 1 1 5F6E5FBC
+P 2550 5500
+F 0 "BZ1" H 2702 5529 50  0000 L CNN
+F 1 "Buzzer" H 2702 5438 50  0000 L CNN
+F 2 "Buzzer_Beeper:Buzzer_12x9.5RM7.6" V 2525 5600 50  0001 C CNN
+F 3 "~" V 2525 5600 50  0001 C CNN
+	1    2550 5500
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	1950 5550 2450 5550
+Wire Wire Line
+	2450 5550 2450 5600
+Wire Wire Line
+	1950 5450 2450 5450
+Wire Wire Line
+	2450 5450 2450 5400
 $EndSCHEMATC
