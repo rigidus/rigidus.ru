@@ -4,6 +4,13 @@
 #include <util/delay.h>
 #include <stdbool.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
+
+#define DBG 0
+
+#ifndef DBG
+#define DBG 0
+#endif
 
 #define LOW 0
 #define HIGH 1
@@ -163,8 +170,8 @@ byte table[] =
 
 volatile byte display[4];
 
-static uint8_t  countdown_base = 00*60+9;
-volatile uint8_t countdown;
+volatile uint16_t  countdown_base = 23*60+17;
+volatile uint16_t  countdown;
 
 /* blinking state for editable digit */
 volatile bool    pulse   = false;
@@ -173,7 +180,7 @@ volatile bool    pulse   = false;
 bool     mode = 0;
 
 /* current digit for edit mode */
-uint8_t  submode = 3;
+int8_t  submode = 3;
 
 
 /* 7-Segment pin D4 J1 */
@@ -263,7 +270,7 @@ void Show () {
 }
 
 
-void int_to_bcd ( uint8_t param, byte result[4] ) {
+void word_to_bcd ( uint16_t param, byte result[4] ) {
     uint8_t minutes = param / 60;
     uint8_t seconds = param % 60;
     uint8_t minute_hi = minutes / 10;
@@ -277,7 +284,7 @@ void int_to_bcd ( uint8_t param, byte result[4] ) {
 }
 
 
-uint8_t bcd_to_int ( byte param[4] ) {
+uint16_t bcd_to_word ( byte param[4] ) {
     uint8_t minute_hi = param[3];
     uint8_t minute_lo = param[2];
     uint8_t second_hi = param[1];
@@ -288,7 +295,7 @@ uint8_t bcd_to_int ( byte param[4] ) {
 }
 
 
-void bcd_to_time_str ( byte param[4], byte result[4] ) {
+void bcd_to_time ( byte param[4], byte result[4] ) {
     result[0] = table[param[0]];
     result[1] = table[param[1]];
     result[2] = table[param[2]];
@@ -334,15 +341,16 @@ char keyboard_scan () {
         for ( int8_t row=0; row<rows_cnt; row++ )  {
             /* если один из портов входа = LOW, то.. */
             if ( pin_read( pinIn[row] ) == LOW ) {
-                /* DBG */
+#if (DBG)
                 byte tmp_bcd[4];
                 byte tmp_display[4];
-                int_to_bcd( col, tmp_bcd );
-                bcd_to_time_str( tmp_bcd, tmp_display );
+                word_to_bcd( col, tmp_bcd );
+                bcd_to_time( tmp_bcd, tmp_display );
                 display[3] = tmp_display[0]; /* col */
-                int_to_bcd( row, tmp_bcd );
-                bcd_to_time_str( tmp_bcd, tmp_display );
+                word_to_bcd( row, tmp_bcd );
+                bcd_to_time( tmp_bcd, tmp_display );
                 display[2] = tmp_display[0]; /* row */
+#endif
                 /* получение символа */
                 /* коррекция -2 по схеме подключения */
                 result = value[row][col-2];
@@ -353,9 +361,11 @@ char keyboard_scan () {
     if ('X' != result) {
         /* есть символ */
     } else {
+#if (DBG)
         display[3] = 0b10000000;
         display[2] = 0b10000000;
         display[1] = 0b10000000;
+#endif
     }
     return result;
 }
@@ -382,32 +392,127 @@ void keyboard_handler ( uint8_t symbol ) {
 
     byte input = 0xF;
     switch (symbol) {
-    case 'C': display[1]=table[0xC]; mode = 1;  submode = 3; break;
-    case '=': display[1]=0b01000001; mode = 0;  break;
-    case '-': display[1]=0b01000000; submode_inc();  break;
-    case '+': display[1]=0b01110011; submode_dec();  break;
-    case '*': display[1]=0b01001001;  break;
-    case ',': display[1]=0b10000000;  break;
-    case '%': display[1]=0b00010010;  break;
-    case '/': display[1]=0b01010010;  break;
-    case '^': display[1]=0b00000001;  break;
-    case '_': display[1]=0b00001000;  break;
-    case '0': display[1]=table[0]; input = 0;  break;
-    case '1': display[1]=table[1]; input = 1;  break;
-    case '2': display[1]=table[2]; input = 2;  break;
-    case '3': display[1]=table[3]; input = 3;  break;
-    case '4': display[1]=table[4]; input = 4;  break;
-    case '5': display[1]=table[5]; input = 5;  break;
-    case '6': display[1]=table[6]; input = 6;  break;
-    case '7': display[1]=table[7]; input = 7;  break;
-    case '8': display[1]=table[8]; input = 8;  break;
-    case '9': display[1]=table[9]; input = 9;  break;
+    case 'C':
+        #if (DBG)
+            display[1]=table[0xC];
+        #endif
+        mode = 1;
+        submode = 3;
+        break;
+    case '=':
+        #if (DBG)
+            display[1]=0b01000001;
+        #endif
+        mode = 0;
+        break;
+    case '-':
+        #if (DBG)
+            display[1]=0b01000000;
+        #endif
+        submode_inc();
+        break;
+    case '+':
+        #if (DBG)
+            display[1]=0b01110011;
+        #endif
+        submode_dec();
+        break;
+    case '*':
+        #if (DBG)
+            display[1]=0b01001001;
+        #endif
+        break;
+    case ',':
+        #if (DBG)
+            display[1]=0b10000000;
+        #endif
+        break;
+    case '%':
+        #if (DBG)
+            display[1]=0b00010010;
+        #endif
+        break;
+    case '/':
+        #if (DBG)
+            display[1]=0b01010010;
+        #endif
+        break;
+    case '^':
+        #if (DBG)
+            display[1]=0b00000001;
+        #endif
+        break;
+    case '_':
+        #if (DBG)
+            display[1]=0b00001000;
+        #endif
+        break;
+    case '0':
+        #if (DBG)
+            display[1]=table[0];
+        #endif
+        input = 0;
+        break;
+    case '1':
+        #if (DBG)
+            display[1]=table[1];
+        #endif
+        input = 1;
+        break;
+    case '2':
+        #if (DBG)
+            display[1]=table[2];
+        #endif
+        input = 2;
+        break;
+    case '3':
+        #if (DBG)
+            display[1]=table[3];
+        #endif
+        input = 3;
+        break;
+    case '4':
+        #if (DBG)
+            display[1]=table[4];
+        #endif
+        input = 4;
+        break;
+    case '5':
+        #if (DBG)
+            display[1]=table[5];
+        #endif
+        input = 5;
+        break;
+    case '6':
+        #if (DBG)
+            display[1]=table[6];
+        #endif
+        input = 6;
+        break;
+    case '7':
+        #if (DBG)
+            display[1]=table[7];
+        #endif
+        input = 7;
+        break;
+    case '8':
+        #if (DBG)
+            display[1]=table[8];
+        #endif
+        input = 8;
+        break;
+    case '9':
+        #if (DBG)
+            display[1]=table[9];
+        #endif
+        input = 9;
+        break;
     default: return;
     }
     if (mode && (input != 0xF)) {
         bcd[submode] = input;
         submode_dec(); // reverse becouse shematic
-        countdown = bcd_to_int( bcd );
+        countdown = bcd_to_word( bcd );
     }
 }
 
@@ -420,18 +525,6 @@ int main () {
 
     /* Setup */
     setup();
-
-    /* Set Greeting */
-    display[0] = 0b00111111;
-    display[1] = 0b00111000;
-    display[2] = 0b01110111;
-    display[3] = 0b01110110;
-    countdown = 200;
-    while ( countdown > 199 ) {
-        /* ...Wait 1 second for show greeting... */
-    }
-    display[1] = 0b00000000;
-    display_off();
 
     /* Set countdown */
     countdown = countdown_base;
@@ -465,19 +558,22 @@ int main () {
 void timer_1_second_cmp()
 {
     if (!mode) {
-        if (0 == countdown--) {
+        countdown--;
+        if (0 == countdown) {
             countdown = countdown_base;
         }
     }
     /* countdown to bcd */
     byte bcd[4];
-    int_to_bcd( countdown, bcd );
+    word_to_bcd( countdown, bcd );
     /* bcd to shadow_display */
     byte shadow_display[4];
-    bcd_to_time_str( bcd, shadow_display );
-    /* display[3] = 0b01110110; */
-    /* display[2] = shadow_display[2]; */
-    /* display[1] = shadow_display[1]; */
+    bcd_to_time( bcd, shadow_display );
+    #if (0==DBG)
+        display[3] = shadow_display[3];
+        display[2] = shadow_display[2];
+        display[1] = shadow_display[1];
+    #endif
     display[0] = shadow_display[0];
 }
 
