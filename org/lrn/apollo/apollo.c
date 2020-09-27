@@ -400,12 +400,18 @@ void keyboard_handler ( uint8_t symbol ) {
     /**
      * MODIFY GLOBAL VARIABLES:
      * - countdown
+     * - mode
+     * - submode
      */
-
     byte input = 'X';
     switch (symbol) {
     case 'C': DBGDISP(table[0xC]); mode = EDIT_MODE; submode = 3; break;
-    case '=': DBGDISP(0b01000001); mode = COUNTDOWN_MODE; break;
+    case '=': DBGDISP(0b01000001);
+        /* нельзя начинать счет с нуля, будет антипереполнение */
+        if (0 == countdown) countdown = 1;
+        /* переключаемся в счетный режим. */
+        mode = COUNTDOWN_MODE;
+        break;
     case '-': DBGDISP(0b01000000); submode_inc(); break;
     case '+': DBGDISP(0b01110011); submode_dec(); break;
     case '*': DBGDISP(0b01001001);
@@ -525,9 +531,10 @@ void setup () {
     PORTD = 0b00011110; /*  PULLUP */
 
     /* Set countdown */
-    countdown_base = eeprom_read_word((uint16_t*)46);
-    if (0xFFFF == countdown_base) {
-        countdown_base = 5;
+    uint16_t eeprom;
+    eeprom = eeprom_read_word((uint16_t*)46);
+    if (0xFFFF != eeprom) {
+        countdown_base = eeprom;
     }
     countdown = countdown_base;
 
