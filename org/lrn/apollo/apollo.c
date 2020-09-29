@@ -479,10 +479,23 @@ int main () {
             need_keyb_scan_flag = false;
         }
 
-        /* beeper and Relay */
-        if ( SIGNAL_MODE == mode ) {
+
+        switch ( mode ) {
+        case EDIT_MODE:
+            /* выключаем Relay_1 */
+            pin_write(11, LOW);
+            /* выключаем звук */
+            TCCR0B &= ~(1<<WGM02);
+            break;
+        case COUNTDOWN_MODE:
             /* включаем Relay_1 */
             pin_write(11, HIGH);
+            /* выключаем звук */
+            TCCR0B &= ~(1<<WGM02);
+            break;
+        case SIGNAL_MODE:
+            /* выключаем Relay_1 */
+            pin_write(11, LOW);
             /* пищащий звук */
             if (pulse) {
                 /* если WGM02=0, пин OC0A отключен */
@@ -490,13 +503,8 @@ int main () {
             } else {
                 TCCR0B &= ~(1<<WGM02);
             }
-        } else {
-            /* выключаем Relay_1 */
-            pin_write(11, LOW);
-            /* выключаем звук */
-            TCCR0B &= ~(1<<WGM02);
+            break;
         }
-
     }
     return 0;
 }
