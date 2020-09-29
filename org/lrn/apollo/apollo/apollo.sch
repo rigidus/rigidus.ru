@@ -523,24 +523,6 @@ Wire Wire Line
 Connection ~ 7050 5400
 Wire Wire Line
 	7050 5400 7050 5250
-Wire Wire Line
-	6750 1800 6750 1700
-Wire Wire Line
-	6750 1700 7150 1700
-Wire Wire Line
-	6750 2400 6750 2300
-Wire Wire Line
-	6750 2300 7150 2300
-Wire Wire Line
-	6750 2800 6750 2900
-Wire Wire Line
-	6750 2900 5200 2900
-Wire Wire Line
-	6750 2800 7150 2800
-Wire Wire Line
-	6750 1250 6750 1150
-Wire Wire Line
-	6750 1150 7150 1150
 $Comp
 L Connector:Conn_01x01_Male J_SCK_1
 U 1 1 5F6656CD
@@ -575,19 +557,13 @@ F 3 "~" H 4450 3550 50  0001 C CNN
 	-1   0    0    1   
 $EndComp
 Wire Wire Line
-	5100 4250 5100 2400
+	5100 4250 5100 2300
 Wire Wire Line
-	5100 2400 6750 2400
+	5000 4150 5000 1700
 Wire Wire Line
-	5000 4150 5000 1800
+	4900 1150 4900 4450
 Wire Wire Line
-	5000 1800 6750 1800
-Wire Wire Line
-	4900 1250 4900 4450
-Wire Wire Line
-	4900 1250 6750 1250
-Wire Wire Line
-	5200 2900 5200 4350
+	5200 2800 5200 4350
 Wire Wire Line
 	6150 4650 6650 4650
 Wire Wire Line
@@ -775,5 +751,109 @@ Wire Wire Line
 	3600 6300 3600 5950
 Connection ~ 3600 5950
 Wire Wire Line
-	3600 5950 5700 5950
+	3600 5950 3750 5950
+Wire Wire Line
+	5200 2800 7150 2800
+Wire Wire Line
+	5100 2300 7150 2300
+Wire Wire Line
+	5000 1700 7150 1700
+Wire Wire Line
+	4900 1150 7150 1150
+$Comp
+L Device:R R9
+U 1 1 5F75A077
+P 3150 5450
+F 0 "R9" V 2943 5450 50  0000 C CNN
+F 1 "R" V 3034 5450 50  0000 C CNN
+F 2 "apollo:R__Horizontal" V 3080 5450 50  0001 C CNN
+F 3 "~" H 3150 5450 50  0001 C CNN
+	1    3150 5450
+	0    1    1    0   
+$EndComp
+$Comp
+L Transistor_BJT:PN2222A Q5
+U 1 1 5F761AF8
+P 3650 5450
+F 0 "Q5" H 3840 5496 50  0000 L CNN
+F 1 "PN2222A" H 3840 5405 50  0000 L CNN
+F 2 "apollo:2N222A-TO-92_Wide" H 3850 5375 50  0001 L CIN
+F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 3650 5450 50  0001 L CNN
+	1    3650 5450
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	1950 5450 3000 5450
+Wire Wire Line
+	3300 5450 3450 5450
+$Comp
+L SRD-05VDC-SL-C:SRD-05VDC-SL-C K1
+U 1 1 5F789B70
+P 4050 4900
+F 0 "K1" H 4050 5267 50  0000 C CNN
+F 1 "SRD-05VDC-SL-C" H 4050 5176 50  0000 C CNN
+F 2 "apollo:RELAY_SRD-05VDC-SL-C" H 4050 4900 50  0001 L BNN
+F 3 "IPC-7251" H 4050 4900 50  0001 L BNN
+F 4 "SONGLE RELAY" H 4050 4900 50  0001 L BNN "Field4"
+	1    4050 4900
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3750 5250 3750 5150
+Wire Wire Line
+	6500 3800 3750 4000
+Wire Wire Line
+	3750 4000 3750 4750
+$Comp
+L pspice:DIODE D1
+U 1 1 5F7DF449
+P 3400 4950
+F 0 "D1" V 3446 4822 50  0000 R CNN
+F 1 "DIODE" V 3355 4822 50  0000 R CNN
+F 2 "apollo:R__Horizontal" H 3400 4950 50  0001 C CNN
+F 3 "~" H 3400 4950 50  0001 C CNN
+	1    3400 4950
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	3400 4750 3750 4750
+Connection ~ 3750 4750
+Wire Wire Line
+	3750 4750 3750 4800
+Wire Wire Line
+	3400 5150 3750 5150
+Connection ~ 3750 5150
+Wire Wire Line
+	3750 5150 3750 5100
+$Comp
+L Connector:Conn_01x01_Male J2
+U 1 1 5F7F3157
+P 4800 5100
+F 0 "J2" H 4750 5100 50  0000 R CNN
+F 1 "Conn_01x01_Male" H 4650 5100 50  0000 R CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 4800 5100 50  0001 C CNN
+F 3 "~" H 4800 5100 50  0001 C CNN
+	1    4800 5100
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J1
+U 1 1 5F7F3A36
+P 4800 4800
+F 0 "J1" H 4700 4800 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 4300 4800 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 4800 4800 50  0001 C CNN
+F 3 "~" H 4800 4800 50  0001 C CNN
+	1    4800 4800
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	4350 5100 4600 5100
+Wire Wire Line
+	4350 4800 4600 4800
+Wire Wire Line
+	3750 5650 3750 5950
+Connection ~ 3750 5950
+Wire Wire Line
+	3750 5950 5700 5950
 $EndSCHEMATC

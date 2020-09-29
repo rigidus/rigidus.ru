@@ -479,10 +479,21 @@ int main () {
             need_keyb_scan_flag = false;
         }
 
-        /* beeper */
-        if ( (SIGNAL_MODE == mode) && pulse ) {
-            TCCR0B |= (1<<WGM02); /* если WGM02=0, пин OC0A отключен */
+        /* beeper and Relay */
+        if ( SIGNAL_MODE == mode ) {
+            /* включаем Relay_1 */
+            pin_write(11, HIGH);
+            /* пищащий звук */
+            if (pulse) {
+                /* если WGM02=0, пин OC0A отключен */
+                TCCR0B |= (1<<WGM02);
+            } else {
+                TCCR0B &= ~(1<<WGM02);
+            }
         } else {
+            /* выключаем Relay_1 */
+            pin_write(11, LOW);
+            /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
         }
 
