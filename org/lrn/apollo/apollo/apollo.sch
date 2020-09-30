@@ -892,4 +892,123 @@ Wire Wire Line
 Connection ~ 3300 5950
 Wire Wire Line
 	3300 5950 3600 5950
+$Comp
+L Connector:Conn_01x01_Male J3
+U 1 1 5F74C3F1
+P 4800 4950
+F 0 "J3" H 4700 4950 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 4300 4950 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 4800 4950 50  0001 C CNN
+F 3 "~" H 4800 4950 50  0001 C CNN
+	1    4800 4950
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	4350 4900 4600 4900
+Wire Wire Line
+	4600 4900 4600 4950
+$Comp
+L Connector:Conn_01x01_Male J4
+U 1 1 5F784BB5
+P 2250 3850
+F 0 "J4" H 2150 3850 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 3850 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 3850 50  0001 C CNN
+F 3 "~" H 2250 3850 50  0001 C CNN
+	1    2250 3850
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J5
+U 1 1 5F78ED5D
+P 2250 3950
+F 0 "J5" H 2150 3950 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 3950 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 3950 50  0001 C CNN
+F 3 "~" H 2250 3950 50  0001 C CNN
+	1    2250 3950
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	1950 3850 2050 3850
+Wire Wire Line
+	1950 3950 2050 3950
+$Comp
+L Connector:Conn_01x01_Male J6
+U 1 1 5F7B08FE
+P 2250 4750
+F 0 "J6" H 2150 4750 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 4750 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 4750 50  0001 C CNN
+F 3 "~" H 2250 4750 50  0001 C CNN
+	1    2250 4750
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	1950 4750 2050 4750
+$Comp
+L Connector:Conn_01x01_Male J7
+U 1 1 5F7C58F9
+P 2250 4950
+F 0 "J7" H 2150 4950 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 4950 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 4950 50  0001 C CNN
+F 3 "~" H 2250 4950 50  0001 C CNN
+	1    2250 4950
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J8
+U 1 1 5F7D01AC
+P 2250 5050
+F 0 "J8" H 2150 5050 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 5050 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 5050 50  0001 C CNN
+F 3 "~" H 2250 5050 50  0001 C CNN
+	1    2250 5050
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J9
+U 1 1 5F7DAA9F
+P 2250 5150
+F 0 "J9" H 2150 5150 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 5150 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 5150 50  0001 C CNN
+F 3 "~" H 2250 5150 50  0001 C CNN
+	1    2250 5150
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J10
+U 1 1 5F7E535B
+P 2250 5250
+F 0 "J10" H 2150 5250 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 5250 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 5250 50  0001 C CNN
+F 3 "~" H 2250 5250 50  0001 C CNN
+	1    2250 5250
+	-1   0    0    1   
+$EndComp
+$Comp
+L Connector:Conn_01x01_Male J11
+U 1 1 5F7EFCF4
+P 2250 5350
+F 0 "J11" H 2150 5350 50  0000 C CNN
+F 1 "Conn_01x01_Male" H 1750 5350 50  0000 C CNN
+F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2250 5350 50  0001 C CNN
+F 3 "~" H 2250 5350 50  0001 C CNN
+	1    2250 5350
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	1950 4950 2050 4950
+Wire Wire Line
+	1950 5050 2050 5050
+Wire Wire Line
+	1950 5150 2050 5150
+Wire Wire Line
+	1950 5250 2050 5250
+Wire Wire Line
+	1950 5350 2050 5350
 $EndSCHEMATC
