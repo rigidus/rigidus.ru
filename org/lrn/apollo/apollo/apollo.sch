@@ -593,17 +593,6 @@ F 3 "~" H 2450 2400 50  0001 C CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Connector:Conn_01x01_Male J5
-U 1 1 5F78ED5D
-P 2450 2500
-F 0 "J5" H 2500 2450 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 2050 2450 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 2450 2500 50  0001 C CNN
-F 3 "~" H 2450 2500 50  0001 C CNN
-	1    2450 2500
-	-1   0    0    1   
-$EndComp
-$Comp
 L Connector:Conn_01x01_Male J6
 U 1 1 5F7B08FE
 P 2500 3300
@@ -1115,9 +1104,9 @@ Wire Wire Line
 	6850 7700 6850 5500
 Connection ~ 6850 5500
 Wire Wire Line
-	3250 5800 5700 5800
+	3250 5800 4100 5800
 Wire Wire Line
-	3100 950  6500 950 
+	3100 950  4100 950 
 Connection ~ 2450 7050
 Wire Wire Line
 	4650 7050 4900 7050
@@ -1134,9 +1123,6 @@ Wire Wire Line
 	2100 2500 2100 7050
 Wire Wire Line
 	2100 7050 2450 7050
-Connection ~ 2100 2500
-Wire Wire Line
-	2100 2500 2250 2500
 Wire Wire Line
 	1950 3300 2300 3300
 Wire Wire Line
@@ -1326,4 +1312,36 @@ Connection ~ 5700 7500
 Connection ~ 5700 7700
 Wire Wire Line
 	5700 7700 6850 7700
+Wire Wire Line
+	4100 950  4100 1500
+Connection ~ 4100 950 
+Wire Wire Line
+	4100 950  6500 950 
+Connection ~ 4100 5800
+Wire Wire Line
+	4100 5800 5700 5800
+Connection ~ 4100 1500
+Wire Wire Line
+	4100 1500 4100 1600
+Connection ~ 4100 1600
+Wire Wire Line
+	4100 1600 4100 1700
+Connection ~ 4100 1700
+Wire Wire Line
+	4100 1700 4100 1800
+Connection ~ 4100 1800
+Wire Wire Line
+	4100 1800 4100 1900
+Connection ~ 4100 1900
+Wire Wire Line
+	4100 1900 4100 2000
+Connection ~ 4100 2000
+Wire Wire Line
+	4100 2000 4100 2100
+Connection ~ 4100 2100
+Wire Wire Line
+	4100 2100 4100 2200
+Connection ~ 4100 2200
+Wire Wire Line
+	4100 2200 4100 5800
 $EndSCHEMATC
