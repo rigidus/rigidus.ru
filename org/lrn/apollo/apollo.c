@@ -395,6 +395,7 @@ void submode_dec() {
     if (submode < 0) { submode = 0; }
 }
 
+#define eeprom_address 46
 
 void keyboard_handler ( uint8_t symbol ) {
     /**
@@ -405,23 +406,37 @@ void keyboard_handler ( uint8_t symbol ) {
      */
     byte input = 'X';
     switch (symbol) {
-    case 'C': DBGDISP(table[0xC]); mode = EDIT_MODE; submode = 3; break;
+    case 'C': DBGDISP(table[0xC]); mode = EDIT_MODE; submode = 3;
+        break;
     case '=': DBGDISP(0b01000001);
+        break;
+    case '-': DBGDISP(0b01000000); submode_inc();
+        break;
+    case '+': DBGDISP(0b01110011); submode_dec();
+        break;
+    case '*': DBGDISP(0b01001001);
+        cli();
+        eeprom_write_word ((uint16_t*)eeprom_address, countdown);
+        sei();
+        break;
+    case ',': DBGDISP(0b10000000);
         /* нельзя начинать счет с нуля, будет антипереполнение */
         if (0 == countdown) countdown = 1;
         /* переключаемся в счетный режим. */
         mode = COUNTDOWN_MODE;
         break;
-    case '-': DBGDISP(0b01000000); submode_inc(); break;
-    case '+': DBGDISP(0b01110011); submode_dec(); break;
-    case '*': DBGDISP(0b01001001);
-        eeprom_write_word ((uint16_t*)46, countdown);
+    case '%': DBGDISP(0b00010010);
         break;
-    case ',': DBGDISP(0b10000000); break;
-    case '%': DBGDISP(0b00010010); break;
-    case '/': DBGDISP(0b01010010); break;
-    case '^': DBGDISP(0b00000001); break;
-    case '_': DBGDISP(0b00001000); break;
+    case '/': DBGDISP(0b01010010);
+        cli();
+        /* прочитать из eeprom */
+        countdown = eeprom_read_word ((uint16_t*)eeprom_address);
+        sei();
+        break;
+    case '^': DBGDISP(0b00000001);
+        break;
+    case '_': DBGDISP(0b00001000);
+        break;
     case '0': DBGDISP(table[0]); input = 0; break;
     case '1': DBGDISP(table[1]); input = 1; break;
     case '2': DBGDISP(table[2]); input = 2; break;
@@ -551,7 +566,9 @@ void setup () {
 
     /* Set countdown */
     uint16_t eeprom;
-    eeprom = eeprom_read_word((uint16_t*)46);
+    cli();
+    eeprom = eeprom_read_word((uint16_t*)eeprom_address);
+    sei();
     if (0xFFFF != eeprom) {
         countdown_base = eeprom;
     }
