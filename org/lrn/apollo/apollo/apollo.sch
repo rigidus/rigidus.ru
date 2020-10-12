@@ -251,28 +251,6 @@ Wire Wire Line
 Wire Wire Line
 	7050 3800 7050 3950
 $Comp
-L Connector:Conn_01x01_Male J_VCC1
-U 1 1 5F4B5699
-P 1000 950
-F 0 "J_VCC1" H 800 950 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 950 850 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 1000 950 50  0001 C CNN
-F 3 "~" H 1000 950 50  0001 C CNN
-	1    1000 950 
-	1    0    0    -1  
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male J_GND1
-U 1 1 5F4C3172
-P 1750 600
-F 0 "J_GND1" H 1750 550 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 1850 450 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D0.7mm_L6.5mm_W1.8mm_FlatFork" H 1750 600 50  0001 C CNN
-F 3 "~" H 1750 600 50  0001 C CNN
-	1    1750 600 
-	1    0    0    -1  
-$EndComp
-$Comp
 L Device:R Rb1
 U 1 1 5F5EB03E
 P 9350 1150
@@ -308,12 +286,12 @@ $EndComp
 $Comp
 L power:VCC #PWR0101
 U 1 1 5F60A86A
-P 1350 700
-F 0 "#PWR0101" H 1350 550 50  0001 C CNN
-F 1 "VCC" H 1367 873 50  0000 C CNN
-F 2 "" H 1350 700 50  0001 C CNN
-F 3 "" H 1350 700 50  0001 C CNN
-	1    1350 700 
+P 1350 850
+F 0 "#PWR0101" H 1350 700 50  0001 C CNN
+F 1 "VCC" H 1350 1000 50  0000 C CNN
+F 2 "" H 1350 850 50  0001 C CNN
+F 3 "" H 1350 850 50  0001 C CNN
+	1    1350 850 
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -478,8 +456,6 @@ Wire Wire Line
 	2800 1500 3200 1500
 Wire Wire Line
 	1200 950  1350 950 
-Wire Wire Line
-	1350 700  1350 950 
 Connection ~ 1350 950 
 Connection ~ 6500 3800
 Wire Wire Line
@@ -938,8 +914,6 @@ Wire Wire Line
 Connection ~ 3600 2600
 Connection ~ 4600 600 
 Wire Wire Line
-	1950 600  2300 600 
-Wire Wire Line
 	2300 650  2300 600 
 Connection ~ 2300 600 
 Wire Wire Line
@@ -1344,4 +1318,29 @@ Wire Wire Line
 Connection ~ 4100 2200
 Wire Wire Line
 	4100 2200 4100 5800
+$Comp
+L Connector:USB_B_Micro J_USB_1
+U 1 1 5F8532C6
+P 900 1150
+F 0 "J_USB_1" H 1300 650 50  0000 R CNN
+F 1 "USB_B_Micro" H 1300 550 50  0000 R CNN
+F 2 "Connector_USB:USB_Micro-AB_Molex_47590-0001" H 1050 1100 50  0001 C CNN
+F 3 "~" H 1050 1100 50  0001 C CNN
+	1    900  1150
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	900  750  900  600 
+Wire Wire Line
+	900  600  2300 600 
+Wire Wire Line
+	600  1350 550  1350
+Wire Wire Line
+	550  1350 550  1500
+Wire Wire Line
+	550  1500 1200 1500
+Wire Wire Line
+	1200 1500 1200 950 
+Wire Wire Line
+	1350 850  1350 950 
 $EndSCHEMATC
