@@ -497,14 +497,14 @@ int main () {
 
         switch ( mode ) {
         case EDIT_MODE:
-            /* pin_write(9, HIGH); */
+            open();
             /* выключаем Relay_1 */
             pin_write(11, LOW);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case COUNTDOWN_MODE:
-            /* pin_write(9, LOW); */
+            close();
             /* включаем Relay_1 */
             pin_write(11, HIGH);
             /* выключаем звук */
@@ -607,7 +607,7 @@ void setup () {
     sei();
 
 
-    /* Чтобы издавать звуки настроим Timer0 в режим CTC */
+    /* Чтобы издавать звуки, настроим Timer0 в режим CTC */
     /* отключить глобальные прерывания */
     cli();
     /* установить регистр TCCR0A с инверсией */
@@ -625,4 +625,45 @@ void setup () {
     /* включить глобальные прерывания */
     sei();
 
+
+    /* Чтобы управлять сервой, настроим Timer1 в режим FastPWM */
+    /* отключить глобальные прерывания */
+    cli();
+    /* каждые 20 микросекунд - OVF interrupt - TOP */
+    ICR1 = 1000000 / 50 / 4 ;
+    /* диапазон интервалов - 0,6 ms ... 2 ms */
+    /* 1000000 Гц (частота) / 0 (предделитель)  = 125000 Гц */
+    /* 1 / 125000 Гц = 0.000008s = 8 us (время инкремента на 1) */
+    /* 0,6 ms = 600 us   / 8 = 75 */
+    /* 2 ms   = 2000 us  / 8 = 250 */
+    open();
+    /* */
+    TCCR1B |=
+        (1<<ICES1) /* FastPWM */
+        | (0<<CS10) | (1<<CS11) | (0<<CS12) /* предделитель = 8 */
+        | (1<<WGM12) | (1<<WGM13); /* mode = PWM (ICR1) */
+    TCCR1A |= (1<<WGM11); /* mode = PWM (ICR1) */
+    TIMSK1 |= (1<<TOIE1) | (1<<OCIE1A); /* interrupts */
+    sei();
+
+}
+
+void open () {
+    OCR1A = 250;
+}
+
+void close () {
+    OCR1A = 75;
+}
+
+
+ISR(TIMER1_OVF_vect)
+{
+    pin_write(9, HIGH);
+}
+
+
+ISR(TIMER1_COMPA_vect)
+{
+    pin_write(9, LOW);
 }
