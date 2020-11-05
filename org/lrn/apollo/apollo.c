@@ -497,12 +497,14 @@ int main () {
 
         switch ( mode ) {
         case EDIT_MODE:
+            /* pin_write(9, HIGH); */
             /* выключаем Relay_1 */
             pin_write(11, LOW);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case COUNTDOWN_MODE:
+            /* pin_write(9, LOW); */
             /* включаем Relay_1 */
             pin_write(11, HIGH);
             /* выключаем звук */
