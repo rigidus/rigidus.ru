@@ -896,16 +896,6 @@ Wire Wire Line
 Wire Wire Line
 	3600 2600 3200 2600
 Wire Wire Line
-	5000 2700 5000 1700
-Wire Wire Line
-	1950 2700 5000 2700
-Wire Wire Line
-	1950 2800 5100 2800
-Wire Wire Line
-	5100 2800 5100 2300
-Wire Wire Line
-	4900 1150 4900 3000
-Wire Wire Line
 	6500 950  6500 3800
 Wire Wire Line
 	3600 2600 4600 2600
@@ -1160,21 +1150,15 @@ Wire Wire Line
 Wire Wire Line
 	1950 2900 8750 2900
 Wire Wire Line
-	5000 1700 8750 1700
-Wire Wire Line
-	5100 2300 8750 2300
-Wire Wire Line
 	8850 1850 8750 1850
 Wire Wire Line
 	8750 1850 8750 1700
-Connection ~ 8750 1700
 Wire Wire Line
 	8750 1700 9200 1700
 Wire Wire Line
 	8850 2450 8750 2450
 Wire Wire Line
 	8750 2450 8750 2300
-Connection ~ 8750 2300
 Wire Wire Line
 	8750 2300 9200 2300
 Wire Wire Line
@@ -1189,8 +1173,6 @@ Wire Wire Line
 Wire Wire Line
 	9500 1150 10000 1150
 Wire Wire Line
-	4900 1150 8750 1150
-Wire Wire Line
 	10300 950  10300 850 
 Wire Wire Line
 	10300 850  10850 850 
@@ -1203,7 +1185,6 @@ Wire Wire Line
 	11100 1400 11100 1900
 Wire Wire Line
 	8750 1300 8750 1150
-Connection ~ 8750 1150
 Wire Wire Line
 	8750 1150 9200 1150
 Wire Wire Line
@@ -1286,38 +1267,12 @@ Connection ~ 5700 7500
 Connection ~ 5700 7700
 Wire Wire Line
 	5700 7700 6850 7700
-Wire Wire Line
-	4100 950  4100 1500
 Connection ~ 4100 950 
 Wire Wire Line
 	4100 950  6500 950 
 Connection ~ 4100 5800
 Wire Wire Line
 	4100 5800 5700 5800
-Connection ~ 4100 1500
-Wire Wire Line
-	4100 1500 4100 1600
-Connection ~ 4100 1600
-Wire Wire Line
-	4100 1600 4100 1700
-Connection ~ 4100 1700
-Wire Wire Line
-	4100 1700 4100 1800
-Connection ~ 4100 1800
-Wire Wire Line
-	4100 1800 4100 1900
-Connection ~ 4100 1900
-Wire Wire Line
-	4100 1900 4100 2000
-Connection ~ 4100 2000
-Wire Wire Line
-	4100 2000 4100 2100
-Connection ~ 4100 2100
-Wire Wire Line
-	4100 2100 4100 2200
-Connection ~ 4100 2200
-Wire Wire Line
-	4100 2200 4100 5800
 $Comp
 L Connector:USB_B_Micro J_USB_1
 U 1 1 5F8532C6
@@ -1343,4 +1298,27 @@ Wire Wire Line
 	1200 1500 1200 950 
 Wire Wire Line
 	1350 850  1350 950 
+Wire Wire Line
+	4100 950  4100 5800
+Wire Wire Line
+	8750 2800 8750 2450
+Connection ~ 8750 2450
+Wire Wire Line
+	1950 2800 8750 2800
+Wire Wire Line
+	8650 2700 8650 1850
+Wire Wire Line
+	8650 1850 8750 1850
+Connection ~ 8750 1850
+Wire Wire Line
+	1950 2700 8650 2700
+Wire Wire Line
+	4900 2600 8550 2600
+Wire Wire Line
+	8550 2600 8550 1300
+Wire Wire Line
+	8550 1300 8750 1300
+Wire Wire Line
+	4900 2600 4900 3000
+Connection ~ 8750 1300
 $EndSCHEMATC
