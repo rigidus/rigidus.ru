@@ -511,102 +511,23 @@ Wire Wire Line
 Wire Wire Line
 	6400 4000 5300 4000
 Wire Wire Line
-	5300 4000 5300 4150
-Wire Wire Line
 	6400 4150 6650 4150
-$Comp
-L Connector:Conn_01x01_Male JH_5
-U 1 1 5F88F87C
-P 5900 4150
-F 0 "JH_5" H 6150 4100 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 6150 4050 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 5900 4150 50  0001 C CNN
-F 3 "~" H 5900 4150 50  0001 C CNN
-	1    5900 4150
-	-1   0    0    1   
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male JH_6
-U 1 1 5F8C04F3
-P 5900 4350
-F 0 "JH_6" H 6100 4300 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 6050 4400 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 5900 4350 50  0001 C CNN
-F 3 "~" H 5900 4350 50  0001 C CNN
-	1    5900 4350
-	-1   0    0    1   
-$EndComp
 Wire Wire Line
 	6300 4650 6650 4650
 Wire Wire Line
 	6300 4650 6300 4500
 Wire Wire Line
-	5400 4350 5400 4250
-Wire Wire Line
-	5400 4250 6400 4250
-Wire Wire Line
 	6400 4250 6400 4350
 Wire Wire Line
 	6400 4350 6650 4350
-Wire Wire Line
-	5300 4150 5700 4150
-Wire Wire Line
-	5400 4350 5700 4350
 Wire Wire Line
 	5500 4500 6300 4500
 Wire Wire Line
 	6300 4750 6300 5500
 Wire Wire Line
-	6300 5500 5600 5500
-Wire Wire Line
 	6300 4750 6650 4750
 Wire Wire Line
 	6300 5500 6850 5500
-Connection ~ 6300 5500
-$Comp
-L Connector:Conn_01x01_Male JH_10
-U 1 1 5FA1EBF7
-P 9050 1300
-F 0 "JH_10" H 8900 1300 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 8400 1300 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 9050 1300 50  0001 C CNN
-F 3 "~" H 9050 1300 50  0001 C CNN
-	1    9050 1300
-	-1   0    0    1   
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male JH_11
-U 1 1 5FA2BDF0
-P 9050 1850
-F 0 "JH_11" H 8900 1850 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 8400 1850 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 9050 1850 50  0001 C CNN
-F 3 "~" H 9050 1850 50  0001 C CNN
-	1    9050 1850
-	-1   0    0    1   
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male JH_12
-U 1 1 5FA39C16
-P 9050 2450
-F 0 "JH_12" H 8900 2450 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 8400 2450 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 9050 2450 50  0001 C CNN
-F 3 "~" H 9050 2450 50  0001 C CNN
-	1    9050 2450
-	-1   0    0    1   
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male JH_13
-U 1 1 5FA4799A
-P 9050 3050
-F 0 "JH_13" H 8900 3050 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 8400 3050 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 9050 3050 50  0001 C CNN
-F 3 "~" H 9050 3050 50  0001 C CNN
-	1    9050 3050
-	-1   0    0    1   
-$EndComp
 $Comp
 L Transistor_BJT:PN2222A Q5
 U 1 1 5F761AF8
@@ -706,14 +627,10 @@ Wire Wire Line
 	1950 3100 5300 3100
 Wire Wire Line
 	5300 3100 5300 4000
-Connection ~ 5300 4000
 Wire Wire Line
 	1950 3200 5200 3200
 Wire Wire Line
 	5200 3200 5200 4250
-Wire Wire Line
-	5200 4250 5400 4250
-Connection ~ 5400 4250
 Wire Wire Line
 	1950 3500 2150 3500
 Wire Wire Line
@@ -933,26 +850,11 @@ Wire Wire Line
 Wire Wire Line
 	9500 2300 10050 2300
 Wire Wire Line
-	1950 2900 8750 2900
-Wire Wire Line
-	8850 1850 8750 1850
-Wire Wire Line
 	8750 1850 8750 1700
 Wire Wire Line
 	8750 1700 9200 1700
 Wire Wire Line
-	8850 2450 8750 2450
-Wire Wire Line
-	8750 2450 8750 2300
-Wire Wire Line
 	8750 2300 9200 2300
-Wire Wire Line
-	8850 3050 8750 3050
-Wire Wire Line
-	8750 3050 8750 2900
-Connection ~ 8750 2900
-Wire Wire Line
-	8750 2900 9200 2900
 Wire Wire Line
 	11100 600  11100 1400
 Wire Wire Line
@@ -972,8 +874,6 @@ Wire Wire Line
 	8750 1300 8750 1150
 Wire Wire Line
 	8750 1150 9200 1150
-Wire Wire Line
-	8750 1300 8850 1300
 Wire Wire Line
 	2000 4100 2000 5500
 Wire Wire Line
@@ -1035,10 +935,6 @@ Connection ~ 7050 5500
 Wire Wire Line
 	7050 5500 7700 5500
 Wire Wire Line
-	5600 4750 5600 5500
-Wire Wire Line
-	5600 4750 5700 4750
-Wire Wire Line
 	1350 950  1350 1500
 Wire Wire Line
 	3250 7500 3250 7700
@@ -1084,15 +980,11 @@ Wire Wire Line
 Wire Wire Line
 	1350 850  1350 950 
 Wire Wire Line
-	8750 2800 8750 2450
-Connection ~ 8750 2450
-Wire Wire Line
 	1950 2800 8750 2800
 Wire Wire Line
 	8650 2700 8650 1850
 Wire Wire Line
 	8650 1850 8750 1850
-Connection ~ 8750 1850
 Wire Wire Line
 	1950 2700 8650 2700
 Wire Wire Line
@@ -1421,7 +1313,6 @@ Wire Wire Line
 Wire Wire Line
 	10600 350  10600 -400
 Connection ~ 10600 -400
-Connection ~ 8750 1300
 Wire Wire Line
 	4900 2600 8550 2600
 Wire Wire Line
@@ -1526,15 +1417,10 @@ Wire Wire Line
 Connection ~ 7400 -150
 Wire Wire Line
 	7400 -150 8300 -150
-$Comp
-L Connector:Conn_01x01_Male JH_9
-U 1 1 5F970864
-P 5900 4750
-F 0 "JH_9" H 6100 4700 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 6100 4950 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 5900 4750 50  0001 C CNN
-F 3 "~" H 5900 4750 50  0001 C CNN
-	1    5900 4750
-	-1   0    0    1   
-$EndComp
+Wire Wire Line
+	1950 2900 9200 2900
+Wire Wire Line
+	8750 2300 8750 2800
+Wire Wire Line
+	5200 4250 6400 4250
 $EndSCHEMATC
