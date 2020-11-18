@@ -6,7 +6,7 @@
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 
-#define DBG 0
+#define DBG 1
 
 #ifndef DBG
 #define DBG 0
@@ -316,15 +316,13 @@ void bcd_to_str ( byte param[4], byte result[4] ) {
 }
 
 
-#define rows_cnt 4
-#define cols_cnt 6
+#define rows_cnt 2
+#define cols_cnt 8
 
 const char value[rows_cnt][cols_cnt] =
     {
-     {'7', '8', '9', '/', '%', 'C'},
-     {'4', '5', '6', '*', '^', 'X'},
-     {'1', '2', '3', '-', 'X', '_'},
-     {'X', '0', ',', '+', 'X', '='}
+     {'4', '7', '5', '8', '6', '9', 'B', 'C'},
+     {'1', '0', '2', 'F', '3', 'E', 'F', 'D'}
     };
 
 #define keyb_clock_pin 15
@@ -332,7 +330,7 @@ const char value[rows_cnt][cols_cnt] =
 #define keyb_data_pin  13
 
 /* входы клавиатуры */
-uint8_t pinIn [rows_cnt] = { 6, 5, 4, 3 };
+uint8_t pinIn [rows_cnt] = { 6, 5 };
 
 
 void clear_shift_register () {
@@ -363,10 +361,10 @@ char keyboard_scan () {
                     word_to_bcd( row, tmp_bcd );
                     bcd_to_str( tmp_bcd, tmp_display );
                     display[2] = tmp_display[0]; /* row */
+                    display[2] = tab
                 #endif
                 /* получение символа */
-                /* коррекция -2 по схеме подключения */
-                result = value[row][col-2];
+                result = value[row][col];
             }
         }
         /* если мы здесь то нет нажатий в этом столбце */
@@ -461,7 +459,18 @@ void keyboard_handler ( uint8_t symbol ) {
 }
 
 
+void servo_on () {
+    OCR1A = 250;
+}
+
+
+void servo_off () {
+    OCR1A = 75;
+}
+
 void setup ();
+
+
 
 
 int main () {
@@ -497,14 +506,14 @@ int main () {
 
         switch ( mode ) {
         case EDIT_MODE:
-            open();
+            servo_on();
             /* выключаем Relay_1 */
             pin_write(11, LOW);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case COUNTDOWN_MODE:
-            close();
+            servo_off();
             /* включаем Relay_1 */
             pin_write(11, HIGH);
             /* выключаем звук */
@@ -636,7 +645,7 @@ void setup () {
     /* 1 / 125000 Гц = 0.000008s = 8 us (время инкремента на 1) */
     /* 0,6 ms = 600 us   / 8 = 75 */
     /* 2 ms   = 2000 us  / 8 = 250 */
-    open();
+    servo_on();
     /* */
     TCCR1B |=
         (1<<ICES1) /* FastPWM */
@@ -648,13 +657,6 @@ void setup () {
 
 }
 
-void open () {
-    OCR1A = 250;
-}
-
-void close () {
-    OCR1A = 75;
-}
 
 
 ISR(TIMER1_OVF_vect)
