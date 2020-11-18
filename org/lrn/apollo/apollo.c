@@ -339,12 +339,26 @@ void clear_shift_register () {
     pin_write(keyb_latch_pin, HIGH);
 }
 
+#define  KEYB_RING_MAX 8
+uint16_t keyb_ring [KEYB_RING_MAX];
+uint8_t  keyb_ring_head = 0;
+uint8_t  keyb_ring_tail = KEYB_RING_MAX-1;
 
-char keyboard_scan () {
-    /* То, что мы и за символ не считаем */
-    char result = 'X';
+uint8_t inc_keyb_ring_pnt (uint8_t param) {
+    uint8_t result = ++param;
+    if ( result >= KEYB_RING_MAX ) {
+        result = 0;
+    }
+    return result;
+}
+
+bool keyb_scan () {
+    /* Очищаем текущее состояние клавиатуры */
+    uint16_t cur_keyb_state[rows_cnt] = {0,0};
+    /* Очищаем регистр сдвига клавиатуры */
     clear_shift_register();
-    for ( int8_t col=0; col<8; col++ ) {
+    /* Цикл опроса клавиатурной матрицы */
+    for ( int8_t col=0; col<cols_cnt; col++ ) {
         pin_write( keyb_latch_pin, LOW );
         shift_out( ~(1<<col), keyb_data_pin, keyb_clock_pin );
         pin_write( keyb_latch_pin, HIGH );
@@ -352,33 +366,40 @@ char keyboard_scan () {
         for ( int8_t row=0; row<rows_cnt; row++ )  {
             /* если один из портов входа = LOW, то.. */
             if ( pin_read( pinIn[row] ) == LOW ) {
+                /* Добавляем бит, если кнопка нажата */
+                cur_keyb_state[row] = cur_keyb_state[row] | (1<<col);
                 #if (DBG)
-                    byte tmp_bcd[4];
-                    byte tmp_display[4];
-                    word_to_bcd( col, tmp_bcd );
-                    bcd_to_str( tmp_bcd, tmp_display );
-                    display[3] = tmp_display[0]; /* col */
-                    word_to_bcd( row, tmp_bcd );
-                    bcd_to_str( tmp_bcd, tmp_display );
-                    display[2] = tmp_display[0]; /* row */
-                    display[2] = tab
+                    /* byte tmp_bcd[4]; */
+                    /* byte tmp_display[4]; */
+                    /* word_to_bcd( col, tmp_bcd ); */
+                    /* bcd_to_str( tmp_bcd, tmp_display ); */
+                    /* display[3] = tmp_display[0]; /\* col *\/ */
+                    /* word_to_bcd( row, tmp_bcd ); */
+                    /* bcd_to_str( tmp_bcd, tmp_display ); */
+                    /* display[2] = tmp_display[0]; /\* row *\/ */
+                    display[0] = table[cur_keyb_state[0] & 0xF];
+                    display[1] = table[(cur_keyb_state[0]>>4) & 0xF];
+                    display[2] = table[cur_keyb_state[1] & 0xF];
+                    display[3] = table[(cur_keyb_state[1]>>4) & 0xF];
                 #endif
-                /* получение символа */
-                result = value[row][col];
             }
         }
-        /* если мы здесь то нет нажатий в этом столбце */
     }
-    if ('X' != result) {
-        /* есть символ */
-    } else {
-        #if (DBG)
-            display[3] = 0b10000000;
-            display[2] = 0b10000000;
-            display[1] = 0b10000000;
-        #endif
+    /* Если состояние клавиатуры изменилось.. */
+    uint16_t new_state = (cur_keyb_state[1] << 8) | cur_keyb_state[0];
+    if (keyb_ring[keyb_ring_head] != new_state) {
+        /* ..добавить его в кольцевой буфер */
+        uint8_t new_head = inc_keyb_ring_pnt(keyb_ring_head);
+        if ( new_head == keyb_ring_tail) {
+            /* буфер переполнен! */
+            return false;
+        } else {
+            /* еще есть место */
+            keyb_ring_head = new_head;
+            keyb_ring[keyb_ring_head] = new_state;
+        }
     }
-    return result;
+    return true;
 }
 
 
@@ -488,8 +509,9 @@ int main () {
                 display[3] = tmp_disp[3];
                 display[2] = tmp_disp[2];
                 display[1] = tmp_disp[1];
+                display[1] = tmp_disp[0];
             #endif
-            display[0] = tmp_disp[0];
+            /* display[0] = tmp_disp[0]; */
             /* отобразим переменную дисплея */
             show();
             /* сбросим флаг */
@@ -498,7 +520,8 @@ int main () {
 
         /* keyboard scan */
         if ( need_keyb_scan_flag ) {
-            keyboard_handler( keyboard_scan() );
+            /* keyboard_handler( keyb_scan() ); */
+            keyb_scan();
             /* сбросим флаг */
             need_keyb_scan_flag = false;
         }
