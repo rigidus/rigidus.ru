@@ -6,7 +6,7 @@
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 
-#define DBG 1
+#define DBG 0
 
 #ifndef DBG
 #define DBG 0
@@ -249,15 +249,17 @@ void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin ) {
 }
 
 
+/**
+ * Выводит display[] на семисешментный индикатор
+ * черехз регистр сдвига.
+ * GLOBAL PARAMETERS:
+ * - byte display[4]
+ * GLOBAL CONSTANTS:
+ * - display_latch_pin
+ * - display_data_pin
+ * - byte control_digit_pins[4]
+ */
 void show () {
-    /**
-     * GLOBAL PARAMETERS:
-     * - byte display[4]
-     * GLOBAL CONSTANTS:
-     * - display_latch_pin
-     * - display_data_pin
-     * - byte control_digit_pins[4]
-     */
     for (uint8_t x=0; x<4; x++) {
         /* для всех цифр */
         display_off();
@@ -339,12 +341,22 @@ void clear_shift_register () {
     pin_write(keyb_latch_pin, HIGH);
 }
 
+
+/**
+ * Работа с клавиатурой 8*2
+ * с использованием 8-разрядного регистра сдвига
+ * и кольцевого буфера
+ */
+
 #define  KEYB_RING_MAX 8
-uint16_t keyb_ring [KEYB_RING_MAX];
+uint16_t keyb_ring [KEYB_RING_MAX] = {0,0,0,0,0,0,0,0};
 uint8_t  keyb_ring_head = 0;
 uint8_t  keyb_ring_tail = KEYB_RING_MAX-1;
 
-uint8_t inc_keyb_ring_pnt (uint8_t param) {
+/*
+ * Возвращает инкремент индекса в кольцевом буфере
+ */
+uint8_t inc_keyb_ring_idx (uint8_t param) {
     uint8_t result = ++param;
     if ( result >= KEYB_RING_MAX ) {
         result = 0;
@@ -352,6 +364,10 @@ uint8_t inc_keyb_ring_pnt (uint8_t param) {
     return result;
 }
 
+/* Сканирует клавиатуру и если состояние изменилось -
+ * заносит изменившееся состояние в кольцевой буфер.
+ * Если буфер переполнен - возвращает FALSE иначе TRUE
+ */
 bool keyb_scan () {
     /* Очищаем текущее состояние клавиатуры */
     uint16_t cur_keyb_state[rows_cnt] = {0,0};
@@ -359,6 +375,7 @@ bool keyb_scan () {
     clear_shift_register();
     /* Цикл опроса клавиатурной матрицы */
     for ( int8_t col=0; col<cols_cnt; col++ ) {
+        /* бегущий по столбцам LOW */
         pin_write( keyb_latch_pin, LOW );
         shift_out( ~(1<<col), keyb_data_pin, keyb_clock_pin );
         pin_write( keyb_latch_pin, HIGH );
@@ -368,20 +385,12 @@ bool keyb_scan () {
             if ( pin_read( pinIn[row] ) == LOW ) {
                 /* Добавляем бит, если кнопка нажата */
                 cur_keyb_state[row] = cur_keyb_state[row] | (1<<col);
-                #if (DBG)
-                    /* byte tmp_bcd[4]; */
-                    /* byte tmp_display[4]; */
-                    /* word_to_bcd( col, tmp_bcd ); */
-                    /* bcd_to_str( tmp_bcd, tmp_display ); */
-                    /* display[3] = tmp_display[0]; /\* col *\/ */
-                    /* word_to_bcd( row, tmp_bcd ); */
-                    /* bcd_to_str( tmp_bcd, tmp_display ); */
-                    /* display[2] = tmp_display[0]; /\* row *\/ */
-                    display[0] = table[cur_keyb_state[0] & 0xF];
-                    display[1] = table[(cur_keyb_state[0]>>4) & 0xF];
-                    display[2] = table[cur_keyb_state[1] & 0xF];
-                    display[3] = table[(cur_keyb_state[1]>>4) & 0xF];
-                #endif
+                /* #if (DBG) */
+                /*     display[0] = table[cur_keyb_state[0] & 0xF]; */
+                /*     display[1] = table[(cur_keyb_state[0]>>4) & 0xF]; */
+                /*     display[2] = table[cur_keyb_state[1] & 0xF]; */
+                /*     display[3] = table[(cur_keyb_state[1]>>4) & 0xF]; */
+                /* #endif */
             }
         }
     }
@@ -389,7 +398,7 @@ bool keyb_scan () {
     uint16_t new_state = (cur_keyb_state[1] << 8) | cur_keyb_state[0];
     if (keyb_ring[keyb_ring_head] != new_state) {
         /* ..добавить его в кольцевой буфер */
-        uint8_t new_head = inc_keyb_ring_pnt(keyb_ring_head);
+        uint8_t new_head = inc_keyb_ring_idx(keyb_ring_head);
         if ( new_head == keyb_ring_tail) {
             /* буфер переполнен! */
             return false;
@@ -402,6 +411,22 @@ bool keyb_scan () {
     return true;
 }
 
+/*
+ * Получает состояние клавиатуры из кольцевого буфера
+ * Если буфер пуст - возвращает единицы во всех разрядах,
+ * так как мы считаем, что на все кнопки одновременно
+ * нажать невозможно.
+ */
+uint16_t get_keyb_ring () {
+    if ( keyb_ring_tail == keyb_ring_head ) {
+        /* буфер пуст */
+        return 0xFFFF;
+    } else {
+        uint16_t state = keyb_ring[keyb_ring_tail];
+        keyb_ring_tail = inc_keyb_ring_idx(keyb_ring_tail);
+        return state;
+    }
+}
 
 void submode_inc() {
     submode++;
@@ -416,7 +441,24 @@ void submode_dec() {
 
 #define eeprom_address 46
 
-void keyboard_handler ( uint8_t symbol ) {
+#define KEYCODE_1 0x0100
+#define KEYCODE_2 0x0400
+#define KEYCODE_3 0x1000
+#define KEYCODE_4 0x0001
+#define KEYCODE_5 0x0004
+#define KEYCODE_6 0x0010
+#define KEYCODE_7 0x0002
+#define KEYCODE_8 0x0008
+#define KEYCODE_9 0x0020
+#define KEYCODE_0 0x0200
+#define KEYCODE_A 0x0800
+#define KEYCODE_B 0x2000
+#define KEYCODE_C 0x4000
+#define KEYCODE_D 0x0040
+#define KEYCODE_E 0x0080
+#define KEYCODE_F 0x8000
+
+void keyboard_handler ( uint16_t keycode ) {
     /**
      * MODIFY GLOBAL VARIABLES:
      * - countdown
@@ -424,48 +466,42 @@ void keyboard_handler ( uint8_t symbol ) {
      * - submode
      */
     byte input = 'X';
-    switch (symbol) {
-    case 'C': DBGDISP(table[0xC]); mode = EDIT_MODE; submode = 3;
+    switch ( keycode ) {
+    case KEYCODE_A:
+        submode_inc();
         break;
-    case '=': DBGDISP(0b01000001);
+    case KEYCODE_B:
+        submode_dec();
         break;
-    case '-': DBGDISP(0b01000000); submode_inc();
+    case KEYCODE_C:
+        mode = EDIT_MODE; submode = 3;
         break;
-    case '+': DBGDISP(0b01110011); submode_dec();
-        break;
-    case '*': DBGDISP(0b01001001);
+    case KEYCODE_D:
         cli();
         eeprom_write_word ((uint16_t*)eeprom_address, countdown);
         sei();
         break;
-    case ',': DBGDISP(0b10000000);
+    case KEYCODE_E:
+        cli();
+        countdown = eeprom_read_word ((uint16_t*)eeprom_address);
+        sei();
+        break;
+    case KEYCODE_F:
         /* нельзя начинать счет с нуля, будет антипереполнение */
         if (0 == countdown) countdown = 1;
         /* переключаемся в счетный режим. */
         mode = COUNTDOWN_MODE;
         break;
-    case '%': DBGDISP(0b00010010);
-        break;
-    case '/': DBGDISP(0b01010010);
-        cli();
-        /* прочитать из eeprom */
-        countdown = eeprom_read_word ((uint16_t*)eeprom_address);
-        sei();
-        break;
-    case '^': DBGDISP(0b00000001);
-        break;
-    case '_': DBGDISP(0b00001000);
-        break;
-    case '0': DBGDISP(table[0]); input = 0; break;
-    case '1': DBGDISP(table[1]); input = 1; break;
-    case '2': DBGDISP(table[2]); input = 2; break;
-    case '3': DBGDISP(table[3]); input = 3; break;
-    case '4': DBGDISP(table[4]); input = 4; break;
-    case '5': DBGDISP(table[5]); input = 5; break;
-    case '6': DBGDISP(table[6]); input = 6; break;
-    case '7': DBGDISP(table[7]); input = 7; break;
-    case '8': DBGDISP(table[8]); input = 8; break;
-    case '9': DBGDISP(table[9]); input = 9; break;
+    case KEYCODE_0: input = 0; break;
+    case KEYCODE_1: input = 1; break;
+    case KEYCODE_2: input = 2; break;
+    case KEYCODE_3: input = 3; break;
+    case KEYCODE_4: input = 4; break;
+    case KEYCODE_5: input = 5; break;
+    case KEYCODE_6: input = 6; break;
+    case KEYCODE_7: input = 7; break;
+    case KEYCODE_8: input = 8; break;
+    case KEYCODE_9: input = 9; break;
     default: return;
     }
     if ((EDIT_MODE == mode) && (input != 'X')) {
@@ -492,8 +528,6 @@ void servo_off () {
 void setup ();
 
 
-
-
 int main () {
     setup();
 
@@ -509,10 +543,11 @@ int main () {
                 display[3] = tmp_disp[3];
                 display[2] = tmp_disp[2];
                 display[1] = tmp_disp[1];
-                display[1] = tmp_disp[0];
+                display[0] = tmp_disp[0];
             #endif
-            /* display[0] = tmp_disp[0]; */
             /* отобразим переменную дисплея */
+            /* display[3] = table[keyb_ring_head]; */
+            /* display[2] = table[keyb_ring_tail]; */
             show();
             /* сбросим флаг */
             need_display_refresh_flag = false;
@@ -520,8 +555,18 @@ int main () {
 
         /* keyboard scan */
         if ( need_keyb_scan_flag ) {
-            /* keyboard_handler( keyb_scan() ); */
             keyb_scan();
+            uint16_t keyb_state = get_keyb_ring();
+            if ( 0xFFFF == keyb_state ) {
+                /* TODO: кольцевой буфер пуст */
+            } else {
+                if ( 0x0000 == keyb_state ) {
+                    /* TODO: ничего не нажато */
+                } else {
+                    /* обработать нажатие */
+                    keyboard_handler( keyb_state );
+                }
+            }
             /* сбросим флаг */
             need_keyb_scan_flag = false;
         }
