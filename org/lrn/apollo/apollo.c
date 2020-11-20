@@ -582,13 +582,15 @@ int main () {
             break;
         case COUNTDOWN_MODE:
             servo_off();
-            /* включаем Relay_1 */
+            /* включаем Relay_1 & Relay_2 */
+            pin_write(10, HIGH);
             pin_write(11, HIGH);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case SIGNAL_MODE:
-            /* выключаем Relay_1 */
+            /* выключаем Relay_1 & Relay_2 */
+            pin_write(10, LOW);
             pin_write(11, LOW);
             /* пищащий звук */
             if (pulse) {
