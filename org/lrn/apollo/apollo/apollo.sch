@@ -408,50 +408,6 @@ F 3 "~" H 1850 5000 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R9
-U 1 1 5F75A077
-P 5150 7050
-F 0 "R9" V 4943 7050 50  0000 C CNN
-F 1 "4,3KOhm" V 5034 7050 50  0000 C CNN
-F 2 "Resistor_SMD:R_1206_3216Metric_Pad1.42x1.75mm_HandSolder" V 5080 7050 50  0001 C CNN
-F 3 "~" H 5150 7050 50  0001 C CNN
-	1    5150 7050
-	0    1    1    0   
-$EndComp
-$Comp
-L pspice:DIODE D1
-U 1 1 5F7DF449
-P 5400 6300
-F 0 "D1" V 5446 6172 50  0000 R CNN
-F 1 "DIODE" V 5355 6172 50  0000 R CNN
-F 2 "Diode_SMD:D_0805_2012Metric_Pad1.15x1.40mm_HandSolder" H 5400 6300 50  0001 C CNN
-F 3 "~" H 5400 6300 50  0001 C CNN
-	1    5400 6300
-	0    -1   -1   0   
-$EndComp
-$Comp
-L Device:R R10
-U 1 1 5F73C2C8
-P 4900 7300
-F 0 "R10" H 4970 7346 50  0000 L CNN
-F 1 "100 Ohm" H 4970 7255 50  0000 L CNN
-F 2 "Resistor_SMD:R_1206_3216Metric_Pad1.42x1.75mm_HandSolder" V 4830 7300 50  0001 C CNN
-F 3 "~" H 4900 7300 50  0001 C CNN
-	1    4900 7300
-	1    0    0    -1  
-$EndComp
-$Comp
-L Device:LED D2
-U 1 1 5F7461AA
-P 5150 7500
-F 0 "D2" H 5150 7400 50  0000 C CNN
-F 1 "LED" H 5150 7600 50  0000 C CNN
-F 2 "LED_THT:LED_D5.0mm_FlatTop" H 5150 7500 50  0001 C CNN
-F 3 "~" H 5150 7500 50  0001 C CNN
-	1    5150 7500
-	-1   0    0    1   
-$EndComp
-$Comp
 L Connector:Conn_01x01_Male J4
 U 1 1 5F784BB5
 P 2450 2400
@@ -517,39 +473,6 @@ Wire Wire Line
 	6300 4750 6650 4750
 Wire Wire Line
 	6300 5500 6850 5500
-$Comp
-L Transistor_BJT:PN2222A Q5
-U 1 1 5F761AF8
-P 5600 7050
-F 0 "Q5" H 5790 7096 50  0000 L CNN
-F 1 "PN2222A" H 5790 7005 50  0000 L CNN
-F 2 "Package_TO_SOT_SMD:SOT-23" H 5800 6975 50  0001 L CIN
-F 3 "http://www.fairchildsemi.com/ds/PN/PN2222A.pdf" H 5600 7050 50  0001 L CNN
-	1    5600 7050
-	1    0    0    -1  
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male J18
-U 1 1 5F7C8848
-P 5350 6750
-F 0 "J18" H 5458 6931 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 5458 6840 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 5350 6750 50  0001 C CNN
-F 3 "~" H 5350 6750 50  0001 C CNN
-	1    5350 6750
-	1    0    0    -1  
-$EndComp
-$Comp
-L Connector:Conn_01x01_Male J17
-U 1 1 5F7C94B9
-P 5350 6000
-F 0 "J17" H 5300 6000 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 5458 6090 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 5350 6000 50  0001 C CNN
-F 3 "~" H 5350 6000 50  0001 C CNN
-	1    5350 6000
-	1    0    0    -1  
-$EndComp
 $Comp
 L Device:R R11
 U 1 1 5F8BDA8C
@@ -685,10 +608,6 @@ Wire Wire Line
 	3250 6750 3250 6850
 Connection ~ 3250 6750
 Wire Wire Line
-	5550 6000 5700 6000
-Wire Wire Line
-	5550 6750 5700 6750
-Wire Wire Line
 	3250 6000 3250 6100
 Wire Wire Line
 	3050 6100 3250 6100
@@ -696,14 +615,6 @@ Wire Wire Line
 	3050 6500 3250 6500
 Wire Wire Line
 	3250 6500 3250 6750
-Wire Wire Line
-	5700 6000 5700 6100
-Wire Wire Line
-	5400 6100 5700 6100
-Wire Wire Line
-	5400 6500 5700 6500
-Wire Wire Line
-	5700 6500 5700 6750
 Wire Wire Line
 	2850 7050 2950 7050
 Wire Wire Line
@@ -719,30 +630,8 @@ Wire Wire Line
 Wire Wire Line
 	2450 7050 2550 7050
 Wire Wire Line
-	5000 7050 4900 7050
-Wire Wire Line
-	4900 7050 4900 7150
-Wire Wire Line
-	4900 7450 4900 7500
-Wire Wire Line
-	4900 7500 5000 7500
-Wire Wire Line
-	5300 7500 5700 7500
-Wire Wire Line
-	5700 7250 5700 7500
-Wire Wire Line
-	5700 6850 5700 6750
-Connection ~ 5700 6750
-Wire Wire Line
-	1950 4000 2300 4000
-Wire Wire Line
 	3250 6000 3250 5800
-Wire Wire Line
-	5700 5800 5700 6000
 Connection ~ 3250 6000
-Connection ~ 5700 6000
-Wire Wire Line
-	2300 4000 3500 4900
 Wire Wire Line
 	6850 7700 6850 5500
 Connection ~ 6850 5500
@@ -752,16 +641,7 @@ Wire Wire Line
 	3100 950  4100 950 
 Connection ~ 2450 7050
 Wire Wire Line
-	4650 7050 4900 7050
-Connection ~ 4900 7050
-Wire Wire Line
-	4650 7050 4650 5700
-Wire Wire Line
-	4650 5700 3500 4900
-Wire Wire Line
 	1350 7700 3250 7700
-Wire Wire Line
-	1950 2500 2100 2500
 Wire Wire Line
 	2100 7050 2450 7050
 Wire Wire Line
@@ -871,8 +751,6 @@ Wire Wire Line
 Wire Wire Line
 	1450 5450 1450 5500
 Wire Wire Line
-	5300 7050 5400 7050
-Wire Wire Line
 	750  1800 700  1800
 Wire Wire Line
 	3100 950  3100 1150
@@ -907,20 +785,9 @@ Wire Wire Line
 	3250 7500 3250 7700
 Connection ~ 3250 7500
 Connection ~ 3250 7700
-Wire Wire Line
-	3250 7700 5700 7700
-Wire Wire Line
-	5700 7500 5700 7700
-Connection ~ 5700 7500
-Connection ~ 5700 7700
-Wire Wire Line
-	5700 7700 6850 7700
 Connection ~ 4100 950 
 Wire Wire Line
 	4100 950  5750 3800
-Connection ~ 4100 5800
-Wire Wire Line
-	4100 5800 5700 5800
 $Comp
 L Connector:USB_B_Micro J_USB_1
 U 1 1 5F8532C6
@@ -1424,4 +1291,6 @@ Wire Wire Line
 	1950 3700 2100 3700
 Wire Wire Line
 	2100 3700 2100 7050
+Wire Wire Line
+	3250 7700 6850 7700
 $EndSCHEMATC
