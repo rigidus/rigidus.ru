@@ -197,16 +197,16 @@ volatile bool pulse = false;
 
 
 /* 7-Segment pin D4 J1 */
-#define display_digit_0 23
+#define display_digit_0 25
 
 /* 7-Segment pin D3 J4 */
-#define display_digit_1 24
+#define display_digit_1 26
 
 /* 7-Segment pin D2 J3 */
-#define display_digit_2 25
+#define display_digit_2 27
 
 /* 7-Segment pin D1 J2 */
-#define display_digit_3 26
+#define display_digit_3 28
 
 
 const byte control_digit_pins[4] =
@@ -229,10 +229,10 @@ void display_off () {
 #define display_latch_pin 16
 
 /* 74HC595 pin 10 MR SRCLR J_CLR1 (1) */
-#define display_clock_pin 28
+#define display_clock_pin 24
 
 /* 74HC595 pin 14 DS J_SER1 (4) */
-#define display_data_pin 27
+#define display_data_pin 23
 
 
 void shift_out ( uint8_t val, uint8_t data_pin, uint8_t clock_pin ) {
