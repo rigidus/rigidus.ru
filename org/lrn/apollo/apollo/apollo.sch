@@ -495,17 +495,6 @@ F 3 "~" H 2350 3600 50  0001 C CNN
 	1    2350 3600
 	-1   0    0    1   
 $EndComp
-$Comp
-L Connector:Conn_01x01_Male J9
-U 1 1 5F7DAA9F
-P 2350 3700
-F 0 "J9" H 2250 3700 50  0000 C CNN
-F 1 "Conn_01x01_Male" H 1850 3700 50  0000 C CNN
-F 2 "Connector_Pin:Pin_D1.0mm_L10.0mm" H 2350 3700 50  0001 C CNN
-F 3 "~" H 2350 3700 50  0001 C CNN
-	1    2350 3700
-	-1   0    0    1   
-$EndComp
 Wire Wire Line
 	6400 4150 6400 4000
 Wire Wire Line
@@ -625,8 +614,6 @@ Wire Wire Line
 	1950 3500 2150 3500
 Wire Wire Line
 	1950 3600 2150 3600
-Wire Wire Line
-	1950 3700 2150 3700
 Wire Wire Line
 	1950 4100 2000 4100
 Wire Wire Line
@@ -775,8 +762,6 @@ Wire Wire Line
 	1350 7700 3250 7700
 Wire Wire Line
 	1950 2500 2100 2500
-Wire Wire Line
-	2100 2500 2100 7050
 Wire Wire Line
 	2100 7050 2450 7050
 Wire Wire Line
@@ -1435,4 +1420,8 @@ Wire Wire Line
 	4400 2300 5300 2300
 Wire Wire Line
 	5300 2300 5300 4000
+Wire Wire Line
+	1950 3700 2100 3700
+Wire Wire Line
+	2100 3700 2100 7050
 $EndSCHEMATC

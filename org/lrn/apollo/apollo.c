@@ -583,14 +583,14 @@ int main () {
         case COUNTDOWN_MODE:
             servo_off();
             /* включаем Relay_1 & Relay_2 */
-            pin_write(10, HIGH);
+            pin_write(4, HIGH);
             pin_write(11, HIGH);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case SIGNAL_MODE:
             /* выключаем Relay_1 & Relay_2 */
-            pin_write(10, LOW);
+            pin_write(4, LOW);
             pin_write(11, LOW);
             /* пищащий звук */
             if (pulse) {
@@ -642,8 +642,8 @@ ISR(TIMER2_COMPA_vect)
 void setup () {
     DDRC  = 0b111111;
     DDRB  = 0b11111111;
-    DDRD  = 0b11100001; /* exept keyb */
-    PORTD = 0b00011110; /*  PULLUP */
+    DDRD  = 0b11100101; /* exept keyb */
+    PORTD = 0b00011010; /*  PULLUP */
 
     /* Set countdown */
     uint16_t eeprom;
