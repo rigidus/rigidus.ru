@@ -53,29 +53,15 @@ Wire Wire Line
 Wire Wire Line
 	7950 4150 7950 3900
 Wire Wire Line
-	7950 3900 9300 3900
-Wire Wire Line
-	9300 3900 9300 4050
-Wire Wire Line
 	7450 4250 7800 4250
-Wire Wire Line
-	9900 3750 9900 4050
 Wire Wire Line
 	8100 4250 8200 4250
 Wire Wire Line
 	8200 4250 8200 3750
 Wire Wire Line
-	8200 3750 9900 3750
-Wire Wire Line
 	7450 4650 7800 4650
 Wire Wire Line
-	8100 4650 8350 4650
-Wire Wire Line
-	8350 4650 8350 3600
-Wire Wire Line
-	8350 3600 9450 3600
-Wire Wire Line
-	9450 3600 9450 4050
+	8100 4650 8200 4650
 $Comp
 L Device:R R2
 U 1 1 5F4141F1
@@ -100,14 +86,6 @@ F 3 "~" H 7700 4150 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	7450 4350 7550 4350
-Wire Wire Line
-	9600 5350 9600 5250
-Wire Wire Line
-	7850 4350 8200 4350
-Wire Wire Line
-	9600 5350 8200 5350
-Wire Wire Line
-	8200 4350 8200 5350
 $Comp
 L Device:R R6
 U 1 1 5F425E22
@@ -124,11 +102,7 @@ Wire Wire Line
 Wire Wire Line
 	8100 4450 8300 4450
 Wire Wire Line
-	8300 4450 8300 5450
-Wire Wire Line
-	8300 5450 9300 5450
-Wire Wire Line
-	9300 5450 9300 5250
+	8300 4450 8300 5300
 $Comp
 L Device:R R3
 U 1 1 5F42B82D
@@ -172,24 +146,6 @@ F 3 "~" H 7950 4850 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	7450 4850 7800 4850
-Wire Wire Line
-	8400 4550 8400 5550
-Wire Wire Line
-	8400 5550 9150 5550
-Wire Wire Line
-	9150 5550 9150 5250
-Wire Wire Line
-	8500 4750 8500 5650
-Wire Wire Line
-	8500 5650 9750 5650
-Wire Wire Line
-	9750 5650 9750 5250
-Wire Wire Line
-	8100 4850 8100 5750
-Wire Wire Line
-	8100 5750 9450 5750
-Wire Wire Line
-	9450 5250 9450 5750
 $Comp
 L Transistor_BJT:PN2222A Q2
 U 1 1 5F447704
@@ -1138,8 +1094,6 @@ Wire Wire Line
 	10600 350  10600 -400
 Connection ~ 10600 -400
 Wire Wire Line
-	4900 2600 8550 2600
-Wire Wire Line
 	4850 -400 4850 -150
 Wire Wire Line
 	4850 -150 5700 -150
@@ -1244,25 +1198,11 @@ Wire Wire Line
 Wire Wire Line
 	1950 3200 4900 3200
 Wire Wire Line
-	4900 2600 4900 3200
-Wire Wire Line
 	1950 3100 4800 3100
-Wire Wire Line
-	4800 3100 4800 2900
-Wire Wire Line
-	4800 2900 9200 2900
 Wire Wire Line
 	1950 3000 4700 3000
 Wire Wire Line
-	4700 3000 4700 2800
-Wire Wire Line
-	4700 2800 8750 2800
-Wire Wire Line
 	1950 2900 4600 2900
-Wire Wire Line
-	4600 2900 4600 2700
-Wire Wire Line
-	4600 2700 8650 2700
 Wire Wire Line
 	8650 1700 9200 1700
 Wire Wire Line
@@ -1293,4 +1233,64 @@ Wire Wire Line
 	2100 3700 2100 7050
 Wire Wire Line
 	3250 7700 6850 7700
+Wire Wire Line
+	4600 2600 8550 2600
+Wire Wire Line
+	4600 2600 4600 2900
+Wire Wire Line
+	4700 2700 8650 2700
+Wire Wire Line
+	4700 2700 4700 3000
+Wire Wire Line
+	4800 2800 8750 2800
+Wire Wire Line
+	4800 2800 4800 3100
+Wire Wire Line
+	4900 3200 4900 2900
+Wire Wire Line
+	4900 2900 9200 2900
+Wire Wire Line
+	9900 3900 9900 4050
+Wire Wire Line
+	7950 3900 9900 3900
+Wire Wire Line
+	8200 3750 9450 3750
+Wire Wire Line
+	9450 3750 9450 4050
+Wire Wire Line
+	8300 4350 8300 4000
+Wire Wire Line
+	8300 4000 9300 4000
+Wire Wire Line
+	9300 4000 9300 4050
+Wire Wire Line
+	7850 4350 8300 4350
+Wire Wire Line
+	9150 5300 8300 5300
+Wire Wire Line
+	9150 5300 9150 5250
+Wire Wire Line
+	8400 4550 8400 5400
+Wire Wire Line
+	8400 5400 9300 5400
+Wire Wire Line
+	9300 5400 9300 5250
+Wire Wire Line
+	8200 4650 8200 5500
+Wire Wire Line
+	8200 5500 9450 5500
+Wire Wire Line
+	9450 5500 9450 5250
+Wire Wire Line
+	8500 4750 8500 5600
+Wire Wire Line
+	8500 5600 9600 5600
+Wire Wire Line
+	9600 5600 9600 5250
+Wire Wire Line
+	8100 4850 8100 5700
+Wire Wire Line
+	8100 5700 9750 5700
+Wire Wire Line
+	9750 5700 9750 5250
 $EndSCHEMATC
