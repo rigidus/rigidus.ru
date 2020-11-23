@@ -581,23 +581,21 @@ int main () {
         switch ( mode ) {
         case EDIT_MODE:
             servo_on();
-            /* выключаем Relay_1 */
-            pin_write(11, LOW);
+            /* выключаем Relay */
+            pin_write(4, LOW);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case COUNTDOWN_MODE:
             servo_off();
-            /* включаем Relay_1 & Relay_2 */
+            /* включаем Relay */
             pin_write(4, HIGH);
-            pin_write(11, HIGH);
             /* выключаем звук */
             TCCR0B &= ~(1<<WGM02);
             break;
         case SIGNAL_MODE:
-            /* выключаем Relay_1 & Relay_2 */
+            /* выключаем Relay */
             pin_write(4, LOW);
-            pin_write(11, LOW);
             /* пищащий звук */
             if (pulse) {
                 /* если WGM02=0, пин OC0A отключен */
