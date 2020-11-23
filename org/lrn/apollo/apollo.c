@@ -150,27 +150,33 @@ int8_t pin_read ( uint8_t pin ) {
 }
 
 
+
+#define INDBIT (...) 0b
+
+
+
 typedef unsigned char byte;
 
 
 byte table[] =
     {
-     0b00111111,  // = 0
-     0b00000110,  // = 1
-     0b01011011,  // = 2
-     0b01001111,  // = 3
-     0b01100110,  // = 4
-     0b01101101,  // = 5
-     0b01111101,  // = 6
-     0b00000111,  // = 7
-     0b01111111,  // = 8
-     0b01101111,  // = 9
-     0b01110111,  // = A
-     0b01111100,  // = b
-     0b00111001,  // = C
-     0b01011110,  // = d
-     0b01111001,  // = E
-     0b01110001,  // = F
+     /*gchdeafb*/
+     0b01011111,  // = 0
+     0b01000001,  // = 1
+     0b10011101,  // = 2
+     0b11010101,  // = 3
+     0b11000011,  // = 4
+     0b11010110,  // = 5
+     0b11011110,  // = 6
+     0b01000101,  // = 7
+     0b11011111,  // = 8
+     0b11010111,  // = 9
+     0b11001111,  // = A
+     0b11011010,  // = b
+     0b00011110,  // = C
+     0b11011001,  // = d
+     0b10011110,  // = E
+     0b10001110,  // = F
      0b00000000   // blank
     };
 
@@ -197,16 +203,16 @@ volatile bool pulse = false;
 
 
 /* 7-Segment pin D4 J1 */
-#define display_digit_0 25
+#define display_digit_0 26
 
 /* 7-Segment pin D3 J4 */
-#define display_digit_1 26
+#define display_digit_1 27
 
 /* 7-Segment pin D2 J3 */
-#define display_digit_2 27
+#define display_digit_2 28
 
 /* 7-Segment pin D1 J2 */
-#define display_digit_3 28
+#define display_digit_3 25
 
 
 const byte control_digit_pins[4] =
