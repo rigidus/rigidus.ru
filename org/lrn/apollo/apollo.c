@@ -594,7 +594,7 @@ int main () {
             TCCR0B &= ~(1<<WGM02);
             break;
         case SIGNAL_MODE:
-            /* выключаем Relay */
+            /* выключаем Relay*/
             pin_write(4, LOW);
             /* пищащий звук */
             if (pulse) {
