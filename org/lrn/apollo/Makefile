@@ -16,8 +16,10 @@ CFLAGS += -Wall -g -Os -mmcu=$(MCU) -I$(ARDUINO_PATH)/$(AVRTOOLS_PATH)/avr/inclu
 LDFLAGS +=
 OBJS = $(PROGRAM).o $(PROGRAM).oS
 
+.PHONY: all
 all: $(PROGRAM).hex
 
+.PHONY: flash
 flash: $(PROGRAM).hex
 	avrdude          \
 	$(AVRDUDE_CONF)  \
@@ -39,11 +41,13 @@ obj: $(PROGRAM).c
 
 
 # Получение ассемблерного листинга из elf
+.PHONY: objdump
 objdump: $(PROGRAM).elf
 	avr-objdump -d $^ > $(PROGRAM).asm
 
 # Удаление объектных и целевых файлов
 # Удаляем не все .o файлы, а только те что в списке $(OBJS)
+.PHONY: clean
 clean:
 	rm -f $(OBJS)
 	rm -f *.elf
@@ -53,7 +57,7 @@ clean:
 	rm -f *.bin
 
 # c
-
+.PHONY: cflash
 cflash: $(PROGRAM).hexC
 	avrdude          \
 	$(AVRDUDE_CONF)  \
@@ -76,7 +80,7 @@ $(PROGRAM).elfC: $(PROGRAM).c
 	-o $@
 
 # asm
-
+.PHONY: asmflash
 asmflash: $(PROGRAM).hexS
 	avrdude          \
 	$(AVRDUDE_CONF)  \
@@ -116,6 +120,7 @@ asmsize: $(PROGRAM).elfS
 	avr-size --mcu=attiny2313 --format=avr $^
 
 # Извлечение прошивки в файл HEX
+.PHONY: extract
 extract:
 	avrdude \
 	$(AVRDUDE_PATH)  \
@@ -127,14 +132,17 @@ extract:
 	-Uflash:r:$(PROGRAM).hexbin:i
 
 # Преобразование файла HEX в BIN
+.PHONY: hex2bin
 hex2bin: $(PROGRAM).hexbin
 	objcopy -I ihex $^ -O binary $(PROGRAM).bin
 
 # Дизассемблирование BIN-файла
+.PHONY: disasm
 disasm: $(PROGRAM).bin
 	# avrdisas -a1 -o1 -s1 $(PROJECT_PATH)/$(PROGRAM).bin
 	avrdisas -a0 -o0 -s1 -p0 -l1 -m$(MCU) $^ > $(PROGRAM).asm
 
+.PHONY: fulldisasm
 fulldisasm:
 	make extract
 	make hex2bin
