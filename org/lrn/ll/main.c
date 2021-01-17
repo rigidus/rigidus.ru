@@ -1,3 +1,4 @@
+/* file: main.c */
 /* compile: gcc -L. -Wall -o main main.c -lcalc */
 #include <stdio.h>
 #include "calc.h"
