@@ -2,74 +2,19 @@
 .set F_HIDDEN,0x20
 .set F_LENMASK,0x1f  # length mask
 
-.macro NEXT
-    lodsl
-    jmp *(%eax)
-.endm
+<<macro_next>>
 
-.macro PUSHRSP reg
-    lea     -4(%ebp), %ebp  # декремент %ebp на 4
-    movl    \reg, (%ebp)    # push reg в стек возвратов
-.endm
+<<macro_pushrsp>>
 
-.macro POPRSP reg
-    mov     (%ebp), \reg    # pop вершину стека возвратов в reg
-    lea     4(%ebp), %ebp   # инкремент %ebp на 4
-.endm
+<<macro_poprsp>>
 
-    .set link,0             # Инициализировать начальное значение
-                            # переменной времени компиляции link
-.macro defword name, namelen, flags=0, label
-    .section .rodata
-    .align 4
-    .globl name_\label
-name_\label :
-    .int link               # link
-    .set link,name_\label
-    .byte \flags+\namelen   # flags + байт длины
-    .ascii "\name"          # имя
-    .align 4                # выравнивание на 4-х байтовую границу
-    .globl \label
-\label :
-    .int DOCOL              # codeword - указатель на функцию-интепретатор
-    # дальше будут идти указатели на слова
-.endm
+<<macro_defword>>
 
-.macro defcode name, namelen, flags=0, label
-    .section .rodata
-    .align 4
-    .globl name_\label
-name_\label :
-    .int    link               # link
-    .set    link,name_\label
-    .byte   \flags+\namelen    # flags + байт длины
-    .ascii  "\name"            # имя
-    .align  4                  # выравнивание на 4-х байтовую границу
-    .globl  \label
-\label :
-    .int    code_\label        # codeword
-    .text
-    //.align 4
-    .globl  code_\label
-code_\label :
-    # далее следует ассемблерный код
-.endm
+<<macro_defcode>>
 
-.macro defvar name, namelen, flags=0, label, initial=0
-    defcode \name,\namelen,\flags,\label
-    push    $var_\name
-    NEXT
-    .data
-    .align 4
-    var_\name :
-    .int \initial
-.endm
+<<macro_defvar>>
 
-.macro defconst name, namelen, flags=0, label, value
-    defcode \name,\namelen,\flags,\label
-    push $\value
-    NEXT
-.endm
+<<macro_defconst>>
 
 defvar "STATE",5,,STATE
 defvar "HERE",4,,HERE
@@ -714,14 +659,6 @@ defcode "LIT",3,,LIT
     lodsl
     # push literal в стек
     push %eax
-    NEXT
-defcode "LITSTRING",9,,LITSTRING
-    lodsl                   # Получить длину строки
-    push    %esi            # push адрес начала строки
-    push    %eax            # push длину
-    addl    %eax,%esi       # пропустить строку
-    addl    $3,%esi         # но округлить до следующей 4 байтовой границы
-    andl    $~3,%esi
     NEXT
 
 defcode "TELL",4,,TELL
