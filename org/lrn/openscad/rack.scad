@@ -111,35 +111,79 @@ module Horbar(w=tube_square_size, bh=bar_height) {
     }
 }
 
-
-Frame();
-translate([width,0,0])
-    Frame();
-
-Horbar();
-
-translate([-350, 1450, 800]) {
-    rotate([0,90]) {
-        linear_extrude(2020)
-        circle(16);
+module Barbell () {
+    translate([-350, 1450, 1000]) {
+        rotate([0,90]) {
+            linear_extrude(2020)
+            circle(16);
+        }
     }
 }
 
-translate([40, depth+78, 770]) {
-    rotate([0,0,270]) {
-        Flank();
-        rotate([0,-90,0]) {
-            translate([0, 0, (pin_length/4)]) { 
-                color([0.2, 0.2, 0.1, 0.5])
-                translate([0,0,-80]) 
-                linear_extrude(height=190)
-                circle(d=28);
-                color([0.2, 0.2, 0.1, 0.5])
-                    translate([-20, -20, -80-sheet_thickness]) { 
-                        linear_extrude(sheet_thickness)
-                            square(40);
-                    }
+module Stand() {
+    translate([40, depth+78, 970]) {
+        rotate([0,0,270]) {
+            Flank();
+            rotate([0,-90,0]) {
+                translate([0, 0, (pin_length/4)]) { 
+                    color([0.2, 0.2, 0.1, 0.5])
+                        translate([0,0,-80]) 
+                            linear_extrude(height=190)
+                                circle(d=28);
+                    color([0.2, 0.2, 0.1, 0.5])
+                        translate([-20, -20, -80-sheet_thickness]) { 
+                            linear_extrude(sheet_thickness)
+                                square(40);
+                        }
+                }
             }
         }
     }
 }
+
+module Table() {
+    color([0.7, 0.8, 0.3, 0.5])
+    translate([tube_square_size,tube_square_size,740])
+        linear_extrude(sheet_thickness)
+                square([width-tube_square_size, depth]);
+}
+
+module Leg(len, rot=[0,0,0], trs=[0,0,0]) {
+    translate(trs)
+        rotate(rot) 
+            linear_extrude(len)
+                square([20, 20]);
+}
+
+
+module Leg1 (d=depth) {
+    hh=400;
+    Leg(hh, [0,0,0], [550,0,0]);
+    Leg(hh, [0,0,0], [550,d,0]);
+    Leg(d, [-90,0,0], [550,0,100]);
+    Leg(d, [-90,0,0], [550,0,hh]);
+}
+
+module Leg2 (d=depth) {
+    Leg1(d);
+    translate([300,0,0])
+        Leg1(d);
+    hh=400;
+    ww=300;
+    dd=550;
+    Leg(ww, [0,90,0], [dd,0,hh]);
+    Leg(ww, [0,90,0], [dd,d,hh]);
+    Leg(ww, [0,90,0], [dd,0,100]);
+    Leg(ww, [0,90,0], [dd,d,100]);
+}
+
+Leg2(depth);
+
+
+Frame();
+translate([width,0,0])
+    Frame();
+Horbar();
+Barbell();
+Stand();
+Table();
