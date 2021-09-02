@@ -87,16 +87,13 @@ module QuadLock(w=tube_square_size) {
             PairLock();
 }
 
-
-Frame();
-translate([width,0,0])
-    Frame();
-
-
-module flank() {
-    rotate([0,-90,0])
+module flank(w=tube_square_size) {
+    rotate([0,-90,0]) {
         linear_extrude(sheet_thickness)
             square([240, 80], center=true);
+        translate([-w, w-w, (pin_length/4)]) { Pin(); }
+        translate([w, w-w, (pin_length/4)]) { Pin(); }
+    }
 }
 
 
@@ -107,10 +104,16 @@ module horbar(w=tube_square_size, bh=bar_height) {
             linear_extrude(width-w-sheet_thickness*2)
                 circle(16);
         }
-        translate([width-w-sheet_thickness,0,0])
-            flank();
+        translate([width-w-sheet_thickness*2,0,0])
+            rotate([0,180]) {
+                flank();
+            }
     }
 }
 
+
+Frame();
+translate([width,0,0])
+    Frame();
 
 horbar();
