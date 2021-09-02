@@ -87,7 +87,7 @@ module QuadLock(w=tube_square_size) {
             PairLock();
 }
 
-module flank(w=tube_square_size) {
+module Flank(w=tube_square_size) {
     rotate([0,-90,0]) {
         linear_extrude(sheet_thickness)
             square([240, 80], center=true);
@@ -97,16 +97,16 @@ module flank(w=tube_square_size) {
 }
 
 
-module horbar(w=tube_square_size, bh=bar_height) {
+module Horbar(w=tube_square_size, bh=bar_height) {
     translate([w+sheet_thickness, w/2, bh]) {
-        flank();
+        Flank();
         rotate([0,90]) {
             linear_extrude(width-w-sheet_thickness*2)
                 circle(16);
         }
         translate([width-w-sheet_thickness*2,0,0])
             rotate([0,180]) {
-                flank();
+                Flank();
             }
     }
 }
@@ -116,4 +116,30 @@ Frame();
 translate([width,0,0])
     Frame();
 
-horbar();
+Horbar();
+
+translate([-350, 1450, 800]) {
+    rotate([0,90]) {
+        linear_extrude(2020)
+        circle(16);
+    }
+}
+
+translate([40, depth+78, 770]) {
+    rotate([0,0,270]) {
+        Flank();
+        rotate([0,-90,0]) {
+            translate([0, 0, (pin_length/4)]) { 
+                color([0.2, 0.2, 0.1, 0.5])
+                translate([0,0,-80]) 
+                linear_extrude(height=190)
+                circle(d=28);
+                color([0.2, 0.2, 0.1, 0.5])
+                    translate([-20, -20, -80-sheet_thickness]) { 
+                        linear_extrude(sheet_thickness)
+                            square(40);
+                    }
+            }
+        }
+    }
+}
