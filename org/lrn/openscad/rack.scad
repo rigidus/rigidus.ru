@@ -42,18 +42,13 @@ module Pin(len=pin_length) {
 
 module Lock(sz=240, d=sheet_thickness) {
     color([0.5, 0.5, 0.2, 0.5])
-    translate([0,120,120])
-        rotate([0,-90]) {
-            difference() {
-                linear_extrude(d) 
-                    square([sz, sz], center=true);
-                translate([125,125,-10])
-                    rotate([0,0,45]) 
-                        linear_extrude(d+20) 
-                            square([sz, sz], center=true);
-                
-                }
-            }
+        polyhedron(
+            points=[ [0,0,0],[0,0,320],[0,320,0],
+                     [-d,0,0],[-d,0,320],[-d,320,0]
+                    ],
+            faces=[[0,1,2],[3,4,5], [0,1,4,3], [1,2,5,4], [2,0,3,5]
+                    ]
+        );
 }
 
 module DoubleLock(w=tube_square_size) {
@@ -176,7 +171,6 @@ module Leg2 (d=depth) {
     Leg(ww, [0,90,0], [dd,0,100]);
     Leg(ww, [0,90,0], [dd,d,100]);
 }
-
 Leg2(depth);
 
 
@@ -187,3 +181,5 @@ Horbar();
 Barbell();
 Stand();
 Table();
+
+
