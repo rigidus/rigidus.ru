@@ -738,6 +738,7 @@ defcode "LIT",3,,LIT
     # push literal в стек
     push %rax
     NEXT
+
 defcode "LITSTRING",9,,LITSTRING
     lodsq                   # Получить длину строки
     push    %rsi            # push адрес начала строки

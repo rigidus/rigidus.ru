@@ -52,39 +52,39 @@ char * read_file_into_string (char filename[])
     return str;
 }
 
-void toFVM (int inP[], char outstr[])
+void toPipe (int inPipe[], char outstr[])
 {
     int len = strlen(outstr);
     /* printf(":: strlen(outstr) = %d\n", len); */
     /* fflush(stdout); */
-    int cnt = write(inP[1], outstr, len);
+    int cnt = write(inPipe[1], outstr, len);
     if (-1 == cnt) { perror("write to pipe"); exit(-1); }
 }
 
-char* fromFVM(int outP[], int len)
+char* fromPipe(int outPipe[], int len)
 {
     char *buf = malloc(len);
     if(NULL == buf) {
         perror("malloc");
-        printf("function: fromFVM\n");
+        printf("function: fromPipe\n");
         return NULL;
     }
     memset(buf, 0, len);
-    int cnt = read(outP[0], buf, len);
+    int cnt = read(outPipe[0], buf, len);
     if (-1 == cnt) { perror("read from pipe"); exit(-1); }
     /* if (0  == cnt) { perror("eof"); exit(-1); } */
     /* if (1  == cnt) { perror("1"); exit(-1); } */
-    /* printf(":: %d [child out]\n%s\n", cnt, buf); */
-    /* fflush(stdout); */
+    printf(":: %d [child out]\n%s\n", cnt, buf);
+    fflush(stdout);
     return buf;
 }
 
 void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], char run[],
              char hash[])
 {
-    int pid, in, out, cnt, inP[2], outP[2];
-    if (pipe(inP)  == -1) { perror("In Pipe Failed");  exit(-1); }
-    if (pipe(outP) == -1) { perror("Out Pipe Failed"); exit(-1); }
+    int pid, in, out, cnt, inPipe[2], outPipe[2];
+    if (pipe(inPipe)  == -1) { perror("In Pipe Failed");  exit(-1); }
+    if (pipe(outPipe) == -1) { perror("Out Pipe Failed"); exit(-1); }
     switch(pid = fork()) {
     case -1:
         perror("fork");
@@ -92,18 +92,18 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     case 0:
         close(0);
         close(1);
-        dup2(inP[0], 0);
-        close(inP[1]);
-        close(outP[0]);
-        dup2(outP[1], 1);
+        dup2(inPipe[0], 0);
+        close(inPipe[1]);
+        close(outPipe[0]);
+        dup2(outPipe[1], 1);
         execve(vfm, params, env);
     }
     printf(":: pid = %d\n", pid);
     fflush(stdout);
 
-    toFVM(inP, base); sleep(1);
+    toPipe(inPipe, base); sleep(1);
     char vfm_hello[] = "VFM VERSION 47 OK\n";
-    char *hello_str = fromFVM(outP, 30);
+    char *hello_str = fromPipe(outPipe, 30);
     if (0 != strncmp(vfm_hello, hello_str, sizeof(vfm_hello))) {
         printf(":: vfm hello error:\n");
         printf("[%s]\n", hello_str);
@@ -112,25 +112,19 @@ void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], 
     }
     free(hello_str);
 
-    char one[] = "4 3 + . \n";
-    printf(">> [%s]\n", one);
-    fflush(stdout);
-    toFVM(inP, one);
+    toPipe(inPipe, "1 2 3 + . BYE \n");
+    /* /\* toPipe(inPipe, run); *\/ */
 
-    char *result2 = fromFVM(outP, SIZE);
-    printf("<< [%s]\n", result2);
-    fflush(stdout);
-    free(result2);
-
-    char two[] = "1 2 3 + . BYE \n";
-    printf(">> [%s]\n", two);
-    fflush(stdout);
-    toFVM(inP, two);
-
-    char *result1 = fromFVM(outP, SIZE);
-    printf("<< [%s]\n", result1);
+    char *result1 = fromPipe(outPipe, SIZE);
+    printf("Result is [%s]\n", result1);
     fflush(stdout);
     free(result1);
+
+    /* char *result2 = fromPipe(outPipe, SIZE); */
+    /* fromPipe(outPipe, 0); */
+    /* printf("Result is [%s]\n", result2); */
+    /* fflush(stdout); */
+    /* free(result2); */
 
     int status;
     wait(&status);

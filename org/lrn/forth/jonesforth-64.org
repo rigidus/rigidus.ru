@@ -136,7 +136,7 @@ h-файле, чтобы они были видны и ассемблерном�
 
 Нам также стоит добавить внешнюю переменную ~environ~. В результате h-файл будет таким:
 
-#+BEGIN_SRC c :tangle src/inc64/asm.h :noweb tangle :exports code :padline no :comments none
+#+BEGIN_SRC c :tangle src/inc64/asm.h :noweb yes :exports code :padline no :comments none
   #include <asm-generic/unistd.h>
 
   extern char ** environ;
@@ -150,7 +150,7 @@ h-файле, чтобы они были видны и ассемблерном�
 для визуализации. Отдельные куски, иллюстрирующие её использование оставлены для
 будущих расширений.
 
-#+BEGIN_SRC c :tangle src/src64/main64.c :noweb tangle :exports code :padline no :comments none
+#+BEGIN_SRC c :tangle src/src64/main64.c :noweb yes :exports code :padline no :comments none
   /* g++ sdltest.c `pkg-config --cflags --libs sdl2` -o sdltest   */
   /* https://github.com/mahiuchun/Snake-SDL */
 
@@ -914,6 +914,64 @@ INVERT могут функционировать одновременно как
       .quad input_buffer
 #+END_SRC
 
+#+NAME: word_key_new
+#+BEGIN_SRC asm
+      defcode "KEY",3,,KEY
+      call _KEY
+      push    %rax            #       # push return symbol to data stack
+      NEXT                    #
+      .align 8
+  currkey:
+      # Stores the offset to the current position in the input buffer
+      # (the next character will be read from it)
+      .quad input_buffer
+  bufftop:
+      # Stores the top of the input buffer (last valid data + 1)
+      .quad input_buffer
+  _KEY:
+      pop     %rcx            #       # %rcx <- retaddr
+      push    %rcx            #       # restore retaddr
+      add     $(5+(wordsize-1)), %rcx # BASE + 1(push-%rax) + 4(NEXT) + 7(wordsize-1)
+      and     $~(wordsize-1), %rcx    # NOW %rcx => currkey
+  _KEY_REPEAT:                # <--+
+      mov     (%rcx), %rbx    #    |  # (currkey) -> %rbx
+      cmp     8(%rcx), %rbx   #    |  # (bufftop >= currkey)? - are there symbols in the buffer?
+      jge     1f              #-+  |  # ?-NO, go forward
+      xor     %rax, %rax      # |  |  # ?-YES,
+      mov     (%rbx), %al     # |  |  #    (1) (currkey) -> %rax,
+      inc     %rbx            # |  |  #    (2) increment copy of currkey %rbx
+      mov     %rbx, (%rcx)    # |  |  #    (3) save copy of currkey %rbx to var currkey,
+      ret                     # |  |  #    (4) return (%rax contains symbol)
+      # ---------------- RET    |  |
+  1:  #                     <---+  |  # Buffer is empty, need read from stdin
+      push    %rsi            #    |  # save %rsi & %rdi before syscall
+      push    %rdi            #    |  #
+      mov     $stdin, %rdi    #    |  #  param1: stdin in %rdi
+      mov     $input_buffer, %rsi #|  #  param2: addr in %rsi
+      mov     %rsi, (%rcx)    #    |  #  save addr to currkey
+      mov     $INPUT_BUFFER_SIZE, %rdx # param3: max length size in %rdx
+      mov     $sys_read, %rax #    |  #  SYSCALL read in %rax
+      syscall                 #    |  #  SYSCALL
+      # Проверяем возвращенное     |  # должно быть количество символов + '\n'
+      test    %rax, %rax      #    |  # (%rax <= 0)?
+      jbe     2f              #-+  |  # ?-YES, this is an error, go forward
+      add     %rax, %rsi      # |  |  # ?-NO, (1) add %rsi count read bytes
+      mov     %rsi, 8(%rcx)   # |  |  #       (2) save %rsi to bufftop
+      pop     %rdi            # |  |  # restore %rdi & %rsi
+      pop     %rsi            # |  |
+      jmp     _KEY_REPEAT     # |  |
+      # ------------------------|--+
+  2:  #                     <---+     # Error or Ctrl+C - EXIT
+      pop     %rdi            #       # restore %rdi & %rsi
+      pop     %rsi            #
+      mov     $sys_exit, %rax         # param1: SYSCALL #1 (exit)
+      xor     %rdi, %rdi              # param2: retcode = 0
+      syscall                         # SYSCALL
+      # --------------- EXIT
+      .data
+      .align 8
+#+END_SRC
+
 
 #+NAME: word_emit
 #+BEGIN_SRC asm
@@ -1277,7 +1335,7 @@ INVERT могут функционировать одновременно как
 LITSTRING - это примитив, используемый для реализации операторов ~ ." ~ И ~ S" ~ (которые
 написаны в формате Forth). См. ниже определение этих операторов.
 
-#+NAME: word_lit
+#+NAME: word_litstring
 #+BEGIN_SRC asm
   defcode "LITSTRING",9,,LITSTRING
       lodsq                   # Получить длину строки
@@ -1824,7 +1882,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 А тут осталась только сборка всего кода в один ассемблерный файл:
 
 #+NAME: macros
-#+BEGIN_SRC asm
+#+BEGIN_SRC asm :noweb yes
   <<macro_next>>
 
   <<macro_pushrsp>>
@@ -1841,7 +1899,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 #+END_SRC
 
 #+NAME: assembly
-#+BEGIN_SRC asm :tangle src/src64/jonesforth64.s :noweb tangle :exports code :padline no :comments none
+#+BEGIN_SRC asm :tangle src/src64/jonesforth64.s :noweb yes :exports code :padline no :comments none
   <<flags>>
 
   <<macros>>
@@ -1889,6 +1947,8 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
   <<word_number>>
 
   <<word_lit>>
+
+  <<word_litstring>>
 
   <<word_tell>>
 
