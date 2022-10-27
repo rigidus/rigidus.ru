@@ -1,5 +1,9 @@
 #+STARTUP: showall indent hidestars
 
+* Tip
+
+Need to install gcc-multilib.
+
 * Внутреннее устройство Forth-машины
 
 Теперь, обладая работающей 32-разрядной версией мы можем портировать ее на 64 разряда.
@@ -37,7 +41,7 @@
   .endm
 #+END_SRC
 
-** DOCOL - интерпретатор
+** COMMENT DOCOL - интерпретатор
 
 Почти не изменился:
 
@@ -63,7 +67,7 @@
 #+NAME: asm_entry
 #+BEGIN_SRC asm
       /* Assembler entry point. */
-
+  /*
       .data
 
       .align 8
@@ -75,12 +79,24 @@
       .globl forth_asm_argv
   forth_asm_argv:
       .quad 0                  # Указатель на параметры командной строки
-
+  ,*/
       .text
 
-      .globl  forth_asm_start
-      .type   forth_asm_start, @function
-  forth_asm_start:
+      .globl  _start
+      .type   _start, @function
+  _start:
+      call    1f
+  v0:
+      .quad   0
+  v1:
+      .quad   1
+  1:
+      pop     %r15
+      mov     v1-v0(%r15), %rbx
+      mov     $60, %rax           # sys_exit
+      mov     $0, %rdi            # 0
+      syscall
+  /*
       # Сбрасываем флаг направления
       cld
       # Записываем вершину стека параметров %rsp в переменную S0
@@ -98,168 +114,10 @@
       .section .rodata
   cold_start:                             # High-level code without a codeword.
       .quad QUIT
+  ,*/
 #+END_SRC
 
-** Сишная точка входа
-
-Чтобы иметь возможность подключать библиотеки языка Си мы собираем исполнямый файл из
-двух частей - сишного, который содержит точку входа и подключение необходимых
-библиотек; и ассемблерного, который содержит Fort-машину. Этой Forth-машине передается
-управление, когда сишная часть выполнила всю необходимую инициализацию.
-
-Например, в сишной части мы сохраняем для будущего использования ~argc~ и ~argv~ -
-количество параметров переданных в командной строке и указатель на эти параметры:
-
-#+NAME: save_cmdline_args
-#+BEGIN_SRC c
-  forth_asm_argc = argc;
-  forth_asm_argv = (void*)argv;
-#+END_SRC
-
-Переменные, в которых хранятся эти значения, должны быть определены в отдельном
-h-файле, чтобы они были видны и ассемблерному и сишному коду:
-
-#+NAME: shared_vars
-#+BEGIN_SRC c
-  int    forth_asm_argc;
-  void  *forth_asm_argv;
-#+END_SRC
-
-Там же следует определить прототипы ассемблерных функкций, чтобы сишный код о них
-узнал:
-
-#+NAME: asm_func_prototypes
-#+BEGIN_SRC c
-  void asmo_init();
-  void forth_asm_start();
-#+END_SRC
-
-Нам также стоит добавить внешнюю переменную ~environ~. В результате h-файл будет таким:
-
-#+BEGIN_SRC c :tangle src/inc64/asm.h :noweb yes :exports code :padline no :comments none
-  #include <asm-generic/unistd.h>
-
-  extern char ** environ;
-
-  <<shared_vars>>
-
-  <<asm_func_prototypes>>
-#+END_SRC
-
-Одной из важных используемых библиотек является SDL2, которую планируется использовать
-для визуализации. Отдельные куски, иллюстрирующие её использование оставлены для
-будущих расширений.
-
-#+BEGIN_SRC c :tangle src/src64/main64.c :noweb yes :exports code :padline no :comments none
-  /* g++ sdltest.c `pkg-config --cflags --libs sdl2` -o sdltest   */
-  /* https://github.com/mahiuchun/Snake-SDL */
-
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <time.h>
-  #include <SDL2/SDL.h>
-  #include <memory.h>
-  #include <string.h>
-
-  #include "sha256.h"
-  #include "sdlwrap.h"
-  #include "runvfm64.h"
-
-  #include "asm.h"
-
-  /* SDL_Texture*  fruit_texture = NULL; */
-  /* SDL_Texture*  shead_texture = NULL; */
-  /* SDL_Texture*  snake_texture = NULL; */
-  /* SDL_Texture*  field_texture = NULL; */
-
-  int sha256_test()
-  {
-      BYTE text1[] = {"abc"};
-      BYTE text2[] = {"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"};
-      BYTE text3[] = {"aaaaaaaaaa"};
-      BYTE hash1[SHA256_BLOCK_SIZE] = {0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
-                                       0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
-      BYTE hash2[SHA256_BLOCK_SIZE] = {0x24,0x8d,0x6a,0x61,0xd2,0x06,0x38,0xb8,0xe5,0xc0,0x26,0x93,0x0c,0x3e,0x60,0x39,
-                                       0xa3,0x3c,0xe4,0x59,0x64,0xff,0x21,0x67,0xf6,0xec,0xed,0xd4,0x19,0xdb,0x06,0xc1};
-      BYTE hash3[SHA256_BLOCK_SIZE] = {0xcd,0xc7,0x6e,0x5c,0x99,0x14,0xfb,0x92,0x81,0xa1,0xc7,0xe2,0x84,0xd7,0x3e,0x67,
-                                       0xf1,0x80,0x9a,0x48,0xa4,0x97,0x20,0x0e,0x04,0x6d,0x39,0xcc,0xc7,0x11,0x2c,0xd0};
-      BYTE buf[SHA256_BLOCK_SIZE];
-      SHA256_CTX ctx;
-      int idx;
-      int pass = 1;
-
-      sha256_init(&ctx);
-      sha256_update(&ctx, text1, strlen(text1));
-      sha256_final(&ctx, buf);
-
-      for(int i=0; i<32; i++) {
-          printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i));
-      }
-
-      pass = pass && !memcmp(hash1, buf, SHA256_BLOCK_SIZE);
-
-      sha256_init(&ctx);
-      sha256_update(&ctx, text2, strlen(text2));
-      sha256_final(&ctx, buf);
-      pass = pass && !memcmp(hash2, buf, SHA256_BLOCK_SIZE);
-
-      sha256_init(&ctx);
-      for (idx = 0; idx < 100000; ++idx)
-          sha256_update(&ctx, text3, strlen(text3));
-      sha256_final(&ctx, buf);
-      pass = pass && !memcmp(hash3, buf, SHA256_BLOCK_SIZE);
-
-      return(pass);
-  }
-
-  void sha256 (char str[], BYTE buf[SHA256_BLOCK_SIZE])
-  {
-      SHA256_CTX ctx;
-      sha256_init(&ctx);
-      sha256_update(&ctx, str, strlen(str));
-      sha256_final(&ctx, buf);
-  }
-
-
-  int main(int argc, char * argv[])
-  {
-      <<save_cmdline_args>>
-
-      /* BYTE buf[SHA256_BLOCK_SIZE]; */
-      /* sha256("abc", buf); */
-
-      /* for(int i=0; i<32; i++) { */
-      /*     printf("%2d: %p : %2hhX \n", i, (void *)(buf+i), *(char* )(void *)(buf+i)); */
-      /* } */
-
-      /* printf("SHA-256 tests: %s\n", sha256_test() ? "SUCCEEDED" : "FAILED"); */
-
-      /* Disable buffering */
-      setbuf(stdout, NULL);
-
-      __asm("call forth_asm_start");
-
-      /* gameover_flag = 0; */
-      /* int delay = 16; */
-      /* init(); */
-      /* render(); */
-      /* for (;;) { */
-      /*     input(); */
-      /*     __asm("call forth_asm_start"); */
-      /*     __asm("call update2"); */
-      /*     /\* update(); *\/ */
-      /*     if (gameover_flag) { */
-      /*         gameover(); */
-      /*     } */
-      /*     __asm("call render"); */
-      /*     /\* render(); *\/ */
-      /*     SDL_Delay(delay * 10); */
-      /* } */
-      return 0;
-  }
-#+END_SRC
-
-** Маски для FLAGS/LENGHT
+** COMMENT Маски для FLAGS/LENGHT
 
 Остаются без изменений
 
@@ -270,7 +128,7 @@ h-файле, чтобы они были видны и ассемблерном�
       .set F_LENMASK,0x1f  # length mask
 #+END_SRC
 
-** Макросы DEFWORD и DEFCODE
+** COMMENT Макросы DEFWORD и DEFCODE
 
 ~defword~ изменился только в отношении выравнивания и типов (.int -> .quad)
 
@@ -320,7 +178,7 @@ h-файле, чтобы они были видны и ассемблерном�
   .endm
 #+END_SRC
 
-** Базовые примитивы
+** COMMENT Базовые примитивы
 
 Теперь несколько простых примитивов Forth. Они написаны на ассемблере для скорости.
 
@@ -606,7 +464,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Cmdline слова
+** COMMENT Cmdline слова
 
 #+NAME: argc
 #+BEGIN_SRC asm
@@ -626,13 +484,15 @@ INVERT могут функционировать одновременно как
 
 #+NAME: env
 #+BEGIN_SRC asm
-  defcode "ENV",3,,ENV
-      movq    (environ), %rax
-      push    %rax
-      NEXT
+  /*
+  # defcode "ENV",3,,ENV
+  #    movq    (environ), %rax
+  #    push    %rax
+  #    NEXT
+  ,*/
 #+END_SRC
 
-** EXIT - Возвращение из форт-слов
+** COMMENT EXIT - Возвращение из форт-слов
 
 Благодаря макросам тут нет никаких изменений, кроме размера регистра.
 
@@ -643,7 +503,7 @@ INVERT могут функционировать одновременно как
       NEXT                    # Сделать NEXT
 #+END_SRC
 
-** Литералы
+** COMMENT Литералы
 
 #+NAME: word_lit
 #+BEGIN_SRC asm
@@ -657,7 +517,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Память
+** COMMENT Память
 
 #+NAME: store
 #+BEGIN_SRC asm
@@ -722,7 +582,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Встроенные переменные
+** COMMENT Встроенные переменные
 
 #+NAME: macro_defvar
 #+BEGIN_SRC asm
@@ -754,7 +614,7 @@ INVERT могут функционировать одновременно как
   defvar "BASE",4,,BASE,10
 #+END_SRC
 
-** Встроенные константы
+** COMMENT Встроенные константы
 
 Встроенные константы:
 - VERSION    - это текущая версия этого Forth.
@@ -820,7 +680,7 @@ INVERT могут функционировать одновременно как
   defconst "WORDSIZE",8,,WORDSIZE,wordsize
 #+END_SRC
 
-** Стек возвратов
+** COMMENT Стек возвратов
 
 #+NAME: words_for_retstack
 #+BEGIN_SRC asm
@@ -847,7 +707,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Стек данных
+** COMMENT Стек данных
 
 #+NAME: data_stack_words
 #+BEGIN_SRC asm
@@ -861,7 +721,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Ввод и вывод: KEY EMIT WORD NUMBER
+** COMMENT Ввод и вывод: KEY EMIT WORD NUMBER
 
 #+NAME: word_key
 #+BEGIN_SRC asm
@@ -913,6 +773,57 @@ INVERT могут функционировать одновременно как
       # Хранит вершину буфера ввода (последние валидные данные + 1)
       .quad input_buffer
 #+END_SRC
+
+#+NAME: word_key_new
+#+BEGIN_SRC asm
+      defcode "KEY",3,,KEY
+      call _KEY
+      push    %rax            #       # push-им возвращенный символ на стек
+      NEXT                    #
+      .align 8
+  currkey:
+      # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
+      .quad input_buffer
+  bufftop:
+      # Хранит вершину буфера ввода (последние валидные данные + 1)
+      .quad input_buffer
+  _KEY:                       # <--+
+      mov     (currkey), %rbx #    |  # Берем указатель currkey в %rbx
+      cmp     (bufftop), %rbx #    |  # (bufftop >= currkey)? - в буфере есть символы?
+      jge     1f              #-+  |  # ?-Нет, переходим вперед
+      xor     %rax, %rax      # |  |  # ?-Да,  (1) переносим символ, на который
+      mov     (%rbx), %al     # |  |  #        указывает currkey в %rax,
+      inc     %rbx            # |  |  #        (2) инкрементируем копию currkey
+      mov     %rbx, (currkey) # |  |  #        (3) записываем ее в переменную currkey,
+      ret                     # |  |  #        и выходим (в %rax лежит символ)
+      # ---------------- RET    |  |
+  1:  #                     <---+  |  # Буфер ввода пуст, сделаем read из stdin
+      push    %rsi            #    |  # Сохраняем %rsi & %rdi
+      push    %rdi            #    |  #
+      mov     $stdin, %rdi    #    |  #  param1: Дескриптор stdin в %rdi
+      mov     $input_buffer, %rsi #|  #  param2: Кладем адрес буфера ввода в %rsi
+      mov     %rsi, currkey   #    |  #  Сохраняем его (адрес буфера) ввода в currkey
+      mov     $INPUT_BUFFER_SIZE, %rdx # param3: Максимальная длина ввода в %rdx
+      mov     $sys_read, %rax #    |  #  SYSCALL read в %rax
+      syscall                 #    |  #  SYSCALL
+      # Проверяем возвращенное     |  # должно быть количество символов + '\n'
+      test    %rax, %rax      #    |  # (%rax <= 0)?
+      jbe     2f              #-+  |  # ?-Да, это ошибка, переходим вперед
+      add     %rax, %rsi      # |  |  # ?-Нет, (1) добавляем в %rsi кол-во прочитанных байт
+      mov     %rsi, (bufftop) # |  |  #        (2) записываем %rsi в bufftop
+      pop     %rdi            # |  |  # Теперь можно восстановить %rdi & %rsi
+      pop     %rsi            # |  |
+      jmp     _KEY            # |  |
+      # ------------------------|--+
+  2:  #                     <---+     # Ошибка или конец потока ввода - выходим
+      pop     %rdi            #       # Сначала надо восстановить %rdi & %rsi
+      pop     %rsi            #
+      mov     $sys_exit, %rax         # param1: SYSCALL #1 (exit)
+      xor     %rdi, %rdi              # param2: код возврата
+      syscall                         # SYSCALL
+      # --------------- EXIT
+#+END_SRC
+
 
 #+NAME: word_emit
 #+BEGIN_SRC asm
@@ -1051,7 +962,7 @@ INVERT могут функционировать одновременно как
       ret
 #+END_SRC
 
-** FIND - просмотр словаря
+** COMMENT FIND - просмотр словаря
 
 #+NAME: word_find
 #+BEGIN_SRC asm
@@ -1132,7 +1043,7 @@ INVERT могут функционировать одновременно как
       .quad EXIT       # EXIT     (возвращаемся)
 #+END_SRC
 
-** Компиляция
+** COMMENT Компиляция
 
 #+NAME: word_create
 #+BEGIN_SRC asm
@@ -1215,9 +1126,9 @@ INVERT могут функционировать одновременно как
       .quad EXIT               # Возврат из функции
 #+END_SRC
 
-** Расширение компилятора
+** COMMENT Расширение компилятора
 
-*** IMMEDIATE
+*** COMMENT IMMEDIATE
 
 #+NAME: word_immediate
 #+BEGIN_SRC asm
@@ -1228,7 +1139,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-*** HIDDEN
+*** COMMENT HIDDEN
 
 #+NAME: word_hidden
 #+BEGIN_SRC asm
@@ -1245,7 +1156,7 @@ INVERT могут функционировать одновременно как
       .quad    EXIT                # Выходим
 #+END_SRC
 
-*** TICK
+*** COMMENT TICK
 
 #+NAME: word_tick
 #+BEGIN_SRC asm
@@ -1255,7 +1166,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Ветвление
+** COMMENT Ветвление
 
 #+NAME: word_branch
 #+BEGIN_SRC asm
@@ -1271,7 +1182,7 @@ INVERT могут функционировать одновременно как
       NEXT
 #+END_SRC
 
-** Строковые литералы - LITSTRING
+** COMMENT Строковые литералы - LITSTRING
 
 LITSTRING - это примитив, используемый для реализации операторов ~ ." ~ И ~ S" ~ (которые
 написаны в формате Forth). См. ниже определение этих операторов.
@@ -1288,7 +1199,7 @@ LITSTRING - это примитив, используемый для реали�
       NEXT
 #+END_SRC
 
-** Печать строки - TELL
+** COMMENT Печать строки - TELL
 
 TELL просто печатает строку. Это более эффективно определять в ассемблере, потому что
 мы можем сделать это одним из системных вызовов Linux.
@@ -1309,7 +1220,7 @@ TELL просто печатает строку. Это более эффект�
       NEXT
 #+END_SRC
 
-** QUIT
+** COMMENT QUIT
 
 #+NAME: word_quit
 #+BEGIN_SRC asm
@@ -1325,7 +1236,7 @@ TELL просто печатает строку. Это более эффект�
       .quad BRANCH,-16     # -----------------------------------
 #+END_SRC
 
-** INTERPRET
+** COMMENT INTERPRET
 
 INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) внутри Forth.
 
@@ -1361,7 +1272,7 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
       test    %rcx, %rcx      #  |       |# (Удалось распарсить число)?
       jnz 6f                  #--|-----+ |# ?-Нет, переходим к (6)
       mov     %rax, %rbx      #  |     | |# ?-Да, Перемещаем число в %ebx,
-      mov     $LIT, %rax      #  |     | |#     Устанавливаем слово LIT в %eax <ЗАЧЕМ????>
+      mov     $LIT, %rax      #  |     | |#     Устанавливаем слово LIT в %eax ЗАЧЕМ????
   2:  #                   <------+     | |#
       # Проверим в каком мы режиме     | |#
       mov     (var_STATE), %rdx#       | |#
@@ -1448,7 +1359,7 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
       .quad 0                  # Флаг литерала
 #+END_SRC
 
-** CHAR
+** COMMENT CHAR
 
 CHAR помещает код ASCII первого символа следующего слова в стек. Например, ~CHAR A~
 кладет 65 в стек.
@@ -1463,7 +1374,7 @@ CHAR помещает код ASCII первого символа следующ�
       NEXT
 #+END_SRC
 
-** EXECUTE
+** COMMENT EXECUTE
 
 EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
 в коде Forth для получения более подробной информации.
@@ -1482,7 +1393,7 @@ EXECUTE используется для запуска токенов выпол
       jmp     *(%rax)         # и выполнить jump на него.
 #+END_SRC
 
-** DODOES
+** COMMENT DODOES
 
 Работа этого кода объясняется во второй части
 
@@ -1501,7 +1412,7 @@ EXECUTE используется для запуска токенов выпол
   defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 #+END_SRC
 
-** Системные вызовы
+** COMMENT Системные вызовы
 
 SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См.
 список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3
@@ -1588,7 +1499,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
     NEXT
 #+END_SRC
 
-** Сегмент стека и буффер ввода
+** COMMENT Сегмент стека и буффер ввода
 
 #+NAME: sys_ret_stack_and_input_buffer
 #+BEGIN_SRC asm
@@ -1615,7 +1526,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 #+END_SRC
 
 * Дополнения
-** Хэширование
+** COMMENT Хэширование
 
 ~SHA-256~ - это враппер, который вызывает функцию си ~sha256~. Эта функция принимает
 два параметра:
@@ -1626,6 +1537,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 
 #+NAME: words_for_hash
 #+BEGIN_SRC asm
+  /*
   defcode "SHA256",6,,SHA256
       pop     %rdi            # pop указатель на строку со стека данных в %rdi
       sub     $32, %rsp       # выделяем место под хэш
@@ -1635,186 +1547,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
       call    sha256          # вызываем sha256
       pop     %rsi            # восстанавливаем %esi
       NEXT                    # на стеке данных остается хэш
-#+END_SRC
-
-** Внешнее управление
-
-Для того чтобы использовать виртуальную машину как дочерний процесс, создадим
-супервизор, который будет запускать ее, передавая окружение и заменяя дескрипторы stdin
-и stdout на pipes, через которые будет отправлять код и считывать результат из repl
-
-#+NAME: ext_control
-#+BEGIN_SRC c :tangle src/src64/runvfm64.c :noweb tangle :exports code :padline no :comments none
-  #include <unistd.h>
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <fcntl.h>
-  #include <string.h>
-  #include <sys/stat.h>
-  #include <sys/wait.h>
-
-  #define SIZE 1024
-
-  char * read_file_into_string (char filename[])
-  {
-      struct stat sb;
-      if(-1 == stat(filename, &sb)) {
-          perror("stat file");
-          printf("function: read_file_into_string\n");
-          printf("filename: [%s]\n", filename);
-          return NULL;
-      }
-      /* printf("filesize: %ld\n", sb.st_size); */
-
-      FILE *fp=fopen(filename, "r");
-      if(NULL == fp) {
-          perror("fopen file");
-          printf("function: read_file_into_string\n");
-          printf("filename: [%s]\n", filename);
-          return NULL;
-      }
-      /* printf("file handle: %p\n", fp); */
-
-      char *str = malloc(sb.st_size+1);
-      if(NULL == str) {
-          perror("malloc");
-          printf("function: read_file_into_string\n");
-          printf("filename: [%s]\n", filename);
-          return NULL;
-      }
-      /* printf("malloc pntr: %p\n", str); */
-
-      int cnt = fread(str, 1, sb.st_size, fp);
-      if(sb.st_size != cnt) {
-          perror("fread");
-          printf("function: read_file_into_string\n");
-          printf("filename: [%s]\n", filename);
-          return NULL;
-      }
-      /* printf("read bytes: %d\n", cnt); */
-
-      fclose(fp);
-      str[sb.st_size] = 0;
-      /* printf("content is:%s\n", str); */
-      return str;
-  }
-
-  void toPipe (int inPipe[], char outstr[])
-  {
-      int len = strlen(outstr);
-      /* printf(":: strlen(outstr) = %d\n", len); */
-      /* fflush(stdout); */
-      int cnt = write(inPipe[1], outstr, len);
-      if (-1 == cnt) { perror("write to pipe"); exit(-1); }
-  }
-
-  char* fromPipe(int outPipe[], int len)
-  {
-      char *buf = malloc(len);
-      if(NULL == buf) {
-          perror("malloc");
-          printf("function: fromPipe\n");
-          return NULL;
-      }
-      memset(buf, 0, len);
-      int cnt = read(outPipe[0], buf, len);
-      if (-1 == cnt) { perror("read from pipe"); exit(-1); }
-      /* if (0  == cnt) { perror("eof"); exit(-1); } */
-      /* if (1  == cnt) { perror("1"); exit(-1); } */
-      printf(":: %d [child out]\n%s\n", cnt, buf);
-      fflush(stdout);
-      return buf;
-  }
-
-  void runvfm (char vfm[], char base[], char code[], char *params[], char *env[], char run[],
-               char hash[])
-  {
-      int pid, in, out, cnt, inPipe[2], outPipe[2];
-      if (pipe(inPipe)  == -1) { perror("In Pipe Failed");  exit(-1); }
-      if (pipe(outPipe) == -1) { perror("Out Pipe Failed"); exit(-1); }
-      switch(pid = fork()) {
-      case -1:
-          perror("fork");
-          exit(-1);
-      case 0:
-          close(0);
-          close(1);
-          dup2(inPipe[0], 0);
-          close(inPipe[1]);
-          close(outPipe[0]);
-          dup2(outPipe[1], 1);
-          execve(vfm, params, env);
-      }
-      printf(":: pid = %d\n", pid);
-      fflush(stdout);
-
-      toPipe(inPipe, base); sleep(1);
-      char vfm_hello[] = "VFM VERSION 47 OK\n";
-      char *hello_str = fromPipe(outPipe, 30);
-      if (0 != strncmp(vfm_hello, hello_str, sizeof(vfm_hello))) {
-          printf(":: vfm hello error:\n");
-          printf("[%s]\n", hello_str);
-          printf("expected: [%s]\n", vfm_hello);
-          exit(-1);
-      }
-      free(hello_str);
-
-      toPipe(inPipe, "1 2 3 + . BYE \n");
-      /* /\* toPipe(inPipe, run); *\/ */
-
-      char *result1 = fromPipe(outPipe, SIZE);
-      printf("Result is [%s]\n", result1);
-      fflush(stdout);
-      free(result1);
-
-      /* char *result2 = fromPipe(outPipe, SIZE); */
-      /* fromPipe(outPipe, 0); */
-      /* printf("Result is [%s]\n", result2); */
-      /* fflush(stdout); */
-      /* free(result2); */
-
-      int status;
-      wait(&status);
-
-      printf("Fin: %d\n", status);
-      fflush(stdout);
-
-      exit(0);
-  }
-#+END_SRC
-
-** Нода
-
-#+NAME: ext_control
-#+BEGIN_SRC c :tangle src/src64/node64.c :noweb tangle :exports code :padline no :comments none
-  #include <stdio.h>
-  #include <stdlib.h>
-
-  #include "runvfm64.h"
-
-
-  int main(int argc, char * argv[])
-  {
-      char * libf = read_file_into_string("./src64/jonesforth64.f");
-      if (NULL == libf)
-      {
-          printf("Aborting: no lib.f file\n");
-          exit(-1);
-      }
-      char * args[] = { "forth64", "asd", "qwe", NULL };
-      char * envp[] = { "USER=test", "HOME=/home/test", NULL };
-
-      runvfm("./forth64",
-             libf,
-             ": ALFA .\" ᚜do-beta-gamma᚛\" CR ;\n",
-             args,
-             envp,
-             "ALFA\n",
-             "hash"
-             );
-
-      return 0;
-  }
+  ,*/
 #+END_SRC
 
 * Tangling
@@ -1841,7 +1574,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 #+END_SRC
 
 #+NAME: assembly
-#+BEGIN_SRC asm :tangle src/src64/jonesforth64.s :noweb yes :exports code :padline no :comments none
+#+BEGIN_SRC asm :tangle jft.S :noweb yes :exports code :padline no :comments none
   <<flags>>
 
   <<macros>>
@@ -1874,7 +1607,7 @@ SYSCALL0, SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный си�
 
   <<data_stack_words>>
 
-  <<word_key>>
+  <<word_key_new>>
 
   <<word_emit>>
 
