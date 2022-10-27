@@ -492,13 +492,6 @@ defcode "DSP!",4,,DSPSTORE
     call _KEY
     push    %rax            #       # push-им возвращенный символ на стек
     NEXT                    #
-    .align 8
-currkey:
-    # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
-    .quad input_buffer
-bufftop:
-    # Хранит вершину буфера ввода (последние валидные данные + 1)
-    .quad input_buffer
 _KEY:                       # <--+
     mov     (currkey), %rbx #    |  # Берем указатель currkey в %rbx
     cmp     (bufftop), %rbx #    |  # (bufftop >= currkey)? - в буфере есть символы?
@@ -534,6 +527,14 @@ _KEY:                       # <--+
     xor     %rdi, %rdi              # param2: код возврата
     syscall                         # SYSCALL
     # --------------- EXIT
+    .data
+    .align 8
+currkey:
+    # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
+    .quad input_buffer
+bufftop:
+    # Хранит вершину буфера ввода (последние валидные данные + 1)
+    .quad input_buffer
 
 defcode "EMIT",4,,EMIT
     pop     %rax
@@ -1002,17 +1003,16 @@ DODOES:
 
 defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
 
-/*
-;; defcode "SHA256",6,,SHA256
-;;     pop     %rdi            # pop указатель на строку со стека данных в %rdi
-;;     sub     $32, %rsp       # выделяем место под хэш
-;;     mov     %rsp, %rax      # сохряняем указатель в %rax
-;;     push    %rsi            # сохраняем %rsi
-;;     mov     %rax, %rsi      # копируем указатель в %rsi
-;;     call    sha256          # вызываем sha256
-;;     pop     %rsi            # восстанавливаем %esi
-;;     NEXT                    # на стеке данных остается хэш
-*/
+defcode "SHA256",6,,SHA256
+    pop     %rdi            # pop указатель на строку со стека данных в %rdi
+    sub     $32, %rsp       # выделяем место под хэш
+    mov     %rsp, %rax      # сохряняем указатель в %rax
+    push    %rsi            # сохраняем %rsi
+    mov     %rax, %rsi      # копируем указатель в %rsi
+    call    sha256          # вызываем sha256
+    pop     %rsi            # восстанавливаем %esi
+    NEXT                    # на стеке данных остается хэш
+
 /*
 ;; defcode "SYSCALL3",8,,SYSCALL3
 ;;     pop     %eax            # Номер системного вызова (см. <asm/unistd.h>)
@@ -1102,9 +1102,6 @@ forth_asm_argv:
 
     .text
 
-    .globl  main
-    .type   main, @function
-main:
     .globl  forth_asm_start
     .type   forth_asm_start, @function
 forth_asm_start:
