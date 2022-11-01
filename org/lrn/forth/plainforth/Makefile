@@ -32,5 +32,5 @@ clean:
 	rm $(OBJ_ASM) $(OBJ_MAIN) $(TARGET)
 
 plain_asm:
-	gcc -nostdlib $(CFLAGS) -N -Wl,--build-id=none -o jft jft.S
+	gcc -nostdlib $(CFLAGS) -N -static-pie -Wl,--build-id=none -o jft jft.S
 	# strip -s -R -g -x jft
