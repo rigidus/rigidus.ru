@@ -33,4 +33,4 @@ clean:
 
 plain_asm:
 	gcc -nostdlib $(CFLAGS) -N -Wl,--build-id=none -o jft jft.S
-	strip -s -R -g -x jft
+	# strip -s -R -g -x jft
