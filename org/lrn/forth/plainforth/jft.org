@@ -25,9 +25,6 @@
 
 ** NEXT
 
-Теперь наш макрос ~NEXT~ будет делать то же самое, что и раньше но с увеличенным вдвое
-размером адреса:
-
 #+NAME: macro_next
 #+BEGIN_SRC asm
   .macro NEXT
@@ -38,21 +35,19 @@
 
 ** Return stack macroses
 
-Теперь используют 64-разрядные значения:
-
 #+NAME: macro_pushrsp
 #+BEGIN_SRC asm
   .macro PUSHRSP reg
-      lea     -wordsize(%rbp),%rbp   # декремент %rbp на 8
-      mov     \reg,(%rbp)     # push reg в стек возвратов
+      lea     -wordsize(%rbp),%rbp    # decrement %rbp by wordsize
+      mov     \reg,(%rbp)             # push reg to return stack
   .endm
 #+END_SRC
 
 #+NAME: macro_poprsp
 #+BEGIN_SRC asm
   .macro POPRSP reg
-      mov (%rbp),\reg         # pop вершину стека возвратов в reg
-      lea wordsize(%rbp),%rbp        # инкремент %rbp на 8
+      mov (%rbp),\reg                 # pop top return stack to reg
+      lea wordsize(%rbp),%rbp         # increment %rbp by wordsize
   .endm
 #+END_SRC
 
@@ -62,45 +57,43 @@
 #+BEGIN_SRC asm
       .set link,0             # init link (compile time variable)
   .macro defword name, namelen, flags=0, label
-      .align 8
+      .align wordsize
       .globl name_\label
   name_\label :
       .quad link              # link
       .set link,name_\label
-      .byte \flags+\namelen   # flags + байт длины
-      .ascii "\name"          # имя
-      .align 8                # выравнивание на 8-байтовую границу
+      .byte \flags+\namelen   # flags/len
+      .ascii "\name"
+      .align wordsize
       .globl \label
   \label :
-      .quad DOCOL             # codeword - указатель на функцию-интерпретатор
-      # дальше будут идти указатели на слова
+      .quad DOCOL             # codeword
+      # here will be pointers to words
   .endm
 #+END_SRC
 
 #+NAME: macro_defcode
 #+BEGIN_SRC asm
   .macro defcode name, namelen, flags=0, label
-      .align 8
+      .align wordsize
       .globl name_\label
   name_\label :
       .quad   link               # link
       .set    link,name_\label
-      .byte   \flags+\namelen    # flags + байт длины
-      .ascii  "\name"            # имя
-      .align  8                  # выравнивание на 4-х байтовую границу
+      .byte   \flags+\namelen    # flags/len
+      .ascii  "\name"
+      .align  wordsize
       .globl  \label
   \label :
       .quad   code_\label        # codeword
-      .align 8
+      .align wordsize
       .globl  code_\label
   code_\label :
-      # далее следует ассемблерный код
+      # here will be asm code
   .endm
 #+END_SRC
 
 ** Ассемблерная точка входа
-
-[TODO:gmm] Необходимо бэкпортить ~argv~ и ~argc~ в 32-разрядную версию.
 
 #+NAME: asm_entry
 #+BEGIN_SRC asm
@@ -136,8 +129,8 @@
       # Run interpret
       NEXT
   exit:
-      mov     $60, %rax               # sys_exit
-      mov     $0, %rdi                # retcode 0
+      mov     $60, %rax                       # sys_exit
+      mov     $0, %rdi                        # retcode 0
       syscall
 #+END_SRC
 
@@ -180,8 +173,8 @@
       NEXT
 
   defcode "OVER",4,,OVER
-      mov     8(%rsp), %rax   # взять второй от верха элемент стека
-      push    %rax            # и положить его копию сверху
+      mov     wordsize(%rsp), %rax    # взять второй от верха элемент стека
+      push    %rax                    # и положить его копию сверху
       NEXT
 
   defcode "ROT",3,,ROT
@@ -209,7 +202,7 @@
 
   defcode "2DUP",4,,TWODUP
       mov     (%rsp), %rax    # дублировать два верхних элемента на стеке
-      mov     8(%rsp), %rbx
+      mov     wordsize(%rsp), %rbx
       push    %rbx
       push    %rax
       NEXT
@@ -532,12 +525,12 @@ INVERT могут функционировать одновременно как
 
   # C@C! - это полезный примитив для копирования байт
   defcode "C@C!",4,,CCOPY
-      mov     8(%rsp), %rbx   # адрес источника
+      mov     wordsize(%rsp), %rbx   # адрес источника
       movb    (%rbx), %al     # получаем байт из источника
       pop     %rdi            # адрес приемника
       stosb                   # копируем байт в приемник
       push    %rdi            # увеличиваем адрес приемника
-      incq    8(%rsp)         # увеличиваем адрес источника
+      incq    wordsize(%rsp)         # увеличиваем адрес источника
       NEXT
 
   # CMOVE - операция копирования блока байтов
@@ -560,7 +553,7 @@ INVERT могут функционировать одновременно как
       push    var_\name-v0(%r15)
       NEXT
       .align wordsize
-      var_\name :
+  var_\name :
       .quad \initial
   .endm
 #+END_SRC
@@ -652,8 +645,6 @@ INVERT могут функционировать одновременно как
 
 ** DOCOL - интерпретатор
 
-Почти не изменился:
-
 #+NAME: asm_docol
 #+BEGIN_SRC asm
   ## DOCOL
@@ -693,7 +684,7 @@ INVERT могут функционировать одновременно как
       NEXT
 
   defcode "RDROP",5,,RDROP
-      add     $8, %rbp
+      add     $wordsize, %rbp
       NEXT
 #+END_SRC
 
@@ -755,7 +746,7 @@ INVERT могут функционировать одновременно как
       syscall                         # SYSCALL
       # --------------- EXIT
       .data
-      .align 8
+      .align wordsize
   currkey:
       # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
       .quad input_buffer
@@ -770,7 +761,7 @@ INVERT могут функционировать одновременно как
       call _KEY
       push    %rax            #       # push-им возвращенный символ на стек
       NEXT                    #
-      .align 8
+      .align wordsize
   currkey:
       # Хранит смещение на текущее положение в буфере ввода (следующий символ будет прочитан по нему)
       .quad input_buffer
@@ -1014,7 +1005,7 @@ INVERT могут функционировать одновременно как
       NEXT
   _TCFA:
       xor     %rax, %rax
-      add     $8, %rdi        # Пропускаем LINK - указатель на предыдущее слово
+      add     $wordsize, %rdi # Пропускаем LINK - указатель на предыдущее слово
       movb    (%rdi), %al     # Загружаем flags+len в %al
       inc     %rdi            # Пропускаем flags+len байт
       andb    $F_LENMASK, %al # Маскируем, чтобы получить длину имени, без флагов
@@ -1123,7 +1114,7 @@ INVERT могут функционировать одновременно как
 #+BEGIN_SRC asm
   defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
       mov     (var_LATEST), %rdi  # LATEST слово в %rdi.
-      add     $8, %rdi            # Теперь %rdi указывает на байт name/flags
+      add     $wordsize, %rdi     # Теперь %rdi указывает на байт name/flags
       xorb    $F_IMMED, (%rdi)    # Переключить the F_IMMED бит.
       NEXT
 #+END_SRC
@@ -1134,7 +1125,7 @@ INVERT могут функционировать одновременно как
 #+BEGIN_SRC asm
   defcode "HIDDEN",6,,HIDDEN
       pop     %rdi                # Указатель на слово в %rdi
-      add     $8, %rdi            # Теперь указывает на байт length/flags.
+      add     $wordsize, %rdi     # Теперь указывает на байт length/flags.
       xor     $F_HIDDEN, (%rdi)   # Переключаем HIDDEN бит.
       NEXT
 
@@ -1229,7 +1220,7 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
   #     # Это словарное слово   #        |  # ?-Да. Найдено совпадающее слово. Продолжаем.
   #     # Это IMMEDIATE-слово?  #        |  #
   #     mov     %rax, %rdi      #        |  # %edi = указатель на слово
-  #     movb    8(%rdi), %al    #        |  # %al = flags+length.
+  #     movb    wordsize(%rdi), %al #    |  # %al = flags+length.
   #     push    %rax            #        |  # Сохраним его (flags+length) ненадолго
   #     call    _TCFA           #        |  # Преобразуем entry (в %rdi) в указатель на codeword
   #     pop     %rax            #        |  # Восстановим flags+length
@@ -1324,7 +1315,7 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
   # errmsgend:
   # errmsgnl:
   #     .ascii "\n"
-  #     .align 8
+  #     .align wordsize
   # interpret_is_lit:
   #     .quad 0                  # Флаг литерала
 #+END_SRC
