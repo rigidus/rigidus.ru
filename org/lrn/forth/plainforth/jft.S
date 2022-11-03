@@ -15,10 +15,16 @@ ref:
 ## Macro
 
 .macro NEXT
-    lodsq
-    add (%rax), %rax
-    # jmp *(%rax)
-    jmp *%rax
+    # %rsi - absolute forth instruction pointer
+    lods (%rsi),%rax                # %rax = (%rsi) , %rsi++
+    # now %rax relatively points to the codeword callee, let's get an absolute address
+    lea  (%r15, %rax), %rax
+    # now %rax absolutely points to the codeword callee, let's get relative codeword
+    mov  (%rax), %r13
+    # now %r13 contains the relative codeword callee, let's get the absolute address of the codeword
+    lea  (%r15, %r13), %r13
+    # jmp to indirect absolute addr, %rax contains absolute pointer to the codeword callee
+    jmp  *%r13
 .endm
 
 .macro PUSHRSP reg
@@ -32,39 +38,34 @@ ref:
 .endm
 
     .set link,ref             # init link (compile time variable)
+
 .macro defword name, namelen, flags=0, label
     .align wordsize
     .globl name_\label
 name_\label :
-/*
-    .quad link              # link
+    .quad name_\label - v0    # relative link
     .set link,name_\label
-    .byte \flags+\namelen   # flags/len
+    .byte \flags+\namelen     # flags/len
     .ascii "\name"
     .align wordsize
     .globl \label
-*/
 \label :
-/*
-    #.quad DOCOL      # codeword
-    .quad  DOCOL-v0-8
+    .quad  DOCOL-v0           # relative DOCOL addr as codeword
     # here will be pointers to words
-*/
 .endm
 
 .macro defcode name, namelen, flags=0, label
     .align wordsize
     .globl name_\label
 name_\label :
-    .quad   name_\label - link  # relative link
+    .quad   name_\label - v0  # relative link
     .set    link,name_\label
-    .byte   \flags+\namelen    # flags/len
+    .byte   \flags+\namelen   # flags/len
     .ascii  "\name"
     .align  wordsize
     .globl  \label
 \label :
-    #.quad   code_\label        # codeword
-    .quad   code_\label-v0      # TODO:HERE relative codeword
+    .quad   code_\label-v0    # relative codeword
     .align  wordsize
     .globl  code_\label
 code_\label :
@@ -89,8 +90,9 @@ var_\name :
 ## Build-in variables
 /*
 defvar "STATE",5,,STATE
-
+*/
 defvar "HERE",4,,HERE
+/*
 # defvar "LATEST",6,,LATEST,name_SYSCALL0  # SYSCALL0 должен быть последним встроенным словом
 */
 defvar "S0",2,,SZ
@@ -128,12 +130,13 @@ forth_entry:
 
     lea     return_stack_top-v0(%r15), %rbp # set return stack
     lea     data_buffer-v0(%r15), %rax
-    # mov     %rax, var_HERE-v0(%r15)         # set HERE to DATA BUFFER
+    mov     %rax, var_HERE-v0(%r15)         # set HERE to DATA BUFFER
 
-    lea     QUIT-v0(%r15), %rax             # lea TARGET
+    mov     $QUIT-v0, %rax                  # lea TARGET
     mov     %rax, cold_start-v0(%r15)       # set TARGET addr to cold_start
-    lea     cold_start-v0(%r15), %rsi       # init IP
 
+    lea     cold_start-v0(%r15), %rsi       # %rsi points to cold_start
+                                            # cold_start points to TARGET
     # Run interpret
     NEXT
 exit:
@@ -190,12 +193,11 @@ defconst "WORDSIZE",8,,WORDSIZE,$wordsize
 
     .align wordsize
 DOCOL:
-    PUSHRSP %rsi                    # save %rsi to return stack
-    lea    wordsize(%rax), %rsi     # %rsi now pointed to param-field
-    # or another words
-    # add   $wordsize, %rax
-    # mov   %rax, %rsi
-    NEXT                            # do NEXT
+    # after NEXT %eax pointed to codeword of current (callee) word
+    # and %esi pointed to next ceall after prevous (caller) word
+    PUSHRSP %rsi                 # save %rsi to return stack
+    lea    wordsize(%rax), %rsi  # %rsi = %rax++ | now %rsi pointed to param-field callee word
+    NEXT
 /*
 ## RetStack
 
@@ -441,11 +443,11 @@ defcode "INTERPRET",9,,INTERPRET
 #     .align wordsize
 # interpret_is_lit:
 #     .quad 0                  # Флаг литерала
-
+*/
 defcode "BRANCH",6,,BRANCH
     add     (%rsi),%rsi     # добавить offset к instruction pointer
     NEXT
-
+/*
 defcode "0BRANCH",7,,ZBRANCH
     pop     %rax
     test    %rax, %rax      # Вершина стека равна нулю?
@@ -456,15 +458,14 @@ defcode "0BRANCH",7,,ZBRANCH
 # QUIT не должна возвращаться (те есть вызывать EXIT).
 defword "QUIT",4,,QUIT
     # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
-#    .quad RZ
+    .quad RZ-v0
     # Установить значение, лежащее на стеке параметров, как новое значение вершины стека возвратов
-#    .quad RSPSTORE       # Это очищает стек возвратов
-    /*
-    # Запустить интерпретатор команд                  <------+
-    .quad INTERPRET      # Интерпретировать следующее слово  |
-    # И навсегда зациклиться                                 |
-    .quad BRANCH,-16     # -----------------------------------
-    */
+    .quad RSPSTORE-v0       # Это очищает стек возвратов
+    # Запустить интерпретатор команд                  <---------+
+    .quad INTERPRET-v0      # Интерпретировать следующее слово  |
+    # И навсегда зациклиться                                    |
+    .quad BRANCH,-16     # -------------------------------------+
+
 
 
 

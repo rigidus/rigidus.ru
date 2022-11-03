@@ -24,16 +24,6 @@
 
 #+END_SRC
 
-** NEXT
-
-#+NAME: macro_next
-#+BEGIN_SRC asm
-  .macro NEXT
-      lodsq
-      jmp *(%rax)
-  .endm
-#+END_SRC
-
 ** Return stack macroses
 
 #+NAME: macro_pushrsp
@@ -127,6 +117,7 @@
       lea     return_stack_top-v0(%r15), %rbp # set return stack
       lea     data_buffer-v0(%r15), %rax
       mov     %rax, var_HERE-v0(%r15)         # set HERE to DATA BUFFER
+
       lea     QUIT-v0(%r15), %rax             # lea TARGET
       mov     %rax, cold_start-v0(%r15)       # set TARGET addr to cold_start
       lea     cold_start-v0(%r15), %rsi       # init IP
@@ -153,6 +144,131 @@
       # И навсегда зациклиться                                 |
       .quad BRANCH,-16     # -----------------------------------
 #+END_SRC
+
+** Relative Indirect Threaded Code
+
+<...>
+
+Давайте посмотрим, как QUADRUPLE и DOUBLE действительно выглядят в Forth:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-rel-05.png
+  ː QUADRUPLE DOUBLE DOUBLE ;
+  +---------------+
+  | link offset   |
+  +---------------+
+  |9|Q|U|A|D|R|U|P|
+  +---------------+          ː DOUBLE DUP + ;
+  |L|E|0|0|0|0|0|0|          +---------------+
+  +===============+          | link offset   |
+  | addr of DOCOL |          +---------------+
+  +===============+          |5|D|O|U|B|L|E|0|          +---------------+
+  | addr of DOUBLE+--------> +===============+          | link offset   |
+  +---------------+          | codeword      |          +---------------+
+  | addr of DOUBLE|          +===============+          |3|D|U|P|0|0|0|0|
+  +---------------+          | адрес DUP     +--------> +===============+
+  | addr of EXIT  |          +---------------+          | codeword      +---+
+  +---------------+          | адрес +       +----+     +===============+   |
+                       %rsi->+---------------+    |     | asmcode of DUP|<--+
+                             | адрес EXIT    |    |     |    ...        |
+                             +---------------+    |     | NEXT          |
+                                                  |     +---------------+
+                                                  |
+                                                  +---> +---------------+
+                                                        | link offset   |
+                                                        +---------------+
+                                                        |1|+|0|0|0|0|0|0|
+                                                        +===============+
+                                                        | codeword      +---+
+                                                        +===============+   |
+                                                        | asmcode of +  |<--+
+                                                        |    ...        |
+                                                        | NEXT          |
+                                                        +---------------+
+#+END_SRC
+
+<...>
+
+Все ~addr~ являются относительными, это значит, что они отсчитываются от метки v0. В процессе работы этот адрес лежит в регистре %r15, чтобы относительно него адресоваться.
+
+Ассемблерный код для DUP в конце делает ~NEXT~. Это:
+- читает относительный адрес ~+~ в ~%rax~, сдвигая ~%rsi~ на размер слова.
+- преобразует его в абсолютный адрес, прибавляя ~%r15~
+
+ : теперь ~%rax~ указывает на ~codeword~ для кода ~+~
+- увеличивает ~%rsi~ на wordsize
+- выполняет ~jmp~ на содержимое того адреса, который лежит в ~%rax~ →
+  т.е. ~jmp~ по адресу, лежащему в ~codeword~ слова ~+~, → т.е. ~jmp~ на
+  ассемблерный код, реализующий ~+~.
+
+#+NAME: macro_next
+#+BEGIN_SRC asm
+  .macro NEXT
+      # %rsi - absolute instruction pointer
+      lodsq               # %rax = (%rsi) , %rsi++
+      # now %rax pointed to (relative) DOCOL callee
+      # make %rax absolute addr
+      add %r15, %rax
+
+      lodsq
+      jmp *(%rax)
+  .endm
+#+END_SRC
+
+
+Чтобы это было совершенно ясно, посмотрим, как работает DOCOL при прыжке с QUADRUPLE в
+DOUBLE:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-rel-07.png
+  name_QUADRUPLE: +---------------+
+                  | link offset   |
+                  +---------------+
+                  |#|Q|U|A|D|R|U|P|
+                  +---------------+
+                  |L|E|0|0|0|0|0|0|             +---------------+
+       QUADRUPLE: +---------------+             | link offset   |
+                  | addr of DOCOL | (codeword)  +---------------+
+                  +---------------+             |#|D|O|U|B|L|E|0|
+                  | addr of DOUBLE+----%eax---->+---------------+
+          %esi--->+---------------+             | addr of DOCOL | (codeword)
+                  | addr of DOUBLE|             +---------------+
+                  +---------------+             | addr of DUP   | (param-field)
+                  | addr of EXIT  |             +---------------+
+                  +---------------+             | ...           |
+                                                +---------------+
+#+END_SRC
+
+#+NAME: asm_docol
+#+BEGIN_SRC asm
+  ## DOCOL
+
+      .align wordsize
+  DOCOL:
+      PUSHRSP %rsi                    # save %rsi to return stack
+      lea    wordsize(%rax), %rsi     # %rsi now pointed to param-field
+      # or another words
+      # add   $wordsize, %rax
+      # mov   %rax, %rsi
+      NEXT                            # do NEXT
+#+END_SRC
+
+Во-первых, вызов DOUBLE вызывает DOCOL (~codeword~ DOUBLE). DOCOL делает следующее:
+он push-ит старый ~%esi~ на стек возвратов. ~%eax~ указывает на ~codeword~ DOUBLE,
+поэтому мы просто добавляем к нему 4, чтобы получить наш новый ~%esi~:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-08.png
+                   QUADRUPLE
+                  +------------------+
+                  | codeword         |
+                  +------------------+           DOUBLE
+                  | адрес DOUBLE     +--%eax--->+------------------------+
+  значение на  -->+------------------+          | адрес DOCOL (codeword) |
+  вершине стека   | адрес DOUBLE     |  %esi--->+------------------------+
+  возвратов       +------------------+          | адрес DUP              |
+  указывает сюда  | адрес EXIT       |          +------------------------+
+                  +------------------+          | ...                    |
+                                                +------------------------+
+#+END_SRC
+
 
 ** COMMENT Базовые примитивы
 
@@ -645,22 +761,6 @@ INVERT могут функционировать одновременно как
   defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
 
   defconst "WORDSIZE",8,,WORDSIZE,$wordsize
-#+END_SRC
-
-** DOCOL - интерпретатор
-
-#+NAME: asm_docol
-#+BEGIN_SRC asm
-  ## DOCOL
-
-      .align wordsize
-  DOCOL:
-      PUSHRSP %rsi                    # save %rsi to return stack
-      lea    wordsize(%rax), %rsi     # %rsi now pointed to param-field
-      # or another words
-      # add   $wordsize, %rax
-      # mov   %rax, %rsi
-      NEXT                            # do NEXT
 #+END_SRC
 
 ** Стек возвратов
