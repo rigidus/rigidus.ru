@@ -83,7 +83,6 @@ var_\name :
     NEXT
 .endm
 
-
 ## Assembler entry point
 
     .globl  _start
@@ -108,12 +107,12 @@ cold_start:
     .quad   0
 
     ## Build-in variables
-
-defvar "STATE",5,,STATE
-defvar "HERE",4,,HERE
-defvar "LATEST",6,,LATEST,name_SYSCALL0-v0  # SYSCALL0 должен быть последним встроенным словом
-defvar "S0",2,,SZ
-defvar "BASE",4,,BASE,10
+    
+    defvar "STATE",5,,STATE
+    defvar "HERE",4,,HERE
+    defvar "LATEST",6,,LATEST,name_SYSCALL0-v0 # SYSCALL0 должен быть последним встроенным словом
+    defvar "S0",2,,SZ
+    defvar "BASE",4,,BASE,10
 
     ## Forth Entry
 
@@ -143,7 +142,6 @@ exit:
     mov     $60, %rax                       # sys_exit
     mov     $0, %rdi                        # retcode 0
     syscall
-
 
 ## Build-in constants
 
@@ -192,6 +190,7 @@ defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
 
 defconst "WORDSIZE",8,,WORDSIZE,$wordsize
 */
+
 ## DOCOL
 
     .align wordsize
@@ -201,9 +200,14 @@ DOCOL:
     PUSHRSP %rsi                 # save %rsi to return stack
     lea    wordsize(%rax), %rsi  # %rsi = %rax++ | now %rsi pointed to param-field callee word
     NEXT
-/*
-## RetStack
 
+    .align wordsize
+defcode "EXIT",4,,EXIT
+    POPRSP  %rsi            # Восстановить указатель из стека возвратов в %rsi
+    NEXT                    # Сделать NEXT
+
+## RetStack
+/*
 defcode ">R",2,,TOR
     pop     %rax            # pop со стека данных в %rax
     PUSHRSP %rax            # push %rax на стек возвратов
@@ -227,8 +231,14 @@ defcode "RDROP",5,,RDROP
     NEXT
 */
 
-
-
+defcode "LIT",3,,LIT
+    # %rsi указывает на следующую команду, но в этом случае это указатель на следующий
+    # литерал, представляющий собой 8-байтовое значение. Получение этого литерала в %rax
+    # и инкремент %rsi на x86 -  это удобная однобайтовая инструкция! (см. NEXT macro)
+    lods (%rsi),%rax                # %rax = (%rsi) , %rsi++
+    # push literal в стек
+    push %rax
+    NEXT
 
 defcode "KEY",3,,KEY
     call _KEY
@@ -277,7 +287,6 @@ bufftop:
     # Хранит вершину буфера ввода (последние валидные данные + 1)
     .quad input_buffer-v0
 
-
 defcode "WORD",4,,WORD
     call    _WORD
     push    %rdi            # push base address
@@ -318,17 +327,6 @@ _WORD:
     # Максимальная длина слова - 32 символа.
 word_buffer:
     .space 32
-
-
-defcode "LIT",3,,LIT
-    # %rsi указывает на следующую команду, но в этом случае это указатель на следующий
-    # литерал, представляющий собой 8-байтовое значение. Получение этого литерала в %rax
-    # и инкремент %rsi на x86 -  это удобная однобайтовая инструкция! (см. NEXT macro)
-    lods (%rsi),%rax                # %rax = (%rsi) , %rsi++
-    # push literal в стек
-    push %rax
-    NEXT
-
 
 defcode "NUMBER",6,,NUMBER
     pop     %rcx            # length of string
@@ -390,8 +388,6 @@ _NUMBER:
 5:  #                     <---+
     ret
 
-
-
 defcode "FIND",4,,FIND
     pop     %rcx            # %rcx = длина строки
     pop     %rdi            # %rdi = адрес строки (relative?absolute)
@@ -400,7 +396,7 @@ defcode "FIND",4,,FIND
     NEXT
 _FIND:
     push    %rsi            # Сохраним %rsi - так мы сможем использовать этот
-    # регистр для сравнения строк командой CMPSB
+    #                       # регистр для сравнения строк командой CMPSB
     # Здесь мы начинаем искать в словаре это слово от конца к началу словаря
     mov  var_LATEST-v0(%r15), %rdx # теперь %rdx указывает (relative) на последнее слово в словаре
 1:  #                   <------------+
@@ -439,7 +435,6 @@ _FIND:
     xor     %rax, %rax      # Возвратим ноль в %rax
     ret                     # Возврат
 
-
 defcode ">CFA",4,,TCFA
     pop     %rdi
     call    _TCFA
@@ -456,17 +451,15 @@ _TCFA:
     and     $~(wordsize-1), %rdi
     ret
 
-
 defcode ",",1,,COMMA
     pop     %rax      # Взять со стека данных в %rax то значение, которое будем вкомпиливать
     call    _COMMA
     NEXT
 _COMMA:
-    mov     var_HERE-v0(%r15), %rdi  # получить указатель HERE в %rdi
-    stosq                     # Сохраниь по нему значение из %rax
+    lea     var_HERE-v0(%r15), %rdi  # получить указатель HERE в %rdi
+    stosq                            # Сохраниь по нему значение из %rax
     mov     %rdi, var_HERE-v0(%r15)  # Обновить HERE (используя инкремент, сделанный STOSQ)
     ret
-
 
 defcode "INTERPRET",9,,INTERPRET
     call    _WORD           # Возвращает %rcx = длину, %rdi = указатель на слово.
@@ -586,14 +579,14 @@ interpret_is_lit:
 defcode "BRANCH",6,,BRANCH
     add     (%rsi),%rsi     # добавить offset к instruction pointer
     NEXT
-/*
+
 defcode "0BRANCH",7,,ZBRANCH
     pop     %rax
     test    %rax, %rax      # Вершина стека равна нулю?
     jz      code_BRANCH     # Если да, вернуться назад к функции BRANCH выше
     lodsq                   # иначе пропустить смещение
     NEXT
-*/
+
 # QUIT не должна возвращаться (те есть вызывать EXIT).
 defword "QUIT",4,,QUIT
     # Положить константу RZ (начальное значение стека возвратов) на стек параметров.
@@ -605,10 +598,99 @@ defword "QUIT",4,,QUIT
     # И навсегда зациклиться                                    |
     .quad BRANCH-v0,-16     # ----------------------------------+
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /*
+defcode "EMIT",4,,EMIT
+    pop     %rax
+    call    _EMIT
+    NEXT
+_EMIT:
+    push    %rsi            #    |  #
+    push    %rdi            #    |  #
+    mov     $stdout, %rdi           # param1: stdout в $rdi
+    mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
+    mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
+    mov     $1, %rdx                # param3: длина
+    mov     $sys_write, %rax        # SYSCALL write
+    syscall
+    pop     %rdi            #    |
+    pop     %rsi            #    |
+    ret
+
+    .data           # NB: проще записать в .data section
+emit_scratch:
+    .space 1        # Место для байта, который выводит EMIT
+*/
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Buf
+
+    .set RETURN_STACK_SIZE,8192
+    .align 4096
+return_stack:
+    .space RETURN_STACK_SIZE
+return_stack_top:           # Initial top of return stack.
+
+    .set INPUT_BUFFER_SIZE,4096
+    .align 4096
+input_buffer:
+    .space INPUT_BUFFER_SIZE
+
+    # Data buffer <- HERE
+    .set INITIAL_DATA_SEGMENT_SIZE,65536
+    .align 4096
+data_buffer:
+    .space INITIAL_DATA_SEGMENT_SIZE
+
+/*
 defcode "SYSCALL3",8,,SYSCALL3
     mov %rsi,%r10 #save %rsi
     mov %rdi,%r9 #save %rdi
@@ -651,22 +733,3 @@ defcode "SYSCALL0",8,,SYSCALL0
     syscall
     push %rax       # Result (negative for -errno)
     NEXT
-
-## Buf
-
-    .set RETURN_STACK_SIZE,8192
-    .align 4096
-return_stack:
-    .space RETURN_STACK_SIZE
-return_stack_top:           # Initial top of return stack.
-
-    .set INPUT_BUFFER_SIZE,4096
-    .align 4096
-input_buffer:
-    .space INPUT_BUFFER_SIZE
-
-    # Data buffer <- HERE
-    .set INITIAL_DATA_SEGMENT_SIZE,65536
-    .align 4096
-data_buffer:
-    .space INITIAL_DATA_SEGMENT_SIZE
