@@ -1,8 +1,8 @@
 SHELL = /bin/sh
 
 CC = gcc
-CFLAGS  += -m64 -static
-LDFLAGS += -m64 -static
+CFLAGS  += -m64 -static -g
+LDFLAGS += -m64 -static -g
 
 TARGET = jft
 
