@@ -93,7 +93,7 @@ _start:
     .type   forth_asm_start, @function
     .align  8
 forth_asm_start:
-    nop             # short call занимает 8 байт поэтому, чтобы нужны nops
+    nop             # short call занимает 5 байт поэтому, чтобы нужны nops
     nop             # чтобы v0-адрес команды следующей за call был выровнен на 8
     nop             # и TCFA работал правильно
     call    forth_entry
@@ -149,47 +149,11 @@ exit:
 
 defconst "VERSION",7,,VERSION,$JONES_VERSION
 defconst "R0",2,,RZ,return_stack_top-v0(%r15)
-/*
-defconst "DOCOL",5,,__DOCOL,DOCOL-v0(%r15)
-defconst "F_IMMED",7,,__F_IMMED,F_IMMED
-defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
-defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
-*/
 .set sys_exit,60
 .set sys_read,0
 .set sys_write,1
-/*
-.set sys_open,5
-.set sys_close,6
-.set sys_creat,8
-.set sys_unlink,0xA
-.set sys_lseek,0x13
-.set sys_truncate,0x5C
-*/
 .set stdin,0
-/*
-.set stdout,1
-*/
 .set stderr,2
-/*
-defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
-defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
-defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
-defconst "SYS_READ",8,,SYS_READ,$sys_read
-defconst "SYS_WRITE",9,,SYS_WRITE,$sys_write
-defconst "SYS_CREAT",9,,SYS_CREAT,$sys_creat
-
-defconst "O_RDONLY",8,,__O_RDONLY,$0
-defconst "O_WRONLY",8,,__O_WRONLY,$1
-defconst "O_RDWR",6,,__O_RDWR,$2
-defconst "O_CREAT",7,,__O_CREAT,$0100
-defconst "O_EXCL",6,,__O_EXCL,$0200
-defconst "O_TRUNC",7,,__O_TRUNC,$01000
-defconst "O_APPEND",8,,__O_APPEND,$02000
-defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
-
-defconst "WORDSIZE",8,,WORDSIZE,$wordsize
-*/
 
 ## DOCOL
 
@@ -207,29 +171,9 @@ defcode "EXIT",4,,EXIT
     NEXT                    # Сделать NEXT
 
 ## RetStack
-/*
-defcode ">R",2,,TOR
-    pop     %rax            # pop со стека данных в %rax
-    PUSHRSP %rax            # push %rax на стек возвратов
-    NEXT
-
-defcode "R>",2,,FROMR
-    POPRSP  %rax            # pop со стека возвратов в %rax
-    push    %rax            # push %rax на стек параметров
-    NEXT
-
-defcode "RSP@",4,,RSPFETCH
-    push    %rbp
-    NEXT
-*/
 defcode "RSP!",4,,RSPSTORE
     pop     %rbp
     NEXT
-/*
-defcode "RDROP",5,,RDROP
-    add     $wordsize, %rbp
-    NEXT
-*/
 
 defcode "LIT",3,,LIT
     # %rsi указывает на следующую команду, но в этом случае это указатель на следующий
@@ -600,6 +544,9 @@ defword "QUIT",4,,QUIT
 
 
 
+  
+
+  
 
 
 
@@ -618,28 +565,10 @@ defword "QUIT",4,,QUIT
 
 
 
-/*
-defcode "EMIT",4,,EMIT
-    pop     %rax
-    call    _EMIT
-    NEXT
-_EMIT:
-    push    %rsi            #    |  #
-    push    %rdi            #    |  #
-    mov     $stdout, %rdi           # param1: stdout в $rdi
-    mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
-    mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
-    mov     $1, %rdx                # param3: длина
-    mov     $sys_write, %rax        # SYSCALL write
-    syscall
-    pop     %rdi            #    |
-    pop     %rsi            #    |
-    ret
 
-    .data           # NB: проще записать в .data section
-emit_scratch:
-    .space 1        # Место для байта, который выводит EMIT
-*/
+
+
+
 
 
 
@@ -690,43 +619,6 @@ input_buffer:
 data_buffer:
     .space INITIAL_DATA_SEGMENT_SIZE
 
-/*
-defcode "SYSCALL3",8,,SYSCALL3
-    mov %rsi,%r10 #save %rsi
-    mov %rdi,%r9 #save %rdi
-    pop %rax        # System call number (see <asm/unistd.h>)
-    pop %rdi        # First parameter.
-    pop %rsi        # Second parameter
-    pop %rdx        # Third parameter
-    syscall
-    push %rax       # Result (negative for -errno)
-    mov %r10,%rsi
-    mov %r9,%rdi
-    NEXT
-
-defcode "SYSCALL2",8,,SYSCALL2
-    mov %rsi,%r10 #save %rsi
-    mov %rdi,%r9 #save %rdi
-    pop %rax        # System call number (see <asm/unistd.h>)
-    pop %rdi        # First parameter.
-    pop %rsi        # Second parameter
-    syscall
-    push %rax       # Result (negative for -errno)
-    mov %r10,%rsi
-    mov %r9,%rdi
-    NEXT
-
-defcode "SYSCALL1",8,,SYSCALL1
-    mov %rsi,%r10 #save %rsi
-    mov %rdi,%r9 #save %rdi
-    pop %rax        # System call number (see <asm/unistd.h>)
-    pop %rdi        # First parameter.
-    syscall
-    push %rax       # Result (negative for -errno)
-    mov %r10,%rsi
-    mov %r9,%rdi
-    NEXT
-*/
 
 defcode "SYSCALL0",8,,SYSCALL0
     pop %rax        # System call number (see <asm/unistd.h>)
