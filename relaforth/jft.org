@@ -1,6 +1,6 @@
 #+STARTUP: showall indent hidestars
 
-* Minimap setup
+* Base
 ** Return stack macroses
 
 #+NAME: macro_pushrsp
@@ -248,7 +248,7 @@ DOUBLE:
 он push-ит старый ~%esi~ на стек возвратов. ~%eax~ указывает на ~codeword~ DOUBLE,
 поэтому мы просто добавляем к нему 4, чтобы получить наш новый ~%esi~:
 
-#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-08.png
+#+BEGIN_SRC ditaa :file ../../../img/forth-rel-08.png
                    QUADRUPLE
                   +------------------+
                   | codeword         |
@@ -579,6 +579,8 @@ DOUBLE:
 
 ** TCFA
 
+Используется в INTERPRET
+
 #+NAME: word_tcfa
 #+BEGIN_SRC asm
   defcode ">CFA",4,,TCFA
@@ -599,6 +601,26 @@ DOUBLE:
 #+END_SRC
 
 ** Comma
+
+Используется в INTERPRET
+
+добавляет 64-битное целое к пользовательской памяти, на которое указывает HERE, а потом добавляет 8 к HERE. Таким образом, действие ~ , ~ (COMMA) выглядит так:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-rel-26.png
+                              предыдущее значение HERE--+
+                                                        |
+                                                        V
+  +---------+---+---+---+---+---+---+---+---+-=---------+------+
+  | LINK    | 6 | D | O | U | B | L | E | 0 |           | DATA |
+  +---------+---+---+---+---+---+---+---+---+-=---------+------+
+             len                         pad                   ^
+                                                               |
+                                        новое значение HERE ---+
+#+END_SRC
+
+DATA - любое значение, которое лежит на вершине стека
+
+~ , ~ (COMMA) является довольно фундаментальной операцией при компиляции. Оно используется для добавления указателей на ~codeword~-ы дочерних слов в текущее слово, которое компилируется.
 
 #+NAME: word_comma
 #+BEGIN_SRC asm
@@ -795,7 +817,7 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
       .space INITIAL_DATA_SEGMENT_SIZE
 #+END_SRC
 
-* Extension setup
+* Extension
 ** Emit
 
 #+NAME: word_emit
@@ -1254,6 +1276,201 @@ CHAR помещает код ASCII первого символа следующ�
       NEXT
 #+END_SRC
 
+* Compilation
+
+Теперь мы поговорим о том, как Forth компилирует слова. Напомним, что определение слова
+выглядит следующим образом:
+
+#+BEGIN_SRC forth
+  : DOUBLE DUP + ;
+#+END_SRC
+
+и мы должны превратить это в:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-18.png
+       +---> указатель на предыдущее слово
+       |
+     +-+-------+---+---+---+---+---+---+---+---+------------+------------+------------+------------+
+     | LINK    | 6 | D | O | U | B | L | E | 0 | DOCOL      | DUP        | +          | EXIT       |
+     +---------+---+---+---+---+---+---+---+---+------------+--+---------+------------+------------+
+       ^        len                         pad  codeword      |
+       |                                                       +--> указатель на codeword DUP
+       +---- LATEST указывает сюда
+#+END_SRC
+
+<...>
+
+** LBRAC and RBAC
+
+Наши определения ~:~ (COLON) и ~;~ (SEMICOLON) необходимо будет переключать в *режим
+компиляции* и из него.
+
+Глобальная переменная STATE определяет текущий режим (~немедленный~ или ~режим
+компиляции~) и, изменяя эту переменную, мы можем переключаться между этими двумя
+режимами.
+
+#+NAME: word_bracs
+#+BEGIN_SRC asm
+  defcode "[",1,F_IMMED,LBRAC
+      xor     %rax, %rax
+      mov     %rax, var_STATE-v0(%r15)   # Установить STATE в 0
+
+      NEXT
+
+  defcode "]",1,,RBRAC
+      movq    $1, var_STATE-v0(%r15)     # Установить STATE в 1
+      NEXT
+#+END_SRC
+
+** HIDDEN
+
+#+NAME: word_hidden
+#+BEGIN_SRC asm
+  defcode "HIDDEN",6,,HIDDEN
+      pop     %rdi                # Указатель на слово в %rdi
+      add     $wordsize, %rdi     # Теперь указывает на байт length/flags.
+      mov     F_HIDDEN-v0(%r15), %eax
+      xor     %eax, (%rdi)        # Переключаем HIDDEN бит.
+      NEXT
+
+  defword "HIDE",4,,HIDE
+      .quad    WORD-v0            # Получаем слово (ищущее за HIDE).
+      .quad    FIND-v0            # Ищем его в словаре
+      .quad    HIDDEN-v0          # Устанавливаем F_HIDDEN флаг.
+      .quad    EXIT-v0            # Выходим
+#+END_SRC
+
+** CREATE
+
+<...>
+
+Функция: (COLON) может быть сделана немного более общей,
+если написать ее в двух частях. Первая часть, называемая CREATE, создает только
+заголовок:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-rel-24.png
+              HERE обновлена до этой точки--+
+                                            |
+                                            V
+  +---------+---+---+---+---+---+---+---+---+
+  | LINK    | 6 | D | O | U | B | L | E | 0 |
+  +---------+---+---+---+---+---+---+---+---+
+             len                         pad
+#+END_SRC
+
+
+#+NAME: word_create
+#+BEGIN_SRC asm
+  defcode "CREATE",6,,CREATE
+
+      # Получаем length и address имени из стека данных
+      pop     %rcx            # %rcx = length
+      pop     %rbx            # %rbx = address
+
+      # Формируем указатель LINK
+      lea     var_HERE-v0(%r15), %rdi    # теперь %rdi  указывает на заголовок
+      lea     var_LATEST-v0(%r15), %rax  # теперь %rdi  указывает на заголовок
+                                         # Получаем указатель на последнее слово -
+                                         # - это LINK создаваемого слова
+      stosq                              # и сохраняем его в формируемое слово
+      # Формируем Байт длины и имя слова
+      mov     %cl,%al         # Получаем длину
+      stosb                   # Сохраняем length/flags байт.
+      push    %rsi            # Ненадолго сохраним %rsi
+      mov     %rbx, %rsi      # в %rsi теперь адрес начала имени
+      rep     movsb           # Копируем имя слова
+      pop     %rsi            # Восстановим %rsi
+      add     $(wordsize-1), %rdi        # Вычислим выравнивание
+      and     $~(wordsize-1), %rdi
+
+      # Обновим LATEST и HERE.
+      mov     var_HERE-v0(%r15), %rax
+      mov     %rax, var_LATEST-v0(%r15)
+      mov     %rdi, var_HERE-v0(%r15)
+      NEXT
+#+END_SRC
+
+** COLON
+
+и вторая часть, фактическое определение ~:~ (COLON), вызывает CREATE и добавляет кодовое
+слово DOCOL:
+
+#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-25.png
+                           HERE обновлена до этой точки--+
+                                                         |
+                                                         V
+  +---------+---+---+---+---+---+---+---+---+------------+
+  | LINK    | 6 | D | O | U | B | L | E | 0 | DOCOL      |
+  +---------+---+---+---+---+---+---+---+---+------------+
+             len                         pad  codeword
+#+END_SRC
+
+
+#+NAME: word_colon
+#+BEGIN_SRC asm
+  defword ":",1,,COLON
+      .quad WORD-v0               # Получаем имя нового слова
+      .quad CREATE-v0             # CREATE заголовок записи словаря
+      .quad LIT-v0, DOCOL-v0, COMMA-v0  # Добавляем DOCOL (как codeword).
+      .quad LATEST-v0, FETCH-v0, HIDDEN-v0 # Делаем слово скрытым (см. ниже определение HIDDEN).
+      .quad RBRAC-v0              # Переходим в режим компиляции
+      .quad EXIT-v0               # Возврат из функции
+#+END_SRC
+
+** SEMICOLON
+
+~;~ (SEMICOLON) также элегантно прост. Обратите внимание на флаг F＿IMMED.
+
+#+NAME: word_semicolon
+#+BEGIN_SRC asm
+  defword ";",1,F_IMMED,SEMICOLON
+      .quad LIT-v0, EXIT-v0, COMMA-v0   # Добавляем EXIT (так слово делает RETURN).
+      .quad LATEST-v0, FETCH-v0, HIDDEN-v0 # Переключаем HIDDEN flag  (см. ниже для определения).
+      .quad LBRAC-v0              # Возвращаемся в IMMEDIATE режим.
+      .quad EXIT-v0               # Возврат из функции
+#+END_SRC
+
+* Other
+** COMMENT Еще немного констант
+
+#+NAME: ext_constants
+#+BEGIN_SRC asm
+  /*
+  defconst "DOCOL",5,,__DOCOL,DOCOL-v0(%r15)
+  defconst "F_IMMED",7,,__F_IMMED,F_IMMED
+  defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
+  defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
+  ,*/
+
+  /*
+  .set sys_open,5
+  .set sys_close,6
+  .set sys_creat,8
+  .set sys_unlink,0xA
+  .set sys_lseek,0x13
+  .set sys_truncate,0x5C
+  ,*/
+
+  /*
+  defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
+  defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
+  defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
+  defconst "SYS_READ",8,,SYS_READ,$sys_read
+  defconst "SYS_WRITE",9,,SYS_WRITE,$sys_write
+  defconst "SYS_CREAT",9,,SYS_CREAT,$sys_creat
+
+  defconst "O_RDONLY",8,,__O_RDONLY,$0
+  defconst "O_WRONLY",8,,__O_WRONLY,$1
+  defconst "O_RDWR",6,,__O_RDWR,$2
+  defconst "O_CREAT",7,,__O_CREAT,$0100
+  defconst "O_EXCL",6,,__O_EXCL,$0200
+  defconst "O_TRUNC",7,,__O_TRUNC,$01000
+  defconst "O_APPEND",8,,__O_APPEND,$02000
+  defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
+
+  defconst "WORDSIZE",8,,WORDSIZE,$wordsize
+  ,*/
+#+END_SRC
 ** COMMENT Extended syscalls
 
 SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См. список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3 параметров syscall, а также номер системного вызова.
@@ -1318,47 +1535,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
       push    %rax
       NEXT
 #+END_SRC
-** COMMENT Еще немного констант
-
-#+NAME: ext_constants
-#+BEGIN_SRC asm
-  /*
-  defconst "DOCOL",5,,__DOCOL,DOCOL-v0(%r15)
-  defconst "F_IMMED",7,,__F_IMMED,F_IMMED
-  defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
-  defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
-  ,*/
-
-  /*
-  .set sys_open,5
-  .set sys_close,6
-  .set sys_creat,8
-  .set sys_unlink,0xA
-  .set sys_lseek,0x13
-  .set sys_truncate,0x5C
-  ,*/
-
-  /*
-  defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
-  defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
-  defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
-  defconst "SYS_READ",8,,SYS_READ,$sys_read
-  defconst "SYS_WRITE",9,,SYS_WRITE,$sys_write
-  defconst "SYS_CREAT",9,,SYS_CREAT,$sys_creat
-
-  defconst "O_RDONLY",8,,__O_RDONLY,$0
-  defconst "O_WRONLY",8,,__O_WRONLY,$1
-  defconst "O_RDWR",6,,__O_RDWR,$2
-  defconst "O_CREAT",7,,__O_CREAT,$0100
-  defconst "O_EXCL",6,,__O_EXCL,$0200
-  defconst "O_TRUNC",7,,__O_TRUNC,$01000
-  defconst "O_APPEND",8,,__O_APPEND,$02000
-  defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
-
-  defconst "WORDSIZE",8,,WORDSIZE,$wordsize
-  ,*/
-#+END_SRC
-
 ** COMMENT TDFA
 
 #+NAME: word_tdfa
@@ -1367,75 +1543,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
       .quad TCFA       # >CFA     (получаем code field address)
       .quad INCR8      # 8+       (добавляем 8, чтобы получить адрес первого слова в опредении)
       .quad EXIT       # EXIT     (возвращаемся)
-#+END_SRC
-
-** COMMENT Компиляция
-
-#+NAME: word_create
-#+BEGIN_SRC asm
-  defcode "CREATE",6,,CREATE
-
-      # Получаем length и address имени из стека данных
-      pop     %rcx            # %rcx = length
-      pop     %rbx            # %rbx = address
-
-      # Формируем указатель LINK
-      mov     (var_HERE), %rdi# %rdi теперь указывает на заголовок
-      mov     (var_LATEST), %rax # Получаем указатель на последнее слово -
-                              # - это LINK создаваемого слова
-      stosq                   # и сохраняем его в формируемое слово
-
-      # Формируем Байт длины и имя слова
-      mov     %cl,%al         # Получаем длину
-      stosb                   # Сохраняем length/flags байт.
-      push    %rsi            # Ненадолго сохраним %rsi
-      mov     %rbx, %rsi      # в %rsi теперь адрес начала имени
-      rep     movsb           # Копируем имя слова
-      pop     %rsi            # Восстановим %rsi
-      add     $(wordsize-1), %rdi        # Вычислим выравнивание
-      and     $~(wordsize-1), %rdi
-
-      # Обновим LATEST и HERE.
-      mov     (var_HERE), %rax
-      mov     %rax, (var_LATEST)
-      mov     %rdi, (var_HERE)
-      NEXT
-#+END_SRC
-
-** COMMENT RBAC
-
-#+NAME: word_rbrac
-#+BEGIN_SRC asm
-  defcode "[",1,F_IMMED,LBRAC
-      xor     %rax, %rax
-      mov     %rax, (var_STATE)   # Установить STATE в 0
-      NEXT
-
-  defcode "]",1,,RBRAC
-      movq    $1, (var_STATE)     # Установить STATE в 1
-      NEXT
-#+END_SRC
-
-#+NAME: word_colon
-#+BEGIN_SRC asm
-  defword ":",1,,COLON
-      .quad WORD               # Получаем имя нового слова
-      .quad CREATE             # CREATE заголовок записи словаря
-      .quad LIT, DOCOL, COMMA  # Добавляем DOCOL (как codeword).
-      .quad LATEST, FETCH, HIDDEN # Делаем слово скрытым (см. ниже определение HIDDEN).
-      .quad RBRAC              # Переходим в режим компиляции
-      .quad EXIT               # Возврат из функции
-#+END_SRC
-
-~;~ (SEMICOLON) также элегантно прост. Обратите внимание на флаг F＿IMMED.
-
-#+NAME: word_semicolon
-#+BEGIN_SRC asm
-  defword ";",1,F_IMMED,SEMICOLON
-      .quad LIT, EXIT, COMMA   # Добавляем EXIT (так слово делает RETURN).
-      .quad LATEST, FETCH, HIDDEN # Переключаем HIDDEN flag  (см. ниже для определения).
-      .quad LBRAC              # Возвращаемся в IMMEDIATE режим.
-      .quad EXIT               # Возврат из функции
 #+END_SRC
 
 ** COMMENT Расширение компилятора
@@ -1448,23 +1555,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
       add     $wordsize, %rdi     # Теперь %rdi указывает на байт name/flags
       xorb    $F_IMMED, (%rdi)    # Переключить the F_IMMED бит.
       NEXT
-#+END_SRC
-
-*** COMMENT HIDDEN
-
-#+NAME: word_hidden
-#+BEGIN_SRC asm
-  defcode "HIDDEN",6,,HIDDEN
-      pop     %rdi                # Указатель на слово в %rdi
-      add     $wordsize, %rdi     # Теперь указывает на байт length/flags.
-      xor     $F_HIDDEN, (%rdi)   # Переключаем HIDDEN бит.
-      NEXT
-
-  defword "HIDE",4,,HIDE
-      .quad    WORD                # Получаем слово (ищущее за HIDE).
-      .quad    FIND                # Ищем его в словаре
-      .quad    HIDDEN              # Устанавливаем F_HIDDEN флаг.
-      .quad    EXIT                # Выходим
 #+END_SRC
 
 *** COMMENT TICK
@@ -1603,6 +1693,20 @@ EXECUTE используется для запуска токенов выпол
 
   <<word_tell>>
 
+  <<word_litstring>>
+
+  <<word_char>>
+
+  <<word_bracs>>
+
+  <<word_hidden>>
+
+  <<word_create>>
+
+  <<word_colon>>
+
+  <<word_semicolon>>
+
 
 
   <<ext_constants>>
@@ -1613,27 +1717,11 @@ EXECUTE используется для запуска токенов выпол
 
   <<env>>
 
-
-
   <<word_tdfa>>
-
-  <<word_litstring>>
-
-  <<word_create>>
-
-  <<word_rbrac>>
-
-  <<word_colon>>
-
-  <<word_semicolon>>
 
   <<word_immediate>>
 
-  <<word_hidden>>
-
   <<word_tick>>
-
-  <<word_char>>
 
   <<word_execute>>
 
