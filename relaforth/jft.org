@@ -358,7 +358,7 @@ DOUBLE:
 
 ** Стек возвратов
 
-#+NAME: words_for_retstack
+#+NAME: word_rspstore
 #+BEGIN_SRC asm
   ## RetStack
   defcode "RSP!",4,,RSPSTORE
@@ -1102,6 +1102,30 @@ TRUE и ~0~ для FALSE.
       NEXT
 #+END_SRC
 
+** Оставшиеся слова для стека возвратов
+
+#+NAME: words_retstack
+#+BEGIN_SRC asm
+  ## RetStack
+
+  defcode ">R",2,,TOR
+      pop     %rax            # pop со стека данных в %rax
+      PUSHRSP %rax            # push %rax на стек возвратов
+      NEXT
+
+  defcode "R>",2,,FROMR
+      POPRSP  %rax            # pop со стека возвратов в %rax
+      push    %rax            # push %rax на стек параметров
+      NEXT
+
+  defcode "RSP@",4,,RSPFETCH
+      push    %rbp
+      NEXT
+
+  defcode "RDROP",5,,RDROP
+      add     $wordsize, %rbp
+      NEXT
+#+END_SRC
 
 ** COMMENT Extended syscalls
 
@@ -1149,7 +1173,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
         NEXT
     ,*/
     #+END_SRC
-
 
 ** COMMENT Cmdline слова
 
@@ -1232,6 +1255,7 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
       mov     %rdx, %rsi      # восстанавливаем %rsi
       NEXT
 #+END_SRC
+
 ** COMMENT Еще немного констант
 
 #+NAME: ext_constants
@@ -1272,32 +1296,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
   defconst "WORDSIZE",8,,WORDSIZE,$wordsize
   ,*/
 #+END_SRC
-** COMMENT Оставшиеся слова для стека возвратов
-
-#+NAME: ext_retstack
-#+BEGIN_SRC asm
-  ## RetStack
-  /*
-  defcode ">R",2,,TOR
-      pop     %rax            # pop со стека данных в %rax
-      PUSHRSP %rax            # push %rax на стек возвратов
-      NEXT
-
-  defcode "R>",2,,FROMR
-      POPRSP  %rax            # pop со стека возвратов в %rax
-      push    %rax            # push %rax на стек параметров
-      NEXT
-
-  defcode "RSP@",4,,RSPFETCH
-      push    %rbp
-      NEXT
-
-  defcode "RDROP",5,,RDROP
-      add     $wordsize, %rbp
-      NEXT
-  ,*/
-#+END_SRC
-
 ** COMMENT Стек данных
 
 #+NAME: data_stack_words
@@ -1558,7 +1556,7 @@ EXECUTE используется для запуска токенов выпол
 
   <<exit>>
 
-  <<words_for_retstack>>
+  <<word_rspstore>>
 
   <<word_lit>>
 
@@ -1590,13 +1588,11 @@ EXECUTE используется для запуска токенов выпол
 
   <<comparison>>
 
-
+  <<words_retstack>>
 
 
 
     <<ext_constants>>
-
-    <<ext_retstack>>
 
   <<argc>>
 
