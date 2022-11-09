@@ -1277,29 +1277,6 @@ CHAR помещает код ASCII первого символа следующ�
 #+END_SRC
 
 * Compilation
-
-Теперь мы поговорим о том, как Forth компилирует слова. Напомним, что определение слова
-выглядит следующим образом:
-
-#+BEGIN_SRC forth
-  : DOUBLE DUP + ;
-#+END_SRC
-
-и мы должны превратить это в:
-
-#+BEGIN_SRC ditaa :file ../../../img/forth-interpret-18.png
-       +---> указатель на предыдущее слово
-       |
-     +-+-------+---+---+---+---+---+---+---+---+------------+------------+------------+------------+
-     | LINK    | 6 | D | O | U | B | L | E | 0 | DOCOL      | DUP        | +          | EXIT       |
-     +---------+---+---+---+---+---+---+---+---+------------+--+---------+------------+------------+
-       ^        len                         pad  codeword      |
-       |                                                       +--> указатель на codeword DUP
-       +---- LATEST указывает сюда
-#+END_SRC
-
-<...>
-
 ** LBRAC and RBAC
 
 Наши определения ~:~ (COLON) и ~;~ (SEMICOLON) необходимо будет переключать в *режим
@@ -1329,8 +1306,7 @@ CHAR помещает код ASCII первого символа следующ�
   defcode "HIDDEN",6,,HIDDEN
       pop     %rdi                # Указатель на слово в %rdi
       add     $wordsize, %rdi     # Теперь указывает на байт length/flags.
-      mov     F_HIDDEN-v0(%r15), %eax
-      xor     %eax, (%rdi)        # Переключаем HIDDEN бит.
+      xor     $F_HIDDEN, (%rdi)        # Переключаем HIDDEN бит.
       NEXT
 
   defword "HIDE",4,,HIDE
@@ -1431,133 +1407,28 @@ CHAR помещает код ASCII первого символа следующ�
 #+END_SRC
 
 * Other
-** COMMENT Еще немного констант
-
-#+NAME: ext_constants
-#+BEGIN_SRC asm
-  /*
-  defconst "DOCOL",5,,__DOCOL,DOCOL-v0(%r15)
-  defconst "F_IMMED",7,,__F_IMMED,F_IMMED
-  defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
-  defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
-  ,*/
-
-  /*
-  .set sys_open,5
-  .set sys_close,6
-  .set sys_creat,8
-  .set sys_unlink,0xA
-  .set sys_lseek,0x13
-  .set sys_truncate,0x5C
-  ,*/
-
-  /*
-  defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
-  defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
-  defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
-  defconst "SYS_READ",8,,SYS_READ,$sys_read
-  defconst "SYS_WRITE",9,,SYS_WRITE,$sys_write
-  defconst "SYS_CREAT",9,,SYS_CREAT,$sys_creat
-
-  defconst "O_RDONLY",8,,__O_RDONLY,$0
-  defconst "O_WRONLY",8,,__O_WRONLY,$1
-  defconst "O_RDWR",6,,__O_RDWR,$2
-  defconst "O_CREAT",7,,__O_CREAT,$0100
-  defconst "O_EXCL",6,,__O_EXCL,$0200
-  defconst "O_TRUNC",7,,__O_TRUNC,$01000
-  defconst "O_APPEND",8,,__O_APPEND,$02000
-  defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
-
-  defconst "WORDSIZE",8,,WORDSIZE,$wordsize
-  ,*/
-#+END_SRC
-** COMMENT Extended syscalls
-
-SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См. список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3 параметров syscall, а также номер системного вызова.
-
-"place the system call number in rax, and its arguments, in order, in rdi, rsi, rdx, r10, r8, and r9, then invoke syscall"
-
-#+NAME: ext_syscalls
-#+BEGIN_SRC asm
-    /*
-    defcode "SYSCALL3",8,,SYSCALL3
-        mov %rsi,%r10 #save %rsi
-        mov %rdi,%r9 #save %rdi
-        pop %rax        # System call number (see <asm/unistd.h>)
-        pop %rdi        # First parameter.
-        pop %rsi        # Second parameter
-        pop %rdx        # Third parameter
-        syscall
-        push %rax       # Result (negative for -errno)
-        mov %r10,%rsi
-        mov %r9,%rdi
-        NEXT
-
-    defcode "SYSCALL2",8,,SYSCALL2
-        mov %rsi,%r10 #save %rsi
-        mov %rdi,%r9 #save %rdi
-        pop %rax        # System call number (see <asm/unistd.h>)
-        pop %rdi        # First parameter.
-        pop %rsi        # Second parameter
-        syscall
-        push %rax       # Result (negative for -errno)
-        mov %r10,%rsi
-        mov %r9,%rdi
-        NEXT
-
-    defcode "SYSCALL1",8,,SYSCALL1
-        mov %rsi,%r10 #save %rsi
-        mov %rdi,%r9 #save %rdi
-        pop %rax        # System call number (see <asm/unistd.h>)
-        pop %rdi        # First parameter.
-        syscall
-        push %rax       # Result (negative for -errno)
-        mov %r10,%rsi
-        mov %r9,%rdi
-        NEXT
-    ,*/
-    #+END_SRC
-
-** COMMENT Cmdline слова
-
-#+NAME: argc
-#+BEGIN_SRC asm
-  defcode "ARGC",4,,ARGC
-      mov     argc-v0(%r15), %rax
-      push    %rax
-      NEXT
-#+END_SRC
-
-#+NAME: argv
-#+BEGIN_SRC asm
-  defcode "ARGV",4,,ARGV
-      movq    argv-v0(%r15), %rax
-      push    %rax
-      NEXT
-#+END_SRC
-** COMMENT TDFA
+** TDFA
 
 #+NAME: word_tdfa
 #+BEGIN_SRC asm
   defword ">DFA",4,,TDFA
-      .quad TCFA       # >CFA     (получаем code field address)
-      .quad INCR8      # 8+       (добавляем 8, чтобы получить адрес первого слова в опредении)
-      .quad EXIT       # EXIT     (возвращаемся)
+      .quad TCFA-v0       # >CFA     (получаем code field address)
+      .quad INCR8-v0      # 8+       (добавляем 8, чтобы получить адрес первого слова в опредении)
+      .quad EXIT-v0       # EXIT     (возвращаемся)
 #+END_SRC
 
-** COMMENT Расширение компилятора
-*** COMMENT IMMEDIATE
+** IMMEDIATE
 
 #+NAME: word_immediate
 #+BEGIN_SRC asm
   defcode "IMMEDIATE",9,F_IMMED,IMMEDIATE
-      mov     (var_LATEST), %rdi  # LATEST слово в %rdi.
+      mov     var_LATEST-v0(%r15), %rdi  # LATEST слово в %rdi.
       add     $wordsize, %rdi     # Теперь %rdi указывает на байт name/flags
       xorb    $F_IMMED, (%rdi)    # Переключить the F_IMMED бит.
       NEXT
 #+END_SRC
 
-*** COMMENT TICK
+** TICK
 
 #+NAME: word_tick
 #+BEGIN_SRC asm
@@ -1566,7 +1437,8 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
       push     %rax           # Push его в стек
       NEXT
 #+END_SRC
-** COMMENT EXECUTE
+
+** EXECUTE
 
 EXECUTE используется для запуска токенов выполнения. См. обсуждение токенов выполнения
 в коде Forth для получения более подробной информации.
@@ -1585,7 +1457,7 @@ EXECUTE используется для запуска токенов выпол
       jmp     *(%rax)         # и выполнить jump на него.
 #+END_SRC
 
-** COMMENT DODOES
+** DODOES
 
 Работа этого кода объясняется во второй части
 
@@ -1596,13 +1468,111 @@ EXECUTE используется для запуска токенов выпол
 
       pop     %rsi            # (b,d) CALL-RETADDR -> ESI
 
-      lea     4(%rax), %rax   # (a) вычислить param-field DEUX
+      lea     8(%rax), %rax   # (a) вычислить param-field DEUX
       push    %rax            # (a) push его на стек данных
 
       NEXT                    # (e) вызвать интерпретатор
 
-  defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES
+  defconst "DODOES_ADDR",11,,DODOES_ADDR,DODOES-v0
 #+END_SRC
+
+** Cmdline слова
+
+#+NAME: argc
+#+BEGIN_SRC asm
+  defcode "ARGC",4,,ARGC
+      mov     argc-v0(%r15), %rax
+      push    %rax
+      NEXT
+#+END_SRC
+
+#+NAME: argv
+#+BEGIN_SRC asm
+  defcode "ARGV",4,,ARGV
+      movq    argv-v0(%r15), %rax
+      push    %rax
+      NEXT
+#+END_SRC
+
+** Еще немного констант
+
+#+NAME: ext_constants
+#+BEGIN_SRC asm
+  defconst "DOCOL",5,,__DOCOL,DOCOL-v0(%r15)
+  defconst "F_IMMED",7,,__F_IMMED,F_IMMED
+  defconst "F_HIDDEN",8,,__F_HIDDEN,F_HIDDEN
+  defconst "F_LENMASK",9,,__F_LENMASK,F_LENMASK
+
+  .set sys_open,5
+  .set sys_close,6
+  .set sys_creat,8
+  .set sys_unlink,0xA
+  .set sys_lseek,0x13
+  .set sys_truncate,0x5C
+
+  defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
+  defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
+  defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
+  defconst "SYS_READ",8,,SYS_READ,$sys_read
+  defconst "SYS_WRITE",9,,SYS_WRITE,$sys_write
+  defconst "SYS_CREAT",9,,SYS_CREAT,$sys_creat
+
+  defconst "O_RDONLY",8,,__O_RDONLY,$0
+  defconst "O_WRONLY",8,,__O_WRONLY,$1
+  defconst "O_RDWR",6,,__O_RDWR,$2
+  defconst "O_CREAT",7,,__O_CREAT,$0100
+  defconst "O_EXCL",6,,__O_EXCL,$0200
+  defconst "O_TRUNC",7,,__O_TRUNC,$01000
+  defconst "O_APPEND",8,,__O_APPEND,$02000
+  defconst "O_NONBLOCK",10,,__O_NONBLOCK,$04000
+
+  defconst "WORDSIZE",8,,WORDSIZE,$wordsize
+#+END_SRC
+
+** Extended syscalls
+
+SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См. список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3 параметров syscall, а также номер системного вызова.
+
+"place the system call number in rax, and its arguments, in order, in rdi, rsi, rdx, r10, r8, and r9, then invoke syscall"
+
+#+NAME: ext_syscalls
+#+BEGIN_SRC asm
+  defcode "SYSCALL3",8,,SYSCALL3
+      mov %rsi,%r11 #save %rsi
+      mov %rdi,%r12 #save %rdi
+      pop %rax        # System call number (see <asm/unistd.h>)
+      pop %rdi        # First parameter.
+      pop %rsi        # Second parameter
+      pop %rdx        # Third parameter
+      syscall
+      push %rax       # Result (negative for -errno)
+      mov %r11,%rsi
+      mov %r12,%rdi
+      NEXT
+
+  defcode "SYSCALL2",8,,SYSCALL2
+      mov %rsi,%r11 #save %rsi
+      mov %rdi,%r12 #save %rdi
+      pop %rax        # System call number (see <asm/unistd.h>)
+      pop %rdi        # First parameter.
+      pop %rsi        # Second parameter
+      syscall
+      push %rax       # Result (negative for -errno)
+      mov %r11,%rsi
+      mov %r12,%rdi
+      NEXT
+
+  defcode "SYSCALL1",8,,SYSCALL1
+      mov %rsi,%r11 #save %rsi
+      mov %rdi,%r12 #save %rdi
+      pop %rax        # System call number (see <asm/unistd.h>)
+      pop %rdi        # First parameter.
+      syscall
+      push %rax       # Result (negative for -errno)
+      mov %r11,%rsi
+      mov %r12,%rdi
+      NEXT
+    #+END_SRC
 
 * Tangling
 
@@ -1697,6 +1667,7 @@ EXECUTE используется для запуска токенов выпол
 
   <<word_char>>
 
+
   <<word_bracs>>
 
   <<word_hidden>>
@@ -1708,15 +1679,6 @@ EXECUTE используется для запуска токенов выпол
   <<word_semicolon>>
 
 
-
-  <<ext_constants>>
-
-  <<argc>>
-
-  <<argv>>
-
-  <<env>>
-
   <<word_tdfa>>
 
   <<word_immediate>>
@@ -1727,13 +1689,18 @@ EXECUTE используется для запуска токенов выпол
 
   <<dodoes>>
 
-  <<words_for_hash>>
+  <<argc>>
 
-  <<ext_syscalls>>
+  <<argv>>
 
+
+  <<ext_constants>>
 
 
   <<sys_ret_stack_and_input_buffer>>
+
+
+  <<ext_syscalls>>
 
   <<word_syscall_0>>
 #+END_SRC
