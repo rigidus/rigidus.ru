@@ -796,9 +796,39 @@ INTERPRET является REPL (см.: http://en.wikipedia.org/wiki/REPL) вн�
 #+END_SRC
 
 * Extension setup
+** Emit
+
+#+NAME: word_emit
+#+BEGIN_SRC asm
+  .set stdout,1
+
+  defcode "EMIT",4,,EMIT
+      pop     %rax
+      call    _EMIT
+      NEXT
+  _EMIT:
+      push    %rsi            #    |      #
+      push    %rdi            #    |      #
+      mov     $stdout, %rdi               # param1: stdout в $rdi
+      mov     %al, emit_scratch-v0(%r15)  # берем байт и заносим его в emit_scratch
+      lea     emit_scratch-v0(%r15), %rsi # param2: адрес выводимого в %rsi
+      mov     $1, %rdx                    # param3: длина
+      mov     $sys_write, %rax            # SYSCALL write
+      syscall
+      pop     %rdi            #    |      #
+      pop     %rsi            #    |      #
+      ret
+
+      .align 8
+  emit_scratch:
+      .space 1        # Место для байта, который выводит EMIT
+#+END_SRC
+
 ** COMMENT Extended syscalls
 
 SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системный вызов Linux.  (См. список номеров системных вызовов). Как видно из названия, эти формы занимают от 0 до 3 параметров syscall, а также номер системного вызова.
+
+"place the system call number in rax, and its arguments, in order, in rdi, rsi, rdx, r10, r8, and r9, then invoke syscall"
 
 #+NAME: ext_syscalls
 #+BEGIN_SRC asm
@@ -840,34 +870,6 @@ SYSCALL1, SYSCALL2, SYSCALL3 делают стандартный системн�
         NEXT
     ,*/
     #+END_SRC
-
-** COMMENT Emit
-
-#+NAME: word_emit
-#+BEGIN_SRC asm
-  /*
-  defcode "EMIT",4,,EMIT
-      pop     %rax
-      call    _EMIT
-      NEXT
-  _EMIT:
-      push    %rsi            #    |  #
-      push    %rdi            #    |  #
-      mov     $stdout, %rdi           # param1: stdout в $rdi
-      mov     %al, emit_scratch       # берем байт и заносим его в emit_scratch
-      mov     $emit_scratch, %rsi     # param2: адрес выводимого значения в %rsi
-      mov     $1, %rdx                # param3: длина
-      mov     $sys_write, %rax        # SYSCALL write
-      syscall
-      pop     %rdi            #    |
-      pop     %rsi            #    |
-      ret
-
-      .data           # NB: проще записать в .data section
-  emit_scratch:
-      .space 1        # Место для байта, который выводит EMIT
-  ,*/
-#+END_SRC
 
 ** COMMENT Базовые примитивы
 
@@ -1257,10 +1259,6 @@ INVERT могут функционировать одновременно как
   ,*/
 
   /*
-  .set stdout,1
-  ,*/
-
-  /*
   defconst "SYS_EXIT",8,,SYS_EXIT,$sys_exit
   defconst "SYS_OPEN",8,,SYS_OPEN,$sys_open
   defconst "SYS_CLOSE",9,,SYS_CLOSE,$sys_close
@@ -1588,6 +1586,12 @@ EXECUTE используется для запуска токенов выпол
 
   <<word_quit>>
 
+  # ----- ext -----
+
+  <<word_emit>>
+
+
+
 
 
     <<ext_constants>>
@@ -1611,8 +1615,6 @@ EXECUTE используется для запуска токенов выпол
   <<char_store>>
 
   <<data_stack_words>>
-
-  <<word_emit>>
 
   <<word_tdfa>>
 
