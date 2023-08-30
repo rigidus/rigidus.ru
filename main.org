@@ -1,0 +1,526 @@
+#+STARTUP: showall indent hidestars
+#+TOC: headlines 3
+
+* Service code
+** Extracting DRAWERs
+
+#+BEGIN_SRC elisp
+  (defun extract-drawer-contents (drawer-name &optional pos)
+    "Extract the contents of the specified DRAWER from the current heading."
+    (org-with-point-at (if pos
+                           pos
+                         (org-entry-beginning-position))
+      (when (re-search-forward (format ":%s:" drawer-name)
+                               (org-entry-end-position)
+                               t)
+        (let* ((drawer-start (match-end 0)))
+          (org-with-point-at drawer-start
+            (when (re-search-forward ":END:"
+                                     (org-entry-end-position)
+                                     t)
+              (let ((drawer-end (- (match-end 0) 5)))
+                (let ((result (buffer-substring drawer-start drawer-end)))
+                  (when result
+                    (split-string (string-trim result) "\n"))))))))))
+#+END_SRC
+
+** Getting src-block and xml-parsing
+
+#+NAME: xml_example
+#+BEGIN_SRC xml
+  <root>
+    <element1>Value 1</element1>
+    <element2>Value 2</element2>
+  </root>
+#+END_SRC
+
+#+BEGIN_SRC elisp :results verbatim
+  (defun get-named-src-block-content (block-name)
+    (let ((block-content nil))
+      (org-element-map (org-element-parse-buffer) 'src-block
+        (lambda (src-block)
+          (when (string= (org-element-property :name src-block) block-name)
+            (setq block-content
+                  (org-element-property :value src-block)))))
+      block-content))
+
+  (let ((xml (get-named-src-block-content "xml_example")))
+    (when (libxml-available-p)
+      (with-temp-buffer
+        (insert xml)
+        (libxml-parse-html-region (point-min) (point-max)))))
+
+  ;; (defun read-xml-file-and-parse (filename)
+  ;;   "Read the contents of a file into a string."
+  ;;   (with-temp-buffer
+  ;;     (insert-file-contents filename)
+  ;;     (libxml-parse-html-region (point-min) (point-max))))
+
+  ;; (read-xml-file-and-parse "one.graphml")
+#+END_SRC
+
+#+results:
+: (html nil (body nil (root nil (element1 nil "Value 1") (element2 nil "Value 2"))))
+
+#+BEGIN_SRC elisp :results output
+  (require 'dom2)
+
+  (defun sep (msg)
+    (replace-regexp-in-string "::" ":•" msg))
+
+  (sep "« e0 | #s(gedge n0::n1 n2::n0 #000000 line create-campaign)")
+
+  (defun read-xml-file-and-parse (filename)
+    "Read the contents of a file into a string."
+    (with-temp-buffer
+      (insert-file-contents filename)
+      (goto-char (point-min))
+      (while (re-search-forward "</y:" nil t)
+        (replace-match "</" nil nil))
+      (goto-char (point-min))
+      (while (re-search-forward "<y:" nil t)
+        (replace-match "<" nil nil))
+      (libxml-parse-html-region (point-min) (point-max))))
+
+  ;; (message "%s" (read-xml-file-and-parse "one.graphml"))
+
+  (cl-defstruct ggroup
+    id
+    label
+    prelist)
+
+  (defun parse-groups (nodes)
+    (let* ((hash-groups (make-hash-table :test 'equal)))
+      (dolist (node nodes nil)
+        (let* ((attrs (dom-element-attributes node))
+               (node-id (block node-id-block
+                          (dolist (attr attrs nil)
+                            (when (string= "id" (dom-attr-name attr))
+                              ;; (message "= %s : %s"
+                              ;;          (dom-attr-name attr)
+                              ;;          (dom-attr-value attr))
+                              (return-from node-id-block
+                                (dom-attr-value attr))))
+                          (error "GroupNode does not have id attribute!")))
+               (childs (dom-element-child-nodes node))
+               (ggroup (make-ggroup)))
+          (dolist (child childs nil)
+            (when (and (string= "data" (dom-element-name child))
+                       (dom-element-has-child-nodes child))
+              (let ((data-childs (dom-element-child-nodes child)))
+                (dolist (data-ch data-childs nil)
+                  (when (string= "proxyautoboundsnode" (dom-element-name data-ch))
+                    (let ((pabn-childs (dom-element-child-nodes data-ch)))
+                      (dolist (pabn-ch pabn-childs nil)
+                        (when (string= "realizers" (dom-element-name pabn-ch))
+                          (let* ((group-node (dom-element-first-child pabn-ch))
+                                 (group-node-childs (dom-element-child-nodes group-node)))
+                            (dolist (gn-ch group-node-childs nil)
+                              (when (string= "nodelabel" (dom-element-name gn-ch))
+                                ;; (message "--%s" (dom-element-text-content gn-ch))
+                                (setf (ggroup-label ggroup)
+                                      (dom-element-text-content gn-ch))
+                                ))))))))))
+            (when (string= "graph" (dom-element-name child))
+              (let* ((attrs (dom-element-attributes child))
+                     (node-id (block node-id-block
+                                (dolist (attr attrs nil)
+                                  (when (string= "id" (dom-attr-name attr))
+                                    ;; (message "= %s : %s"
+                                    ;;          (dom-attr-name attr)
+                                    ;;          (dom-attr-value attr))
+                                    (return-from node-id-block
+                                      (dom-attr-value attr))))
+                                (error "Graph does not have id attribute!"))))
+                (cl-labels ((pre (node)
+                                 (let ((parent (dom-node-parent-node node)))
+                                   (when parent
+                                     (let ((name (dom-node-name node)))
+                                       (when (string= "graph" name)
+                                         (let ((attrs (dom-node-attributes node)))
+                                           (dolist (attr attrs nil)
+                                             (when (string= "id" (dom-attr-name attr))
+                                               (push (dom-attr-value attr)
+                                                     (ggroup-prelist ggroup))))))
+                                       (pre parent))))))
+                  (pre child)
+                  (setf (ggroup-prelist ggroup)
+                        (butlast (ggroup-prelist ggroup))))
+                (setf (ggroup-id ggroup)
+                      node-id))))
+          (puthash (ggroup-id ggroup) ggroup hash-groups)))
+      hash-groups))
+
+  (cl-defstruct gnode
+    geom-x
+    geom-y
+    fill-color
+    label
+    shape-type
+    prelist)
+
+  (defun parse-shapenodes (nodes)
+    (let* ((hash-nodes (make-hash-table :test 'equal)))
+      (dolist (node nodes nil)
+        (let* ((parent-attributes (dom-element-attributes
+                                   (dom-element-parent-node
+                                    (dom-element-parent-node node))))
+               (node-id (block node-id-block
+                          (dolist (attr parent-attributes nil)
+                            (when (string= "id" (dom-attr-name attr))
+                              ;; (message "= %s : %s"
+                              ;;          (dom-attr-name attr)
+                              ;;          (dom-attr-value attr))
+                              (return-from node-id-block
+                                (dom-attr-value attr))))
+                          (error "Parent Node does not have id attribute!")))
+               (childs (dom-element-child-nodes node))
+               (gnode (make-gnode)))
+          (cl-labels ((pre (node)
+                           (let ((parent (dom-node-parent-node node)))
+                             (when parent
+                               (let ((name (dom-node-name node)))
+                                 (when (string= "graph" name)
+                                   (let ((attrs (dom-node-attributes node)))
+                                     (dolist (attr attrs nil)
+                                       (when (string= "id" (dom-attr-name attr))
+                                         (push (dom-attr-value attr)
+                                               (gnode-prelist gnode))))))
+                                 (pre parent))))))
+            (pre node))
+          (dolist (child childs nil)
+            (when (string= "geometry" (dom-element-name child))
+              (let ((child-attr-s (dom-element-attributes child)))
+                (dolist (attr child-attr-s nil)
+                  (when (string= "x" (dom-attr-name attr))
+                    (setf (gnode-geom-x gnode) (dom-attr-value attr)))
+                  (when (string= "y" (dom-attr-name attr))
+                    (setf (gnode-geom-y gnode) (dom-attr-value attr))))))
+            (when (string= "fill" (dom-element-name child))
+              (let ((child-attr-s (dom-element-attributes child)))
+                (dolist (attr child-attr-s nil)
+                  (when (string= "color" (dom-attr-name attr))
+                    (setf (gnode-fill-color gnode) (dom-attr-value attr))))))
+            (when (string= "nodelabel" (dom-element-name child))
+              (setf (gnode-label gnode) (dom-element-text-content child)))
+            (when (string= "shape" (dom-element-name child))
+              (let ((child-attr-s (dom-element-attributes child)))
+                (dolist (attr child-attr-s nil)
+                  (when (string= "type" (dom-attr-name attr))
+                    (setf (gnode-shape-type gnode) (dom-attr-value attr))))))
+            (puthash node-id gnode hash-nodes))))
+      hash-nodes))
+
+  (cl-defstruct gedge
+    source
+    target
+    line-color
+    line-type
+    label)
+
+  (defun parse-edges (edges)
+    (let* ((hash-edges (make-hash-table :test 'equal)))
+      (dolist (edge edges nil)
+        (let* ((parent-attributes (dom-element-attributes
+                                   (dom-element-parent-node
+                                    (dom-element-parent-node edge))))
+               (edge-id)
+               (childs (dom-element-child-nodes edge))
+               (gedge (make-gedge)))
+          (dolist (attr parent-attributes nil)
+            (when (string= "id" (dom-attr-name attr))
+              (setq edge-id (dom-attr-value attr)))
+            (when (string= "source" (dom-attr-name attr))
+              (setf (gedge-source gedge) (dom-attr-value attr)))
+            (when (string= "target" (dom-attr-name attr))
+              (setf (gedge-target gedge) (dom-attr-value attr))))
+          (dolist (child childs nil)
+            (when (string= "linestyle" (dom-element-name child))
+              (let ((child-attr-s (dom-element-attributes child)))
+                (dolist (attr child-attr-s nil)
+                  (when (string= "color" (dom-attr-name attr))
+                    (setf (gedge-line-color gedge) (dom-attr-value attr)))
+                  (when (string= "type" (dom-attr-name attr))
+                    (setf (gedge-line-type gedge) (dom-attr-value attr))))))
+            (when (string= "edgelabel" (dom-element-name child))
+              (setf (gedge-label gedge) (dom-element-text-content child))))
+          (puthash edge-id gedge hash-edges)))
+      hash-edges))
+
+  (defun parse-graphml (filename)
+    (let* ((xml   (read-xml-file-and-parse filename))
+           (dom   (dom-make-document-from-xml xml))
+           (shape-nodes (dom-document-get-elements-by-tag-name dom "shapenode"))
+           (hash-nodes (parse-shapenodes shape-nodes))
+           (edges (dom-document-get-elements-by-tag-name dom "quadcurveedge"))
+           (hash-edges (parse-edges edges))
+           (nodes (dom-document-get-elements-by-tag-name dom "node"))
+           (groups (remove-if-not
+                    (lambda (node)
+                      (block filter-block
+                        (let ((attrs (dom-element-attributes node)))
+                          (when attrs
+                            (dolist (attr attrs nil)
+                              (when (and (string= "yfiles.foldertype" (dom-attr-name attr))
+                                         (string= "group" (dom-attr-value attr)))
+                                (return-from filter-block t)))))))
+                    nodes))
+           (hash-groups (parse-groups groups)))
+      (values hash-nodes
+              hash-edges
+              hash-groups)))
+
+  ;; test
+  (multiple-value-bind (hash-nodes hash-edges hash-groups)
+      (parse-graphml "five.graphml")
+    (maphash
+     (lambda (key value)
+       (princ (sep (format "» %s | %s\n" key value))))
+     hash-nodes)
+    (maphash
+     (lambda (key value)
+       (princ (sep (format "« %s | %s\n" key value))))
+     hash-edges)
+    (maphash
+     (lambda (key value)
+       (princ (sep (format "¤ %s | %s\n" key value))))
+     hash-groups))
+#+END_SRC
+
+#+results:
+#+begin_example
+» n0:•n0 | #s(gnode 219.50000000000003 73.0 #FFCC00 set-new-adv-campaign ellipse (G n0:))
+» n0:•n1 | #s(gnode 219.50000000000003 -89.59999999999997 #FFCC00 wallet ellipse (G n0:))
+» n1:•n0 | #s(gnode 566.1710937500002 73.0 #FFCC00 campaign-api ellipse (G n1:))
+» n2:•n0 | #s(gnode 1092.3353042602544 73.0 #FFCC00 ad-yo-smartcontract ellipse (G n2:))
+» n3:•n0 | #s(gnode 566.1710937500002 385.73000000000025 #FFCC00 uploader ellipse (G n3:))
+» n3:•n1:•n0 | #s(gnode 708.4900000000001 411.4176562500006 #FFCC00 Filesystem ellipse (G n3: n3:•n1:))
+« e0 | #s(gedge n0:•n1 n2:•n0 #000000 line create-campaign)
+« e1 | #s(gedge n1:•n0 n2:•n0 #000000 line run-campaign)
+« e2 | #s(gedge n0:•n0 n3:•n0 #000000 line upload-campaign)
+« e3 | #s(gedge n0:•n0 n1:•n0 #000000 line run-campaign)
+« n1:•e0 | #s(gedge n1:•n0 n1:•n1 #000000 line save-campaign)
+« e4 | #s(gedge n0:•n1 n2:•n0 #000000 line create-addr)
+« e5 | #s(gedge n0:•n1 n2:•n0 #000000 line deposit-addr)
+« n3:•e0 | #s(gedge n3:•n0 n3:•n1:•n0 #000000 line nil)
+¤ n0: | #s(ggroup n0: Iface (G))
+¤ n1: | #s(ggroup n1: Backend (G))
+¤ n2: | #s(ggroup n2: Infura (G))
+¤ n3: | #s(ggroup n3: IPFS (G))
+¤ n3:•n1: | #s(ggroup n3:•n1: SubFS (G n3:))
+#+end_example
+
+** Finding FLOWs
+
+#+BEGIN_SRC elisp :results list
+  (defun find-flow-elts ()
+    "Внутри текущего org-entry находит все flow-elts в кавычках-елочках"
+    (let ((line-regexp "«.*?»")
+          (found-list))
+      (while (re-search-forward line-regexp (org-entry-end-position) t)
+        (pushnew (buffer-substring-no-properties (+ (match-beginning 0) 1)
+                                                 (- (match-end 0) 1))
+                 found-list))
+      (reverse found-list)))
+
+  (defun find-all-flows ()
+    "Для всех org-entry, имеющих propety FLOW:t, возвращает список из двух элементов, первый из которых является заголовком, а второй - списком найденных flow-elts в кавычках-елочках"
+    (let ((return-list))
+      (org-map-entries
+       (lambda ()
+         (when (string= (org-entry-get nil "FLOW") t)
+           (push (list (format "%s" (nth 4 (org-heading-components)))
+                       (find-flow-elts))
+                 return-list)))
+       nil 'file)
+      (reverse return-list)))
+
+  ;; (find-all-flows)
+
+  (cl-defstruct gfun ;; Структура flow-функции
+    source
+    target
+    ;; src-id
+    ;; trg-id
+    fnname
+    params
+    return)
+
+  (defun find-flows-with-params-and-returns (flows)
+    "Для всех flow преобразует списки flow-elts в структуры gfun, для чего ищет в org-файле разделы с такими же именами и извлекает из них property PARAMS и RETURN. Получается список из двух элементов, где первый - название flow, а второй - список структур gfun, каждая из которых имеет fname и может иметь заполненные params и return"
+    (mapcar
+     (lambda (flow)
+       (destructuring-bind (flow-name fns) flow
+         (list
+          flow-name
+          (let ((new-fns))
+            (mapcar
+             (lambda (fn)
+               (org-map-entries
+                (lambda ()
+                  (let ((heading (org-get-heading 'no-tags)))
+                    (when (equal fn heading)
+                      (push
+                       (make-gfun :fnname fn
+                                  :params (org-entry-get nil "PARAMS")
+                                  :return (org-entry-get nil "RETURN"))
+                       new-fns))))
+                nil 'file))
+             fns)
+            (reverse new-fns)))))
+     flows))
+
+  ;; (find-flows-with-params-and-returns (find-all-flows))
+
+  (defun find-flows-enrich-edges (flows-with-params-and-returns hash-edges)
+    "Для всех flow в каждой из структур gfun заполняет поля source и target если находит соответствующий элемент в hash-edges"
+    (mapcar
+     (lambda (flow)
+       (destructuring-bind (flow-name fns) flow
+         (list
+          flow-name
+          (let ((new-fns))
+            (mapcar
+             (lambda (fn)
+               (maphash
+                (lambda (key value)
+                  (when (string= (gedge-label value) (gfun-fnname fn))
+                    (let ((etrg (gedge-target value))
+                          (esrc (gedge-source value)))
+                      ;; (setf (gfun-trg-id fn) etrg)
+                      ;; (setf (gfun-src-id fn) esrc)
+                      (setf (gfun-target fn)
+                            (gnode-label (gethash etrg hash-nodes)))
+                      (setf (gfun-source fn)
+                            (gnode-label (gethash esrc hash-nodes))))))
+                hash-edges)
+               (push fn new-fns))
+             fns)
+            (reverse new-fns)))))
+     flows-with-params-and-returns))
+
+  (defun get-all-gfuns (hash-edges)
+    "Собирает список всех gfun"
+    (let ((funs))
+      (dolist (flow (find-flows-enrich-edges
+                     (find-flows-with-params-and-returns (find-all-flows))
+                     hash-edges))
+        (dolist (fn (cadr flow))
+          (push fn funs)))
+      funs))
+
+  (defun group-gfuns-by-target (gfuns)
+    "Группирует gfun в список из двух элементов, первый из которых - target, а второй - список gfun которые имеют этот target"
+    (let ((hash (make-hash-table :test #'equal))
+          (result))
+      (dolist (gfun gfuns)
+        (let ((target (gfun-target gfun)))
+          (when target
+            (let ((old (gethash target hash)))
+              (if old
+                  (puthash target
+                           (append old (list gfun))
+                           hash)
+                (puthash target
+                         (list gfun)
+                         hash))))))
+      (maphash (lambda (key value)
+                 (push (list key value) result))
+               hash)
+      result))
+
+  (multiple-value-bind (hash-nodes hash-edges hash-groups)
+      (parse-graphml "five.graphml")
+    (group-gfuns-by-target
+     (get-all-gfuns hash-edges)))
+#+END_SRC
+
+#+results:
+- ("uploader" (#s(gfun "set-new-adv-campaign" "uploader" "upload-campaign" "campaign-data" "cid")))
+- ("ad-yo-smartcontract" (#s(gfun "validator" "ad-yo-smartcontract" "validate" "campaign-id decision" "t") #s(gfun "validator" "ad-yo-smartcontract" "get-campaign-for-validation" "validator-id" "campaigns")))
+
+** Replacing src-blocks
+
+#+BEGIN_SRC elisp :results none
+  (defun replace-named-src-block-content (block-name new-content)
+    "Replace the content of a named source block while maintaining document structure."
+    (let ((org-buffer (current-buffer)))
+      (org-element-map (org-element-parse-buffer) 'src-block
+        (lambda (src-block)
+          (when (string= (org-element-property :name src-block) block-name)
+            (let* ((begin (org-element-property :begin src-block))
+                   (end (org-element-property :end src-block))
+                   (new `(:name ,block-name :value ,new-content
+                                :language "xml")))
+              (save-excursion
+                (goto-char begin)
+                (delete-region begin end)
+                (insert
+                 (org-element-interpret-data
+                  (org-element-create 'src-block new)))
+                (set-buffer-modified-p nil)
+                (message "Content of named block %s replaced" block-name)
+                (throw 'block-found t))))))))
+
+  (let* ((block-name "xml_replace")
+         (new-content "<html>\n<body>\n</body>\n<html>\n"))
+    (condition-case nil
+        (replace-named-src-block-content block-name new-content)
+      (error (message "Named block %s not found" block-name))))
+#+END_SRC
+
+Этот блок будет заменен вышеприведенным кодом, при его исполнении
+
+#+NAME: xml_replace
+#+BEGIN_SRC xml
+  <root>
+    <element1>Value 1</element1>
+    <element2>Value 2</element2>
+  </root>
+#+END_SRC
+
+** Button overlay
+
+#+BEGIN_SRC elisp
+    (defun my-button-action ()
+      "Action to be executed when the button is activated."
+      (interactive)
+      (message "Button pressed!"))
+
+    (defun ignore-modification (ol1 after beg end &optional _len)
+      (error "non-modify-button!"))
+
+    (defun create-improvised-button (start end)
+      "Create an improvised button between START and END."
+      (let ((button-overlay (make-overlay start end)))
+        (overlay-put button-overlay 'face '(:foreground "blue" :underline t))
+        (overlay-put button-overlay 'mouse-face 'highlight)
+        ;; (overlay-put button-overlay
+        ;;              'modification-hooks '(ignore-modification))
+        (overlay-put button-overlay
+                     'keymap (let ((map (make-sparse-keymap)))
+                               (define-key map [mouse-1] 'my-button-action)
+                               (define-key map (kbd "RET") 'my-button-action)
+                               map))))
+
+    (defun setup-improvised-buttons ()
+      "Set up improvised buttons in the buffer."
+      (interactive)
+      (save-excursion
+        (goto-char (point-min))
+        (while (re-search-forward
+                (format "%s%s" "Click " "here to execute code")
+                nil t)
+          (let ((begin (match-beginning 0))
+                (end (match-end 0)))
+            (message "%s : %s" begin end)
+            (create-improvised-button begin end)))))
+
+    ;; Применяем настройку кнопок
+    (setup-improvised-buttons)
+#+END_SRC
+
+#+results:
+
+Here is overlay button:
+- Click here to execute code
